@@ -1,0 +1,111 @@
+***** ABOUT KISS-CUDA TOOLKIT *****
+This is the Keep It Simple Stupid CUDA Tookit. It provides a decidedly minimalist interface for the
+use of CUDA with Matlab; It is oriented towards facilitating the use of one's own kernels moreso
+than providing a complete slip-in replacement for the 'double' class.
+
+***** HOW TO USE KISS-CUDA TOOLKIT *****
+The first element is GPU_init(x). If you don't pass any arguments, GPU_init lists out all
+CUDA-capable devices and asks that you select one. If you pass an argument, GPU_init selects
+that device to run CUDA on and lists the device info for it.
+
+The second element is the GPU_Type class, which is a canister holding the pointer returned by
+cudaMalloc, a bit of metadata, and some useful basic functions. It provides functionality including
+        * GPU_Type.array - behaves exactly like a Matlab double because it is;
+          Access creates a matlab array and cudaMemcpy()s into it.
+        * GPU_Type.GPU_MemPtr: The class provides readonly access to its
+          5-element int64 "gpu tag" which is used to pass arguments to CUDA mex
+          functions and receive returns (since mex cannot access, instantiate
+          or return Matlab classes).
+        * Basic math (+, -, .*, ./, sqrt, log, exp) on/between GPU_Types
+        * Handles device <-> host array transfers and memory management
+
+The simplest way to explain how KISS-CUDA works is by example. In Matlab, you might write
+
+  % Some small test arrays
+  f = rand(6); g = rand(6);
+
+  fdev = GPU_Type(f); // These are now on the GPU
+  gdev = GPU_Type(g);
+
+  % Test operator overload and custom function
+  hdev = fdev+gdev;
+  idev = GPU_Type(myCudaFunction(fdev.GPU_MemPtr, gdev.GPU_MemPtr);
+
+The basic math operators have been overloaded such that basic math ought to run without changes.
+You will quickly discover, however, that this is notably inefficient on compound expressions
+because of how it is handled: y = a*(b+c) first causes 2 global reads for b and c and a global
+write to the temporary array, then 3 more global accesses for the multiply, whereas it should
+properly generate 3 reads and one write.
+
+It's only going to go downhill performancewise from here, as the accumulating global transfers
+waste more and more IO bandwidth. What we want to do is write our own kernels! For this, we turn
+to Mex files. Rather than start writing ab initio, the Makefile and cudaArrayRotate.cu of KISS-CUDA
+form a skeleton on which to put your own meat.
+
+When programming your Mex files, you will want to #include cudaCommon.h which contains two key
+functions:
+        
+        double **getGPUSourcePointers(const mxArray *prhs[], int *returnSize, int fromarg, int toarg)
+        double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany)
+
+These are your gateway to taking input from and returning arrays to the GPU_Type class. A typical
+file will follow a format like this:
+
+// include files
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+// Check appropriate number and type of arguments
+
+int arrdims[3];
+
+double **srcs = getGPUSourcePointers(prhs, arrdims, int fromarg, int toarg);
+double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[fromarg], plhs, int howmany)
+
+// prepare to invoke kernel
+
+myCudaKernel<<<blockdim, griddim>>>(srcs[0], srcs[1]. ..., dest[0], dest[1], ..., other);
+
+return;
+}
+
+__global__ void myCudaKernel(double *a, double *b, ..., double *y, double *z, int n, int j, ...)
+{
+// ...
+}
+
+getGPUSourcePointers takes GPU_Type.GPU_MemPtr()s, expected at arguments fromarg to toarg
+inclusive, and gives you back the double*s to them. It stores the size metadata of the
+array in fromarg in arrdims for your convenient. It will generate a matlab error if you pass it
+anything that is not a KISS gpu tag (a 5-element int64_t array).
+
+makeGPUDestinationArrays takes a "reference" gpu tag, whose metadata is used to make "clone"
+arrays of the same size as the reference, and stores their gpu tags in the LHS and passes back the
+GPU double*s.
+
+***** PROVISOS, GOTCHAS AND OTHER CATCH-22'S *****
+
+The GPU_Type acts very much like a double but it is not a matlab double.
+
+Matlab implements a very nice scheme called copy-on-write. This means you can do
+a = giantArray(params);
+b = a; c = a; d = a;
+
+without quadrupling memory use until you touch all the elements in b, c and d. KISS DOES NOT DO
+THIS; a = b, if b is a GPU_Type, will duplicate b in device memory and assign the clone to a.
+
+GPU_Type.transpose flips the 1st and 2nd indices (i.e. matrix transpose). GPU_Type.Ztranspose will
+flip the 1st and 3rd indices, if the array is 3 dimensional. If the matrix is 2d it is the same as
+ordinary transpose.
+
+***** PERVERTING THE KISS-CUDA TOOLKIT *****
+
+Classes can't be passed into Mex functions so we pass GPU_Type.GPU_MemPtr instead as a proxy. It is
+of course possible to pass any 5x1 array of class int64 and there's no easy way to prevent this from
+screwing the system other than tracking all allocated pointers outselves and checking against this
+list which has the potential to be a giant waste of time so we don't do it.
+
+CUDA devices themselves, insofar as I can tell, lack memory protection for kernels. This is probably
+because it requires lots of hardware and there's no budget for hundreds of copies of it in silicon.
+All that I've ever had happen as a result is the CUDA runtime deciding it won't talk to me anymore,
+wit all future attempts to access valid pointers coming up failed.
+
