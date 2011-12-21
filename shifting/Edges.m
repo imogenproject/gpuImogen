@@ -80,9 +80,9 @@ classdef Edges < handle
 			if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
 			if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
 
-			obj.boundaryStatics(i).index = [obj.boundaryStatics.index; indset];
-			obj.boundaryStatics(i).coeff = [obj.boundaryStatics.coeff; ones([size(indset,1) 1]) ];
-			obj.boundaryStatics(i).value = [obj.boundaryStatics.value; array.array(indset(:,1)+1)];
+			obj.boundaryStatics(i).index = [obj.boundaryStatics(i).index; indset];
+			obj.boundaryStatics(i).coeff = [obj.boundaryStatics(i).coeff; ones([size(indset,1) 1]) ];
+			obj.boundaryStatics(i).value = [obj.boundaryStatics(i).value; array.array(indset(:,1)+1)];
 
                     case ENUM.BCMODE_TRANSPARENT
                         obj.ACTIVE(n,i) = true;
