@@ -16,7 +16,7 @@
 
 #define BLEN 128
 
-k#define KERNPREAMBLE int addr = BLEN*blockIdx.x + threadIdx.x;\
+#define KERNPREAMBLE int addr = BLEN*blockIdx.x + threadIdx.x;\
 if(addr >= n) { return; }
 
 __global__ void cukern_add(double *a, double *b, double *y, int n) { KERNPREAMBLE y[addr] = a[addr] + b[addr]; }

@@ -18,7 +18,7 @@ classdef ImogenArray < handle
         staticValues;   % Values for static array indices.                          double
         staticCoeffs;   % Coefficients used to determine how fast the array fades to the value double
         staticIndices;  % Indices of staticValues used by StaticArray.                int
-        staticComputed; % false, set true once statics are run through precomputation. bool
+        staticOffsets;  % Offsets to access the permutations of the statics arrays
 
         edgeshifts;     % Handles to shifting functions for each grid direction.    handle(2,3)
         isZero;         % Specifies that the array is statically zero.              logical
@@ -58,7 +58,7 @@ classdef ImogenArray < handle
 %>> id          Identification information for the new object.                      cell/str
 %>< run         Run manager object.                                                 ImogenManager
 %>> statics     Static arrays and values structure.                                 struct
-        function obj = ImogenArray(component, id, run)
+        function obj = ImogenArray(component, id, run, statics)
             if (nargin == 0 || isempty(id)); return; end
             if ~isa(id,'cell');    id = {id}; end
             obj.pArray = GPU_Type();
@@ -70,6 +70,8 @@ classdef ImogenArray < handle
             obj.pDistributed    = run.parallel.ACTIVE;
             obj.pRunManager     = run;
             obj.pFadesValue     = 0.995;
+            obj.readStatics(statics);
+
             run.bc.attachBoundaryConditions(obj);
 
             obj.indexPermute = [1 2 3];
@@ -225,7 +227,7 @@ classdef ImogenArray < handle
 % array assignment (set.array).
         function applyStatics(obj)
             if numel(obj.staticValues) > 0
-                cudaStatics(obj.gputag, obj.staticIndices.GPU_MemPtr, obj.staticValues.GPU_MemPtr, obj.staticCoeffs.GPU_MemPtr, 8, obj.indexPermute);
+                cudaStatics(obj.gputag, obj.staticIndices.GPU_MemPtr, obj.staticValues.GPU_MemPtr, obj.staticCoeffs.GPU_MemPtr, 8, obj.indexPermute, obj.staticOffsets);
             end
         end
 
@@ -235,33 +237,27 @@ classdef ImogenArray < handle
         function readStatics(obj, statics)
             if isempty(statics); return; end
 
-                %--- Flux array case ---%
-                if isa(obj,'FluxArray')
-                    [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.FLUXL);
-                    obj.staticIndices = SI;
-                    obj.staticValues  = SV;
-                    obj.staticCoeffs  = SC;
+            [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
 
-                    if isempty(SI); obj.staticActive = false; else; obj.staticActive = true; end
-                %--- Primary array case ---%
-                else
-                    [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
-                    obj.staticIndices = SI;
-                    obj.staticValues  = SV;
-                    obj.staticCoeffs  = SC;
-
-                    if isempty(SI); obj.staticActive = false; else; obj.staticActive = true; end
-                end
-
-                if obj.staticActive == true
-                    [valstab coeffstab indextab] = staticsPrecompute(SV, SC, SI(:,2:4), obj.gridSize);
-                     obj.staticIndices = GPU_Type(indextab);
-                     obj.staticValues  = GPU_Type(valstab);
-                     obj.staticCoeffs  = GPU_Type(coeffstab);
-                end
+            if numel(SI) > 0; [obj.staticValues obj.staticCoeffs obj.staticIndices] = staticsPrecompute(SV, SC, SI(:,2:4), statics.arrayDimensions); end
         end
 
+        function finalizeStatics(obj)
+            if (numel(obj.staticIndices) == 0) && ...
+               (numel(obj.edgeStore.boundaryStatics(1)) == 0) && ...
+               (numel(obj.edgeStore.boundaryStatics(2)) == 0) && ...
+               (numel(obj.edgeStore.boundaryStatics(3)) == 0)
+                    obj.staticActive = false; return;
+            end
 
+            [obj.staticValues obj.staticCoeffs obj.staticIndices obj.staticOffsets] = staticsAssemble(obj.staticValues, obj.staticCoeffs, obj.staticIndices, obj.edgeStore.boundaryStatics);
+
+            obj.staticValues = GPU_Type(obj.staticValues);
+            obj.staticCoeffs = GPU_Type(obj.staticCoeffs);
+            obj.staticIndices= GPU_Type(obj.staticIndices);
+
+            obj.applyStatics();
+        end
         
     end%PUBLIC
     

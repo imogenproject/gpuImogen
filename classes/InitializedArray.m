@@ -27,8 +27,8 @@ classdef InitializedArray < ImogenArray
     methods (Access = public) %														P U B L I C  [M]
 		
 %___________________________________________________________________________________________________ InitializedArray
-        function obj = InitializedArray(component, id, run)			
-            obj                 = obj@ImogenArray(component, id, run);
+        function obj = InitializedArray(component, id, run, statics)
+            obj                 = obj@ImogenArray(component, id, run, statics);
 			obj.pUninitialized  = true;
         end
 		

@@ -31,18 +31,20 @@ function imogen(icfile)
     run.save.saveIniSettings(ini);
     run.preliminary();
 
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run); mass.readStatics(statics); mass.applyStatics;
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run); ener.readStatics(statics); ener.applyStatics;
-    grav = GravityArray(ENUM.GRAV, run);
+%dbstop in staticsAssemble.m at 8
+
+    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run, statics);
+    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run, statics);
+    grav = GravityArray(ENUM.GRAV, run, statics);
     mom  = FluidArray.empty(3,0);
     mag  = MagnetArray.empty(3,0);
     for i=1:3
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, momDen(i,:,:,:), run); mom(i).readStatics(statics); mom(i).applyStatics;
-        mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, magnet(i,:,:,:), run); mag(i).readStatics(statics); mag(i).applyStatics;
+        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, momDen(i,:,:,:), run, statics); 
+        mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, magnet(i,:,:,:), run, statics);
     end
 
     %--- Pre-loop actions ---%
-    run.fluid.createFreezeArray();
+    %run.fluid.createFreezeArray();
     clear('massDen','momDen','enerDen','magnet','ini','statics');    
     run.initialize(mass, mom, ener, mag, grav);
     

@@ -18,12 +18,6 @@ classdef BCManager < handle
         parent;     % Parent manager                                            ImogenManager
     end %PRIVATE
 
-    
-    
-    
-    
-    
-    
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
     end%GET/SET

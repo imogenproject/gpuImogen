@@ -8,6 +8,8 @@ valstab = zeros([nstats 6]);
 coeffstab = zeros([nstats 6]);
 indextab = zeros([nstats 6]);
 
+% NOTE: This is correct for gpuImogen, where the GPU indexes from 0
+
 % Permutation [x y z]
 nx = arrdims(1); ny = arrdims(2); nz = arrdims(3);
 linind = (indices(:,1)-1) + nx*(indices(:,2)-1) + nx*ny*(indices(:,3)-1);

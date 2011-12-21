@@ -4,6 +4,8 @@ function result = indexSet(dims, xset, yset, zset)
 % and returns [linear x y z] Nx4 matrix corresponding to the linear and x y z
 % indicies corresponding to the selected points
 
+% FIXME: This is now done by StaticsInitializer.indexSetForVolume
+
 [u v w] = ndgrid(xset, yset, zset);
 
 u = u(:);

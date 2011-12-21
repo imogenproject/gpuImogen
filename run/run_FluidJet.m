@@ -4,8 +4,8 @@
 starterRun();
 
 %--- Initialize test ---%
-run                 = JetInitializer([512 512 1]);
-run.iterMax         = 40;
+run                 = JetInitializer([768 512 1]);
+run.iterMax         = 5000;
 run.injectorSize    = 15;
 run.offset          = [40 256 1];
 run.bcMode.x        = 'const';
@@ -21,7 +21,7 @@ run.info            = 'Fluid jet test.';
 run.notes           = '';
 
 run.injectorSize = 20;
-run.jetMass = .5;
+run.jetMass = 1.5;
 run.jetMach = 6;
 
 run.useGPU = true;

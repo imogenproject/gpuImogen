@@ -41,16 +41,19 @@ classdef FluidArray < ImogenArray
 %___________________________________________________________________________________________________ FluidArray
 % Creates a new FluidArray object.
 % obj = FluidArray(component, id, array, run, statics)
-        function obj = FluidArray(component, id, array, run)
+        function obj = FluidArray(component, id, array, run, statics)
         
-            obj = obj@ImogenArray(component, id, run);
+            obj = obj@ImogenArray(component, id, run, statics);
             if isempty(id); return; end
             obj.array           = squeeze(array);
             obj.isZero          = false;
             obj.pUninitialized  = false;
-            obj.initializeShiftingStates();
+            obj.initializeShiftingStates(); % FIXME: can we get rid of this?
             obj.initializeBoundingEdges();
-            obj.initializeDependentArrays(component, id, run);
+
+            obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
+
+            obj.initializeDependentArrays(component, id, run, statics);
             obj.readFades(run);
            
             if run.useGPU; obj.array = GPU_Type(obj.array); end
@@ -102,10 +105,10 @@ classdef FluidArray < ImogenArray
         
 %___________________________________________________________________________________________________ initializeDependentArrays
 % Creates the dependent array objects for the fluxing routines.
-        function initializeDependentArrays(obj, component, id, run)
-            obj.store    = StorageArray(component, id, run);
-            obj.fluxL    = FluxArray( component, {id, FluxArray.FLUXL},    run);
-            obj.fluxR    = FluxArray( component, {id, FluxArray.FLUXR},    run);
+        function initializeDependentArrays(obj, component, id, run, statics)
+            obj.store    = StorageArray(component, id, run, statics);
+            obj.fluxL    = FluxArray( component, {id, FluxArray.FLUXL},    run, statics);
+            obj.fluxR    = FluxArray( component, {id, FluxArray.FLUXR},    run, statics);
         end
         
     end
