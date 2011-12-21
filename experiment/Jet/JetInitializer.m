@@ -131,7 +131,7 @@ statics = StaticsInitializer(obj.grid);
 lind = zeros(obj.grid);
 lind(1:end) = 1:prod(obj.grid);
 
-xMin = max(obj.offset(1)-obj.injectorSize,1);        xMax = min(obj.offset(1)+obj.injectorSize,obj.grid(1));
+xMin = max(obj.offset(1)-2,1);        xMax = min(obj.offset(1)+2,obj.grid(1));
 yMin = max(obj.offset(2)-obj.injectorSize,1);        yMax = min(obj.offset(2)+obj.injectorSize,obj.grid(2));
 zMin = max(obj.offset(3)-obj.injectorSize,1);        zMax = min(obj.offset(3)+obj.injectorSize,obj.grid(3));
 
