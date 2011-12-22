@@ -11,7 +11,6 @@ run.profile         = false;
 run.image.interval	= 3;
 run.image.mass		= true;
 
-run.useGPU = true;
 run.gpuDeviceNumber = 0;
 
 %--- Run tests ---%

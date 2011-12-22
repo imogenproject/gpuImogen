@@ -60,11 +60,10 @@ end
 if order == 1; i0 = 1; else; i0 = 5; end
 
 for i = i0:(i0+3)
-%    if (rots(i) > 0) && (run.useGPU == true); xchgIndices(mass, mom, ener, mag, grav, rots(i)); end
     if run.fluid.ACTIVE && fdir(i) > 0;
-        if run.useGPU == true; xchgIndices(mass, mom, ener, mag, grav, fdir(i)); end
+        xchgIndices(mass, mom, ener, mag, grav, fdir(i));
 	relaxingFluid(run, mass, mom, ener, mag, grav, fdir(i));
-        if run.useGPU == true; xchgIndices(mass, mom, ener, mag, grav, fdir(i)); end
+        xchgIndices(mass, mom, ener, mag, grav, fdir(i));
     end
     if run.magnet.ACTIVE && fdir(i) > 0; magnetFlux(run, mass, mom, mag, fdir(i) , mdir(:,i)); end
 end

@@ -27,8 +27,9 @@ classdef ImogenManager < handle
         paths;          % Contains various paths needed for saving data.                Paths
         fades;          %
 
-        useGPU;         % if true, Imogen is running on a GPU device - some changes in behavior necessary.
-        pureHydro;      % if true, stores no magnetic information; 
+        useGPU;         % GPUimogen always runs on the GPU, but we keep this so that initializers
+                        % do not fork (or at least fork much less)
+        pureHydro;      % if true, stores no magnetic information and uses simpler flux kernels
         
         %--- Manager Classes ---%
         bc;             % Manages boundary conditions.                              BCManager
@@ -390,7 +391,7 @@ classdef ImogenManager < handle
             obj.MINDGRID    = ones(1,3);
             
 
-            obj.useGPU      = false;
+            obj.useGPU      = true;
             obj.pureHydro   = false;
         end
         

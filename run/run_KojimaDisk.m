@@ -25,7 +25,6 @@ run.bcMode.y        = ENUM.BCMODE_CONST;
 
 %run.addFade(ceil(grid/2), 16, ENUM.POINT_FADE , true, {ENUM.MOM});
 
-run.useGPU = true;
 run.gpuDeviceNumber = 2;
 run.pureHydro = true;
 

@@ -24,7 +24,10 @@ classdef GPU_Type < handle
         GPU_MemPtr; % A 5x1 array of int64_ts:
                     % x[1:5] = [gpu memory pointer, # of dimensions, Nx,
                     % Ny, Nz]. Defaults to [0 0 0 0 0] if not initialized.
-        asize;       % The size of the array, 2 or 3 elements.
+        asize;      % The size of the array. Posesses 3 elements.
+        numdims;    % integer, 2 or 3 depending on how many nonzero extents exist
+                    % This is for compatibility with matlab,
+                    % even if it is mathematically nonsense to claim [] has 2 dimensions
     end
 
     methods
@@ -34,6 +37,7 @@ classdef GPU_Type < handle
                 obj.allocated = false;
                 obj.GPU_MemPtr = int64([0 0 0 0 0]);
                 obj.asize = [0 0 0];
+                obj.numdims = 2;
             else
                 obj.handleDatain(arrin);
             end
@@ -53,10 +57,8 @@ classdef GPU_Type < handle
         end
 
         function result = get.array(obj)
-            % Return blank if not allocated, or dump the GPU array to CPU
-            % if we are
+            % Return blank if not allocated, or dump the GPU array to CPU if we are
             if obj.allocated == false; result = []; return; end
-%            dbstack
             result = GPU_cudamemcpy(obj.GPU_MemPtr, obj.asize);
         end
 
@@ -66,11 +68,14 @@ classdef GPU_Type < handle
 
         function result = size(obj, dimno)
             if nargin == 1
-                result = obj.asize(1:2);
-                if obj.asize(3) > 1; result(3) = obj.asize(3); end
+                if obj.numdims == 2; result = obj.asize(1:2); else; result = obj.asize; end
             else
                 result = obj.asize(dimno);
             end
+        end
+
+        function result = ndims(obj)
+            result = obj.numdims;
         end
 
         % Cookie-cutter operations for basic math interpertation
@@ -128,11 +133,15 @@ classdef GPU_Type < handle
                 obj.allocated = true;
                 obj.asize = size(arrin);
                 if numel(obj.asize) == 2; obj.asize(3) = 1; end
+                obj.numdims = ndims(arrin);
+
                 obj.GPU_MemPtr = GPU_cudamemcpy(arrin);
             elseif isa(arrin, 'GPU_Type') == 1
                 % Make a copy of another GPU double
                 obj.allocated = true;
-                obj.asize = arrin.size;
+                obj.asize     = arrin.size;
+                obj.numdims   = arrin.numdims;
+
                 if numel(obj.asize) == 2; obj.asize(3) = 1; end
                 obj.GPU_MemPtr = GPU_cudamemcpy(arrin.GPU_MemPtr, prod(arrin.asize));
             elseif (isa(arrin, 'int64') == 1) && (numel(arrin) == 5)
@@ -140,9 +149,9 @@ classdef GPU_Type < handle
                 obj.allocated = true;
                 obj.GPU_MemPtr = arrin;
 
-                obj.asize = double(arrin);
-                obj.asize = obj.asize(3:(obj.asize(2)+3))';
-
+                q = double(arrin);
+                obj.numdims = q(2);
+                obj.asize = q(3:5);
             else
                  error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
             end

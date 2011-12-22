@@ -11,7 +11,6 @@ run.theta       = 0;
 run.sonicMach   = 4;
 run.alfvenMach  = .9;
 
-%run.useGPU = true;
 %run.gpuDeviceNumber = 0;
 %run.bcMode.x = ENUM.BCMODE_CIRCULAR;
 

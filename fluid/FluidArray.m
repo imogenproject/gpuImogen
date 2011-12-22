@@ -56,7 +56,7 @@ classdef FluidArray < ImogenArray
             obj.initializeDependentArrays(component, id, run, statics);
             obj.readFades(run);
            
-            if run.useGPU; obj.array = GPU_Type(obj.array); end
+            obj.array = GPU_Type(obj.array);
             obj.indexGriddim = obj.gridSize;
 
             if strcmpi(id, ENUM.MASS)

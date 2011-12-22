@@ -41,7 +41,7 @@ classdef Edges < handle
                 
     %--- Initialize edge parameters ---%
             N               = size(array);
-            dim             = ndims(array);
+            dim             = ndims(array.array); % fine, waste bandwidth, just stfu
             obj.TOLERANCE   = tolerance;
                 
             if (dim > 2)

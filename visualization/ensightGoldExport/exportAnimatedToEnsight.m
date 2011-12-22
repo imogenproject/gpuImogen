@@ -54,7 +54,7 @@ for ITER = 1:numel(range)
     structName = structName{1};
 
     if ITER == 1
-        eval(sprintf('equilframe = %s', structName));
+        eval(sprintf('equilframe = %s;', structName));
     end
 
     eval(sprintf('dataframe = %s;', structName));

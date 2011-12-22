@@ -42,7 +42,7 @@ classdef Initializer < handle
         logProperties;  % List of class properties to include in run.log    cell
         fluxLimiter;    % Specifies the flux limiter(s) to use.             struct
 
-        useGPU;         % if true, Imogen tries to run on a GPU             logical
+        useGPU;         % This is always true for GPUimogen
         gpuDeviceNumber; % ID of the device to attempt to run on
         pureHydro;      % if true, uses nonmagnetic flux routines
     end %PUBLIC
@@ -101,7 +101,7 @@ classdef Initializer < handle
             obj.radiation            = RadiationSubInitializer();
             obj.fluxLimiter          = struct();
 
-            obj.useGPU               = false;
+            obj.useGPU               = true;
             obj.gpuDeviceNumber            = 0;
             obj.pureHydro = 0;
 

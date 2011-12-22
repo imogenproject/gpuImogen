@@ -13,7 +13,6 @@ run.alfvenMach  = .5;
 
 run.cfl = 0.2;
 
-%run.useGPU = true;
 %run.gpuDeviceNumber = 0;
 %run.bcMode.x = ENUM.BCMODE_CIRCULAR;
 
