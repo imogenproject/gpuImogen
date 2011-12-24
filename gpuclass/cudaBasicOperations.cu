@@ -47,6 +47,23 @@ __global__ void cukern_asinh(double *a, double *y, int n) { KERNPREAMBLE y[addr]
 __global__ void cukern_acosh(double *a, double *y, int n) { KERNPREAMBLE y[addr] = acosh(a[addr]); }
 __global__ void cukern_atanh(double *a, double *y, int n) { KERNPREAMBLE y[addr] = atanh(a[addr]); }
 
+__global__ void cukern_max(double *a, double *b, double *y, int n)
+    { KERNPREAMBLE if(b[addr] > a[addr]) { y[addr] = b[addr]; } else { y[addr] = a[addr]; } }
+__global__ void cukern_maxsc(double *a, double b, double *y, int n)
+    { KERNPREAMBLE if(b > a[addr]) { y[addr] = b; } else { y[addr] = a[addr]; } }
+
+__global__ void cukern_min(double *a, double *b, double *y, int n)
+    { KERNPREAMBLE if(b[addr] > a[addr]) { y[addr] = a[addr]; } else { y[addr] = b[addr]; } }
+__global__ void cukern_minsc(double *a, double b, double *y, int n)
+    { KERNPREAMBLE if(b > a[addr]) { y[addr] = a[addr]; } else { y[addr] = b; } }
+
+__global__ void cukern_harmonicmean(double *a, double *b, double *y, int n) { KERNPREAMBLE
+    double al = a[addr];
+    double bl = b[addr];
+
+    double s = al + bl;
+    if(abs(s) < 1e-14) { y[addr] = 0.0; } else { al = al*bl; if(al > 0) { y[addr] = al / s; } else { y[addr] = 0; } } 
+    }
 
 
 dim3 setLaunchParams(int *arrdim)
@@ -135,19 +152,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         case 2: cukern_subsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         case 4: cukern_divsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
+        case 5: cukern_minsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
+        case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         } break;
       case 2: switch(op) { // scalar + gpu
         case 1: cukern_addsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         case 2: cukern_scsub<<<gridsize, blocksize>>>(n, srcs[0], dest[0], amd.numel); break;
         case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         case 4: cukern_scdiv<<<gridsize, blocksize>>>(n, srcs[0], dest[0], amd.numel); break;
+        case 5: cukern_minsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
+        case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
         } break;
       case 3: switch(op) { // gpu + gpu
         case 1: cukern_add<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
         case 2: cukern_sub<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
         case 3: cukern_mul<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
         case 4: cukern_div<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        default: mexErrMsgTxt("cudaBasicOperations: fata, y=f(a,b) operation code invalid");
+        case 5: cukern_min<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
+        case 6: cukern_max<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
+        case 7: cukern_harmonicmean<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
+        default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid");
         } break;
       }
 

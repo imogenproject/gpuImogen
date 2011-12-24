@@ -104,6 +104,21 @@ classdef GPU_Type < handle
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 4)); return; end;
         end
 
+        function y = min(a,b)
+            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 5)); return; end
+            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 5)); return; end;
+            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 5)); return; end;
+        end
+
+        function y = max(a,b)
+            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 6)); return; end
+            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 6)); return; end;
+            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 6)); return; end;
+        end
+
+        % This is pretty much a hack, in place until we do the magnetic operations properly.
+        function y = harmonicmean(a, b); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 7)); return; end
+
         function y = sqrt(a); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,1)); return; end
         function y = log(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,2)); return; end
         function y = exp(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,3)); return; end
@@ -139,10 +154,9 @@ classdef GPU_Type < handle
             elseif isa(arrin, 'GPU_Type') == 1
                 % Make a copy of another GPU double
                 obj.allocated = true;
-                obj.asize     = arrin.size;
+                obj.asize     = arrin.asize;
                 obj.numdims   = arrin.numdims;
 
-                if numel(obj.asize) == 2; obj.asize(3) = 1; end
                 obj.GPU_MemPtr = GPU_cudamemcpy(arrin.GPU_MemPtr, prod(arrin.asize));
             elseif (isa(arrin, 'int64') == 1) && (numel(arrin) == 5)
                 % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
@@ -151,7 +165,7 @@ classdef GPU_Type < handle
 
                 q = double(arrin);
                 obj.numdims = q(2);
-                obj.asize = q(3:5);
+                obj.asize = q(3:5)';
             else
                  error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
             end

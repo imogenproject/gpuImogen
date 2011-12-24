@@ -31,7 +31,7 @@ function imogen(icfile)
     run.save.saveIniSettings(ini);
     run.preliminary();
 
-%dbstop in fluxB.m at 66
+%dbstop in ImogenArray.m at 253
 
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run, statics);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run, statics);

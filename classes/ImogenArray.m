@@ -14,7 +14,6 @@ classdef ImogenArray < handle
         bcInfinity;     % Number of cells to infinity for edges.                    int
         edgeStore;      % Stored edge values for shifting.                          Edges
 
-        staticActive;   % Determines if statics should be applied.                  logical
         staticValues;   % Values for static array indices.                          double
         staticCoeffs;   % Coefficients used to determine how fast the array fades to the value double
         staticIndices;  % Indices of staticValues used by StaticArray.                int
@@ -91,7 +90,7 @@ classdef ImogenArray < handle
             obj.pArray        = GPU_Type(value);
 
             if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if obj.staticActive,                obj.applyStatics();     end % Enforce static values.
+            if numel(obj.staticIndices) > 0;    obj.applyStatics();     end % Enforce static values.
             if obj.pUninitialized,              obj.applyInitialize();  end % Initialize if needed.
         end
         
@@ -169,7 +168,7 @@ classdef ImogenArray < handle
                 result = obj.pArray;
             end
             
-            if (obj.staticActive); obj.applyStatics(); end
+            if numel(obj.staticIndices) > 0; obj.applyStatics(); end
         end
         
 %___________________________________________________________________________________________________ transparentEdge
@@ -244,10 +243,9 @@ classdef ImogenArray < handle
 
         function finalizeStatics(obj)
             if (numel(obj.staticIndices) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(1)) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(2)) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(3)) == 0)
-                    obj.staticActive = false; return;
+               (numel(obj.edgeStore.boundaryStatics(1).index) == 0) && ...
+               (numel(obj.edgeStore.boundaryStatics(2).index) == 0) && ...
+               (numel(obj.edgeStore.boundaryStatics(3).index) == 0); return;
             end
 
             [obj.staticValues obj.staticCoeffs obj.staticIndices obj.staticOffsets] = staticsAssemble(obj.staticValues, obj.staticCoeffs, obj.staticIndices, obj.edgeStore.boundaryStatics);

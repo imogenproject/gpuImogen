@@ -15,23 +15,12 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %---------------
     fluxFactor = 0.5*run.time.dTime ./ run.DGRID{X};
 
-    if run.useGPU
-        [mag(I).store(X).array velocityFlow] = cudaMagW(mag(I).array, velGrid.array, fluxFactor, X);
-    else
+    %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    %Half-Timestep predictor step (first-order upwind,not TVD)
+    %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
+    [mag(I).store(X).array velocityFlow] = cudaMagW(mag(I).gputag, velGrid.gputag, fluxFactor, X);
 
-        velocityFlow = ( (velGrid.array + velGrid.shift(X,1)) < 0.0 );
-        
-        %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        %Half-Timestep predictor step (first-order upwind,not TVD)
-        %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
-        mag(I).store(X).fluxR.array = mag(I).array .* velGrid.array;
-        mag(I).store(X).fluxR.array = mag(I).store(X).fluxR.array .* (1-velocityFlow) ...
-							  + mag(I).store(X).fluxR.shift(X,1) .* velocityFlow;
-    
-        mag(I).store(X).array = mag(I).array ...
-				- fluxFactor .* (mag(I).store(X).fluxR.array - mag(I).store(X).fluxR.shift(X,-1));
-
-    end
+    velocityFlow = GPU_Type(velocityFlow);
 
     %+++++++++++++++++++++++++++++++++++++++++++++++++++++++
     %Full-Timestep corrector step (second-order relaxed TVD)
