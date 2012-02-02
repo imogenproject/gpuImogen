@@ -6,6 +6,8 @@ function vanleerLimiter(flux, dLeft, dRight)
 %>> dLeft    Differences between left fluxVals.                             double(Nx,Ny,Nz)
 %>> dRight   Differences between right fluxVals.                            double(Nx,Ny,Nz)
 
-flux.array = GPU_Type(flux.gputag) + harmonicmean(dLeft, dRight);
+    signTest = max(dLeft .* dRight, 0) ./ (dLeft + dRight); % 1. Harmonic average.
+    signTest(isnan(signTest)) = 0;                          % 2. Remove NaN.
+    flux.array = flux.array + signTest;                   % 3. Impose monotonicity.
 
 end

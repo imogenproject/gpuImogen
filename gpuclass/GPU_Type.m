@@ -9,7 +9,7 @@ classdef GPU_Type < handle
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
-
+tempid
     end % Public
 
     properties (SetAccess = private, GetAccess = private, Transient= true)
@@ -81,12 +81,21 @@ classdef GPU_Type < handle
         % Cookie-cutter operations for basic math interpertation
         % Warning, these are very much suboptimal due to excessive memory BW use        
         function y = plus(a, b);
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 1)); return;  end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 1)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 1)); return; end;
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+
+            y = GPU_Type(cudaBasicOperations(q, r, 1)); return;
+
+%            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 1)); return;  end
+%            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 1)); return; end;
+%            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 1)); return; end;
         end
 
         function y = minus(a,b)
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+            y = GPU_Type(cudaBasicOperations(q, r, 2)); return;
+
             if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 2)); return; end
             if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 2)); return; end;
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 2)); return; end;
@@ -94,23 +103,39 @@ classdef GPU_Type < handle
 
         function y = mtimes(a,b); y = times(a,b); end
         function y = times(a,b)
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+            y = GPU_Type(cudaBasicOperations(q, r, 3)); return;
+
             if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 3)); return; end
             if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 3)); return; end;
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 3)); return; end;
         end
         function y = rdivide(a,b)
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+            y = GPU_Type(cudaBasicOperations(q, r, 4)); return;
+
             if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 4)); return; end
             if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 4)); return; end;
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 4)); return; end;
         end
 
         function y = min(a,b)
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+            y = GPU_Type(cudaBasicOperations(q, r, 5)); return;
+
             if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 5)); return; end
             if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 5)); return; end;
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 5)); return; end;
         end
 
         function y = max(a,b)
+            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
+            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
+            y = GPU_Type(cudaBasicOperations(q, r, 6)); return;
+
             if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 6)); return; end
             if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 6)); return; end;
             if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 6)); return; end;

@@ -45,18 +45,20 @@ classdef FluidArray < ImogenArray
         
             obj = obj@ImogenArray(component, id, run, statics);
             if isempty(id); return; end
-            obj.array           = squeeze(array);
+
+            obj.pArray = GPU_Type(squeeze(array));
+
             obj.isZero          = false;
             obj.pUninitialized  = false;
             obj.initializeShiftingStates(); % FIXME: can we get rid of this?
             obj.initializeBoundingEdges();
 
-            obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
-
             obj.initializeDependentArrays(component, id, run, statics);
             obj.readFades(run);
            
-            obj.array = GPU_Type(obj.array);
+            obj.finalizeStatics(); % Put normal and static boundary conditions together and cast to GPU
+
+            obj.array = GPU_Type(squeeze(array));
             obj.indexGriddim = obj.gridSize;
 
             if strcmpi(id, ENUM.MASS)

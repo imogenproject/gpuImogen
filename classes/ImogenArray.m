@@ -121,12 +121,11 @@ classdef ImogenArray < handle
                     'set to %s directly on %s.'],value, obj.id{:});
         end
                 
-        
     end%GET/SET
         
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-        
+
 %___________________________________________________________________________________________________ distribute
 % Distributes the serial data array into a data parallel environment according to the distributor
 % argument.

@@ -9,7 +9,6 @@ function relaxingMagnet(run, mag, velGrid, X, I)
 %>> X				vector index for fluxing direction						int
 %>>	I				the component of the b-field to operate on				int
 
-
     %-----------------------------------------------------------------------------------------------
     % Initialization
     %---------------
@@ -26,25 +25,35 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %Full-Timestep corrector step (second-order relaxed TVD)
     %+++++++++++++++++++++++++++++++++++++++++++++++++++++++    
     fluxFactor = 2*fluxFactor; %Multiply to get full timestep
-    mag(I).wMag(X).array = mag(I).store(X).array .* velGrid.array;
-    
-    mag(I).flux(X).array = mag(I).wMag(X).array .* (1-velocityFlow) ...
-                           + mag(I).wMag(X).shift(X,1) .* velocityFlow;
-    dFluxR  = ( mag(I).wMag(X).shift(X,1) - mag(I).flux(X).array ) .* (1-velocityFlow) ...
-            + ( mag(I).flux(X).array - mag(I).wMag(X).shift(X,2) ) .* velocityFlow;
-    dFluxL  = ( mag(I).flux(X).array - mag(I).wMag(X).shift(X,-1) ) .* (1-velocityFlow) ...
-            + ( mag(I).wMag(X).array - mag(I).flux(X).array ) .* velocityFlow;
-    run.magnet.limiter{X}(mag(I).flux(X), dFluxL, dFluxR); % This is doubled, appropriate halving done by limiter functions
 
-    mag(I).array = mag(I).array - fluxFactor .* ( mag(I).flux(X).array - mag(I).flux(X).shift(X,-1) );
+%if X == 1
+%disp('gpu routine used');
+    [mag(I).flux(X).array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow.GPU_MemPtr, fluxFactor, X);
+%else
+%disp('normal routines used');
+%    mag(I).wMag(X).array = mag(I).store(X).array .* velGrid.array;
+%    
+%    mag(I).flux(X).array = mag(I).wMag(X).array .* (1-velocityFlow.array) ...
+%                           + mag(I).wMag(X).shift(X,1).array .* velocityFlow.array;
+%    dFluxR  = ( mag(I).wMag(X).shift(X,1).array - mag(I).flux(X).array ) .* (1-velocityFlow.array) ...
+%            + ( mag(I).flux(X).array - mag(I).wMag(X).shift(X,2).array ) .* velocityFlow.array;
+%    dFluxL  = ( mag(I).flux(X).array - mag(I).wMag(X).shift(X,-1).array ) .* (1-velocityFlow.array) ...
+%           + ( mag(I).wMag(X).array - mag(I).flux(X).array ) .* velocityFlow.array;
+%   run.magnet.limiter{X}(mag(I).flux(X), dFluxL, dFluxR); % This is doubled, appropriate halving done by limiter functions
+
+%if max(max(abs(mag(I).flux(X).array))) > .5
+%  error('wtf flux')
+%end
+
+%   mag(I).array = mag(I).array - fluxFactor .* ( mag(I).flux(X).array - mag(I).flux(X).shift(X,-1).array );
+%end
     
     %-----------------------------------------------------------------------------------
     % Reuse advection flux for constraint step for CT
     %------------------------------------------------
     fluxFactor = run.time.dTime ./ run.DGRID{I};
 
-    mag(I).flux(X).array = mag(I).flux(X).array - mag(I).flux(X).shift(I,1);
+    mag(I).flux(X).array = mag(I).flux(X).array - mag(I).flux(X).shift(I,1).array;
     mag(I).flux(X).array =  mag(I).flux(X).shift(X,-1);
     mag(X).array = mag(X).array - fluxFactor .* mag(I).flux(X).array;
-
 end

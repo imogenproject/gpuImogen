@@ -14,7 +14,7 @@
 
 #include "cudaCommon.h"
 
-__global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int nx);
+__global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims);
 __global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims);
 __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims);
 
@@ -25,21 +25,22 @@ __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, doubl
 #define BLOCKLEN 128
 #define BLOCKLENP4 132
 
-__device__ void cukern_FluxLimiter_VanLeerx(double deriv[2][BLOCKLENP4], double flux[BLOCKLENP4]);
+__device__ void cukern_FluxLimiter_VanLeer_x(double deriv[2][BLOCKLENP4], double flux[BLOCKLENP4]);
+__device__ void cukern_FluxLimiter_VanLeer_yz(double deriv[2][BLOCKDIMB][BLOCKDIMA], double flux[BLOCKDIMB][BLOCKDIMA]);
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // At least 2 arguments expected
     // Input and result
-    if ((nrhs!=5) || (nlhs != 2)) mexErrMsgTxt("Wrong number of arguments: need [B, flux] = cudaMagTVD(magW, velgrid, velflow, lambda, dir)\n");
+    if ((nrhs!=6) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need [flux] = cudaMagTVD(magW, mag, velgrid, velflow, lambda, dir)\n");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 2);
-    double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 2);
+    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
+    double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
 
     // Establish launch dimensions & a few other parameters
-    int fluxDirection = (int)*mxGetPr(prhs[4]);
-    double lambda     = *mxGetPr(prhs[3]);
+    int fluxDirection = (int)*mxGetPr(prhs[5]);
+    double lambda     = *mxGetPr(prhs[4]);
 
     int3 arraySize;
     arraySize.x = amd.dim[0];
@@ -49,204 +50,358 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     dim3 blocksize, gridsize;
     switch(fluxDirection) {
         case 1: // X direction flux. This is "priveleged" in that the shift and natural memory load directions align
-            blocksize.x = BLOCKLEN+4; blocksize.y = blocksize.z = 1;
-            gridsize.x = arraySize.y;
-            gridsize.y = arraySize.z;
-            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[1], srcs[2], dest[0], dest[1], lambda, arraySize.x);
-            break;
-        case 2: // Y direction flux: u = y, v = x, w = z
-            blocksize.x = BLOCKDIMB; blocksize.y = BLOCKDIMAM2;
+            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
 
-            gridsize.x = arraySize.x / blocksize.x; gridsize.x += 1*(blocksize.x*gridsize.x < arraySize.x);
+            gridsize.x = arraySize.x / 18; gridsize.x += 1*(18*gridsize.x < arraySize.x);
             gridsize.y = arraySize.y / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.y);
 
-            blocksize.y = BLOCKDIMA;
+            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+//printf("xkern\n");
+            break;
+        case 2: // Y direction flux: u = y, v = x, w = z
+            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
 
-            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[1], srcs[2], dest[0], dest[1], lambda, arraySize);
+            gridsize.x = arraySize.y / 18; gridsize.x += 1*(18*gridsize.x < arraySize.y);
+            gridsize.y = arraySize.x / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.x);
+
+            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+//printf("ykern\n");
             break;
         case 3: // Z direction flux: u = z, v = x, w = y;
-            blocksize.x = BLOCKDIMB; blocksize.y = BLOCKDIMAM2;
+            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
 
-            gridsize.x = arraySize.x / blocksize.x; gridsize.x += 1*(blocksize.x*gridsize.x < arraySize.x);
-            gridsize.y = arraySize.z / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.z);
+            gridsize.x = arraySize.z / 18; gridsize.x += 1*(18*gridsize.x < arraySize.z);
+            gridsize.y = arraySize.x / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.x);
 
-            blocksize.y = BLOCKDIMA;
-
-            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[1], srcs[2], dest[0], dest[1], lambda, arraySize);
-
+            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+//printf("zkern\n");
             break;
     }
 
 }
 
-__global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int nx)
+#undef TILEDIM_X
+#undef TILEDIM_Y
+#undef DIFFEDGE
+#undef FD_DIMENSION
+#undef FD_MEMSTEP
+#undef OTHER_DIMENSION
+#undef OTHER_MEMSTEP
+#undef ORTHOG_DIMENSION
+#undef ORTHOG_MEMSTEP
+/* These define the size of the "tile" each element loads
+   which is contrained, basically, by available local memory.
+   diffedge determines how wide the buffer zone is for taking
+   derivatives. */
+#define TILEDIM_X 24
+#define TILEDIM_Y 16
+#define DIFFEDGE 3
+/* These determine how we look at the array. The array is assumed to be 3D
+   (though possibly with z extent 1) and stored in C row-major format:
+   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
+
+   Choosing these determines how this operator sees the array: FD_DIM is the
+   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
+   is the final dimension */
+#define FD_DIMENSION dims.x
+#define FD_MEMSTEP 1
+#define OTHER_DIMENSION dims.y
+#define OTHER_MEMSTEP dims.x
+#define ORTHOG_DIMENSION dims.z
+#define ORTHOG_MEMSTEP (dims.x * dims.y)
+__global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims)
 {
-double locVelFlow;
-__shared__ double flux[BLOCKLENP4];
-__shared__ double derivLR[2][BLOCKLEN+4];
+/* Declare any arrays to be used for storage/differentiation similarly. */
+__shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
+__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
 
-/* Step 0 - obligatory annoying setup stuff (ASS) */
-int I0 = nx * (blockIdx.x + gridDim.x * blockIdx.y);
-int Xindex = (threadIdx.x-2);
-int Xtrack = Xindex;
-Xindex += nx * (threadIdx.x < 2);
+/* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
+int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
 
-int x;
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);
+int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;
 
-while(Xtrack < nx + 2) {
-    x = I0 + (Xindex % nx) ;
+addrX += (addrX < 0)*FD_DIMENSION;
 
-    // First step: calculate local flux
-    flux[threadIdx.x] = velGrid[x]*bW[x];
-    if(doIflux && (Xindex < nx)) fluxout[x] = flux[threadIdx.x];
-    locVelFlow = velFlow[x];
+/* Nuke the threads hanging out past the end of the X extent of the array */
+/* addrX is zero indexed, mind */
+if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;
+if(addrY >= OTHER_DIMENSION) return; 
+
+/* Mask out threads who are near the edges to prevent seg violation upon differencing */
+bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);
+
+addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
+
+/* NOTE: This chooses which direction we "actually" take derivatives in
+         along with the conditional add a few lines up */
+int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
+
+/* Stick whatever local variables we care to futz with here */
+double derivRatio, locFlux;
+int locVF;
+
+/* We step through the array, one XY plane at a time */
+int z;
+for(z = 0; z < ORTHOG_DIMENSION; z++) {
+    locVF = (int)velFlow[globAddr];
+    flux[tileAddr] = bW[globAddr]*velGrid[globAddr];
+
+    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
     __syncthreads();
-    
-    // Second step - calculate derivatives and apply limiter
-    // right derivative
-    if(locVelFlow == 1) { derivLR[1][threadIdx.x] = flux[(threadIdx.x+1)%BLOCKLENP4] - flux[(threadIdx.x+2)%BLOCKLENP4]; }
-        else            { derivLR[1][threadIdx.x] = flux[(threadIdx.x+1)%BLOCKLENP4] - flux[threadIdx.x]; }
-    // left derivative
-    if(locVelFlow == 1) { derivLR[1][threadIdx.x] = flux[threadIdx.x] - flux[(threadIdx.x+1)%BLOCKLENP4]; }
-        else            { derivLR[1][threadIdx.x] = flux[threadIdx.x] - flux[threadIdx.x-1]; }
 
-    // Third step - Apply flux limiter function
-    __syncthreads();
-    cukern_FluxLimiter_VanLeerx(derivLR, flux);
-    __syncthreads();
+    locFlux = flux[tileAddr+locVF]; // This is the one we want to correct to 2nd order
 
-    // Fourth step - write to output array
-    if( doIflux && (Xindex < nx) ) {
-        mag[x] = mag[x] - lambda * ( flux[threadIdx.x] - flux[threadIdx.x - 1] ); 
+    if(locVF == 1) {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr+1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr+2];
+    } else {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr-1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr];
     }
 
-    Xindex += BLOCKLEN;
-    Xtrack += BLOCKLEN;
+    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
     __syncthreads();
+
+    // Use the van Leer limiter
+    derivRatio = derivL[tileAddr] * derivR[tileAddr];
+    if(derivRatio < 0) derivRatio = 0;
+
+    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
+    if(isnan(derivRatio)) derivRatio = 0.0;
+
+    flux[tileAddr] = locFlux + derivRatio;
+
+    __syncthreads();
+
+    if(ITakeDerivative) {
+        mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
+        fluxout[globAddr] = flux[tileAddr];
+        }
+
+    __syncthreads();
+
+    /* This determines the "Z" direction */
+    globAddr += ORTHOG_MEMSTEP;
     }
+
 }
 
+#undef TILEDIM_X
+#undef TILEDIM_Y
+#undef DIFFEDGE
+#undef FD_DIMENSION
+#undef FD_MEMSTEP
+#undef OTHER_DIMENSION
+#undef OTHER_MEMSTEP
+#undef ORTHOG_DIMENSION
+#undef ORTHOG_MEMSTEP
+/* These define the size of the "tile" each element loads
+   which is contrained, basically, by available local memory.
+   diffedge determines how wide the buffer zone is for taking
+   derivatives. */
+#define TILEDIM_X 24
+#define TILEDIM_Y 16
+#define DIFFEDGE 3
+/* These determine how we look at the array. The array is assumed to be 3D
+   (though possibly with z extent 1) and stored in C row-major format:
+   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
+
+   Choosing these determines how this operator sees the array: FD_DIM is the
+   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
+   is the final dimension */
+#define FD_DIMENSION dims.y
+#define FD_MEMSTEP dims.x
+#define OTHER_DIMENSION dims.x
+#define OTHER_MEMSTEP 1
+#define ORTHOG_DIMENSION dims.z
+#define ORTHOG_MEMSTEP (dims.x * dims.y)
 __global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims)
 {
-double v, b, locVelFlow;
+/* Declare any arrays to be used for storage/differentiation similarly. */
+__shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
+__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
 
-__shared__ double tile[BLOCKDIMB][BLOCKDIMA];
-__shared__ double flux[BLOCKDIMB][BLOCKDIMA];
+/* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
+int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
 
-// Dimensions into the array
-int myx = blockIdx.x*BLOCKDIMB + threadIdx.x;
-int myy = blockIdx.y*BLOCKDIMAM2 + threadIdx.y - 1;
+int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);
+int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;
 
-if((myx >= dims.x) || (myy > dims.y)) return; // we keep an extra Y thread for the finite diff.
+addrX += (addrX < 0)*FD_DIMENSION;
 
-bool IWrite = (threadIdx.y > 0) && (threadIdx.y <= BLOCKDIMAM2) && (myy < dims.y) && (myy >= 0);
-// Exclude threads at the boundary of the fluxing direction from writing back
+/* Nuke the threads hanging out past the end of the X extent of the array */
+/* addrX is zero indexed, mind */
+if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;
+if(addrY >= OTHER_DIMENSION) return; 
 
-if(myy < 0) myy += dims.y; // wrap left edge back to right edge
-myy = myy % dims.y; // wrap right edge back to left
+/* Mask out threads who are near the edges to prevent seg violation upon differencing */
+bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);
 
-int x = myx + dims.x*myy;
+addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
+
+/* NOTE: This chooses which direction we "actually" take derivatives in
+         along with the conditional add a few lines up */
+int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
+
+/* Stick whatever local variables we care to futz with here */
+double derivRatio, locFlux;
+int locVF;
+
+/* We step through the array, one XY plane at a time */
 int z;
+for(z = 0; z < ORTHOG_DIMENSION; z++) {
+    locVF = (int)velFlow[globAddr];
+    flux[tileAddr] = bW[globAddr]*velGrid[globAddr];
 
-for(z = 0; z < dims.z; z++) {
-    v = velGrid[x];
-    b = mag[x];
-
-    // first calculate velocityFlow
-    tile[threadIdx.x][threadIdx.y] = v;
-    flux[threadIdx.x][threadIdx.y] = b*v;
+    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
     __syncthreads();
 
-    locVelFlow = (tile[threadIdx.x][threadIdx.y] + tile[threadIdx.x][(threadIdx.y+1) % BLOCKDIMA]);
-    if(locVelFlow < 0.0) { locVelFlow = 1.0; } else { locVelFlow = 0.0; }
+    locFlux = flux[tileAddr+locVF]; // This is the one we want to correct to 2nd order
+
+    if(locVF == 1) {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr+1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr+2];
+    } else {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr-1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr];
+    }
+
+    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
+    __syncthreads();
+
+    // Use the van Leer limiter
+    derivRatio = derivL[tileAddr] * derivR[tileAddr];
+    if(derivRatio < 0) derivRatio = 0;
+
+    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
+    if(isnan(derivRatio)) derivRatio = 0.0;
+
+    flux[tileAddr] = locFlux + derivRatio;
 
     __syncthreads();
 
-    // Second step - calculate flux
-    if(locVelFlow == 1) { tile[threadIdx.x][threadIdx.y] = flux[threadIdx.x][(threadIdx.y + 1)%BLOCKDIMA]; } else 
-                        { tile[threadIdx.x][threadIdx.y] = flux[threadIdx.x][threadIdx.y]; }
-   
-    __syncthreads();
-
-    // Third step - Perform flux and write to output array
-    if( IWrite ) {
-            bW[x] = b - lambda * ( tile[threadIdx.x][threadIdx.y] - tile[threadIdx.x][threadIdx.y-1]);
-            velFlow[x] = locVelFlow;
+    if(ITakeDerivative) {
+        mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
+        fluxout[globAddr] = flux[tileAddr];
         }
 
-    x += dims.x*dims.y;
-    __syncthreads(); 
+    __syncthreads();
+
+    /* This determines the "Z" direction */
+    globAddr += ORTHOG_MEMSTEP;
     }
 
 }
 
+#undef TILEDIM_X
+#undef TILEDIM_Y
+#undef DIFFEDGE
+#undef FD_DIMENSION
+#undef FD_MEMSTEP
+#undef OTHER_DIMENSION
+#undef OTHER_MEMSTEP
+#undef ORTHOG_DIMENSION
+#undef ORTHOG_MEMSTEP
+/* These define the size of the "tile" each element loads
+   which is contrained, basically, by available local memory.
+   diffedge determines how wide the buffer zone is for taking
+   derivatives. */
+#define TILEDIM_X 24
+#define TILEDIM_Y 16
+#define DIFFEDGE 3
+/* These determine how we look at the array. The array is assumed to be 3D
+   (though possibly with z extent 1) and stored in C row-major format:
+   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
+
+   Choosing these determines how this operator sees the array: FD_DIM is the
+   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
+   is the final dimension */
+#define FD_DIMENSION dims.z
+#define FD_MEMSTEP dims.x*dims.y
+#define OTHER_DIMENSION dims.x
+#define OTHER_MEMSTEP 1
+#define ORTHOG_DIMENSION dims.y
+#define ORTHOG_MEMSTEP dims.x
 __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims)
 {
-double v, b, locVelFlow;
+/* Declare any arrays to be used for storage/differentiation similarly. */
+__shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
+__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
 
-__shared__ double tile[BLOCKDIMB][BLOCKDIMA];
-__shared__ double flux[BLOCKDIMB][BLOCKDIMA];
+/* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
+int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
 
-int myx = blockIdx.x*BLOCKDIMB + threadIdx.x;
-int myz = blockIdx.y*BLOCKDIMAM2 + threadIdx.y - 1;
+int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);
+int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;
 
-if((myx >= dims.x) || (myz > dims.z)) return; // we keep an extra Y thread for the finite diff.
+addrX += (addrX < 0)*FD_DIMENSION;
 
-bool IWrite = (threadIdx.y > 0) && (threadIdx.y <= BLOCKDIMAM2) && (myz < dims.y) && (myz >= 0);
-// Exclude threads at the boundary of the fluxing direction from writing back
+/* Nuke the threads hanging out past the end of the X extent of the array */
+/* addrX is zero indexed, mind */
+if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;
+if(addrY >= OTHER_DIMENSION) return; 
 
-if(myz < 0) myz += dims.z; // wrap left edge back to right edge
-myz = myz % dims.z; // wrap right edge back to left
+/* Mask out threads who are near the edges to prevent seg violation upon differencing */
+bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);
 
-int x = myx + dims.x*dims.y*myz;
-int y;
+addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 
-for(y = 0; y < dims.y; y++) {
-    v = velGrid[x];
-    b = mag[x];
+/* NOTE: This chooses which direction we "actually" take derivatives in
+         along with the conditional add a few lines up */
+int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
-    // first calculate velocityFlow
-    tile[threadIdx.x][threadIdx.y] = v;
-    flux[threadIdx.x][threadIdx.y] = b*v;
+/* Stick whatever local variables we care to futz with here */
+double derivRatio, locFlux;
+int locVF;
+
+/* We step through the array, one XY plane at a time */
+int z;
+for(z = 0; z < ORTHOG_DIMENSION; z++) {
+    locVF = (int)velFlow[globAddr];
+    flux[tileAddr] = bW[globAddr]*velGrid[globAddr];
+
+    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
     __syncthreads();
 
-    locVelFlow = (tile[threadIdx.x][threadIdx.y] + tile[threadIdx.x][(threadIdx.y+1) % BLOCKDIMA]);
-    if(locVelFlow < 0.0) { locVelFlow = 1.0; } else { locVelFlow = 0.0; }
+    locFlux = flux[tileAddr+locVF]; // This is the one we want to correct to 2nd order
+
+    if(locVF == 1) {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr+1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr+2];
+    } else {
+        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr-1];
+        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr];
+    }
+
+    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
+    __syncthreads();
+
+    // Use the van Leer limiter
+    derivRatio = derivL[tileAddr] * derivR[tileAddr];
+    if(derivRatio < 0) derivRatio = 0;
+
+    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
+    if(isnan(derivRatio)) derivRatio = 0.0;
+
+    flux[tileAddr] = locFlux + derivRatio;
 
     __syncthreads();
 
-    // Second step - calculate flux
-    if(locVelFlow == 1) { tile[threadIdx.x][threadIdx.y] = flux[threadIdx.x][(threadIdx.y + 1)%BLOCKDIMA]; } else 
-                        { tile[threadIdx.x][threadIdx.y] = flux[threadIdx.x][threadIdx.y]; }
-   
-    __syncthreads();
-
-    // Third step - Perform flux and write to output array
-    if( IWrite ) {
-            bW[x] = b - lambda * ( tile[threadIdx.x][threadIdx.y] - tile[threadIdx.x][threadIdx.y-1]);
-            velFlow[x] = locVelFlow;
+    if(ITakeDerivative) {
+        mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
+        fluxout[globAddr] = flux[tileAddr];
         }
 
-    x += dims.x;
-    __syncthreads(); 
+    __syncthreads();
+
+    /* This determines the "Z" direction */
+    globAddr += ORTHOG_MEMSTEP;
     }
 
 }
 
-// NOTE: This function divides the fluxes by two, as this is NOT done in the left/right decoupling phase
-// in order to avoid any more multiplies by 1/2 than necessary.
-__device__ void cukern_FluxLimiter_VanLeerx(double deriv[2][BLOCKLENP4], double flux[BLOCKLENP4])
-{
 
-double r;
-
-r = deriv[0][threadIdx.x] * deriv[1][threadIdx.x];
-if(r < 0.0) r = 0.0;
-
-r = r / ( deriv[0][threadIdx.x] + deriv[1][threadIdx.x]);
-if (isnan(r)) { r = 0.0; }
-
-flux[threadIdx.x] += r;
-
-}

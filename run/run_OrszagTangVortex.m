@@ -4,7 +4,7 @@
 starterRun();
 
 %--- Initialize test ---%
-run                 = OrszagTangVortexInitializer([1024 1024 1]);
+run                 = OrszagTangVortexInitializer([512 512 1]);
 run.info            = 'Orszag-Tang vortex test.';
 run.notes           = '';
 run.profile         = false;

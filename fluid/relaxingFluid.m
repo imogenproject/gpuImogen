@@ -11,8 +11,8 @@ function relaxingFluid(run, mass, mom, ener, mag, grav, X)
 %>< mag      magnetic field (face)                                                    MagnetArray(3)
 %>< grav     gravitational potential                                                  GravityArray
 %>> X        vector index of current fluxing direction (1,2,or 3)                     int
-
     %--- Initialize ---%
+
     fluxFactor = run.time.dTime ./ run.DGRID{X};
     v          = [mass, mom(1), mom(2), mom(3), ener];
 

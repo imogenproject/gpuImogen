@@ -31,8 +31,6 @@ function imogen(icfile)
     run.save.saveIniSettings(ini);
     run.preliminary();
 
-%dbstop in ImogenArray.m at 253
-
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run, statics);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run, statics);
     grav = GravityArray(ENUM.GRAV, run, statics);
@@ -55,14 +53,20 @@ function imogen(icfile)
     run.save.logPrint('\nBeginning simulation loop...\n');
 
     clockA = clock;
- 
+%dbstop in fluxB.m at 63
+%dbstop in magnetFlux.m at 33
+%dbstop in relaxingMagnet.m at 55
+%dbstop in relaxingMagnet.m at 60
+%dbstop in relaxingMagnet.m at 28
+%dbstop in imogen.m at 68
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         %run.time.updateUI();
         
         for i=1:2 % Two timesteps per iteration
             run.time.update(mass, mom, ener, mag, i);
-            fluxB(run, mass, mom, ener, mag, grav, direction(i));
+%            fluxB(run, mass, mom, ener, mag, grav, direction(i));
+            flux(run, mass, mom, ener, mag, grav, direction(i));
 % change this to 'fluxB' for devel work
             treadmillGrid(run, mass, mom, ener, mag);
             run.gravity.solvePotential(run, mass, grav);
@@ -81,7 +85,7 @@ function imogen(icfile)
     end
     %%%=== END MAIN LOOP ========================================================================%%%
     fprintf('%g seconds in main sim loop\n', etime(clock, clockA));
-    %error('devel prevent-matlab-exiting stop')
+    error('devel prevent-matlab-exiting stop')
 
     run.postliminary();
 end

@@ -34,20 +34,22 @@ classdef MagnetArray < ImogenArray
 %___________________________________________________________________________________________________ updateCellCentered
 % Updates the cell centered magnetic field object, which is used in the fluid fluxing routines.
         function updateCellCentered(obj)
-            obj.cellMag.array = 0.5*(obj.pArray + obj.shift(obj.component,1));
+            obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
         end
 
 %___________________________________________________________________________________________________ MagnetArray
         function obj = MagnetArray(component, id, array, run, statics)
             obj         = obj@ImogenArray(component, id, run, statics);
-            obj.array   = squeeze(array);
+
+            obj.pArray = GPU_Type(squeeze(array));
+
             obj.isZero  = (sumND(obj.array) == 0) && ~run.magnet.ACTIVE;
             obj.initializeShiftingStates();
             obj.initializeBoundingEdges();
 
             obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
 
-            obj.array = GPU_Type(obj.array);
+            obj.array = GPU_Type(squeeze(array));
             obj.initializeArrays(component, id, run, statics);
         end
 
