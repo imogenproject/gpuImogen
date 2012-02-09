@@ -59,10 +59,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //printf("xkern\n");
             break;
         case 2: // Y direction flux: u = y, v = x, w = z
-            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
+            blocksize.x = 16; blocksize.y = 24; blocksize.z = 1;
 
-            gridsize.x = arraySize.y / 18; gridsize.x += 1*(18*gridsize.x < arraySize.y);
-            gridsize.y = arraySize.x / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.x);
+            gridsize.x = arraySize.x / 16; gridsize.x += 1*(16*gridsize.x < arraySize.x);
+            gridsize.y = arraySize.y / 18; gridsize.y += 1*(18*gridsize.y < arraySize.y);
 
             cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
 //printf("ykern\n");
@@ -201,8 +201,8 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
    which is contrained, basically, by available local memory.
    diffedge determines how wide the buffer zone is for taking
    derivatives. */
-#define TILEDIM_X 24
-#define TILEDIM_Y 16
+#define TILEDIM_X 16
+#define TILEDIM_Y 24
 #define DIFFEDGE 3
 /* These determine how we look at the array. The array is assumed to be 3D
    (though possibly with z extent 1) and stored in C row-major format:
@@ -224,27 +224,29 @@ __shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
 __shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
 __shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
 
+FINITEDIFFY_PREAMBLE
+
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
-int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
+//int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
 
-int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);
-int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;
+//int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);
+//int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;
 
-addrX += (addrX < 0)*FD_DIMENSION;
+//addrX += (addrX < 0)*FD_DIMENSION;
 
 /* Nuke the threads hanging out past the end of the X extent of the array */
 /* addrX is zero indexed, mind */
-if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;
-if(addrY >= OTHER_DIMENSION) return; 
+//if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;
+//if(addrY >= OTHER_DIMENSION) return; 
 
 /* Mask out threads who are near the edges to prevent seg violation upon differencing */
-bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);
+//bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);
 
-addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
+//addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 
 /* NOTE: This chooses which direction we "actually" take derivatives in
          along with the conditional add a few lines up */
-int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
+//int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
 double derivRatio, locFlux;

@@ -79,6 +79,8 @@ int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 double Cs, CsMax;
 double psqhf, bsqhf;
 double gg1 = gam*(gam-1.0);
+double gm1 = gam - 1.0;
+double twomg = 2.0 - gam;
 
 __shared__ double locBloc[BLOCKDIM];
 
@@ -88,10 +90,10 @@ locBloc[threadIdx.x] = 0.0;
 if(x >= addrMax) return; // If we get a very low resolution
 
 while(x < addrMax) {
-  psqhf = .5*(px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]);
-  bsqhf = .5*(bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]);
+  psqhf = .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
+  bsqhf = .5*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]);
   // we calculate pressure.
-  Cs = (gam-1.0)*(E[x] - psqhf/rho[x]) + (2.0-gam)*bsqhf;
+  Cs = gm1*(E[x] - psqhf/rho[x]) + twomg*bsqhf;
   if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
 
   Cs    = sqrt(abs( (gg1*(E[x] - psqhf/rho[x] - bsqhf) + 4*bsqhf)/rho[x] )) + abs(px[x]/rho[x]);
@@ -131,6 +133,7 @@ int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 double Cs, CsMax;
 double psqhf;
 double gg1 = gam*(gam-1.0);
+double gm1 = gam - 1.0;
 
 __shared__ double locBloc[BLOCKDIM];
 
@@ -142,7 +145,7 @@ if(x >= addrMax) return; // If we get a very low resolution
 while(x < addrMax) {
   psqhf = .5*(px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]);
 
-  Cs = (gam-1.0)*(E[x] - psqhf/rho[x]);
+  Cs = gm1*(E[x] - psqhf/rho[x]);
   if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; }
 
   Cs    = sqrt(abs( (gg1*(E[x] - psqhf/rho[x]) )/rho[x] )) + abs(px[x]/rho[x]);

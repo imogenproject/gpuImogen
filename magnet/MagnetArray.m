@@ -10,10 +10,10 @@ classdef MagnetArray < ImogenArray
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         staticFluxes;   % Specifies static fluxing.                             logical
-        fluxes;     	% Fluxes for the magnetic field.                        FluxArray(3)
-        stores;      	% Half step storage.                                    StorageArray(2)
-        velGrids;    	% Grid-aligned velocity.                                InitializedArray(2)
-        wMags;       	% Auxiliary flux.                                       InitializedArray(2)
+        fluxes;         % Fluxes for the magnetic field.                        FluxArray(3)
+        stores;         % Half step storage.                                    StorageArray(2)
+        velGrids;       % Grid-aligned velocity.                                InitializedArray(2)
+        wMags;          % Auxiliary flux.                                       InitializedArray(2)
         cellMag;        % Cell-centered magnetic field.                         InitializedArray
     end%PUBLIC
 
@@ -34,7 +34,13 @@ classdef MagnetArray < ImogenArray
 %___________________________________________________________________________________________________ updateCellCentered
 % Updates the cell centered magnetic field object, which is used in the fluid fluxing routines.
         function updateCellCentered(obj)
+
+% note - this is due to forward average routine not being done for Z yet. It will be removed soon.
+if obj.component == 3
             obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
+else
+             obj.cellMag.array = cudaFwdAverage(obj.pArray.GPU_MemPtr, obj.component);
+end
         end
 
 %___________________________________________________________________________________________________ MagnetArray

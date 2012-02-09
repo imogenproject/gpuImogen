@@ -53,39 +53,30 @@ function imogen(icfile)
     run.save.logPrint('\nBeginning simulation loop...\n');
 
     clockA = clock;
-%dbstop in fluxB.m at 63
-%dbstop in magnetFlux.m at 33
-%dbstop in relaxingMagnet.m at 55
-%dbstop in relaxingMagnet.m at 60
-%dbstop in relaxingMagnet.m at 28
-%dbstop in imogen.m at 68
+
+
+%dbstop in MagnetArray.m at 41
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         %run.time.updateUI();
         
         for i=1:2 % Two timesteps per iteration
             run.time.update(mass, mom, ener, mag, i);
-%            fluxB(run, mass, mom, ener, mag, grav, direction(i));
             flux(run, mass, mom, ener, mag, grav, direction(i));
-% change this to 'fluxB' for devel work
             treadmillGrid(run, mass, mom, ener, mag);
             run.gravity.solvePotential(run, mass, grav);
             source(run, mass, mom, ener, mag, grav);
         end
-%input('cont: ');
-% Dumb hack to push realtime images to a display
-%        if mod(run.time.iteration, 10) == 1
-%            imagesc(double(mass.array))
-%            pause(.5);
-%        end
 
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag, grav);
         run.time.step();
     end
     %%%=== END MAIN LOOP ========================================================================%%%
-    fprintf('%g seconds in main sim loop\n', etime(clock, clockA));
-    error('devel prevent-matlab-exiting stop')
+    fprintf('%gh %gs in main sim loop\n', round(etime(clock, clockA)/3600), ...
+                                          etime(clock, clockA)-round(etime(clock, clockA)/3600) );
+%    error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
 end

@@ -82,8 +82,21 @@ classdef ImogenArray < handle
         
 %___________________________________________________________________________________________________ GS: array
 % Main property accessor to the data array for the ImogenArray object.
-        function result = get.array(obj), result = obj.pArray.array; end
-        function result = get.gputag(obj),  result = obj.pArray.GPU_MemPtr;   end
+        function result = get.array(obj)
+            if isa(obj.pArray,'GPU_Type');
+                result = obj.pArray.array;
+            else
+                result = obj.pArray;
+            end
+        end
+
+        function result = get.gputag(obj)
+            if isa(obj.pArray,'GPU_Type');
+                result = obj.pArray.GPU_MemPtr;
+            else
+                result = [];
+            end
+        end
 
         function set.array(obj,value)
         % Sets the data array to the new value and cleans up faded and static cells.
