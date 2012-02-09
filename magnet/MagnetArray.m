@@ -34,13 +34,16 @@ classdef MagnetArray < ImogenArray
 %___________________________________________________________________________________________________ updateCellCentered
 % Updates the cell centered magnetic field object, which is used in the fluid fluxing routines.
         function updateCellCentered(obj)
-
-% note - this is due to forward average routine not being done for Z yet. It will be removed soon.
-if obj.component == 3
-            obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
-else
-             obj.cellMag.array = cudaFwdAverage(obj.pArray.GPU_MemPtr, obj.component);
-end
+            if size(obj.pArray,obj.component) > 1
+%                obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
+                obj.cellMag.array = cudaFwdAverage(obj.pArray.GPU_MemPtr, obj.component);
+%disp([obj.component max(max(abs(wrong.array - obj.cellMag.array)))])
+            else
+%                obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
+                obj.cellMag.array = obj.pArray; % without extent in the dimension, what is there to average or interpolate?
+%isp([obj.component size(obj.array)])
+%isp(max(max(abs(obj.cellMag.array - 0.5*(obj.pArray.array + obj.shift(obj.component,1).array)))))
+            end
         end
 
 %___________________________________________________________________________________________________ MagnetArray

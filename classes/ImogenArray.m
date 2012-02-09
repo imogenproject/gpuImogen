@@ -100,7 +100,7 @@ classdef ImogenArray < handle
 
         function set.array(obj,value)
         % Sets the data array to the new value and cleans up faded and static cells.
-            obj.pArray        = GPU_Type(value);
+            obj.pArray.array = value;
 
             if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
             if numel(obj.staticIndices) > 0;    obj.applyStatics();     end % Enforce static values.
@@ -163,7 +163,7 @@ classdef ImogenArray < handle
         
 %___________________________________________________________________________________________________ cleanup
 % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
-        function cleanup(obj),    obj.pArray =  [];    end
+        function cleanup(obj),    obj.pArray.array =  [];    end
         
 %___________________________________________________________________________________________________ shift
 % Shifts the input array along the specified direction and by the specified number of cells

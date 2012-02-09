@@ -32,13 +32,10 @@ tempid
 
     methods
         function obj = GPU_Type(arrin)
-            if nargin == 0
-                % Default to unallocated array
-                obj.allocated = false;
-                obj.GPU_MemPtr = int64([0 0 0 0 0]);
-                obj.asize = [0 0 0];
-                obj.numdims = 2;
-            else
+            obj.allocated = false;
+            obj.clearArray();
+
+            if nargin > 0
                 obj.handleDatain(arrin);
             end
 
@@ -51,7 +48,7 @@ tempid
         function set.array(obj, arrin)
             % Goofus doesn't care if he leaks memory
             % Gallant always cleans up after himself
-            if obj.allocated == true; GPU_Free(obj.GPU_MemPtr); end
+            if obj.allocated == true; GPU_free(obj.GPU_MemPtr); obj.allocated = false; end
             obj.handleDatain(arrin);
 
         end
@@ -169,6 +166,8 @@ tempid
 
         function handleDatain(obj, arrin)
             if isa(arrin, 'double')
+                if isempty(arrin); obj.clearArray(); return; end
+
                 % Cast a CPU double to a GPU double
                 obj.allocated = true;
                 obj.asize = size(arrin);
@@ -194,6 +193,14 @@ tempid
             else
                  error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
             end
+        end
+
+        function clearArray(obj)
+                if obj.allocated == true; GPU_free(obj.GPU_MemPtr); end
+                obj.allocated = false;
+                obj.GPU_MemPtr = int64([0 0 0 0 0]);
+                obj.asize = [0 0 0];
+                obj.numdims = 2;
         end
 
     end % Private methods

@@ -14,7 +14,7 @@
 
 #include "cudaCommon.h" // This defines the getGPUSourcePointers and makeGPUDestinationArrays utility functions
 
-__global__ void cukern_Wstep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);
+__global__ void cukern_Wstep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdaqtr, int nx);
 __global__ void cukern_Wstep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);
 __global__ void nullStep(fluidVarPtrs fluid, int numel);
 
@@ -81,7 +81,7 @@ if(nu > 1) {
   if(hydroOnly == 1) {
     cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda, arraySize.x);
     } else {
-    cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda, arraySize.x);
+    cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda/4.0, arraySize.x);
     }
   } else {
   nullStep<<<32, 128>>>(fluid, amd.numel);
@@ -89,7 +89,7 @@ if(nu > 1) {
 
 }
 
-__global__ void cukern_Wstep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx)
+__global__ void cukern_Wstep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdaqtr, int nx)
 {
 double Cinv, rhoinv;
 double q_i[5];
@@ -136,8 +136,9 @@ while(Xtrack < nx+2) {
             }
 
         /* Step 2 - decouple to L/R flux */
-        fluxLR[0][threadIdx.x] = 0.5*(q_i[i] - w_i); /* Left  going flux */
-        fluxLR[1][threadIdx.x] = 0.5*(q_i[i] + w_i); /* Right going flux */
+        fluxLR[0][threadIdx.x] = (q_i[i] - w_i); /* Left  going flux */
+        fluxLR[1][threadIdx.x] = (q_i[i] + w_i); /* Right going flux */
+        // NOTE: a 0.5 is eliminated here. THis requires lambda to be rescaled by .5 in launch.
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
@@ -151,7 +152,8 @@ while(Xtrack < nx+2) {
                 case 4: fluxdest = pzW; break;
                 }
 
-            fluxdest[x] = q_i[i] - 0.5 * lambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
+            // NOTE: a .5 is missing here also, so lambda must ultimately be divided by 4.
+            fluxdest[x] = q_i[i] - lambdaqtr * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
                                       fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  ) / Cinv; 
 
             }

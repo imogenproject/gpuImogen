@@ -17,6 +17,7 @@
 __global__ void cukern_fwdAverageX(double *a, double *b, int3 dims);
 __global__ void cukern_ForwardAverageX(double *in, double *out, int nx);
 __global__ void cukern_ForwardAverageY(double *in, double *out, int nx, int ny);
+__global__ void cukern_ForwardAverageZ(double *in, double *out, int nx, int nz);
 
 __global__ void cukern_fwdAverageY(double *a, double *b, int3 dims);
 __global__ void cukern_fwdAverageZ(double *a, double *b, int3 dims);
@@ -65,10 +66,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cukern_ForwardAverageY<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize.x, arraySize.y);
             break;
         case 3:
-            blocksize.x = 18; blocksize.y = 8;
-            gridsize.x = arraySize.z / 14; gridsize.x += (14 * gridsize.x < arraySize.z);
-            gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
-            cukern_fwdAverageZ<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
+//            blocksize.x = 18; blocksize.y = 8;
+//            gridsize.x = arraySize.z / 14; gridsize.x += (14 * gridsize.x < arraySize.z);
+//            gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
+//            cukern_fwdAverageZ<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
+              blocksize.x = 64; blocksize.y = blocksize.z = 1;
+              gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
+              gridsize.y = arraySize.y;
+              cukern_ForwardAverageZ<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize.x, arraySize.z);
             break;
         }
 
@@ -115,7 +120,7 @@ do {
 }
 
 /* Invoke with a blockdim of <64, 1, 1> threads
-Invoke with a griddim = <ceil[ny / 16], nz, 1> */
+Invoke with a griddim = <ceil[nx / 64], nz, 1> */
 __global__ void cukern_ForwardAverageY(double *in, double *out, int nx, int ny)
 {
 int xaddr = blockDim.x * blockIdx.x + threadIdx.x; // There are however many X threads
@@ -156,6 +161,50 @@ setA[threadIdx.x] = in[readBase];
 out[writeBase] = .5*(setB[threadIdx.x] + setA[threadIdx.x]); // average written to output
 
 }
+
+/* Invoke with a blockdim of <64, 1, 1> threads
+Invoke with a griddim = <ceil[nx / 64], ny, 1> */
+__global__ void cukern_ForwardAverageZ(double *in, double *out, int nx, int nz)
+{
+int xaddr = blockDim.x * blockIdx.x + threadIdx.x; // There are however magridDim.y X threads
+if(xaddr >= nx) return; // truncate this right off
+
+__shared__ double tileA[64];
+__shared__ double tileB[64];
+
+double *setA = tileA;
+double *setB = tileB;
+double *swap;
+
+int readBase = xaddr + nx*blockIdx.y; // set Raddr to x + nx gridDim.y z
+int writeBase = readBase;
+int addrMax = readBase + nx*gridDim.y*(nz - 1); // Set this to the max address we want to handle in the loop
+
+setB[threadIdx.x] = in[readBase]; // load set B (e.g. row 0)
+
+while(writeBase < addrMax) { // Exit one BEFORE the max address to handle (since the max is a special case)
+    swap = setB; // exchange A/B pointers
+    setB = setA;
+    setA = swap; // swap so that row 0 is set A
+
+//    __syncthreads();
+
+    readBase += nx*gridDim.y; // move pointer down one row
+    setB[threadIdx.x] = in[readBase]; // load row 1 into set B
+
+//    __syncthreads();
+
+    out[writeBase] = .5*(setB[threadIdx.x] + setA[threadIdx.x]); // average written to output
+
+    writeBase += nx*gridDim.y;
+    }
+
+readBase = xaddr + nx*blockIdx.y; // reset readbase
+setA[threadIdx.x] = in[readBase];
+out[writeBase] = .5*(setB[threadIdx.x] + setA[threadIdx.x]); // average written to output
+
+}
+
 
 #undef TILEDIM_X
 #undef TILEDIM_Y

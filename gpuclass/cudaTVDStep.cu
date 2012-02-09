@@ -19,7 +19,9 @@
 
 __global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);
 __global__ void cukern_TVDStep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);
+
 __device__ void cukern_FluxLimiter_VanLeer(double deriv[2][BLOCKLENP4], double flux[2][BLOCKLENP4], int who);
+__device__ __inline__ double fluxLimiter_Vanleer(double derivL, double derivR);
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
@@ -128,14 +130,16 @@ while(Xtrack < nx+2) {
         derivLR[0][threadIdx.x] = fluxLR[0][(threadIdx.x-1)%BLOCKLENP4] - fluxLR[0][threadIdx.x]; /* left derivative */
         derivLR[1][threadIdx.x] = fluxLR[0][threadIdx.x] - fluxLR[0][(threadIdx.x+1)%BLOCKLENP4]; /* right derivative */
         __syncthreads();
-        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);
+        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
+//        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);
         __syncthreads();
 
             /* Right flux */
         derivLR[0][threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][(threadIdx.x-1)%BLOCKLENP4]; /* left derivative */
         derivLR[1][threadIdx.x] = fluxLR[1][(threadIdx.x+1)%BLOCKLENP4] - fluxLR[1][threadIdx.x]; /* right derivative */
         __syncthreads();
-        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1); 
+        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
+  //      cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1); 
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
@@ -267,4 +271,17 @@ if (isnan(r)) { r = 0.0; }
 
 flux[who][threadIdx.x] += r;
 
+}
+
+__device__ double fluxLimiter_Vanleer(double derivL, double derivR)
+{
+double r;
+
+r = derivL * derivR;
+if(r < 0.0) r = 0.0;
+
+r = r / ( derivL + derivR);
+if (isnan(r)) { r = 0.0; }
+
+return r;
 }
