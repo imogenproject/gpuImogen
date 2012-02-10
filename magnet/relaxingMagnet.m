@@ -27,13 +27,19 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     fluxFactor = 2*fluxFactor; %Multiply to get full timestep
 
     [mag(I).flux(X).array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow.GPU_MemPtr, fluxFactor, X);
+    % This returns the flux array, pre-shifted forward one in the X direction to avoid the shift originally present below
     
     %-----------------------------------------------------------------------------------
     % Reuse advection flux for constraint step for CT
     %------------------------------------------------
     fluxFactor = run.time.dTime ./ run.DGRID{I};
 
-    mag(I).flux(X).array = mag(I).flux(X).array - mag(I).flux(X).shift(I,1).array;
-    mag(I).flux(X).array =  mag(I).flux(X).shift(X,-1);
-    mag(X).array = mag(X).array - fluxFactor .* mag(I).flux(X).array;
+%    testval = GPU_Type(mag(X).array);
+    cudaFwdDifference(mag(X).gputag, mag(I).flux(X).gputag, I, fluxFactor);
+
+ %   mag(I).flux(X).array = mag(I).flux(X).array - mag(I).flux(X).shift(I,1).array;
+ %   mag(X).array = mag(X).array - fluxFactor .* mag(I).flux(X).array;
+
+    %fprintf('%i %g\n', I, max(max(abs(testval.array - mag(X).array))));
+
 end

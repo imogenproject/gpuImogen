@@ -12,7 +12,7 @@ run.image.interval  = 20;
 run.image.mass      = true;
 %run.iterMax = 10;
 
-run.gpuDeviceNumber = 2;
+run.gpuDeviceNumber = 0;
 
 %--- Run tests ---%
 if (true)

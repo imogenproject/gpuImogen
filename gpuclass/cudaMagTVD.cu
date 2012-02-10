@@ -177,7 +177,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
 
     if(ITakeDerivative) {
         mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
-        fluxout[globAddr] = flux[tileAddr];
+        fluxout[globAddr] = flux[tileAddr-1];
         }
 
     __syncthreads();
@@ -287,7 +287,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
 
     if(ITakeDerivative) {
         mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
-        fluxout[globAddr] = flux[tileAddr];
+        fluxout[globAddr] = flux[tileAddr-1];
         }
 
     __syncthreads();
@@ -395,7 +395,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
 
     if(ITakeDerivative) {
         mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
-        fluxout[globAddr] = flux[tileAddr];
+        fluxout[globAddr] = flux[tileAddr-1];
         }
 
     __syncthreads();
