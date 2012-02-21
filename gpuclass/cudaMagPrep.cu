@@ -14,6 +14,10 @@
 
 #include "cudaCommon.h"
 
+__global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel);
+__global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx);
+__global__ void cukern_VelocityBkwdAverage_Y(double *v, double *p, double *m, int nx, int ny);
+
 __global__ void cukern_magVelAvg_X(double *v, double *p, double *m, int3 dims);
 __global__ void cukern_magVelAvg_Y(double *v, double *p, double *m, int3 dims);
 __global__ void cukern_magVelAvg_Z(double *v, double *p, double *m, int3 dims);
@@ -37,7 +41,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     cudaError_t fail = cudaMalloc((void **)&tempVelocity, amd.numel*sizeof(double));
     if(fail != cudaSuccess) {
     printf("%s\n", cudaGetErrorString(fail));
-    mexErrMsgTxt("cudaMagPrep: I haz an cudaMalloc fail. And a sad.");
+    mexErrMsgTxt("cudaMagPrep: I have an cudaMalloc fail. And a sad.");
     }
 
     // Establish launch dimensions & a few other parameters
@@ -54,31 +58,39 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     blocksize.z = 1;
     gridsize.z = 1;
 
+    if(amd.dim[velDirection] > 1) {
+
     // Interpolate the grid-aligned velocity
     switch(velDirection) {
         case 1:
-            blocksize.x = 18; blocksize.y = 8;
-            gridsize.x = arraySize.x / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
-            gridsize.y = arraySize.y / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
-            cukern_magVelAvg_X<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize);
+            blocksize.x = 128; blocksize.y = blocksize.z = 1;
+            gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
+            gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
+            cukern_VelocityBkwdAverage_X<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x);
             break;
         case 2:
-            blocksize.x = 8; blocksize.y = 18;
-            gridsize.x = arraySize.x / 8; gridsize.x += (8 * gridsize.x < arraySize.x);
-            gridsize.y = arraySize.y / 16; gridsize.y += (16 * gridsize.x < arraySize.y);
-            cukern_magVelAvg_Y<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize);
+            blocksize.x = 64; blocksize.y = blocksize.z = 1;
+            gridsize.x = arraySize.y;
+            gridsize.y = arraySize.z;
+            cukern_VelocityBkwdAverage_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x, arraySize.y);
+//            cukern_magVelAvg_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
             break;
         case 3:
             blocksize.x = 18; blocksize.y = 8;
             gridsize.x = arraySize.z / 16; gridsize.x += (16 * gridsize.x < arraySize.z);
             gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
-            cukern_magVelAvg_Z<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize);
+            cukern_magVelAvg_Z<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
             break;
         }
+    } else {
+        blocksize.x = 128; blocksize.y = blocksize.z = 1;
+        gridsize.x = amd.numel / 512; gridsize.x += (gridsize.x * 512 < amd.numel); gridsize.y = gridsize.z = 1;
+        cukern_SimpleVelocity<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], amd.numel);
+    }
 
     // Interpolate the velocity to 2nd order
 
-    switch(magDirection) {
+/*    switch(magDirection) {
         case 1:
             blocksize.x = 18; blocksize.y = 8;
             gridsize.x = arraySize.x / 14; gridsize.x += (14 * gridsize.x < arraySize.x);
@@ -97,71 +109,112 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
             cukern_magVelInterp_Z<<<gridsize, blocksize>>>(dest[0], tempVelocity, arraySize);
             break;
-        }
+        }*/
 
     cudaFree(tempVelocity); // Because only YOU can prevent memory leaks!
                             // (and this one would be a whopper...)
 
 }
 
-#undef TILEDIM_X
-#undef TILEDIM_Y
-#undef DIFFEDGE
-#undef FD_DIMENSION
-#undef FD_MEMSTEP
-#undef OTHER_DIMENSION
-#undef OTHER_MEMSTEP
-#undef ORTHOG_DIMENSION
-#undef ORTHOG_MEMSTEP
-/* These define the size of the "tile" each element loads
-   which is contrained, basically, by available local memory.
-   diffedge determines how wide the buffer zone is for taking
-   derivatives. */
-#define TILEDIM_X 18
-#define TILEDIM_Y 8
-#define DIFFEDGE 1
-/* These determine how we look at the array. The array is assumed to be 3D
-   (though possibly with z extent 1) and stored in C row-major format:
-   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
-
-   Choosing these determines how this operator sees the array: FD_DIM is the
-   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
-   is the final dimension */
-#define FD_DIMENSION dims.x
-#define FD_MEMSTEP 1
-#define OTHER_DIMENSION dims.y
-#define OTHER_MEMSTEP dims.x
-#define ORTHOG_DIMENSION dims.z
-#define ORTHOG_MEMSTEP (dims.x * dims.y)
-__global__ void cukern_magVelAvg_X(double *v, double *p, double *m, int3 dims)
+__global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel)
 {
-/* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double cellMom[TILEDIM_X * TILEDIM_Y+2];
-__shared__ double cellRho[TILEDIM_X * TILEDIM_Y+2];
+int addr = threadIdx.x + 512*blockIdx.x;
+short int q;
 
-FINITEDIFFX_PREAMBLE
-
-/* Stick whatever local variables we care to futz with here */
-
-/* We step through the array, one XY plane at a time */
-int z;
-for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    cellMom[tileAddr] = p[globAddr];
-    cellRho[tileAddr] = m[globAddr];
-    __syncthreads();
-
-    if(ITakeDerivative) {
-        v[globAddr] = (cellMom[tileAddr-1] + cellMom[tileAddr])/(cellRho[tileAddr-1]+cellRho[tileAddr]);
+if((numel - addr) >= 512) { // don't bother checking boundary overruns
+    for(q = 0; q < 4; q++) {
+	v[addr] = p[addr] / m[addr];
+	addr += 128;
+	}
+    } else {
+    for(q = 0; q < 4; q++) {
+        v[addr] = p[addr] / m[addr];
+        addr += 128;
+        if(addr >= numel) return;
         }
+    }
+}
+
+__global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx)
+{
+int xAddr = threadIdx.x;
+int yAddr = blockIdx.x;
+int zAddr = blockIdx.y;
+int ny = gridDim.x;
+
+int addrMax   = nx*(yAddr + ny*zAddr + 1); // The address which we must not reach or go beyond is the start of the next line
+int writeBase  = xAddr + nx*(yAddr + ny*zAddr); // the write start position is the left edge
+int readBase = writeBase - 1; // the read start position is one to the left of the write start position.
+
+if (threadIdx.x == 0) readBase += nx; // leftmost reads right edge
+readBase -= nx*(readBase >= addrMax);
+
+__shared__ double lMom[256];
+__shared__ double lRho[256];
+
+int locAddr = threadIdx.x;
+
+//lStore[locAddr] = in[globBase + readX]; // load the first memory segment
+lMom[locAddr] = p[readBase]; // load the first memory segment
+lRho[locAddr] = m[readBase];
+
+do {
+    readBase += 128; // move over one block
+    readBase -= nx*(readBase >= addrMax); // loop around if x overflows
+    lMom[(locAddr + 128) % 256] = p[readBase];
+    lRho[(locAddr + 128) % 256] = m[readBase];
+
+    __syncthreads(); // We have now read ahead by a segment. Calculate forward average, comrades!
+
+    if(writeBase < addrMax) { v[writeBase] = (lMom[locAddr] + lMom[(locAddr+1)%256])/(lRho[locAddr] + lRho[(locAddr+1)%256]); } // If we are within range, that is.
+    writeBase += 128; // Advance write address
+    if(writeBase >= addrMax) return; // If write address is beyond nx, we're finished.
+    locAddr ^= 128;
 
     __syncthreads();
 
-    /* This determines the "Z" direction */
-    globAddr += ORTHOG_MEMSTEP;
-    }
+    } while(1);
 
 }
 
+/* Invoke with a blockdim of <64, 1, 1> threads
+Invoke with a griddim = <ceil[nx / 64], nz, 1> */
+__global__ void cukern_VelocityBkwdAverage_Y(double *v, double *p, double *m, int nx, int ny)
+{
+int xaddr = blockDim.x * blockIdx.x + threadIdx.x; // There are however many X threads
+if(xaddr >= nx) return; // truncate this right off
+
+__shared__ double tileA[128];
+__shared__ double tileB[128];
+
+double *setA = tileA;
+double *setB = tileB;
+double *swap;
+
+int writeBase = xaddr + nx*ny*blockIdx.y; // set Raddr to x + nx ny z
+int addrMax = writeBase + nx*(ny - 1); // Set this to the max address we want to handle in the loop
+
+setB[threadIdx.x]    = p[addrMax]; // load row (y=-1) into set b
+setB[threadIdx.x+64] = m[addrMax];
+
+while(writeBase <= addrMax) { // Exit one BEFORE the max address to handle (since the max is a special case)
+    swap = setB; // exchange A/B pointers
+    setB = setA;
+    setA = swap; 
+
+//    __syncthreads();
+
+    setB[threadIdx.x]    = p[writeBase]; // load row (y=0) into set B
+    setB[threadIdx.x+64] = m[writeBase];
+
+    v[writeBase] = (setA[threadIdx.x] + setB[threadIdx.x])/(setA[threadIdx.x+64] + setB[threadIdx.x+64]); // average written to output
+
+    __syncthreads();
+
+    writeBase += nx; // increment rw address to y=1
+    }
+
+}
 
 
 #undef TILEDIM_X
