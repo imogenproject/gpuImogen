@@ -17,9 +17,8 @@
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel);
 __global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx);
 __global__ void cukern_VelocityBkwdAverage_Y(double *v, double *p, double *m, int nx, int ny);
+__global__ void cukern_VelocityBkwdAverage_Z(double *v, double *p, double *m, int nx, int nz);
 
-__global__ void cukern_magVelAvg_X(double *v, double *p, double *m, int3 dims);
-__global__ void cukern_magVelAvg_Y(double *v, double *p, double *m, int3 dims);
 __global__ void cukern_magVelAvg_Z(double *v, double *p, double *m, int3 dims);
 
 __global__ void cukern_magVelInterp_X(double *velout, double *velin, int3 dims);
@@ -60,33 +59,34 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     if(amd.dim[velDirection] > 1) {
 
-    // Interpolate the grid-aligned velocity
-    switch(velDirection) {
-        case 1:
+        // Interpolate the grid-aligned velocity
+        switch(velDirection) {
+           case 1:
+                blocksize.x = 128; blocksize.y = blocksize.z = 1;
+                gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
+                gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
+                cukern_VelocityBkwdAverage_X<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x);
+                break;
+            case 2:
+                blocksize.x = 64; blocksize.y = blocksize.z = 1;
+                gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
+                gridsize.y = arraySize.z;
+                cukern_VelocityBkwdAverage_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x, arraySize.y);
+//              cukern_magVelAvg_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
+                break;
+            case 3:
+                blocksize.x = 64; blocksize.y = blocksize.z = 1;
+                gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
+                gridsize.y = arraySize.y;
+                cukern_VelocityBkwdAverage_Z<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x, arraySize.z);
+                //cukern_magVelAvg_Z<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
+                break;
+            }
+        } else {
             blocksize.x = 128; blocksize.y = blocksize.z = 1;
-            gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
-            gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
-            cukern_VelocityBkwdAverage_X<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x);
-            break;
-        case 2:
-            blocksize.x = 64; blocksize.y = blocksize.z = 1;
-            gridsize.x = arraySize.y;
-            gridsize.y = arraySize.z;
-            cukern_VelocityBkwdAverage_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize.x, arraySize.y);
-//            cukern_magVelAvg_Y<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
-            break;
-        case 3:
-            blocksize.x = 18; blocksize.y = 8;
-            gridsize.x = arraySize.z / 16; gridsize.x += (16 * gridsize.x < arraySize.z);
-            gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
-            cukern_magVelAvg_Z<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], arraySize);
-            break;
+            gridsize.x = amd.numel / 512; gridsize.x += (gridsize.x * 512 < amd.numel); gridsize.y = gridsize.z = 1;
+            cukern_SimpleVelocity<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], amd.numel);
         }
-    } else {
-        blocksize.x = 128; blocksize.y = blocksize.z = 1;
-        gridsize.x = amd.numel / 512; gridsize.x += (gridsize.x * 512 < amd.numel); gridsize.y = gridsize.z = 1;
-        cukern_SimpleVelocity<<<gridsize, blocksize>>>(dest[0], srcs[0], srcs[1], amd.numel);
-    }
 
     // Interpolate the velocity to 2nd order
 
@@ -216,60 +216,41 @@ while(writeBase <= addrMax) { // Exit one BEFORE the max address to handle (sinc
 
 }
 
-
-#undef TILEDIM_X
-#undef TILEDIM_Y
-#undef DIFFEDGE
-#undef FD_DIMENSION
-#undef FD_MEMSTEP
-#undef OTHER_DIMENSION
-#undef OTHER_MEMSTEP
-#undef ORTHOG_DIMENSION
-#undef ORTHOG_MEMSTEP
-/* These define the size of the "tile" each element loads
-   which is contrained, basically, by available local memory.
-   diffedge determines how wide the buffer zone is for taking
-   derivatives. */
-#define TILEDIM_X 8
-#define TILEDIM_Y 18
-#define DIFFEDGE 1
-/* These determine how we look at the array. The array is assumed to be 3D
-   (though possibly with z extent 1) and stored in C row-major format:
-   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
-
-   Choosing these determines how this operator sees the array: FD_DIM is the
-   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
-   is the final dimension */
-#define FD_DIMENSION dims.y
-#define FD_MEMSTEP dims.x
-#define OTHER_DIMENSION dims.x
-#define OTHER_MEMSTEP 1
-#define ORTHOG_DIMENSION dims.z
-#define ORTHOG_MEMSTEP (dims.x * dims.y)
-__global__ void cukern_magVelAvg_Y(double *v, double *p, double *m, int3 dims)
+/* Invoke with a blockdim of <64, 1, 1> threads
+Invoke with a griddim = <ceil[nx / 64], ny, 1> */
+__global__ void cukern_VelocityBkwdAverage_Z(double *v, double *p, double *m, int nx, int nz)
 {
-/* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double cellMom[TILEDIM_X * TILEDIM_Y+2];
-__shared__ double cellRho[TILEDIM_X * TILEDIM_Y+2];
+int xaddr = blockDim.x * blockIdx.x + threadIdx.x; // There are however many X threads
+if(xaddr >= nx) return; // truncate this right off
 
-FINITEDIFFY_PREAMBLE
+__shared__ double tileA[128];
+__shared__ double tileB[128];
 
-/* Stick whatever local variables we care to futz with here */
+double *setA = tileA;
+double *setB = tileB;
+double *swap;
 
-/* We step through the array, one XY plane at a time */
-int z;
-for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    cellMom[tileAddr] = p[globAddr];
-    cellRho[tileAddr] = m[globAddr];
+int writeBase = xaddr + nx*blockIdx.y; // set Raddr to x + nx ny z
+int addrMax = writeBase + nx*gridDim.y*(nz-1); // Set this to the max address we want to handle in the loop
+
+setB[threadIdx.x]    = p[addrMax]; // load row (y=-1) into set b
+setB[threadIdx.x+64] = m[addrMax];
+
+while(writeBase <= addrMax) { // Exit one BEFORE the max address to handle (since the max is a special case)
+    swap = setB; // exchange A/B pointers
+    setB = setA;
+    setA = swap;
+
+//    __syncthreads();
+
+    setB[threadIdx.x]    = p[writeBase]; // load row (y=0) into set B
+    setB[threadIdx.x+64] = m[writeBase];
+
+    v[writeBase] = (setA[threadIdx.x] + setB[threadIdx.x])/(setA[threadIdx.x+64] + setB[threadIdx.x+64]); // average written to output
+
     __syncthreads();
-    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
-    if(ITakeDerivative) {
-        v[globAddr] = (cellMom[tileAddr-1] + cellMom[tileAddr])/(cellRho[tileAddr-1]+cellRho[tileAddr]);
-        }
 
-    __syncthreads();
-    /* This determines the "Z" direction */
-    globAddr += ORTHOG_MEMSTEP;
+    writeBase += nx*gridDim.y; // increment rw address to y=1
     }
 
 }
