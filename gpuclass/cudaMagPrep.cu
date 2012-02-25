@@ -15,6 +15,7 @@
 #include "cudaCommon.h"
 
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel);
+
 __global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx);
 __global__ void cukern_VelocityBkwdAverage_Y(double *v, double *p, double *m, int nx, int ny);
 __global__ void cukern_VelocityBkwdAverage_Z(double *v, double *p, double *m, int nx, int nz);
@@ -57,7 +58,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     blocksize.z = 1;
     gridsize.z = 1;
 
-    if(amd.dim[velDirection] > 1) {
+    if(amd.dim[velDirection-1] > 1) {
 
         // Interpolate the grid-aligned velocity
         switch(velDirection) {
@@ -84,12 +85,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             }
         } else {
             blocksize.x = 128; blocksize.y = blocksize.z = 1;
-            gridsize.x = amd.numel / 512; gridsize.x += (gridsize.x * 512 < amd.numel); gridsize.y = gridsize.z = 1;
+            gridsize.x = amd.numel / 128; gridsize.x += (gridsize.x * 128 < amd.numel); gridsize.y = gridsize.z = 1;
             cukern_SimpleVelocity<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], amd.numel);
         }
 
+fail = cudaGetLastError();
+if(fail != cudaSuccess) printf("Failed backwards averaging step: %s\n", cudaGetErrorString(fail));
+
     // Interpolate the velocity to 2nd order
-    if(amd.dim[magDirection] > 1) {
+    if(amd.dim[magDirection-1] > 1) {
         switch(magDirection) {
             case 1:
                 blocksize.x = 128; blocksize.y = blocksize.z = 1;
@@ -115,15 +119,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         // FIXME: Detect this condition ahead of time and never bother with this array in the first place
         }
 
+    fail = cudaGetLastError();
+    if(fail != cudaSuccess) printf("Failed central averaging step: %s\n", cudaGetErrorString(fail));
+
     cudaFree(tempVelocity); // Because only YOU can prevent memory leaks!
                             // (and this one would be a whopper...)
-
 }
 
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel)
 {
-int addr = threadIdx.x + 512*blockIdx.x;
+int addr = threadIdx.x + 128*blockIdx.x;
 short int q;
+
+if(addr > numel) return;
+
+v[addr] = p[addr] / m[addr];
+return;
 
 if((numel - addr) >= 512) { // don't bother checking boundary overruns
     for(q = 0; q < 4; q++) {
@@ -341,65 +352,10 @@ while(writeBase < addrMax) { // Exit one BEFORE the max address to handle (since
     }
 
 // We arrive here when writeBase == addrMax, i.e. we are at the last Y index
-setC[threadIdx.x] = in[xaddr + nx*ny*blockIdx.y];
+setA[threadIdx.x] = in[xaddr + nx*ny*blockIdx.y];
 
-out[writeBase] = .25*(setA[threadIdx.x] + setC[threadIdx.x]) + .5*setB[threadIdx.x];
-
-}
-
-#undef TILEDIM_X
-#undef TILEDIM_Y
-#undef DIFFEDGE
-#undef FD_DIMENSION
-#undef FD_MEMSTEP
-#undef OTHER_DIMENSION
-#undef OTHER_MEMSTEP
-#undef ORTHOG_DIMENSION
-#undef ORTHOG_MEMSTEP
-/* These define the size of the "tile" each element loads
-   which is contrained, basically, by available local memory.
-   diffedge determines how wide the buffer zone is for taking
-   derivatives. */
-#define TILEDIM_X 8
-#define TILEDIM_Y 18
-#define DIFFEDGE 2
-/* These determine how we look at the array. The array is assumed to be 3D
-   (though possibly with z extent 1) and stored in C row-major format:
-   index = [i j k], size = [Nx Ny Nz], memory step = [1 Nx NxNy]
-
-   Choosing these determines how this operator sees the array: FD_DIM is the
-   one we're taking derivatives in, OTHER forms a plane to it, and ORTHOG
-   is the final dimension */
-#define FD_DIMENSION dims.y
-#define FD_MEMSTEP dims.x
-#define OTHER_DIMENSION dims.x
-#define OTHER_MEMSTEP 1
-#define ORTHOG_DIMENSION dims.z
-#define ORTHOG_MEMSTEP (dims.x * dims.y)
-__global__ void cukern_magVelInterp_Y(double *velout, double *velin, int3 dims)
-{
-/* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double cellVel[TILEDIM_X * TILEDIM_Y+2];
-
-FINITEDIFFY_PREAMBLE
-
-/* Stick whatever local variables we care to futz with here */
-
-/* We step through the array, one XY plane at a time */
-int z;
-for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    cellVel[tileAddr] = velin[globAddr];
-    __syncthreads();
-    
-    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
-    if(ITakeDerivative) {
-        velout[globAddr] = .25*(cellVel[tileAddr-1] + 2.0*cellVel[tileAddr] + cellVel[tileAddr+1]);
-        }
-
-    __syncthreads();
-    /* This determines the "Z" direction */
-    globAddr += ORTHOG_MEMSTEP;
-    }
+// The weights change because we haven't cycled the pointers
+out[writeBase] = .25*(setA[threadIdx.x] + setB[threadIdx.x]) + .5*setC[threadIdx.x];
 
 }
 

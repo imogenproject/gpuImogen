@@ -8,9 +8,9 @@ run                 = OrszagTangVortexInitializer([512 512 1]);
 run.info            = 'Orszag-Tang vortex test.';
 run.notes           = '';
 run.profile         = false;
-run.image.interval  = 20;
+run.image.interval  = 10;
 run.image.mass      = true;
-%run.iterMax = 10;
+run.iterMax = 15000;
 
 run.gpuDeviceNumber = 0;
 

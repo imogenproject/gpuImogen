@@ -73,7 +73,7 @@ function imogen(icfile)
     %%%=== END MAIN LOOP ========================================================================%%%
     fprintf('%gh %gs in main sim loop\n', round(etime(clock, clockA)/3600), ...
                                           etime(clock, clockA)-round(etime(clock, clockA)/3600) );
-%    error('development: error to prevent matlab exiting at end-of-run')
+    %error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
 end
