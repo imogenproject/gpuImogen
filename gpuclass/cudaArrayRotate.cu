@@ -85,12 +85,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       newref[2] = oldref[3]; newref[3] = oldref[2]; newref[4] = oldref[4];
 
       double **destPtr = makeGPUDestinationArrays(newref, plhs, 1);
-      cudaError_t fail = cudaGetLastError();
-      if(fail != cudaSuccess) printf("cudaArrayRotate: allocate failed; %s\n", cudaGetErrorString(fail));
 
       cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1]);
-      fail = cudaGetLastError();
-      if(fail != cudaSuccess) printf("cudaArrayRotate: kernel invocation failed; %s\n", cudaGetErrorString(fail));
+      cudaError_t epicFail = cudaGetLastError();
+      if(epicFail != cudaSuccess) printf("cudaArrayRotate: kernel invocation failed; %s\n", cudaGetErrorString(fail));
 
       break;      
     }

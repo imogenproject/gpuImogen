@@ -23,7 +23,7 @@ all: base fluids
 base: kerncommon GPU_cudamemcpy GPU_free GPU_init cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: kerncommon cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels
+fluids: kerncommon cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
 	echo "Done building fluid kernels."
 
 kerncommon: cudaCommon.cu

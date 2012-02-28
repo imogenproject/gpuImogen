@@ -33,6 +33,10 @@ classdef StorageArray < InitializedArray
 %___________________________________________________________________________________________________ StorageArray
         function obj = StorageArray(component, id, run, statics)
             obj = obj@InitializedArray(component, id, run, statics);
+
+                obj.initializeBoundingEdges();
+                obj.finalizeStatics();
+
 			
 			if length(obj.id) < 2
 				fullID = cell(1,2);
