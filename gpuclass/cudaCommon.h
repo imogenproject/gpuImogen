@@ -17,6 +17,7 @@ typedef struct {
 
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
 double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany);
+void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname);
 
 #define FINITEDIFFX_PREAMBLE \
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\

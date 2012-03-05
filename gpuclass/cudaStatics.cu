@@ -43,6 +43,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                                                  fixies[0] + staticsOffset, \
                                                  fixies[1] + staticsOffset, \
                                                  fixies[2] + staticsOffset, staticsNumel);
+
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blockdim, griddim, &ama, 0, "cuda statics application");
+
 }
 
 __global__ void cukern_applySpecial_fade(double *arr, double *linAddrs, double *consts, double *fadeCoeff, int nSpecials)

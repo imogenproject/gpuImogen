@@ -61,6 +61,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             break;
         }
 
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, direction, "Backwards averaging");
+
 }
 
 /*

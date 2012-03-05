@@ -68,6 +68,11 @@ switch(nrhs) {
   //printf("%i %i %i %i %i %i\n", gridsize.x, gridsize.y, gridsize.z, blocksize.x, blocksize.y, blocksize.z);
   cukern_DirectionalMax<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], (int)*mxGetPr(prhs[2]), dims.x, dims.y, dims.z);
 
+
+  cudaError_t epicFail = cudaGetLastError();
+  if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "directional max finder");
+
+
   } break;
   case 1: {
     double **arr  = getGPUSourcePointers(prhs, &amd, 0, 0);
@@ -96,6 +101,10 @@ switch(nrhs) {
     d[0] = maxes[0];
 
     int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > d[0]) d[0] = maxes[i];  }
+
+    cudaError_t epicFail = cudaGetLastError();
+    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "cuda global max kern");
+
   } break;
   case 5: {
     // Get input arrays: [rho, c_s, px, py, pz]
@@ -112,20 +121,15 @@ switch(nrhs) {
     double *blkA; int *blkB;
     cudaMalloc(&blkA, gridsize.x * sizeof(double));
     cudaMalloc(&blkB, gridsize.x * sizeof(int));
-//printf("alloc: %s\n", cudaGetErrorString(cudaGetLastError()));
     // Searches (blockdim*griddim) at a time until getting to the end.
     cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(arraysIn[0], arraysIn[1], arraysIn[2], arraysIn[3], arraysIn[4], amd.numel, blkA, blkB);
-//printf("kernel: %s\n", cudaGetErrorString(cudaGetLastError()));
 
     // Copy the result back to the CPU for final analysis of the 64 potential maxima
     double maxes[gridsize.x]; int maxIndices[gridsize.x];
     cudaMemcpy(&maxes[0], blkA, sizeof(double)*gridsize.x, cudaMemcpyDeviceToHost);
     cudaMemcpy(&maxIndices[0], blkB, sizeof(int)*gridsize.x, cudaMemcpyDeviceToHost);
-//printf("memcpy: %s\n", cudaGetErrorString(cudaGetLastError()));
     cudaFree(blkA);
     cudaFree(blkB);
-//printf("free: %s\n", cudaGetErrorString(cudaGetLastError()));
-
 
     mwSize dims[2];
     dims[0] = 1;
@@ -139,6 +143,11 @@ switch(nrhs) {
     dirout[0] = (double)maxIndices[0];
     
     int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > maxout[0]) { maxout[0] = maxes[i]; dirout[0] = maxIndices[0]; }  }
+
+
+    cudaError_t epicFail = cudaGetLastError();
+    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder");
+
 
   } break;
   }

@@ -75,6 +75,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             break;
     }
 
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, fluxDirection, "magnetic W step");
+
 }
 
 __global__ void cukern_magnetWstep_uniformX(double *mag, double *velGrid, double *bW, double *velFlow, double lambda, int nx)

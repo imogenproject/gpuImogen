@@ -73,30 +73,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                 gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
                 gridsize.y = arraySize.z;
                 cukern_VelocityBkwdAverage_Y<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize.x, arraySize.y);
-//              cukern_magVelAvg_Y<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize);
                 break;
             case 3:
                 blocksize.x = 64; blocksize.y = blocksize.z = 1;
                 gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
                 gridsize.y = arraySize.y;
                 cukern_VelocityBkwdAverage_Z<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize.x, arraySize.z);
-                //cukern_magVelAvg_Z<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], arraySize);
                 break;
             }
         } else {
-            blocksize.x = 128; blocksize.y = blocksize.z = 1;
-            gridsize.x = amd.numel / 128; gridsize.x += (gridsize.x * 128 < amd.numel); gridsize.y = gridsize.z = 1;
+            blocksize.x = 512; blocksize.y = blocksize.z = 1;
+            gridsize.x = amd.numel / 512; gridsize.x += (gridsize.x * 512 < amd.numel); gridsize.y = gridsize.z = 1;
             cukern_SimpleVelocity<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], amd.numel);
         }
 
-fail = cudaGetLastError();
-if(fail != cudaSuccess) printf("Failed backwards averaging step: %s\n", cudaGetErrorString(fail));
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, velDirection, "mag prep velocity avg");
 
     // Interpolate the velocity to 2nd order
     if(amd.dim[magDirection-1] > 1) {
         switch(magDirection) {
             case 1:
-                blocksize.x = 128; blocksize.y = blocksize.z = 1;
+                blocksize.x = 256; blocksize.y = blocksize.z = 1;
                 gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
                 gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
                 cukern_CentralAverage_X<<<gridsize, blocksize>>>(dest[0], tempVelocity, arraySize.x);
@@ -119,8 +117,8 @@ if(fail != cudaSuccess) printf("Failed backwards averaging step: %s\n", cudaGetE
         // FIXME: Detect this condition ahead of time and never bother with this array in the first place
         }
 
-    fail = cudaGetLastError();
-    if(fail != cudaSuccess) printf("Failed central averaging step: %s\n", cudaGetErrorString(fail));
+epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, magDirection, "mag prep interpolation");
 
     cudaFree(tempVelocity); // Because only YOU can prevent memory leaks!
                             // (and this one would be a whopper...)
@@ -128,27 +126,14 @@ if(fail != cudaSuccess) printf("Failed backwards averaging step: %s\n", cudaGetE
 
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel)
 {
-int addr = threadIdx.x + 128*blockIdx.x;
+int addr = threadIdx.x + 512*blockIdx.x;
 short int q;
 
 if(addr > numel) return;
 
 v[addr] = p[addr] / m[addr];
-return;
-
-if((numel - addr) >= 512) { // don't bother checking boundary overruns
-    for(q = 0; q < 4; q++) {
-	v[addr] = p[addr] / m[addr];
-	addr += 128;
-	}
-    } else {
-    for(q = 0; q < 4; q++) {
-        v[addr] = p[addr] / m[addr];
-        addr += 128;
-        if(addr >= numel) return;
-        }
-    }
 }
+
 
 __global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx)
 {

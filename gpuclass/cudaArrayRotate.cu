@@ -88,10 +88,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
       cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1]);
       cudaError_t epicFail = cudaGetLastError();
-      if(epicFail != cudaSuccess) printf("cudaArrayRotate: kernel invocation failed; %s\n", cudaGetErrorString(fail));
+      if(epicFail != cudaSuccess)
 
       break;      
     }
+
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, oldref[1], "array transposition");
+
+
 
 }
 

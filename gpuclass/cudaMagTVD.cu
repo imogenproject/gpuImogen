@@ -56,7 +56,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             gridsize.y = arraySize.y / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.y);
 
             cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
-//printf("xkern\n");
             break;
         case 2: // Y direction flux: u = y, v = x, w = z
             blocksize.x = 16; blocksize.y = 24; blocksize.z = 1;
@@ -65,7 +64,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             gridsize.y = arraySize.y / 18; gridsize.y += 1*(18*gridsize.y < arraySize.y);
 
             cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
-//printf("ykern\n");
             break;
         case 3: // Z direction flux: u = z, v = x, w = y;
             blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
@@ -74,9 +72,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             gridsize.y = arraySize.x / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.x);
 
             cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
-//printf("zkern\n");
             break;
     }
+
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, fluxDirection, "magnetic TVD step");
 
 }
 

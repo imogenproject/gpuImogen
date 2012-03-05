@@ -75,8 +75,10 @@ fluid.cFreeze = srcs[9];
 
 // If the dimension has finite extent, performs actual step; If not, blits input arrays to output arrays
 // NOTE: this situation should not occur, since the flux routine itself skips singleton dimensions for 1- and 2-d sims.
+int hydroOnly;
+
 if(nu > 1) {
-  int hydroOnly = (int)*mxGetPr(prhs[11]);
+  hydroOnly = (int)*mxGetPr(prhs[11]);
   
   if(hydroOnly == 1) {
     cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda, arraySize.x);
@@ -86,6 +88,9 @@ if(nu > 1) {
   } else {
   nullStep<<<32, 128>>>(fluid, amd.numel);
   }
+
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, hydroOnly, "fluid W step");
 
 }
 

@@ -17,7 +17,7 @@ __global__ void cukern_ArraySetMin(double *array, double min,    int n);
 __global__ void cukern_ArraySetMax(double *array, double max,    int n);
 __global__ void cukern_ArrayFixNaN(double *array, double fixval, int n);
 
-#define BLOCKDIM 128
+#define BLOCKDIM 256
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
@@ -43,6 +43,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     case 2: cukern_ArraySetMax<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
     case 3: cukern_ArrayFixNaN<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
   }
+
+cudaError_t epicFail = cudaGetLastError();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, (int)operation, "array min/max/nan sweeping");
+
 
 }
 

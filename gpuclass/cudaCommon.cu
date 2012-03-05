@@ -72,7 +72,23 @@ for(i = 0; i < howmany; i++) {
   rvals[i] = (double *)rv[0];
   }
 
+size_t tot,fre;
+
+//cuMemGetInfo(&fre, &tot);
+//printf("Now free: %u\n", fre);
+
 return rvals;
+
+}
+
+void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname)
+{
+if(E == cudaSuccess) return;
+
+printf("Severe CUDA failure in %s: %s\n", srcname, cudaGetErrorString(E));
+printf("Array info: dims=<%i %i %i>, numel=%i. I was passed the integer %i.\n", a->dim[0], a->dim[1], a->dim[2], a->numel, i);
+printf("Block and grid dimensions: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
+mexErrMsgTxt("Forcing program halt due to CUDA error");
 
 }
 
