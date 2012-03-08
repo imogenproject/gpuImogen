@@ -96,8 +96,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 cudaError_t epicFail = cudaGetLastError();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, oldref[1], "array transposition");
 
-
-
 }
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
@@ -112,8 +110,12 @@ if((myx < nx) && (myy < ny)) tmp[threadIdx.y][threadIdx.x] = src[myAddr];
 
 __syncthreads();
 
-myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-myy = threadIdx.y + BDIM*blockIdx.x;
+//myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+myAddr = myy + threadIdx.x - threadIdx.y;
+//myy = threadIdx.y + BDIM*blockIdx.x;
+myy  = myx + threadIdx.y - threadIdx.x;
+myx = myAddr;
+
 myAddr = myx + ny*myy;
 
 if((myx < ny) && (myy < nx)) dst[myAddr] = tmp[threadIdx.x][threadIdx.y];

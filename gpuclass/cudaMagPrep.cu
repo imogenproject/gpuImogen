@@ -94,7 +94,7 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
     if(amd.dim[magDirection-1] > 1) {
         switch(magDirection) {
             case 1:
-                blocksize.x = 256; blocksize.y = blocksize.z = 1;
+                blocksize.x = 128; blocksize.y = blocksize.z = 1;
                 gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
                 gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
                 cukern_CentralAverage_X<<<gridsize, blocksize>>>(dest[0], tempVelocity, arraySize.x);

@@ -68,7 +68,7 @@ classdef CorrugationShockInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = true;
             obj.mode.gravity	 = false;
-            obj.treadmill        = true;
+            obj.treadmill        = false;
             obj.cfl              = 0.35;
             obj.iterMax          = 10;
             obj.bcMode.x         = ENUM.BCMODE_FADE;
@@ -82,7 +82,7 @@ classdef CorrugationShockInitializer < Initializer
             obj.image.mass       = true;
             obj.image.interval   = 10;
 
-            obj.dGrid.x.points   = [0, 5;    33.3, 1;    66.6, 1;    100, 5];
+%            obj.dGrid.x.points   = [0, 5;    33.3, 1;    66.6, 1;    100, 5];
             
             obj.perturbationType = CorrugationShockInitializer.RANDOM;
             obj.randomSeed_spectrumLimit = 64; % 
@@ -152,7 +152,8 @@ classdef CorrugationShockInitializer < Initializer
             statics                 = []; % No statics used in this problem
             obj.dGrid.value         = 0.01/min(obj.grid(2:3));
             if obj.grid(3) == 1; obj.dGrid.value = .01/obj.grid(2); end
-            obj.appendInfo('Grid cell spacing set to %g.',obj.dGrid.value);
+            obj.dGrid = obj.dGrid.value * ones(1,3);
+            %obj.appendInfo('Grid cell spacing set to %g.',obj.dGrid.value);
             
             half        = ceil(obj.grid/2);
             preIndeces  = { 1:(half(1)-1), 1:obj.grid(2), 1:obj.grid(3) };
@@ -247,13 +248,13 @@ classdef CorrugationShockInitializer < Initializer
             mass(seedIndices{:}) = squeeze( mass(seedIndices{:}) ) + perturb; %Add seed to mass.
         
             if obj.useGPU == true
-                statics = StaticsInitializer(); 
+                statics = StaticsInitializer(obj.grid); 
 
-                statics.setFluid_allFadeBC(mass, ener, mom, 1, 25);
-                statics.setMag_allFadeBC(mag, 1, 25);
+                %statics.setFluid_allConstantBC(mass, ener, mom, 1);
+                %statics.setMag_allConstantBC(mag, 1);
 
-                statics.setFluid_allFadeBC(mass, ener, mom, 2, 25);
-                statics.setMag_allFadeBC(mag, 2, 25);
+                %statics.setFluid_allConstantBC(mass, ener, mom, 2);
+                %statics.setMag_allConstantBC(mag, 2);
             end
 
             if obj.endMass > 0

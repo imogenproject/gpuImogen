@@ -72,7 +72,7 @@ for(i = 0; i < howmany; i++) {
   rvals[i] = (double *)rv[0];
   }
 
-size_t tot,fre;
+//size_t tot,fre;
 
 //cuMemGetInfo(&fre, &tot);
 //printf("Now free: %u\n", fre);

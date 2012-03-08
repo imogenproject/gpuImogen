@@ -80,10 +80,14 @@ out = in;
 
 out.mass = in.mass - eq.mass;
 out.ener = in.ener - eq.ener;
+
 out.momX = in.momX - eq.momX;
 out.momY = in.momY - eq.momY;
+out.momZ = in.momZ - eq.momZ;
+
 out.magX = in.magX - eq.magX;
 out.magY = in.magY - eq.magY;
+out.magZ = in.magZ - eq.magZ;
 
 end
 

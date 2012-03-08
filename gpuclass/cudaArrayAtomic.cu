@@ -27,7 +27,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   // Get GPU array pointers
   double val       = *mxGetPr(prhs[1]);
-  double operation = *mxGetPr(prhs[2]);
+  int operation = (int)*mxGetPr(prhs[2]);
 
   ArrayMetadata amd;
   double **atomArray = getGPUSourcePointers(prhs, &amd, 0, 0);
@@ -35,43 +35,51 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   dim3 blocksize; blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
   dim3 gridsize; gridsize.y = gridsize.z = 1;
 
-  gridsize.x = amd.numel / BLOCKDIM;
-  if(gridsize.x * BLOCKDIM < amd.numel) gridsize.x++;
+  gridsize.x = amd.numel / (2*BLOCKDIM);
+  if(gridsize.x * 2*BLOCKDIM < amd.numel) gridsize.x++;
 
-  switch((int)operation) {
+  switch(operation) {
     case 1: cukern_ArraySetMin<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
     case 2: cukern_ArraySetMax<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
     case 3: cukern_ArrayFixNaN<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
   }
 
 cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, (int)operation, "array min/max/nan sweeping");
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, operation, "array min/max/nan sweeping");
 
 
 }
 
 __global__ void cukern_ArraySetMin(double *array, double min, int n)
 {
-int x = threadIdx.x + blockDim.x * blockIdx.x;
+int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
 if(x >= n) return;
+if(array[x] < min) array[x] = min;
 
+x += blockDim.x;
+if(x >= n) return;
 if(array[x] < min) array[x] = min;
 }
 
 __global__ void cukern_ArraySetMax(double *array, double max, int n)
 {
-int x = threadIdx.x + blockDim.x * blockIdx.x;
+int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
 if(x >= n) return;
+if(array[x] > max) array[x] = max;
 
+x += blockDim.x;
+if(x >= n) return;
 if(array[x] > max) array[x] = max;
 }
 
 __global__ void cukern_ArrayFixNaN(double *array, double fixval, int n)
 {
-int x = threadIdx.x + blockDim.x * blockIdx.x;
+int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
 if(x >= n) return;
-
 if (isnan( array[x] )) { array[x] = fixval; }
 
+x += blockDim.x;
+if(x >= n) return;
+if (isnan( array[x] )) { array[x] = fixval; }
 }
 
