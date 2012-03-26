@@ -4,15 +4,17 @@
 starterRun();
 
 %--- Initialize test ---%
-run                 = OrszagTangVortexInitializer([768 768 1]);
+run                 = OrszagTangVortexInitializer([3072 3072 1]);
 run.info            = 'Orszag-Tang vortex test.';
 run.notes           = '';
 run.profile         = false;
-run.image.interval  = 25;
+run.image.interval  = 50;
 run.image.mass      = true;
-run.iterMax = 10000;
+run.iterMax = 20000;
 
-run.gpuDeviceNumber = 2;
+run.gpuDeviceNumber = 0;
+
+run.notes = 'Testing new magnetic flux ordering';
 
 %--- Run tests ---%
 if (true)

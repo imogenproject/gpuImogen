@@ -11,6 +11,9 @@ run.alias         = '';
 run.info          = 'Magnetic shock tube test';
 run.notes         = '';
 
+run.gpuDeviceNumber = 0;
+run.bcMode.x = 'const';
+
 %--- Run tests ---%
 if (true) % Primary test
     run.alias  = [run.alias, '_BXBY'];

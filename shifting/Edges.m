@@ -71,9 +71,9 @@ classdef Edges < handle
 		    % Constant BCs: hold the two cells adjacent to that edge.
                     case ENUM.BCMODE_CONST
                         if (n == 1)
-                            uslice = 1:2;
+                            uslice = 1:3;
                         else
-                            uslice = (-1:0) + size(array,i);
+                            uslice = (-2:0) + size(array,i);
                         end
 
 			if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end

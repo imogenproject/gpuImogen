@@ -246,6 +246,10 @@ classdef CorrugationShockInitializer < Initializer
                           'Uknown perturbation type. Aborted run.');
             end
             mass(seedIndices{:}) = squeeze( mass(seedIndices{:}) ) + perturb; %Add seed to mass.
+            for i = 1:3; 
+                % maintain zero velocity perturbation
+                mom(i,seedIndices{:}) = squeeze(mom(i,seedIndices{:})) + perturb * obj.velocity(i,1);
+            end
         
             if obj.useGPU == true
                 statics = StaticsInitializer(obj.grid); 

@@ -14,20 +14,27 @@ function flux(run, mass, mom, ener, mag, grav, order)
     %-----------------------------------------------------------------------------------------------
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
+
     switch (order)
         case 1;
-            directVec       = [1; 2; 3];
+            p= perms([1 2 3]);
+            directVec = p(mod(run.time.iteration-1,6)+1,:)';
             magneticIndices = [2 3; 1 3; 1 2];
+%            magneticIndices = [3 2; 3 1; 2 1];
+            magneticIndices = magneticIndices(directVec,:);
         case -1;
-            directVec       = [3; 2; 1];
-            magneticIndices = [2 1; 3 1; 3 2];
-                otherwise;
+             p = perms([3 2 1]);
+             directVec = p(mod(run.time.iteration-1,6)+1,:)';
+
+%            magneticIndices = [2 1; 3 1; 3 2]; % This is reversed because p is reversed
+             magneticIndices = [2 3; 3 1; 2 1];
+             magneticIndices = magneticIndices(directVec,:);
+
+        otherwise;
             run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
             return;
     end
     
-    directVec       = circshift(directVec,       [mod(run.time.iteration-1,3), 0]);
-    magneticIndices = circshift(magneticIndices, [mod(run.time.iteration-1,3), 0]);
     %===============================================================================================
         if (order > 0) %                             FORWARD FLUXING
     %===============================================================================================
@@ -40,6 +47,7 @@ function flux(run, mass, mom, ener, mag, grav, order)
                         relaxingFluid(run, mass, mom, ener, mag, grav, directVec(n));
                         xchgIndices(mass, mom, ener, mag, grav, directVec(n));
                         end
+
                         if run.magnet.ACTIVE
                         magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,:));
                         end
@@ -54,6 +62,7 @@ function flux(run, mass, mom, ener, mag, grav, order)
                         if run.magnet.ACTIVE
                         magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,:));
                         end
+
                         if run.fluid.ACTIVE
                         xchgIndices(mass, mom, ener, mag, grav, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, grav, directVec(n));

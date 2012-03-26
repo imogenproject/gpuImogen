@@ -57,7 +57,6 @@ function imogen(icfile)
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         %run.time.updateUI();
-        
         for i=1:2 % Two timesteps per iteration
             run.time.update(mass, mom, ener, mag, i);
             flux(run, mass, mom, ener, mag, grav, direction(i));
@@ -71,8 +70,8 @@ function imogen(icfile)
         run.time.step();
     end
     %%%=== END MAIN LOOP ========================================================================%%%
-    fprintf('%gh %gs in main sim loop\n', round(etime(clock, clockA)/3600), ...
-                                          etime(clock, clockA)-round(etime(clock, clockA)/3600) );
+    fprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
+                                          etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) );
     %error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
