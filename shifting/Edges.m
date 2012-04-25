@@ -58,17 +58,17 @@ classdef Edges < handle
 
             S = StaticsInitializer(size(array)); % I only love you for your index calculator
 
-	    obj.boundaryStatics(1).index = [];
-	    obj.boundaryStatics(1).coeff = [];
-	    obj.boundaryStatics(1).value = [];
-	    obj.boundaryStatics(2) = obj.boundaryStatics(1);
-	    obj.boundaryStatics(3) = obj.boundaryStatics(1);
+	    obj.boundaryStatics.index = [];
+	    obj.boundaryStatics.coeff = [];
+	    obj.boundaryStatics.value = [];
+%	    obj.boundaryStatics(2) = obj.boundaryStatics(1);
+%	    obj.boundaryStatics(3) = obj.boundaryStatics(1);
 	    
             for n=1:2
             for i=1:dim
                 iIndex      = obj.pIndex;
                 switch bcModes{n, i}
-		    % Constant BCs: hold the two cells adjacent to that edge.
+		    % Constant BCs: hold the three cells adjacent to that edge fixed at all times
                     case ENUM.BCMODE_CONST
                         if (n == 1)
                             uslice = 1:3;
@@ -80,9 +80,9 @@ classdef Edges < handle
 			if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
 			if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
 
-			obj.boundaryStatics(i).index = [obj.boundaryStatics(i).index; indset];
-			obj.boundaryStatics(i).coeff = [obj.boundaryStatics(i).coeff; ones([size(indset,1) 1]) ];
-			obj.boundaryStatics(i).value = [obj.boundaryStatics(i).value; array.array(indset(:,1)+1)];
+			obj.boundaryStatics.index = [obj.boundaryStatics.index; indset];
+			obj.boundaryStatics.coeff = [obj.boundaryStatics.coeff; ones([size(indset,1) 1]) ];
+			obj.boundaryStatics.value = [obj.boundaryStatics.value; array.array(indset(:,1)+1)];
 
                     case ENUM.BCMODE_TRANSPARENT
                         obj.ACTIVE(n,i) = true;
@@ -105,18 +105,27 @@ classdef Edges < handle
                         obj.(field).(Edges.DIMENSION{i}) = squeeze(obj.(field).(Edges.DIMENSION{i}));
 
                     case ENUM.BCMODE_FADE
-                        obj.ACTIVE(n,i) = true;
-
+			WIDTH=16;
                         if (n == 1)
-                            iIndex{i}   = 1:20;
-                            field       = 'lower';
+                            uslice  = 1:WIDTH;
+                            uprime = uslice;
+                            yinterp = .2*(1 - (uslice - 3)/(WIDTH-2)); yinterp(1:3) = 1;
                         else
-                            iIndex{i}   = (N(i)-19):N(i);
-                            field       = 'upper';
+                            uslice  = ((1-WIDTH):0) + size(array,i);
+                            uprime  = WIDTH:-1:1;
+                            yinterp = .2*(1 - (uprime - 3)/(WIDTH-2)); yinterp((end-2):end) = 1;
                         end
-                        
-                        obj.(field).(Edges.DIMENSION{i}) = array(iIndex{:});
-                        
+
+                        if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end
+                        if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
+                        if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
+
+                        fadecoeff = interp1(uslice, yinterp, indset(:,i+1));
+
+                        obj.boundaryStatics.index = [obj.boundaryStatics.index; indset];
+                        obj.boundaryStatics.coeff = [obj.boundaryStatics.coeff; fadecoeff];
+                        obj.boundaryStatics.value = [obj.boundaryStatics.value; array.array(indset(:,1)+1)];
+
                     case ENUM.BCMODE_WALL
                         obj.ACTIVE(n,i) = true;
                         
@@ -135,10 +144,12 @@ classdef Edges < handle
 
             % We now 'compile' these as was done with the statics internal to the grid
             % FIXME: Fix the wall, fade and transparent BCs
-            for i = 1:3
-                if numel(obj.boundaryStatics(i).value) == 0; continue; end
-                [obj.boundaryStatics(i).value obj.boundaryStatics(i).coeff obj.boundaryStatics(i).index] = staticsPrecompute(obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, obj.boundaryStatics(i).index(:,2:4),S.arrayDimensions);
-            end
+%            for i = 1:3
+%                if numel(obj.boundaryStatics(i).value) == 0; continue; end
+%                [obj.boundaryStatics(i).index obj.boundaryStatics(i).value obj.boundaryStatics(i).coeff] = staticsPrecompute(obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, S.arrayDimensions);
+                [obj.boundaryStatics.index obj.boundaryStatics.value obj.boundaryStatics.coeff] = staticsPrecompute(obj.boundaryStatics.index, obj.boundaryStatics.value, obj.boundaryStatics.coeff, S.arrayDimensions);
+
+%            end
         end
 
 %___________________________________________________________________________________________________ getEdge

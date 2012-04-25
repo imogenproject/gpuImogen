@@ -184,6 +184,7 @@ classdef CorrugationShockInitializer < Initializer
             ener                 = ener ...
                                  + 0.5*squeeze( sum(mom.*mom,1) )./mass ...      % kinetic energy
                                  + 0.5*squeeze( sum(mag.*mag,1) );               % magnetic energy
+
             if ~strcmp(obj.numericalICfile,'null')
                 if fopen(obj.numericalICfile) ~= -1
                     NUMIN = load(obj.numericalICfile);
@@ -245,9 +246,11 @@ classdef CorrugationShockInitializer < Initializer
                     error('Imogen:CorrugationShockInitializer', ...
                           'Uknown perturbation type. Aborted run.');
             end
-            mass(seedIndices{:}) = squeeze( mass(seedIndices{:}) ) + perturb; %Add seed to mass.
+
+            % By not perturbing energy density we assert that this is an entropy wave
+            mass(seedIndices{:}) = squeeze( mass(seedIndices{:}) ) + perturb; % Add seed to mass.
             for i = 1:3; 
-                % maintain zero velocity perturbation
+                % Maintain zero velocity perturbation
                 mom(i,seedIndices{:}) = squeeze(mom(i,seedIndices{:})) + perturb * obj.velocity(i,1);
             end
         

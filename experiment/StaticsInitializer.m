@@ -253,6 +253,8 @@ classdef StaticsInitializer < handle
 	    indices = [indices(:) u(:) v(:) w(:)];
         end
 
+
+
     end%PUBLIC
         
 %===================================================================================================        

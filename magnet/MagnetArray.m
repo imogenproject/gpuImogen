@@ -35,14 +35,9 @@ classdef MagnetArray < ImogenArray
 % Updates the cell centered magnetic field object, which is used in the fluid fluxing routines.
         function updateCellCentered(obj)
             if size(obj.pArray,obj.component) > 1
-%                obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
                 obj.cellMag.array = cudaFwdAverage(obj.pArray.GPU_MemPtr, obj.component);
-%disp([obj.component max(max(abs(wrong.array - obj.cellMag.array)))])
             else
-%                obj.cellMag.array = 0.5*(obj.pArray.array + obj.shift(obj.component,1).array);
                 obj.cellMag.array = obj.pArray; % without extent in the dimension, what is there to average or interpolate?
-%isp([obj.component size(obj.array)])
-%isp(max(max(abs(obj.cellMag.array - 0.5*(obj.pArray.array + obj.shift(obj.component,1).array)))))
             end
         end
 
@@ -50,16 +45,29 @@ classdef MagnetArray < ImogenArray
         function obj = MagnetArray(component, id, array, run, statics)
             obj         = obj@ImogenArray(component, id, run, statics);
 
-            obj.pArray = GPU_Type(squeeze(array));
+            obj.initializeArrays(component, id, run, statics);
+
+            if numel(array) > 0; obj.initialArray(squeeze(array)); end
 
             obj.isZero  = (sumND(obj.array) == 0) && ~run.magnet.ACTIVE;
-            obj.initializeShiftingStates();
-            obj.initializeBoundingEdges();
+%            obj.initializeShiftingStates();
+%            obj.initializeBoundingEdges();
 
-            obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
+%            obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
+        end
 
-            obj.array = GPU_Type(squeeze(array));
-            obj.initializeArrays(component, id, run, statics);
+        function initialArray(obj, array)
+
+            initialArray@ImogenArray(obj, array);
+            
+            obj.stores(1).initialArray(array);
+            obj.stores(1).cleanup();
+            obj.stores(2).initialArray(array);
+            obj.stores(2).cleanup();
+
+            obj.cellMag.initialArray(array); % Make the cell centered array build its statics
+            obj.updateCellCentered();
+
         end
 
 %___________________________________________________________________________________________________ flux
@@ -87,7 +95,7 @@ classdef MagnetArray < ImogenArray
             for i=1:2
                 obj.fluxes(i).cleanup();
                 obj.stores(i).cleanup();
-                obj.wMags(i).cleanup();
+%                obj.wMags(i).cleanup();
                 obj.velGrids(i).cleanup();
             end
         end        
@@ -102,19 +110,18 @@ classdef MagnetArray < ImogenArray
         function initializeArrays(obj, component, id, run, statics)
             obj.fluxes   	= FluxArray.empty(2,0);
             obj.stores  	= StorageArray.empty(2,0);
-            obj.wMags    	= InitializedArray.empty(2,0);
-            obj.velGrids 	= InitializedArray.empty(2,0);
+%            obj.wMags    	= InitializedArray.empty(2,0);
+           obj.velGrids 	= InitializedArray.empty(2,0);
             for i=1:2
                 comp = MagnetArray.INDEX(component,i);
                 compID = ['mc_' num2str(comp)];
                 obj.fluxes(i)	= FluxArray(component, {id, FluxArray.FLUX, compID}, run, statics);
                 obj.stores(i) 	= StorageArray(component, {id, StorageArray.STORE, compID}, run, statics);
-                obj.wMags(i)    = InitializedArray(component, {id, 'wMag', compID}, run, statics);
+%                obj.wMags(i)    = InitializedArray(component, {id, 'wMag', compID}, run, statics);
                 obj.velGrids(i) = InitializedArray(component, {id, 'velGrid', compID}, run, statics);
             end
             
             obj.cellMag = InitializedArray(component, id, run, statics);
-            obj.updateCellCentered();
         end
         
     end%PROTECTED

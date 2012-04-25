@@ -17,8 +17,9 @@ function imogen(icfile)
     magnet  = IC.magnet;
     ini     = IC.ini;
     statics = IC.statics;
+
+    % Recover memory and disk used to store ICs
     clear IC;
-%   delete icfile;
     system(['rm -f ' icfile ]);
 
     %--- Parse initial parameters from ini input ---%
@@ -31,6 +32,7 @@ function imogen(icfile)
     run.save.saveIniSettings(ini);
     run.preliminary();
 
+    run.save.logPrint('Creating simulation arrays...\n');
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run, statics);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run, statics);
     grav = GravityArray(ENUM.GRAV, run, statics);
@@ -42,7 +44,6 @@ function imogen(icfile)
     end
 
     %--- Pre-loop actions ---%
-    %run.fluid.createFreezeArray();
     clear('massDen','momDen','enerDen','magnet','ini','statics');    
     run.initialize(mass, mom, ener, mag, grav);
     
@@ -50,7 +51,7 @@ function imogen(icfile)
     run.time.iteration  = 1;
     direction           = [1 -1];
 
-    run.save.logPrint('\nBeginning simulation loop...\n');
+    run.save.logPrint('Beginning simulation loop...\n');
 
     clockA = clock;
 
@@ -72,7 +73,7 @@ function imogen(icfile)
     %%%=== END MAIN LOOP ========================================================================%%%
     fprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
                                           etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) );
-    %error('development: error to prevent matlab exiting at end-of-run')
+    error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
 end

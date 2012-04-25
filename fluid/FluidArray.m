@@ -5,9 +5,6 @@ classdef FluidArray < ImogenArray
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                            P U B L I C [P]
         store;          % Half step storage.                                        StorageArray
-        fluxL;          % Full step, Left TVD flux.                                 FluxArray
-        fluxR;          % Full step, Right TVD Flux.                                FluxArray
-        wArray;         % Auxiliary array for relaxed flux method.                  double
         staticFluxes;   % Specifies static fluxing.                                 bool
         threshold;      % Value below which the thresholdArrau reads zero.
     end%PUBLIC
@@ -46,19 +43,20 @@ classdef FluidArray < ImogenArray
             obj = obj@ImogenArray(component, id, run, statics);
             if isempty(id); return; end
 
-            obj.pArray = GPU_Type(squeeze(array));
+            obj.initializeDependentArrays(component, id, run, statics);
+
+            if numel(array) > 0; obj.initialArray(squeeze(array)); end
 
             obj.isZero          = false;
-            obj.pUninitialized  = false;
-            obj.initializeShiftingStates(); % FIXME: can we get rid of this?
-            obj.initializeBoundingEdges();
+%            obj.pUninitialized  = false;
+%            obj.initializeShiftingStates(); % FIXME: can we get rid of this?
+%            obj.initializeBoundingEdges();
 
-            obj.initializeDependentArrays(component, id, run, statics);
-            obj.readFades(run);
+%            obj.readFades(run);
            
-            obj.finalizeStatics(); % Put normal and static boundary conditions together and cast to GPU
+%            obj.finalizeStatics(); % Put normal and static boundary conditions together and cast to GPU
 
-            obj.array = GPU_Type(squeeze(array));
+%            obj.array = GPU_Type(squeeze(array));
             obj.indexGriddim = obj.gridSize;
 
             if strcmpi(id, ENUM.MASS)
@@ -74,15 +72,21 @@ classdef FluidArray < ImogenArray
             end
 
         end
+
+        function initialArray(obj, array)
+
+            initialArray@ImogenArray(obj, array);
+
+            obj.store.initialArray(array);
+            obj.store.cleanup();
+
+        end
         
 %___________________________________________________________________________________________________ cleanup
 % Cleans up the dependent arrays and objects stored inside the FluidArray. The FluidArray.array is
 % not altered by this routine as FluidArray data is preserved throughout the run.
         function cleanup(obj)
-            obj.fluxL.cleanup();
-            obj.fluxR.cleanup();
             obj.store.cleanup();
-            obj.wArray = [];
         end
                 
 %___________________________________________________________________________________________________ dataClone
@@ -109,8 +113,6 @@ classdef FluidArray < ImogenArray
 % Creates the dependent array objects for the fluxing routines.
         function initializeDependentArrays(obj, component, id, run, statics)
             obj.store    = StorageArray(component, id, run, statics);
-            obj.fluxL    = FluxArray( component, {id, FluxArray.FLUXL},    run, statics);
-            obj.fluxR    = FluxArray( component, {id, FluxArray.FLUXR},    run, statics);
         end
         
     end

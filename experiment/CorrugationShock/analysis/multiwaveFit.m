@@ -2,21 +2,33 @@ function [k a r] = multiwaveFit(q, dx, kguess, aguess)
 
 vec = mkVector(kguess, aguess);
 
-%r = waveIntegral(q, dx, vec);
+r = vec;
 
-for testloop = 1:30
+for testloop = 1:100
 %    H = computeHessian(q, dx, vec);
     F = computeGradient(q, dx, vec);
 
- %   vec = vec - (H^-1)*F;
-    vec = vec - .25*F/norm(F);
+%H = H(1:(end-2),1:(end-2));
+%F = F(1:(end-2),1);
 
-%    disp([waveIntegral(q, dx, vec)]);
+%    vec(1:(end-2),1) = vec(1:(end-2),1) - (H^-1)*F;
+    vec = vec - F;%/sqrt(1 + norm(F)^2);
+r = [r vec];
+
+end
+
+% Finish with one N-R iteration
+for testloop = 1:6
+    H = computeHessian(q, dx, vec);
+    F = computeGradient(q, dx, vec);
+    vec = vec - (H^-1)*F;
+
+r = [r vec];
 end
 
 [k a] = unVector(vec);
 
-r = waveIntegral(q, dx, vec);
+%r = waveIntegral(q, dx, vec);
 
 end
 
@@ -48,8 +60,8 @@ epsilon = 1e-6;
 
 H = zeros(numel(v));
 
-for j = 1:numel(v);
-for k = j:numel(v);
+for j = (1:numel(v));
+for k = (j:numel(v));
     vp = v; vp(j) = vp(j) + epsilon; vp(k) = vp(k) + epsilon;
     f(1) = waveIntegral(q, dx, vp);
 
@@ -116,15 +128,18 @@ function ints = waveIntegral(q, dx, vec)
 [k a] = unVector(vec);
 n = numel(k);
 
-xvals = dx*(1:numel(q));
+xvals = dx*(0:(numel(q)-1));
 pred = zeros(size(q));
 
-% Calculate the predicted perturbation from the given parameters
-% All the variational quantities need this
+% Correct wave amplitudes to force compliance at x=0
+%a(end) = q(1) - sum(a(1:(end-1)));
+
+% Calculate the predicted curve from the given parameters
 for i = 1:n
-	pred = pred + a(i)*exp(1i*(k(i)*xvals));
+	pred = pred + a(i)*exp((k(i)*xvals));
 end
 
-ints = sum(sum( (q - pred).*conj(q - pred) ));
+% Calculate the 2-norm deviation 
+ints = dx*sum( (q - pred).*conj(q - pred) );
 
 end

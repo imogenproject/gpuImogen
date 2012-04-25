@@ -20,7 +20,7 @@ MEX_LIBS  = -lcuda -lcudart -lcublas
 all: base fluids
 	echo "Finished compiling GPU support."
 
-base: kerncommon GPU_cudamemcpy GPU_free GPU_init cudaBasicOperations
+base: kerncommon GPU_cudamemcpy GPU_free GPU_init GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
 fluids: kerncommon cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD

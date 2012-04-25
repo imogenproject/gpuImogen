@@ -35,13 +35,7 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %------------------------------------------------
     fluxFactor = run.time.dTime ./ run.DGRID{I};
 
-%    testval = GPU_Type(mag(X).array);
     cudaFwdDifference(mag(X).gputag, mag(I).flux(X).gputag, I, fluxFactor);
     mag(X).applyStatics();
-
- %   mag(I).flux(X).array = mag(I).flux(X).array - mag(I).flux(X).shift(I,1).array;
- %   mag(X).array = mag(X).array - fluxFactor .* mag(I).flux(X).array;
-
-    %fprintf('%i %g\n', I, max(max(abs(testval.array - mag(X).array))));
 
 end

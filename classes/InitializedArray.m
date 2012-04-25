@@ -29,7 +29,7 @@ classdef InitializedArray < ImogenArray
 %___________________________________________________________________________________________________ InitializedArray
         function obj = InitializedArray(component, id, run, statics)
             obj                 = obj@ImogenArray(component, id, run, statics);
-			obj.pUninitialized  = true;
+%			obj.pUninitialized  = true;
         end
 		
 	end%PUBLIC

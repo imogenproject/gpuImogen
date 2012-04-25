@@ -14,6 +14,8 @@ classdef ImogenArray < handle
         bcInfinity;     % Number of cells to infinity for edges.                    int
         edgeStore;      % Stored edge values for shifting.                          Edges
 
+        boundaryData;   % Store boundary condition data during runtime              struct
+
         staticValues;   % Values for static array indices.                          double
         staticCoeffs;   % Coefficients used to determine how fast the array fades to the value double
         staticIndices;  % Indices of staticValues used by StaticArray.                int
@@ -35,7 +37,8 @@ classdef ImogenArray < handle
         pRunManager;    % Access to the ImogenManager singleton for the run.        ImogenManager
         pFades;         % Fade objects for array processing.                        cell(?)
         pFadesValue;    % Values to use for each of the fade objects.               double
-        pUninitialized; % Specifies if obj has been initialized.                    bool
+
+        pBCUninitialized; % Specifies if obj has been initialized.                    bool
     end %PROPERTIES
    
 %===================================================================================================
@@ -69,7 +72,11 @@ classdef ImogenArray < handle
             obj.pDistributed    = run.parallel.ACTIVE;
             obj.pRunManager     = run;
             obj.pFadesValue     = 0.995;
-            obj.readStatics(statics);
+
+            obj.boundaryData.rawStatics = statics; % Store this for when we have an array
+                                                   % to precompute stuff with.
+            obj.boundaryData.compIndex = []; % Used to mark whether we're using statics
+            obj.pBCUninitialized = true;
 
             run.bc.attachBoundaryConditions(obj);
 
@@ -98,13 +105,27 @@ classdef ImogenArray < handle
             end
         end
 
+        function initialArray(obj, array)
+            obj.pArray.array = array;
+
+            if obj.pBCUninitialized;              
+                obj.setupBoundaries();
+                obj.pBCUninitialized = false;
+            else % Initialize if needed.
+                warning('Warning: obj.initialArray() called when array already initialized.');
+            end
+
+%            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
+            if numel(obj.boundaryData.compIndex) > 0;    obj.applyStatics();     end % Enforce static values.
+
+        end
+
         function set.array(obj,value)
         % Sets the data array to the new value and cleans up faded and static cells.
             obj.pArray.array = value;
 
-            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.staticIndices) > 0;    obj.applyStatics();     end % Enforce static values.
-            if obj.pUninitialized,              obj.applyInitialize();  end % Initialize if needed.
+%            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
+            if numel(obj.boundaryData.compIndex) > 0;    obj.applyStatics();     end % Enforce static values.
         end
         
 %___________________________________________________________________________________________________ GS: gridSize
@@ -180,7 +201,7 @@ classdef ImogenArray < handle
                 result = obj.pArray;
             end
             
-            if numel(obj.staticIndices) > 0; obj.applyStatics(); end
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end
         end
         
 %___________________________________________________________________________________________________ transparentEdge
@@ -237,50 +258,45 @@ classdef ImogenArray < handle
 % Applies the static conditions for the ImogenArray to the data array. This method is called during
 % array assignment (set.array).
         function applyStatics(obj)
-            if numel(obj.staticValues) > 0
-                cudaStatics(obj.gputag, obj.staticIndices.GPU_MemPtr, obj.staticValues.GPU_MemPtr, obj.staticCoeffs.GPU_MemPtr, 8, obj.indexPermute, obj.staticOffsets);
+            if numel(obj.boundaryData.compIndex) > 0
+                cudaStatics(obj.gputag, obj.boundaryData.compIndex.GPU_MemPtr, ...
+                                        obj.boundaryData.compValue.GPU_MemPtr, ...
+                                        obj.boundaryData.compCoeff.GPU_MemPtr, 8, obj.indexPermute, obj.boundaryData.compOffset);
             end
         end
 
-%___________________________________________________________________________________________________ readStatics
-% Reads the static cell array from the structure provided by as an argument in imogen.m.
-%>> statics     Class carrying full information regarding all statics in simulation      class
-        function readStatics(obj, statics)
-            if isempty(statics); return; end
+%___________________________________________________________________________________________________ setupBoundaries
+% Function merges the raw statics supplied when the ImogenArray was created with an initial data
+% array and compiled a linearly indexed list for use setting Boundary Conditions quickly at runtime.
+        function setupBoundaries(obj)
+            statics = obj.boundaryData.rawStatics;
 
+            % Get "other" statics for this array, those not implied by boundary conditions
             [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
 
-            if numel(SI) > 0; [obj.staticValues obj.staticCoeffs obj.staticIndices] = staticsPrecompute(SV, SC, SI(:,2:4), statics.arrayDimensions); end
+            % Compile them into 6 arrays of index/value/coefficient, one for each possible axes arrangement.
+            [SI SV SC] = staticsPrecompute(SI, SV, SC, statics.arrayDimensions); 
+
+            % Collect boundary conditions for each of x, y and z fluxing; precompiled nto 6 nice lists
+            boundaryConds = Edges(obj.bcModes, obj.pArray, 0);
+
+            % Merge these lists together with the "other" statics,
+            % And compile the whole thing into one triplet of 1D arrays, plus indexing offsets
+            [obj.boundaryData.compIndex, obj.boundaryData.compValue,  obj.boundaryData.compCoeff obj.boundaryData.compOffset] = ...
+                staticsAssemble(SI, SV, SC, boundaryConds.boundaryStatics);
+
+            obj.boundaryData.compIndex = GPU_Type(obj.boundaryData.compIndex);
+            obj.boundaryData.compValue = GPU_Type(obj.boundaryData.compValue);
+            obj.boundaryData.compCoeff = GPU_Type(obj.boundaryData.compCoeff);
+
+           obj.pBCUninitialized = false;
         end
 
-        function finalizeStatics(obj)
-            if (numel(obj.staticIndices) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(1).index) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(2).index) == 0) && ...
-               (numel(obj.edgeStore.boundaryStatics(3).index) == 0); return;
-            end
-
-            [obj.staticValues obj.staticCoeffs obj.staticIndices obj.staticOffsets] = staticsAssemble(obj.staticValues, obj.staticCoeffs, obj.staticIndices, obj.edgeStore.boundaryStatics);
-
-            obj.staticValues = GPU_Type(obj.staticValues);
-            obj.staticCoeffs = GPU_Type(obj.staticCoeffs);
-            obj.staticIndices= GPU_Type(obj.staticIndices);
-
-            obj.applyStatics();
-        end
-        
     end%PUBLIC
     
 %===================================================================================================
     methods (Access = protected) %                                          P R O T E C T E D    [M]
 
-%___________________________________________________________________________________________________ applyInitialize
-% Applies the initialization functions uninitialized ImogenArrays and sets the pUninitialized
-% property to false to specify that the array has now been initialized. This method does little
-% in the base class as it is meant to be extended for use by the InitializedArray subclass, which
-% does not initialize during construction because the data is transient.
-        function applyInitialize(obj),  obj.pUninitialized = false;     end
-        
 %___________________________________________________________________________________________________ applyFades
 % Applies any fades in attached to the ImogenArray to the data array. This method is called during
 % array assignment (set.array).
@@ -320,15 +336,6 @@ classdef ImogenArray < handle
             end
         end
         
-%___________________________________________________________________________________________________ initializeBoundingEdges
-% Initializes the Edge object that stores and manages the necessary data for operations, such as 
-% shifting, on the bounding edges of the computational grid. For this function to work properly, the
-% readBoundaryConditions method must be called first and the initial condition for the data array
-% must already be set.
-        function initializeBoundingEdges(obj)
-            obj.edgeStore = Edges(obj.bcModes, obj.pArray, 0.005);
-        end
-         
     end%PROTECTED
     
 %===================================================================================================

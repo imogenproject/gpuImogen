@@ -10,9 +10,6 @@ classdef StorageArray < InitializedArray
 
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %							P U B L I C  [P]
-        fluxR;		% right flux array											FluxArray		H
-        fluxL;		% left flux array											FluxArray		H
-        wArray;		% auxiliary array for fluxing								double
 		threshold;
 		thresholdArray;
     end %PUBLIC
@@ -34,8 +31,8 @@ classdef StorageArray < InitializedArray
         function obj = StorageArray(component, id, run, statics)
             obj = obj@InitializedArray(component, id, run, statics);
 
-                obj.initializeBoundingEdges();
-                obj.finalizeStatics();
+%                obj.initializeBoundingEdges();
+%                obj.finalizeStatics();
 
 			
 			if length(obj.id) < 2
@@ -56,10 +53,7 @@ classdef StorageArray < InitializedArray
         
 %___________________________________________________________________________________________________ cleanup
         function cleanup(obj)
-%             obj.flux.cleanup();
-            obj.fluxL.cleanup();
-            obj.fluxR.cleanup();
-			obj.wArray = [];
+            obj.pArray.array = [];
         end
         
     end %PUBLIC
@@ -70,8 +64,6 @@ classdef StorageArray < InitializedArray
 %___________________________________________________________________________________________________ arrayINI
         function arrayINI(obj, component, id, run, statics)
             %Prepare flux arrays
-            obj.fluxL  = FluxArray(component, {id{1}, FluxArray.FLUXL, id{2}}, run, statics);
-            obj.fluxR  = FluxArray(component, {id{1}, FluxArray.FLUXR, id{2}}, run, statics);
 		end
 		
     end %PROTECTED

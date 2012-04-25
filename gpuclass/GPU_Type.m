@@ -9,7 +9,7 @@ classdef GPU_Type < handle
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
-tempid
+
     end % Public
 
     properties (SetAccess = private, GetAccess = private, Transient= true)
