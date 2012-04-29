@@ -1,4 +1,4 @@
-function [inds vals coeffs offsets] = staticsAssemble(statVals, statCoeffs, statInds, boundaries)
+function [inds vals coeffs offsets] = staticsAssemble(statInds, statVals, statCoeffs, boundaries)
 % staticsAssemble takes the "manual" statics we were originally passed, and those created by the
 % specification of boundary conditions, and merges them into one coherent list of indices, values
 % and fade rates that can be quickly and efficiently applied.
@@ -19,7 +19,6 @@ bdyIdx = 0;
 % The output arrays
 vals = []; coeffs = []; inds = [];
 offsets = [];
-
 % For each of 6 possible ways to uniquely permute [XYZ], which are
 % [xyz], [xzy], [yxz], [yzx], [zxy], [zyx]
 
@@ -37,15 +36,17 @@ for i = 1:6
     % Make sure we stick the i-direction boundary condition statics with the i-first indices,
     % i.e. only append x-specific BCs if the first (being-fluxed) index is X. Note above that the
     % sequences start with XXYYZZ
-%    if mod(i,2) == 1; bdyIdx = bdyIdx + 1; end
+    if mod(i,2) == 1; bdyIdx = bdyIdx + 1; end
 
 
     % Append statics created by our boundary conditions
-    if(numel(boundaries.index) > 0)
- %       vals   = [vals; boundaries(bdyIdx).value(:,i)];
-        vals   = [vals; boundaries.value(:,i)];
-        coeffs = [coeffs; boundaries.coeff(:,i)];
-        inds   = [inds; boundaries.index(:,i)];
+    if(numel(boundaries(bdyIdx).index) > 0)
+        vals   = [vals;   boundaries(bdyIdx).value(:,i)];
+        coeffs = [coeffs; boundaries(bdyIdx).coeff(:,i)];
+        inds   = [inds;   boundaries(bdyIdx).index(:,i)];
+%        vals   = [vals; boundaries.value(:,i)];
+%        coeffs = [coeffs; boundaries.coeff(:,i)];
+%        inds   = [inds; boundaries.index(:,i)];
     end
 
     % Store the number of statics for this flux direction

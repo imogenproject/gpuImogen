@@ -25,14 +25,16 @@ classdef BowShockInitializer < Initializer
 	magX;
 	magY;
 
-        bgRho;             % Background density, x velocity and thermal pressure; double scalar
-        bgVx;
-        bgThermalPressure;
+        preshockRho;
+        preshockP;
+        blastMach;
 
         ballRho;           % Obstruction density, outflow velocity, radius and thermal pressure
         ballVr;            % Double scalar
         ballXRadius;
         ballThermalPressure;
+        ballLock;          % If true locks ball in place; If false, blast a clump of matter away
+                           % with a shockwave
 
     end %PUBLIC
 
@@ -59,7 +61,7 @@ classdef BowShockInitializer < Initializer
             obj.mode.gravity     = false;
             obj.cfl              = 0.7;
             obj.iterMax          = 100;
-            obj.bcMode.x         = 'trans';
+            obj.bcMode.x         = 'const';
             obj.bcMode.y         = 'fade';
             if input(3) > 1
                 obj.bcMode.z     = 'fade';
@@ -75,13 +77,14 @@ classdef BowShockInitializer < Initializer
             obj.ballCells        = [32 32 32];
             obj.ballCenter       = round(input/2);
 	    obj.ballXRadius      = 1;
+            obj.ballLock         = 1;
 
             obj.magX                = 0;
             obj.magY                = 0;
 
-            obj.bgRho               = .125;
-            obj.bgVx                = 1;
-            obj.bgThermalPressure   = .03;
+            obj.preshockRho         = 1;
+            obj.preshockP           = 1;
+            obj.blastMach           = 3;
 
             obj.ballRho             = 1;
             obj.ballVr              = 1;
@@ -124,74 +127,63 @@ classdef BowShockInitializer < Initializer
             norm = sqrt((X/obj.ballCells(1)).^2 + (Y/obj.ballCells(2)).^2 + (Z/obj.ballCells(3)).^2);
             ball = (norm <= 1.0);
 
-            obj.minMass = min(obj.ballRho, obj.bgRho) / 100;
+            obj.minMass = min(obj.preshockRho, obj.ballRho) / 100;
+
+            shockSoln = HDJumpSolver(obj.blastMach, 0, obj.gamma);
+
+            xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
+            postshockX = 1:xedge;
+            preshockX = (xedge+1):obj.grid(1);
+
+            % Density distribution
+            mass(postshockX,:,:) = obj.preshockRho*shockSoln.rho(2);
+            mass(preshockX,:,:)  = obj.preshockRho;
+            mass(ball)           = obj.ballRho;
 
             % set background values for momentum
-            fastedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-100), 16);
-            mom(1, 1:fastedge,:,:) = obj.bgVx * obj.bgRho;
-            mom(1, fastedge:end,1:round(obj.ballCenter(2)-obj.ballCells(1)-20),:) =  obj.bgVx * obj.bgRho;
-            mom(1, fastedge:end,round(obj.ballCenter(2)+obj.ballCells(1)+20):end,:) =  obj.bgVx * obj.bgRho;
+            mom(1, postshockX,:,:) = obj.preshockRho*shockSoln.rho(2)*(shockSoln.v(1,1) - shockSoln.v(1,2));
+            % mom is otherwise zero except for the ball
             
-            mass(:) = obj.bgRho;
-            mass(ball) = obj.ballRho;
-
-            ener(:) = mass.^obj.gamma / (obj.gamma-1) + .5*squeeze(mom(1,:,:,:).^2)./mass;
+            % Etotal = P/(gamma-1) + T
+            ener(postshockX,:,:) = obj.preshockP * shockSoln.P(2) /(obj.gamma-1);
+            ener(preshockX,:,:) = obj.preshockP / (obj.gamma-1);
+            ener = ener + .5*squeeze(mom(1,:,:,:).^2)./mass;
 
 	    obj.dGrid = obj.ballXRadius / obj.ballCells(1);
 
             statics.indexSet{1} = indexSet_fromLogical(ball); % ball
-            statics.indexSet{2} = indexSet(obj.grid, 1:2, 1:(obj.grid(2)-0), 1:obj.grid(3)); % incoming blast
-            statics.indexSet{3} = indexSet(obj.grid, (obj.grid(1)-4):(obj.grid(1)-0), 1:obj.grid(2), 1:obj.grid(3)); % right edge
-            statics.indexSet{4} = indexSet(obj.grid, 1:(obj.grid(1)-2), 1:2, 1:obj.grid(3)); % top edge
+            %statics.indexSet{2} = indexSet(obj.grid, 1:2, 1:(obj.grid(2)-0), 1:obj.grid(3)); % incoming blast
+            %statics.indexSet{3} = indexSet(obj.grid, (obj.grid(1)-4):(obj.grid(1)-0), 1:obj.grid(2), 1:obj.grid(3)); % right edge
+            %statics.indexSet{4} = indexSet(obj.grid, 1:(obj.grid(1)-2), 1:2, 1:obj.grid(3)); % top edge
 
             xhat = X/obj.ballCells(1);
             yhat = Y/obj.ballCells(2);
             zhat = Z/obj.ballCells(3); 
             ballMomRadial = obj.ballVr*obj.ballRho;
-            ballEner      = (obj.ballRho^obj.gamma)/(obj.gamma-1) + .5*ballMomRadial^2.*norm(ball)/obj.ballRho;
+            ballEner      = obj.ballThermalPressure/(obj.gamma-1) + .5*ballMomRadial^2.*norm(ball).^2/obj.ballRho;
 
-            statics.valueSet = {0, obj.bgRho, obj.bgRho*obj.bgVx, ener(1), ...
-                obj.ballRho, ballMomRadial*xhat(ball), ballMomRadial*yhat(ball), ballMomRadial*zhat(ball), ballEner, obj.magX, obj.magY, obj.bgRho.^obj.gamma / (obj.gamma-1) };
+%            statics.valueSet = {0, objRho, obj.preshockRho*obj.bgVx, ener(1), ...
+%                obj.ballRho, ballMomRadial*xhat(ball), ballMomRadial*yhat(ball), ballMomRadial*zhat(ball), ballEner, obj.magX, obj.magY, obj.bgRho.^obj.gamma / (obj.gamma-1) };
+            statics.valueSet = {obj.ballRho,  ballMomRadial*xhat(ball), ballMomRadial*yhat(ball), ballMomRadial*zhat(ball), ballEner};
 
-            % Force a left-edge plane flow
-            statics.setFluid_allConstantBC(mass, ener, mom, 1);
-
-        
             % Lock ball in place
-            statics.associateStatics(ENUM.MASS, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
-            statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 6);
-            statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 7);
+            if obj.ballLock == true
+                statics.associateStatics(ENUM.MASS, ENUM.SCALAR,    statics.CELLVAR, 1, 1);
+                statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 2);
+                statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 3);
+                statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
+
 %            if obj.mode.magnet == true;
 %                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(1), statics.CELLVAR, 1, 10);
 %                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(2), statics.CELLVAR, 1, 11);
 %            end
             if obj.grid(3) > 1    
-                statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 8);
+                statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
 %                if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 1, 1); end;
             end
-            statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 9);
 
-            % Force constant on right edge (crude approximation of fade)
-            %statics.associateStatics(ENUM.MASS, ENUM.SCALAR,    statics.CELLVAR, 3, 2);
-            %statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 3, 1);
-            %statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 3, 1);
-%            if obj.mode.magnet == true;
-%                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(1), statics.CELLVAR, 2, 10);
-%                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(2), statics.CELLVAR, 2, 11);
-%            end
-            %if obj.grid(3) > 1
-            %    statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 3, 1);
-%                if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 2, 1); end
-            %end
-            %statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 3, 12);
+            end
 
-            % Force constant on top edge
-            statics.setFluid_allConstantBC(mass, ener, mom, 4);
-%            statics.associateStatics(ENUM.MASS, ENUM.SCALAR,    statics.CELLVAR, 4, 2);
-%            statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 4, 3);
-%            statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 4, 1);
-%            statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 4, 4);
-            
         end
 
     end%PROTECTED
