@@ -62,6 +62,6 @@ mom(3).applyStatics();
 GPU_free(pressa); GPU_free(freezea);
 cudaArrayAtomic(mass.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
 
-for t = 1:5; v(t).cleanup(); end
+for t = 1:5; v(t).cleanup(); end % Delete upwind storage arrays
 
 end

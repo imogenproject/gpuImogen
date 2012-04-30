@@ -40,7 +40,12 @@ function imogen(icfile)
     mag  = MagnetArray.empty(3,0);
     for i=1:3
         mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, momDen(i,:,:,:), run, statics); 
-        mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, magnet(i,:,:,:), run, statics);
+        if run.pureHydro == false;
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, magnet(i,:,:,:), run, statics);
+        else
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
+        end
+
     end
 
     %--- Pre-loop actions ---%
@@ -73,7 +78,7 @@ function imogen(icfile)
     %%%=== END MAIN LOOP ========================================================================%%%
     fprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
                                           etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) );
-    error('development: error to prevent matlab exiting at end-of-run')
+%    error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
 end

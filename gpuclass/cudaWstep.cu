@@ -82,6 +82,7 @@ if(nu > 1) {
   
   if(hydroOnly == 1) {
     cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda, arraySize.x);
+
     } else {
     cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], dest[0], dest[1], dest[2], dest[3], dest[4], lambda/4.0, arraySize.x);
     }

@@ -15,40 +15,40 @@ function flux(run, mass, mom, ener, mag, grav, order)
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
 
-%    switch (order)
-%        case 1;
-%            p= perms([1 2 3]);
-%            directVec = p(mod(run.time.iteration-1,6)+1,:)';
-%            magneticIndices = [2 3; 1 3; 1 2];
-%            magneticIndices = [3 2; 3 1; 2 1];
-%            magneticIndices = magneticIndices(directVec,:);
-%        case -1;
-%             p = perms([3 2 1]);
-%             directVec = p(mod(run.time.iteration-1,6)+1,:)';
-%
-%            magneticIndices = [2 1; 3 1; 3 2]; % This is reversed because p is reversed
-%             magneticIndices = [3 2; 3 1; 2 1];
-%             magneticIndices = magneticIndices(directVec,:);
-%
-%        otherwise;
-%            run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
-%            return;
-%    end
-    
     switch (order)
         case 1;
-            directVec = [1; 2; 3];
+            p= perms([1 2 3]);
+            directVec = p(mod(run.time.iteration-1,6)+1,:)';
             magneticIndices = [2 3; 1 3; 1 2];
+            magneticIndices = [3 2; 3 1; 2 1];
+            magneticIndices = magneticIndices(directVec,:);
         case -1;
-            directVec = [3; 2; 1];
-            magneticIndices = [2 1; 3 1; 3 2];
-otherwise;
+             p = perms([3 2 1]);
+             directVec = p(mod(run.time.iteration-1,6)+1,:)';
+
+            magneticIndices = [2 1; 3 1; 3 2]; % This is reversed because p is reversed
+             magneticIndices = [3 2; 3 1; 2 1];
+             magneticIndices = magneticIndices(directVec,:);
+
+        otherwise;
             run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
             return;
     end
     
-    directVec = circshift(directVec, order*[mod(run.time.iteration-1,3), 0]);
-    magneticIndices = circshift(magneticIndices, order*[mod(run.time.iteration-1,3), 0]);
+%    switch (order)
+%        case 1;
+%            directVec = [1; 2; 3];
+%            magneticIndices = [2 3; 1 3; 1 2];
+%        case -1;
+%            directVec = [3; 2; 1];
+%            magneticIndices = [2 1; 3 1; 3 2];
+%otherwise;
+%            run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
+%            return;
+%    end
+%    
+%    directVec = circshift(directVec, order*[mod(run.time.iteration-1,3), 0]);
+%    magneticIndices = circshift(magneticIndices, order*[mod(run.time.iteration-1,3), 0]);
 
 
     %===============================================================================================
@@ -59,9 +59,9 @@ otherwise;
                         run.parallel.redistributeArrays(directVec(n));
             
                         if run.fluid.ACTIVE
-                        xchgIndices(mass, mom, ener, mag, grav, directVec(n));
+                        xchgIndices(run.pureHydro, mass, mom, ener, mag, grav, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, grav, directVec(n));
-                        xchgIndices(mass, mom, ener, mag, grav, directVec(n));
+                        xchgIndices(run.pureHydro, mass, mom, ener, mag, grav, directVec(n));
                         end
 
                         if run.magnet.ACTIVE
@@ -80,15 +80,17 @@ otherwise;
                         end
 
                         if run.fluid.ACTIVE
-                        xchgIndices(mass, mom, ener, mag, grav, directVec(n));
+                        xchgIndices(run.pureHydro, mass, mom, ener, mag, grav, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, grav, directVec(n));
-                        xchgIndices(mass, mom, ener, mag, grav, directVec(n));
+                        xchgIndices(run.pureHydro, mass, mom, ener, mag, grav, directVec(n));
                         end
                 end
     end
 end
 
-function xchgIndices(mass, mom, ener, mag, grav, toex)
+
+
+function xchgIndices(dontTurnMagArrays, mass, mom, ener, mag, grav, toex)
 l = [1 2 3];
 l(1)=toex; l(toex)=1;
 
@@ -99,10 +101,11 @@ for i = 1:5
     s{i}.store.arrayIndexExchange(toex, 0);
 end
 
-s = {mag(1).cellMag, mag(2).cellMag, mag(3).cellMag};
-for i = 1:3
-    s{i}.arrayIndexExchange(toex, 1);
-%    s{i}.store.arrayIndexExchange(toex, 0);
+if dontTurnMagArrays == false
+    s = {mag(1).cellMag, mag(2).cellMag, mag(3).cellMag};
+    for i = 1:3
+        s{i}.arrayIndexExchange(toex, 1);
+    end
 end
 
 
