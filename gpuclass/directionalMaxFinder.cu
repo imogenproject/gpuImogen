@@ -122,12 +122,24 @@ switch(nrhs) {
     cudaMalloc(&blkA, gridsize.x * sizeof(double));
     cudaMalloc(&blkB, gridsize.x * sizeof(int));
     // Searches (blockdim*griddim) at a time until getting to the end.
+    cudaError_t epicFail = cudaGetLastError();
+    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL malloc");
+
+
     cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(arraysIn[0], arraysIn[1], arraysIn[2], arraysIn[3], arraysIn[4], amd.numel, blkA, blkB);
+
+    epicFail = cudaGetLastError();
+    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder");
+
 
     // Copy the result back to the CPU for final analysis of the 64 potential maxima
     double maxes[gridsize.x]; int maxIndices[gridsize.x];
     cudaMemcpy(&maxes[0], blkA, sizeof(double)*gridsize.x, cudaMemcpyDeviceToHost);
     cudaMemcpy(&maxIndices[0], blkB, sizeof(int)*gridsize.x, cudaMemcpyDeviceToHost);
+
+    epicFail = cudaGetLastError();
+    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder memcopy");
+
     cudaFree(blkA);
     cudaFree(blkB);
 
@@ -143,11 +155,6 @@ switch(nrhs) {
     dirout[0] = (double)maxIndices[0];
     
     int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > maxout[0]) { maxout[0] = maxes[i]; dirout[0] = maxIndices[0]; }  }
-
-
-    cudaError_t epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder");
-
 
   } break;
   }

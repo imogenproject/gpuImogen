@@ -32,54 +32,50 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   ArrayMetadata amd;
   double **atomArray = getGPUSourcePointers(prhs, &amd, 0, 0);
 
-  dim3 blocksize; blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
-  dim3 gridsize; gridsize.y = gridsize.z = 1;
-
-  gridsize.x = amd.numel / (2*BLOCKDIM);
-  if(gridsize.x * 2*BLOCKDIM < amd.numel) gridsize.x++;
-
   switch(operation) {
-    case 1: cukern_ArraySetMin<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
-    case 2: cukern_ArraySetMax<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
-    case 3: cukern_ArrayFixNaN<<<gridsize, blocksize>>>(atomArray[0], val, amd.numel); break;
+    case 1: cukern_ArraySetMin<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
+    case 2: cukern_ArraySetMax<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
+    case 3: cukern_ArrayFixNaN<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
   }
 
 cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, operation, "array min/max/nan sweeping");
-
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, operation, "array min/max/nan sweeping");
 
 }
 
 __global__ void cukern_ArraySetMin(double *array, double min, int n)
 {
-int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
-if(x >= n) return;
-if(array[x] < min) array[x] = min;
+int x = threadIdx.x + blockDim.x * blockIdx.x;
+int dx = blockDim.x * gridDim.x;
 
-x += blockDim.x;
-if(x >= n) return;
-if(array[x] < min) array[x] = min;
+while(x < n) {
+    if(array[x] < min) array[x] = min;
+    x += dx;
+    }
+
 }
 
 __global__ void cukern_ArraySetMax(double *array, double max, int n)
 {
-int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
-if(x >= n) return;
-if(array[x] > max) array[x] = max;
+int x = threadIdx.x + blockDim.x * blockIdx.x;
+int dx = blockDim.x * gridDim.x;
 
-x += blockDim.x;
-if(x >= n) return;
-if(array[x] > max) array[x] = max;
+while(x < n) {
+    if(array[x] > max) array[x] = max;
+    x += dx;
+    }
+
 }
 
 __global__ void cukern_ArrayFixNaN(double *array, double fixval, int n)
 {
-int x = threadIdx.x + 2*blockDim.x * blockIdx.x;
-if(x >= n) return;
-if (isnan( array[x] )) { array[x] = fixval; }
+int x = threadIdx.x + blockDim.x * blockIdx.x;
+int dx = blockDim.x * gridDim.x;
 
-x += blockDim.x;
-if(x >= n) return;
-if (isnan( array[x] )) { array[x] = fixval; }
+while(x < n) {
+    if( isnan(array[x])) array[x] = fixval;
+    x += dx;
+    }
+
 }
 
