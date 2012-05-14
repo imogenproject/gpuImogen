@@ -20,6 +20,16 @@ gp1 = gamma + 1;
 vx1 = ms*cs1;
 vy1 = vx1 * tan(theta);
 
+if ms <= 1
+    % The only solution is no jump
+    result.rho = [1 1];
+    result.P = [1 1];
+    result.v = [vx1 vx1; vy1 vy1];
+    result.error = [0 0 0];
+
+    return;
+end
+
 % Preshock kinetic energy density
 T1 = rho1 * (vx1^2 + vy1^2) / 2;
 
@@ -31,7 +41,7 @@ T1 = rho1 * (vx1^2 + vy1^2) / 2;
   P2 = (2*rho1*vx1^2 - gm1*P1)/(gp1);
 
   result.rho = [rho1 rho2];
-  result.v = [vx1 vx2; 0 0];
+  result.v = [vx1 vx2; vy1 vy2];
   result.P = [P1 P2];
   result.error = [rho2*vx2 - rho1*vx1, (rho1*vx1^2 + P1 - (rho2*vx2^2+P2)), vx1*(T1+gamma*P1/gm1) - vx2*(T2+gamma*P2/gm1)];
 

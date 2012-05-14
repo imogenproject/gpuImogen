@@ -114,6 +114,10 @@ classdef BowShockInitializer < Initializer
             mag         = zeros([3 obj.grid]);
             ener        = zeros(obj.grid);
 
+momx = zeros(obj.grid);
+momy = zeros(obj.grid);
+momz = zeros(obj.grid);
+
             %--- Static Values ---%
             statics = StaticsInitializer(obj.grid);
 
@@ -121,50 +125,64 @@ classdef BowShockInitializer < Initializer
             Ledge = (X < 8); % Left edge - we establish plane flow here
 
             % The obstacle is a spheroid 
-            X = X - obj.ballCenter(1);
-            Y = Y - obj.ballCenter(2);
-            Z = Z - obj.ballCenter(3);
-            norm = sqrt((X/obj.ballCells(1)).^2 + (Y/obj.ballCells(2)).^2 + (Z/obj.ballCells(3)).^2);
+            X = (X - obj.ballCenter(1))/obj.ballCells(1);
+            Y = (Y - obj.ballCenter(2))/obj.ballCells(2);
+            Z = (Z - obj.ballCenter(3))/obj.ballCells(3);
+            norm = sqrt(X.^2 + Y.^2 + Z.^2);
             ball = (norm <= 1.0);
 
+            % Set minimum mass; Solve the hydro jump for the incoming blast
             obj.minMass = min(obj.preshockRho, obj.ballRho) / 100;
-
             shockSoln = HDJumpSolver(obj.blastMach, 0, obj.gamma);
 
             xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
             postshockX = 1:xedge;
             preshockX = (xedge+1):obj.grid(1);
 
-            % Density distribution
+            % Density distribution of background fluid
             mass(postshockX,:,:) = obj.preshockRho*shockSoln.rho(2);
             mass(preshockX,:,:)  = obj.preshockRho;
-            mass(ball)           = obj.ballRho;
 
-            % set background values for momentum
-            mom(1, postshockX,:,:) = obj.preshockRho*shockSoln.rho(2)*(shockSoln.v(1,1) - shockSoln.v(1,2));
-            % mom is otherwise zero except for the ball
+            % Set the momentum of the incoming blast, if applicable
+            momx(postshockX,:,:) = obj.preshockRho*shockSoln.rho(2)*(shockSoln.v(1,1) - shockSoln.v(1,2));
+
+            % Calculate the ball flow parameters
+            ballRadii = (.9:.01:1.5) * obj.ballXRadius;
+            ballFlow = analyticalOutflow(obj.ballXRadius, obj.ballVr, obj.ballRho, ...
+                                         obj.ballThermalPressure/obj.ballRho^(5/3), ballRadii );
+
+            % Interpolate mass & momentum onto the grid
+            mass = interpScalarRadialToGrid(ballRadii, ballFlow.rho, [0 1.5*obj.ballXRadius], X,Y,Z, mass);
+            [momx, momy, momz] = interpVectorRadialToGrid(ballRadii, ballFlow.mom, [0 1.5*obj.ballXRadius], ...
+                                                          X, Y, Z, momx, momy, momz);
+            % "neatly" avoid the coordinate singularity at r=0
+            momx(norm < .5) = 0;
+            momy(norm < .5) = 0;
+            momz(norm < .5) = 0;
+
+            % We really do need to drop this silly 3xNxMxL thing at some point
+            mom(1,:,:,:) = momx;
+            mom(2,:,:,:) = momy;
+            mom(3,:,:,:) = momz;
             
-            % Etotal = P/(gamma-1) + T
+            % Calculate Etotal = P/(gamma-1) + T for all points
             ener(postshockX,:,:) = obj.preshockP * shockSoln.P(2) /(obj.gamma-1);
             ener(preshockX,:,:) = obj.preshockP / (obj.gamma-1);
-            ener = ener + .5*squeeze(mom(1,:,:,:).^2)./mass;
+            ener = interpScalarRadialToGrid(ballRadii, ballFlow.press / (obj.gamma-1), [0 1.5*obj.ballXRadius], X,Y,Z,ener);
+            ener = ener + .5*squeeze(sum(mom.^2,1))./mass;
 
-	    obj.dGrid = obj.ballXRadius / obj.ballCells(1);
+            obj.dGrid = obj.ballXRadius / obj.ballCells(1);
+
+            % Set up statics if we're locking the obstacle in place
 
             statics.indexSet{1} = indexSet_fromLogical(ball); % ball
             %statics.indexSet{2} = indexSet(obj.grid, 1:2, 1:(obj.grid(2)-0), 1:obj.grid(3)); % incoming blast
             %statics.indexSet{3} = indexSet(obj.grid, (obj.grid(1)-4):(obj.grid(1)-0), 1:obj.grid(2), 1:obj.grid(3)); % right edge
             %statics.indexSet{4} = indexSet(obj.grid, 1:(obj.grid(1)-2), 1:2, 1:obj.grid(3)); % top edge
 
-            xhat = X/obj.ballCells(1);
-            yhat = Y/obj.ballCells(2);
-            zhat = Z/obj.ballCells(3); 
-            ballMomRadial = obj.ballVr*obj.ballRho;
-            ballEner      = obj.ballThermalPressure/(obj.gamma-1) + .5*ballMomRadial^2.*norm(ball).^2/obj.ballRho;
+            statics.valueSet = { mass(ball),  momx(ball), momy(ball), momz(ball), ener(ball) };
 
-%            statics.valueSet = {0, objRho, obj.preshockRho*obj.bgVx, ener(1), ...
-%                obj.ballRho, ballMomRadial*xhat(ball), ballMomRadial*yhat(ball), ballMomRadial*zhat(ball), ballEner, obj.magX, obj.magY, obj.bgRho.^obj.gamma / (obj.gamma-1) };
-            statics.valueSet = {obj.ballRho,  ballMomRadial*xhat(ball), ballMomRadial*yhat(ball), ballMomRadial*zhat(ball), ballEner};
+            clear momx; clear momy; clear momz;
 
             % Lock ball in place
             if obj.ballLock == true

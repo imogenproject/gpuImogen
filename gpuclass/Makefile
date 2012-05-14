@@ -1,9 +1,15 @@
-# This script compiles the handful of binary modules needed for Imogen to support GPU gravitation.
-# These must be rebuilt EVERY TIME GPUMAT IS UPDATED or Matlab will segfault when they are used.
+# This makefile builds the GPU kernels and mex files needed to run gpuImogen
 
 # Change these to suit your system. CUDA_LDIR will be either lib or lib64
+
+#ACISS
+#MATLAB_DIR=/usr/local/packages/MATLAB/R2011b
+#CUDA_DIR = /usr/local/packages/cuda/4.0
+
+#Generic
 MATLAB_DIR=/opt/Matlab/matlab2010b
 CUDA_DIR = /usr/local/cuda
+
 CUDA_LDIR = lib64
 CUDA_ARCH = sm_13
 
@@ -14,7 +20,7 @@ NVCC_INCL = -I$(MATLAB_DIR)/extern/include $(GPUMAT_INCL)
 MEX_OPTS  = -DUNIX
 MEX_INCL  = -I$(CUDA_DIR)/include $(GPUMAT_INCL) -I$(MATLAB_DIR)/extern/include
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
-MEX_LIBS  = -lcuda -lcudart -lcublas
+MEX_LIBS  = -lcudart -lcublas
 
 ###############################################################################
 all: base fluids
@@ -23,8 +29,9 @@ all: base fluids
 base: kerncommon GPU_cudamemcpy GPU_free GPU_init GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: kerncommon cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
+fluids: kerncommon cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
+	rm -f *cpp
 
 kerncommon: cudaCommon.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaCommon.cu -o cudaCommon.cpp
@@ -32,7 +39,7 @@ kerncommon: cudaCommon.cu
 %::
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
-	rm -f $@.cpp
+
 clean:
 	rm -f *mexa64 *cpp
 
