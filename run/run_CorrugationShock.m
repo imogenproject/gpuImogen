@@ -6,9 +6,9 @@ starterRun();
 %--- Initialize test ---%
 run         = CorrugationShockInitializer([256 4 1]);
 
-run.iterMax     = 20000;
-run.theta       = 30;
-run.sonicMach   = 10;
+run.iterMax     = 200;
+run.theta       = 20;
+run.sonicMach   = 3;
 run.alfvenMach  = .5;
 
 run.gpuDeviceNumber = 0;

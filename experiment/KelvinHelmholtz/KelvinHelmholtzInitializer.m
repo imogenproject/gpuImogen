@@ -36,10 +36,6 @@ classdef KelvinHelmholtzInitializer < Initializer
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
     end %PROTECTED
     
-    
-    
-    
-    
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
@@ -49,10 +45,10 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.gamma            = 5/3;
             obj.runCode          = 'KelHelm';
             obj.info             = 'Kelvin-Helmholtz instability trial.';
-            obj.mode.fluid		 = true;
-            obj.mode.magnet		 = false;
-            obj.mode.gravity	 = false;
-            obj.cfl				 = 0.7;
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.4;
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
@@ -83,10 +79,10 @@ classdef KelvinHelmholtzInitializer < Initializer
             indeces = cell(1,3);
             for i=1:3;  indeces{i} = 1:obj.grid(i); end
                        
-            mass	= ones(obj.grid);
-            mom		= zeros([3 obj.grid]);
+            mass    = ones(obj.grid);
+            mom     = zeros([3 obj.grid]);
             mag     = zeros([3 obj.grid]);
-            speed	= speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
+            speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
 
             half    = ceil(obj.grid/2);
             fields  = {obj.X, obj.Y, obj.Z};
@@ -112,9 +108,9 @@ classdef KelvinHelmholtzInitializer < Initializer
                 mass(index{:}) = maxFinderND(mass);
             end
         
-            ener	= (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     % internal
-                      + 0.5*squeeze(sum(mom.*mom,1))./mass ...              % kinetic
-                      + 0.5*squeeze(sum(mag.*mag,1));                       % magnetic
+            ener = (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     % internal
+                    + 0.5*squeeze(sum(mom.*mom,1))./mass ...             % kinetic
+                    + 0.5*squeeze(sum(mag.*mag,1));                      % magnetic
         end
         
     end%PROTECTED

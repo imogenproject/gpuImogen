@@ -72,7 +72,7 @@ classdef TimeManager < handle
                 soundSpeed = cudaSoundspeed(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, obj.parent.GAMMA);
             else
                 soundSpeed = cudaSoundspeed(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ...
-                                        mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, obj.parent.GAMMA, obj.parent.pureHydro);
+                                        mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, obj.parent.GAMMA);
             end
 
             [cmax gridIndex] = directionalMaxFinder(mass.gputag, soundSpeed, mom(1).gputag, mom(2).gputag, mom(3).gputag);

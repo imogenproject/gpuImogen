@@ -130,23 +130,46 @@ classdef CorrugationShockInitializer < Initializer
         % the initializer.
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
         
-                %--- Load data from file ---%
-                %       Corrugation runs require loading initial condition data from files to run.                
-%                filePath = fileparts(mfilename('fullpath'));
-%                filePath = [filePath filesep 'data' filesep obj.dataFile];
- %               data = load(filePath);
-           
-		result = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
-                obj.mass       = result.mass;
-                obj.pressure   = result.pressure;
-                obj.velocity   = result.velocity;
-                obj.magnet     = result.magnet;
-                obj.theta      = result.theta;
-                obj.sonicMach  = result.sonicMach;
-                obj.alfvenMach = result.alfvenMach;
-            %catch MERR
-            %    error('Corrugation:Initialize','Unable to load or parse data file. Run aborted.');
-            %end
+        %--- Attempt to load data from file ---%
+            result = [];
+            relaxed = [];
+            
+            try
+                disp('Attempting to access shock database...'); 
+                mksqlite(1,'open','experiment/experimentUtils/mhd_jumpIC.sqlite.db');
+
+                result = mksqlite(1,sprintf('select * from main.analytical where ms=%i and ma=%i and theta=%i', ...
+                    round(100*obj.sonicMach), round(100*obj.alfvenMach),obj.theta));
+                if isempty(result); disp('No analytical result available in DB; Solving jump analytically');
+
+                relaxed = mksqlite(1,sprintf('select * from main.numerical where ms=%i and ma=%i and theta=%i', ...
+                    round(100*obj.sonicMach),round(100*obj.alfvenMach),obj.theta));
+                if isempty(relaxed); disp('Pre-relaxed numerical curve not available; Shock will generate transient.');
+
+                mksqlite(1,'close');
+                
+            catch didntwork
+                disp('SQLite not available; Solving jump conditions analytically, no pre-relaxation');
+            end
+                
+             if isempty(result)
+                 result = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
+                 obj.mass       = result.mass;
+                 obj.pressure   = result.pressure;
+                 obj.velocity   = result.velocity;
+                 obj.magnet     = result.magnet;
+                 obj.theta      = result.theta;
+                 obj.sonicMach  = result.sonicMach;
+                 obj.alfvenMach = result.alfvenMach;
+             else
+                 obj.mass = [1; result.rho];
+                 obj.pressure = [1; result.P2];
+                 obj.velocity = [result.vx1 result.vx2; result.vy1 result.vy2; 0 0];
+                 obj.magnet = [result.bx result.bx; result.by1 result.by2; 0 0];
+                 obj.theta = result.theta;
+                 obj.sonicMach = .01*result.ms;
+                 obj.alfvenMach = .01*result.ma;
+             end
 
             %--- Initialization ---%
             statics                 = []; % No statics used in this problem
@@ -185,24 +208,24 @@ classdef CorrugationShockInitializer < Initializer
                                  + 0.5*squeeze( sum(mom.*mom,1) )./mass ...      % kinetic energy
                                  + 0.5*squeeze( sum(mag.*mag,1) );               % magnetic energy
 
-            if ~strcmp(obj.numericalICfile,'null')
-                if fopen(obj.numericalICfile) ~= -1
-                    NUMIN = load(obj.numericalICfile);
+            if ~isempty(relaxed)
+                x0 = round(obj.grid(1)/2) - 16;
+                relaxed.rho = eval(relaxed.rho);
+                relaxed.px = eval(relaxed.px);
+                relaxed.py = eval(relaxed.py);
+                relaxed.bx = eval(relaxed.bx);
+                relaxed.by = eval(relaxed.by);
+                relaxed.E  = eval(relaxed.E);
 
-                    offset = (size(NUMIN.sx_XYZ_FINAL.mass,1)-obj.grid(1))/2;
+                for c = 1:32; 
+                    mass(x0+c,:,:)  = relaxed.rho(c);
+                    ener(x0+c,:,:)  = relaxed.E(c);
 
-                    for ct = (obj.grid(1)/2 - 20):(obj.grid(1)/2 + 20)
-                        mass(ct,:,:)  = NUMIN.sx_XYZ_FINAL.mass(ct+offset,1,1);
-                        ener(ct,:,:)  = NUMIN.sx_XYZ_FINAL.ener(ct+offset,1,1);
+                    mom(1,x0+c,:,:) = relaxed.px(c);
+                    mom(2,x0+c,:,:) = relaxed.py(c);
 
-                        mom(1,ct,:,:) = NUMIN.sx_XYZ_FINAL.momX(ct+offset,1,1);
-                        mom(2,ct,:,:) = NUMIN.sx_XYZ_FINAL.momY(ct+offset,1,1);
-
-                        mag(1,ct,:,:) = NUMIN.sx_XYZ_FINAL.magX(ct+offset,1,1);
-                        mag(2,ct,:,:) = NUMIN.sx_XYZ_FINAL.magY(ct+offset,1,1);
-                    end
-                else
-                    fprintf('WARNING: Unable to open numerical initial condition file %s\nUsing unrelaxed ICs\n',obj.numericalICfile);
+                    mag(1,x0+c,:,:) = relaxed.bx(c);
+                    mag(2,x0+c,:,:) = relaxed.by(c);
                 end
             end
  

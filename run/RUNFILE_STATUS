@@ -1,0 +1,21 @@
+bonner_ebert: Pending gravity support
+bow_shock:    GOOD
+corrugation:  GOOD
+dataFromFile: dead
+debug:        dead
+fluidJet:     GOOD
+gravityToy:   pending gravity support
+gravJet:      pending gravity support
+hachisuDisk:  pending gravity support
+KH test:      unknown
+KojimaDisk:   pending gravity support
+magJetTest:   unknown
+OTV test:     GOOD
+SedovTaylor:  unknown
+SodShockTube: unknown
+
+pending - ought to work but needs gravity
+GOOD    - confirmed working IRL
+dead    - definitely won't work now
+unknown - I haven't tried
+
