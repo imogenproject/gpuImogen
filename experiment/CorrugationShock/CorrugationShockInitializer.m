@@ -140,11 +140,11 @@ classdef CorrugationShockInitializer < Initializer
 
                 result = mksqlite(1,sprintf('select * from main.analytical where ms=%i and ma=%i and theta=%i', ...
                     round(100*obj.sonicMach), round(100*obj.alfvenMach),obj.theta));
-                if isempty(result); disp('No analytical result available in DB; Solving jump analytically');
+                if isempty(result); disp('No analytical result available in DB; Solving jump analytically'); end
 
                 relaxed = mksqlite(1,sprintf('select * from main.numerical where ms=%i and ma=%i and theta=%i', ...
                     round(100*obj.sonicMach),round(100*obj.alfvenMach),obj.theta));
-                if isempty(relaxed); disp('Pre-relaxed numerical curve not available; Shock will generate transient.');
+                if isempty(relaxed); disp('Pre-relaxed numerical curve not available; Shock will generate transient.'); end
 
                 mksqlite(1,'close');
                 

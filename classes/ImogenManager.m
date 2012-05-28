@@ -183,6 +183,9 @@ classdef ImogenManager < handle
             
             obj.save.logPrint('Run complete.\n');
             obj.save.postliminary();
+
+            % GPU shutdown
+
         end
     
 %___________________________________________________________________________________________________ setGridSpacing

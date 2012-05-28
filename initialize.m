@@ -22,7 +22,12 @@ function run = initialize(ini)
 
 %% ===== CHECK IF WE ARE USING THE GPU; START GPU ===== %%
 
-GPU_init(ini.gpuDeviceNumber);
+mpiInfo = mpi_basicinfo();
+
+if mpiInfo(1) == 1
+    GPU_init(ini.gpuDeviceNumber);
+end
+
 run.useGPU = true;
 run.pureHydro = ini.pureHydro;
 

@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# input arguments:
+# 1 = runfile
+# 2 = output stream #
+# 3 = #nodes
+# 4 = PPN
+
+# --- Check for input file argument --- #
+if [ -z "${1}" ]; then
+  echo ">>> ERROR: No run file specified. Aborting script."
+  exit 1
+fi
+
+# --- Determine user name --- #
+myName=`whoami`
+
+# --- Determine stream output --- #
+stream=${2}
+if [ -z "$2" ]; then
+  stream="1"
+fi
+redirectStr="${HOME}/Results/logfile${stream}.out"
+
+# --- Test for results directory --- #
+resDir="${HOME}/Results"
+if [ -d $resDir ]; then
+  activeResDir=$resDir
+else
+  mkdir "${HOME}/Results/"
+  echo ">>> WARNING: No Results directory found. One has been created."
+fi
+
+# --- Execute Imogen --- #
+# Acquire a temp file and write a script for qsub
+
+TFILE=$(mktemp);
+echo "module load mpi-tor/openmpi-1.5.4_gcc-4.5.3" >> $TFILE
+echo "module load matlab/r2011b_nogcc" >> $TFILE
+echo "module load cuda" >> $TFILE
+echo "cd $(pwd)" >> $TFILE
+echo "mpirun -np $(expr ${3} \* ${4}) matlab -nodisplay -nojvm -r \"parImogenLoad('${1}','${redirectStr}','${alias}');\" " >> $TFILE
+
+qsub -q gpu -l nodes=${3}:ppn=${4} $TFILE -o ~/Results/logfile${2}.out
+#cat $TFILE
+sleep 2;
+
+rm $TFILE
+

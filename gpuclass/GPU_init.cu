@@ -46,7 +46,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if(fail != cudaSuccess) mexErrMsgTxt("Failure to clear previous error messages. Bleh!");
 
   int deviceNum = 9999;
-  if(nrhs == 1) deviceNum = (int)*mxGetPr(prhs[0]);
+  if(nrhs == 1) {
+    if(mxGetNumberOfElements(prhs[0]) != 1) mexErrMsgTxt("GPU_init: device # argument, but it is not a scalar.");
+    deviceNum = (int)*mxGetPr(prhs[0]);
+    }
 
   if(deviceNum < numDevices) { // Requested device w/o theatrics
     fail = cudaSetDevice(deviceNum);
