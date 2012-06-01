@@ -3,24 +3,23 @@
 
 # Change these to suit your system. CUDA_LDIR will be either lib or lib64
 #MATLAB_DIR=/opt/Matlab/matlab2010b
-MATLAB_DIR=/usr/local/packages/MATLAB/R2011b
-CUDA_DIR = /usr/local/packages/cuda/4.0
-CUDA_LDIR = lib64
-CUDA_ARCH = sm_20
+MATLAB_DIR =/usr/local/packages/MATLAB/R2011b
+CUDA_DIR   = /usr/local/packages/cuda/4.0
+CUDA_LDIR  = lib64
+CUDA_ARCH  = sm_20
 
 # Don't mess with these
 NVCC_OPTS = -arch=$(CUDA_ARCH) -O1
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include $(GPUMAT_INCL)
 
-MPIOPTS=$(mpicc --show | sed -e 's/^.*bin\/gcc //')
+MPIOPTS   := $(shell mpicc --show | sed -e 's/^.*bin\/gcc //' -e 's/-pthread//')
 
 MEX_OPTS  = -DUNIX
-MEX_INCL  = -I$(MATLAB_DIR)/extern/include -I/usr/include/openmpi-x86_64
-MEX_LDIR  = "-L/usr/lib64/openmpi/lib"
-MEX_LIBS  =  "-lmpi"
+MEX_INCL  = -I$(MATLAB_DIR)/extern/include
+MEX_LIBS  = 
 
 ###############################################################################
-all: mpi_init mpi_finalize mpi_allgather mpi_basicinfo
+all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_basicinfo
 	echo "Finished!"
 
 %::

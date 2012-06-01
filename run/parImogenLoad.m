@@ -38,8 +38,7 @@ function parImogenLoad(runFile, logFile, alias)
        rethrow(ME);
     end
 
-    enderRun();
-
+    mpi_barrier();
     mpi_finalize();
 
     exit;

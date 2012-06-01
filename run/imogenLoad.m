@@ -16,5 +16,7 @@ function imogenLoad(runFile, logFile, alias)
     catch ME
        rethrow(ME);
     end
-    enderRun();
+
+    exit();
+
 end
