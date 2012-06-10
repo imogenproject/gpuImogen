@@ -206,15 +206,18 @@ methods (Access = public)
             obj.front.rms(ITER) = sum(sum(sqrt( (obj.front.X(:,:,ITER) - mean(mean(obj.front.X(:,:,ITER)))).^2  ))) / numel(obj.front.X(:,:,ITER));
         end
     
-
     end
 
     function curveFit_automatic(obj)
         % Use the Grad Student Algorithm to find when the run stops its initial transients and when it goes nonlinear
         figno = figure(); plot(log(obj.front.rms));
-        diff(log(obj.front.rms(3:end)'),1,1)'
+
+        [tnew anew] = removeNonlinearFromSet(obj.frameTimes, log(obj.front.rms), .1);
+
         linearFrames = input('Set of frames where line is straight or numbers vaguely constant: ');
         close(figno);
+
+        if max(linearFrames) > size(obj.post.drho,4); disp('error: linear frame range invalid. returning.\n'); return; end
 
         fprintf('Run indicated as being in linear regime for saveframes %i to %i inclusive.\n', min(linearFrames), max(linearFrames));
         obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(linearFrames(end)) );
@@ -254,6 +257,38 @@ methods (Access = public)
         end
 
     end
+
+    function perturbationTrack(obj, xsamplepre, xsamplepost);
+        sizetemp = size(obj.lastLinearFrame.mass);
+        if numel(sizetemp) == 2; sizetemp(3) = 1; end
+
+        if nargin < 3
+            fprintf('Frame size is: %i %i %i\n', sizetemp(1), sizetemp(2), sizetemp(3));
+            xsamplepre = input('Sample x values for determining kx_pre by autocorrelation: ');
+            xsamplepost= input('Sample x values for determining kx_post by autocorrelation: ');
+        end
+
+        obj.pre.drho_kxre_ac = kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepre);
+        obj.post.drho_kxre_ac= kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepost);
+
+%        obj.pre.dvx_kxre_ac = kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepre);
+%        obj.post.dvx_kxre_ac= kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepost);
+
+
+ %       obj.pre.dvy_kxre_ac = kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepre);
+ %       obj.post.dvy_kxre_ac= kxRealAnalysis(obj.lastLinearFrame.mass, obj.lastLinearFrame.dGrid, xsamplepost);
+
+
+        obj.pre.dbx_kxre_ac = kxRealAnalysis(obj.lastLinearFrame.magX, obj.lastLinearFrame.dGrid, xsamplepre);
+        obj.post.dbx_kxre_ac= kxRealAnalysis(obj.lastLinearFrame.magX, obj.lastLinearFrame.dGrid, xsamplepost);
+
+
+        obj.pre.dby_kxre_ac = kxRealAnalysis(obj.lastLinearFrame.magY, obj.lastLinearFrame.dGrid, xsamplepre);
+        obj.post.dby_kxre_ac= kxRealAnalysis(obj.lastLinearFrame.magY, obj.lastLinearFrame.dGrid, xsamplepost);
+
+    end
+
+    
 
     function curveFit_manual(obj)
 
