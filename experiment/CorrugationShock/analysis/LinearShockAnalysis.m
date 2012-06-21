@@ -16,6 +16,8 @@ classdef LinearShockAnalysis < handle
         originalSrcDirectory; % Set at analyze time, the directory the analyzed data resided in.
 
         frameTimes;
+        frameLinearity;
+
         gridXvals;
         kyValues; kyWavenums; % Transverse mode values and integer wavenumbers
         kzValues; kzWavenums;
@@ -44,15 +46,22 @@ end
 
 methods (Access = public)
 
-    function obj = LinearShockAnalysis()
+    function obj = LinearShockAnalysis(basename, padlen, framerange, numModes)
 
-        obj.selectFileset();
+        if nargin == 4
+            fprintf('Sufficient input arguments present; Running fully automatic analysis...\n');
+            obj.selectFileset(basename, padlen, framerange);
+            obj.performFourierAnalysis(numModes);
+            obj.curveFit_automatic();
+        else
+            obj.selectFileset();
 
-        an = input('Run fourier analysis now? ','s');
-        if strcmp(an,'y') || strcmp(an,'yes'); obj.performFourierAnalysis(); end
+            an = input('Run fourier analysis now? ','s');
+            if strcmp(an,'y') || strcmp(an,'yes'); obj.performFourierAnalysis(); end
 
-        an = input('Perform automated mode analysis? ','s');
-        if strcmp(an,'y') || strcmp(an,'yes'); obj.curveFit_automatic(); end
+            an = input('Perform automated mode analysis? ','s');
+            if strcmp(an,'y') || strcmp(an,'yes'); obj.curveFit_automatic(); end
+        end
 
     end
 
@@ -62,10 +71,16 @@ methods (Access = public)
 
     end
 
-    function selectFileset(obj)
-        obj.inputBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
-        obj.inputPadlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
-        obj.inputFrameRange       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
+    function selectFileset(obj, basename, padlength, framerange)
+        if nargin ~= 4
+            obj.inputBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
+            obj.inputPadlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
+            obj.inputFrameRange       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
+        else
+            obj.inputBasename   = basename;
+            obj.inputPadlength  = padlength;
+            obj.inputFrameRange = framerange;
+        end
 %    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
 %    if timeNormalization == 0; timeNormalization = 1; end;
 
@@ -78,32 +93,39 @@ methods (Access = public)
         obj.originalSrcDirectory = pwd();
     end
 
-    function performFourierAnalysis(obj)
+    function performFourierAnalysis(obj, numModes)
 
-        obj.nModes(1) = input('# of Y modes to analyze: ');
-        obj.nModes(2) = input('# of Z modes to analyze: ');
+        if nargin ~= 2
+            obj.nModes(1) = input('# of Y modes to analyze: ');
+            obj.nModes(2) = input('# of Z modes to analyze: ');
+        else
+            obj.nModes = numModes;
+        end
 
         yran = obj.nModes(1); zran = obj.nModes(2); % For shortform convenience
 
         obj.nFrames = numel(obj.inputFrameRange);
 
-
-        %--- Loop over given frame obj.inputFrameRange ---%
-        for ITER = 1:numel(obj.inputFrameRange)
+        fprintf('One * per frame, 50 * per line: %i frames\n',obj.nFrames);
+        %--- Loop over the set of input frames---%
+        for ITER = 1:obj.nFrames
 
             dataframe = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(ITER) );
             fprintf('*');
             if mod(ITER, 50) == 0; fprintf('\n'); end
 
-            obj.frameTimes(ITER) = sum(dataframe.time.history);
+            obj.frameTimes(ITER)     = sum(dataframe.time.history);
+            obj.frameLinearity(ITER) = isFrameLinear(dataframe.time.history);
 
             if ITER == 1 % Extract equilibrium data from the first frame
-                obj.equil.rho = dataframe.mass(:,1,1);
-                obj.equil.ener= dataframe.ener(:,1,1);
+                obj.equil.rho = dataframe.mass(:,1,1)';
+                obj.equil.ener= dataframe.ener(:,1,1)';
 
                 obj.equil.mom(1,:) = dataframe.momX(:,1,1)';
                 obj.equil.mom(2,:) = dataframe.momY(:,1,1)';
-                for tp = 1:size(dataframe.mass,1); obj.equil.vel(:,tp) = obj.equil.mom(:,tp) / obj.equil.rho(tp); end
+%                obj.equil.vel = obj.equil.mom ./ (   );
+                obj.equil.vel(1,:) = obj.equil.mom(1,:) ./ obj.equil.rho;
+                obj.equil.vel(2,:) = obj.equil.mom(2,:) ./ obj.equil.rho;
 
                 obj.equil.B(1,:) = dataframe.magX(:,1,1)';
                 obj.equil.B(2,:) = dataframe.magY(:,1,1)';
@@ -201,6 +223,8 @@ methods (Access = public)
             end
         end
 
+        obj.frameLinearity = logical(obj.frameLinearity);
+
         for ITER = 1:size(obj.front.X,3)
             obj.front.FFT(:,:,ITER) = fft2(obj.front.X(:,:,ITER));
             obj.front.rms(ITER) = sum(sum(sqrt( (obj.front.X(:,:,ITER) - mean(mean(obj.front.X(:,:,ITER)))).^2  ))) / numel(obj.front.X(:,:,ITER));
@@ -210,19 +234,12 @@ methods (Access = public)
 
     function curveFit_automatic(obj)
         % Use the Grad Student Algorithm to find when the run stops its initial transients and when it goes nonlinear
-        figno = figure(); plot(log(obj.front.rms));
+        obj.linearFrames = 1:numel(obj.frameLinearity);
+        obj.linearFrames = obj.linearFrames(obj.frameLinearity);
 
-        [tnew anew] = removeNonlinearFromSet(obj.frameTimes, log(obj.front.rms), .1);
+        obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
 
-        linearFrames = input('Set of frames where line is straight or numbers vaguely constant: ');
-        close(figno);
-
-        if max(linearFrames) > size(obj.post.drho,4); disp('error: linear frame range invalid. returning.\n'); return; end
-
-        fprintf('Run indicated as being in linear regime for saveframes %i to %i inclusive.\n', min(linearFrames), max(linearFrames));
-        obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(linearFrames(end)) );
-        obj.linearFrames = linearFrames;
-
+        linearFrames = obj.linearFrames;
         fprintf('\nAnalyzing shock front (eta)...\n');
 
         [growthrates growresidual phaserates phaseresidual] = analyzeFront(obj.front.FFT, obj.frameTimes, linearFrames);

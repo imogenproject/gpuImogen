@@ -1,4 +1,4 @@
-function [rx ry] = removeNonlinearFromSet(x, y, reltol)
+function [rx ry NL] = removeNonlinearFromSet(x, y, reltol)
 % Given a paired set of points (x_i, y_i) with nonlinearity (by some metric) N0, continue removing
 % the point which most reduces N until N < reltol * N0
 
@@ -7,9 +7,9 @@ N0 = computeNonlinearity(x, y);
 N = N0;
 
 e = [];
+NL = [];
 
 iterNumber = 1;
-
 while N > reltol*N0
     fprintf('Iteration: %i; ', iterNumber);
     for i = 1:numel(x);
@@ -25,6 +25,7 @@ while N > reltol*N0
     y = y(f);
 
     N = computeNonlinearity(x,y);
+    NL(end+1) = N;
     fprintf('New nonlinearity: %i\n', N);
 
 end

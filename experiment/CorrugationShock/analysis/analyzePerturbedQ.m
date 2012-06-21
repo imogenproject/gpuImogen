@@ -40,20 +40,6 @@ function [fit, residual] = monovariateFit(x, y)
 
 x = x(:); y = y(:); %make it nx1
 
-%deriv2 = circshift(y,-1) + circshift(y,1) - 2*y; % Calculate second derivative
-
-%deriv2(1) = deriv2(2);
-%deriv2(end) = deriv2(end-1);
-
-%dx = x - circshift(x,1); dx(end) = dx(end-1);
-
-%deriv2 = deriv2 ./ dx;
-
-%deriv2 = deriv2 / max(deriv2);
-
-%weight = (1 + 2*deriv2).^-1; % FIXME: parameterize this
-%weight = weight / sum(weight);
-
 weight = ones(size(x));
 
 N = numel(x);
