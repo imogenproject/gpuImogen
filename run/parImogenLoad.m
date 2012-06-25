@@ -1,4 +1,4 @@
-function parImogenLoad(runFile, logFile, alias)
+function parImogenLoad(runFile, logFile, alias, gpuno)
 % This script is the command and control manager for command line run Imogen scripts. It is
 % designed to simplify the run script syntax and allow for greater extensibility.
 % 
@@ -11,22 +11,24 @@ function parImogenLoad(runFile, logFile, alias)
 
     %--- Initialize MPI and GPU ---%
     mpi_init();
-    basics = mpi_basicinfo();
-    if basics(1) > 1 % If this is in fact parallel, autoinitialize GPUs
-                     % Otherwise initialize.m will choose one manually
-        fprintf('MPI size > 1; We are running in parallel; Autoinitializing GPUs\n');
 
-        y = mpi_allgather(basics(2:3));
-        
+    mpiInfo = mpi_basicinfo();
+    if mpiInfo(1) > 1 % If this is in fact parallel, autoinitialize GPUs
+                     % Otherwise initialize.m will choose one manually
+        fprintf('MPI size > 1; We are running in parallel: Autoselecting GPUs\n');
+
+        y = mpi_allgather(mpiInfo(2:3));
         ranks = y(1:2:end);
         hash = y(2:2:end);
 
-        % Select ranks on this node, sort them, chose gpu # by resultant ordering
-        thisnode = ranks(hash == basics(3));
+        % Select ranks on this node, sort them, chose my gpu # by resultant ordering
+        thisnode = ranks(hash == mpiInfo(3));
         [dump idx] = sort(thisnode);
-        mygpu = idx(dump == basics(2));
-        fprintf('Rank %i on activating GPU number %i\n', basics(2), mygpu-1);
+        mygpu = idx(dump == mpiInfo(2));
+        fprintf('Rank %i on activating GPU number %i\n', mpiInfo(2), mygpu-1);
         GPU_init(mygpu-1);
+    else
+        GPU_init(gpuno);
     end
 
     runFile = strrep(runFile,'.m','');
