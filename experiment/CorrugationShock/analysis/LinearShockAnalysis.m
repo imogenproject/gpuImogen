@@ -237,6 +237,8 @@ methods (Access = public)
         obj.linearFrames = 1:numel(obj.frameLinearity);
         obj.linearFrames = obj.linearFrames(obj.frameLinearity);
 
+        if numel(obj.linearFrames) < 1; printf('FAILURE: No linear frames found; aborting autoanalysis'); return; end
+
         obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
 
         linearFrames = obj.linearFrames;
