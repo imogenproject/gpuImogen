@@ -45,14 +45,104 @@ methods % SET
 end
 
 methods (Access = public)
+    function serialize(obj, filename) % Because save('filename','results') is just too
+                                 % darn easy to simply work
+        FILE = fopen(filename,'w');
+
+        fwrite(FILE, size(obj.pre.drho), 'double');
+        fwrite(FILE, numel(obj.originalSrcDirectory), 'double');
+        fwrite(FILE, obj.originalSrcDirectory, 'char*1');
+        fwrite(FILE, [numel(obj.gridXvals) size(obj.front.X,2) size(obj.front.X,1)], 'double');
+        
+        fwrite(FILE, obj.frameTimes, 'double');
+
+        fwrite(FILE, double(obj.frameLinearity), 'double');
+
+        fwrite(FILE, numel(obj.gridXvals), 'double');
+        fwrite(FILE, obj.gridXvals, 'double');
+
+        fwrite(FILE, obj.kyValues, 'double');
+        fwrite(FILE, obj.kyWavenums, 'double');
+        
+        fwrite(FILE, obj.kzValues, 'double');
+        fwrite(FILE, obj.kzWavenums, 'double');
+
+        fwrite(FILE, numel(obj.linearFrames), 'double');
+        if numel(obj.linearFrames) > 0
+            fwrite(FILE, obj.linearFrames, 'double');
+        end
+
+        S = serdes; % serializer/deserializer helper class
+
+        S.writeStructsArrays(FILE, obj.equil);
+        S.writeStructsArrays(FILE, obj.front);
+	S.writeStructsArrays(FILE, obj.pre);
+	S.writeStructsArrays(FILE, obj.post);
+	S.writeStructsArrays(FILE, obj.omega);
+
+        fclose(FILE);
+
+    end
+
+    function deserialize(obj, filename)
+        FILE = fopen(filename,'r');
+        x = fread(FILE, 5, 'double'); % [#ky #kz nx nt strlen(source dir)]
+
+        obj.originalSrcDirectory = char(fread(FILE, x(5), 'char*1')');
+
+        obj.nModes = [x(1) x(2)];
+        obj.nFrames = x(4);
+
+        nxAnalysis = x(3);
+
+        if obj.nModes(2) == 1; obj.is2d = 1; else; obj.is2d = 0; end
+
+        y = fread(FILE, 3, 'double');
+        nxsim = y(1);
+        nysim = y(2);
+        nzsim = y(3);
+
+        obj.frameTimes = fread(FILE, [1 obj.nFrames], 'double');
+
+        y = fread(FILE, obj.nFrames, 'double');
+        obj.frameLinearity = logical(reshape(y,[1 obj.nFrames]));
+
+        nxsim = fread(FILE, 1, 'double');
+        obj.gridXvals = fread(FILE, nxsim, 'double');
+
+        obj.kyValues = fread(FILE, obj.nModes(1), 'double');
+        obj.kyWavenums = fread(FILE, [1 obj.nModes(1)], 'double');
+
+        obj.kzValues = fread(FILE, obj.nModes(2), 'double');
+        obj.kzWavenums = fread(FILE, [1 obj.nModes(2)], 'double');
+
+        y = fread(FILE, 1, 'double');
+        if y(1) > 0
+            obj.linearFrames = fread(FILE, y, 'double');
+            obj.linearFrames = obj.linearFrames';
+        end
+
+	S = serdes;
+
+        obj.equil = S.readStructsArrays(FILE);
+        obj.front = S.readStructsArrays(FILE);
+        obj.pre   = S.readStructsArrays(FILE);
+        obj.post  = S.readStructsArrays(FILE);
+        obj.omega = S.readStructsArrays(FILE);
+
+        fclose(FILE);
+    end
 
     function obj = LinearShockAnalysis(basename, padlen, framerange, numModes)
 
         if nargin == 4
-            fprintf('Sufficient input arguments present; Running fully automatic analysis...\n');
+            fprintf('Recv''d 4 input args; Running fully automatic analysis...\n');
             obj.selectFileset(basename, padlen, framerange);
             obj.performFourierAnalysis(numModes);
             obj.curveFit_automatic();
+        elseif nargin == 1
+            fprintf('Recv''d 1 input arg; Trying deserialization...\n');
+            obj.deserialize(basename);
         else
             obj.selectFileset();
 
@@ -237,7 +327,7 @@ methods (Access = public)
         obj.linearFrames = 1:numel(obj.frameLinearity);
         obj.linearFrames = obj.linearFrames(obj.frameLinearity);
 
-        if numel(obj.linearFrames) < 1; printf('FAILURE: No linear frames found; aborting autoanalysis'); return; end
+        if numel(obj.linearFrames) < 1; fprintf('FAILURE: No linear frames found; aborting autoanalysis'); return; end
 
         obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
 
@@ -342,36 +432,36 @@ methods (Access = public)
 
     function manfit_memory(obj, s)
         % Store manual fit's data in our memory
-        obj.manfit_state = s;
-    end
-
-    function manfit_setKW(obj, y, z, omega, kx, qty)
-        switch(qty);
-            case 1 ; obj.post.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho2(y,z) = omega(1,1);
-                     obj.post.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx2(y,z)  = omega(2,1);
-                     obj.post.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy2(y,z)  = omega(3,1);
-                     obj.post.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx2(y,z)  = omega(4,1);
-                     obj.post.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby2(y,z)  = omega(5,1);
-
-                     obj.post.drhoK0(y,z) = kx(1,2); obj.omega.drho2_0(y,z)   = omega(1,2);
-                     obj.post.dvxK0(y,z) = kx(2,2); obj.omega.dvx2_0(y,z)   = omega(2,2);
-                     obj.post.dvyK0(y,z) = kx(3,2); obj.omega.dvy2_0(y,z)   = omega(3,2);
-                     obj.post.dbxK0(y,z) = kx(4,2); obj.omega.dbx2_0(y,z)   = omega(4,2);
-                     obj.post.dbyK0(y,z) = kx(5,2); obj.omega.dby2_0(y,z)   = omega(5,2);
-                
-            case 0 ; obj.pre.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho1(y,z) = omega(1,1);
-                     obj.pre.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx1(y,z)  = omega(2,1);
-                     obj.pre.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy1(y,z)  = omega(3,1);
-                     obj.pre.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx1(y,z)  = omega(4,1);
-                     obj.pre.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby1(y,z)  = omega(5,1);
-
-                     obj.pre.drhoK0(y,z) = kx(1,2); obj.omega.drho1_0(y,z)   = omega(1,2);
-                     obj.pre.dvxK0(y,z) = kx(2,2); obj.omega.dvx1_0(y,z)   = omega(2,2);
-                     obj.pre.dvyK0(y,z) = kx(3,2); obj.omega.dvy1_0(y,z)   = omega(3,2);
-                     obj.pre.dbxK0(y,z) = kx(4,2); obj.omega.dbx1_0(y,z)   = omega(4,2);
-                     obj.pre.dbyK0(y,z) = kx(5,2); obj.omega.dby1_0(y,z)   = omega(5,2);
+            obj.manfit_state = s;
         end
-    end
+
+        function manfit_setKW(obj, y, z, omega, kx, qty)
+            switch(qty);
+                case 1 ; obj.post.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho2(y,z) = omega(1,1);
+                         obj.post.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx2(y,z)  = omega(2,1);
+                         obj.post.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy2(y,z)  = omega(3,1);
+                         obj.post.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx2(y,z)  = omega(4,1);
+                         obj.post.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby2(y,z)  = omega(5,1);
+
+                         obj.post.drhoK0(y,z) = kx(1,2); obj.omega.drho2_0(y,z)   = omega(1,2);
+                         obj.post.dvxK0(y,z) = kx(2,2); obj.omega.dvx2_0(y,z)   = omega(2,2);
+                         obj.post.dvyK0(y,z) = kx(3,2); obj.omega.dvy2_0(y,z)   = omega(3,2);
+                         obj.post.dbxK0(y,z) = kx(4,2); obj.omega.dbx2_0(y,z)   = omega(4,2);
+                         obj.post.dbyK0(y,z) = kx(5,2); obj.omega.dby2_0(y,z)   = omega(5,2);
+                    
+                case 0 ; obj.pre.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho1(y,z) = omega(1,1);
+                         obj.pre.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx1(y,z)  = omega(2,1);
+                         obj.pre.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy1(y,z)  = omega(3,1);
+                         obj.pre.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx1(y,z)  = omega(4,1);
+                         obj.pre.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby1(y,z)  = omega(5,1);
+
+                         obj.pre.drhoK0(y,z) = kx(1,2); obj.omega.drho1_0(y,z)   = omega(1,2);
+                         obj.pre.dvxK0(y,z) = kx(2,2); obj.omega.dvx1_0(y,z)   = omega(2,2);
+                         obj.pre.dvyK0(y,z) = kx(3,2); obj.omega.dvy1_0(y,z)   = omega(3,2);
+                         obj.pre.dbxK0(y,z) = kx(4,2); obj.omega.dbx1_0(y,z)   = omega(4,2);
+                         obj.pre.dbyK0(y,z) = kx(5,2); obj.omega.dby1_0(y,z)   = omega(5,2);
+            end
+        end
 end % Public methods
 
 methods % SET

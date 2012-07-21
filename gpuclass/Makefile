@@ -3,12 +3,12 @@
 # Change these to suit your system. CUDA_LDIR will be either lib or lib64
 
 #ACISS
-MATLAB_DIR=/usr/local/packages/MATLAB/R2011b
-CUDA_DIR = /usr/local/packages/cuda/4.0
+#MATLAB_DIR=/usr/local/packages/MATLAB/R2011b
+#CUDA_DIR = /usr/local/packages/cuda/4.0
 
 #Generic
-#MATLAB_DIR=/opt/Matlab/matlab2010b
-#CUDA_DIR = /usr/local/cuda
+MATLAB_DIR=/opt/Matlab/r2012a
+CUDA_DIR = /usr/local/cuda
 
 CUDA_LDIR = lib64
 CUDA_ARCH = sm_20
