@@ -16,26 +16,13 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-// GPUmat headers
-#include "GPUmat.hh"
-
-// static paramaters from GPUmat
-// Pointer to the GPUmat structure & have-been-initialized variable
-static GPUmat *gm;
-static int init = 0;
-
 // Access to Imogen GPU kernels
 #include "cudaKernels.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-if (nrhs != 6) mexErrMsgTxt("Wrong number of arguments");
+if (nrhs != 6) mexErrMsgTxt("Call form:integralPoisson_mg(rhos, poss, phi, bvec, cconst, h)");
 
-// Initialize function if not initialized
-if (init == 0) {
-    gm = gmGetGPUmat();
-    init = 1;
-    }
 // Righthand side arguments:
 // 0. rhos   - quantized density; CELL ARRAY
 // 1. poss   - quantized positions; CELL ARRAY
@@ -45,7 +32,7 @@ if (init == 0) {
 // 5. h      - the grid spacing (one CPU double)
 
 // Pull the density/position cell arrays apart and create double **s
-/* Get number of argumenta and allocate memory */
+/* Get number of arguments and allocate memory */
 int numLevels = mxGetNumberOfElements(prhs[0]);
 short int *arraydims = (short int *)malloc(3*numLevels * sizeof(short int));
 

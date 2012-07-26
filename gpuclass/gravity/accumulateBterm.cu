@@ -14,27 +14,14 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// GPUmat
-#include "GPUmat.hh"
-
-// static paramaters
-static int init = 0;
-static GPUmat *gm;
-
 #include "cudaKernels.h"
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
   if (nrhs!=4)
-     mexErrMsgTxt("Wrong number of arguments");
-  if (init == 0) {
-    // Initialize function
-    // mexLock();
-    // load GPUmat
-    gm = gmGetGPUmat();
-    init = 1;
-  }
+     mexErrMsgTxt("Call form is accumulateBterm(source term, destination term, coefficient, preciditon term)");
   /* mex parameters are:
    0 Source term (that this applies the B operator to)
    1 Destination term (that this stores the result in)
@@ -43,12 +30,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   */
 
   // Get GPU array pointers
-  GPUtype srcArray    = gm->gputype.getGPUtype(prhs[0]);
-  GPUtype dstArray    = gm->gputype.getGPUtype(prhs[1]);
-  GPUtype accArray    = gm->gputype.getGPUtype(prhs[3]);
+  ArrayMetadata amd;
+
+  double **srcdst = getGPUSourcePointers(prhs, &amd, 0, 1);
+  double **accum  = getGPUSourcePointers(prhs, &amd, 2, 2);
 
   // Get some control variables sorted out
-  const int *dims    = gm->gputype.getSize(srcArray);
+  int *dims    = amd.dim;
 
   dim3 gridsize;
   gridsize.x = dims[0]/EDGEDIM_BOP;
@@ -65,6 +53,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int ny = dims[1];
   int nz = dims[2];
 
-  Laplacian_B_OperatorKernel<<<gridsize, blocksize>>>((double*)gm->gputype.getGPUptr(srcArray), (double*)gm->gputype.getGPUptr(dstArray), *mxGetPr(prhs[2]), (double*)gm->gputype.getGPUptr(accArray), nx, ny, nz, 4);
+  Laplacian_B_OperatorKernel<<<gridsize, blocksize>>>( srcdst[0], srcdst[1], *mxGetPr(prhs[2]), accum[0], nx, ny, nz, 4);
 
 }

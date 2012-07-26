@@ -16,9 +16,6 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// GPUmat include
-#include "GPUmat.hh"
-
 // Headers for Imogen kernels
 #include "cudaKernels.h"
 
