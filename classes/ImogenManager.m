@@ -40,7 +40,7 @@ classdef ImogenManager < handle
         treadmill;      % Manages treadmill actions.                                TreadmillManager
         fluid;          % Manages fluid routines.                                   FluidManager
         magnet;         % Manages magnetic routines.                                MagnetManager
-        parallel;       % Manages parallel processing.                              ParallelManager
+        parallel;       % Manages parallel processing.                              HaloManager class
     end%PUBLIC
     
 %===================================================================================================

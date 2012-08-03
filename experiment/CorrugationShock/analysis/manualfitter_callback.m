@@ -130,45 +130,21 @@ hold off;
 
 ymin = 1e9; ymax = -1e9; % For axes clamp
 
+datafields = { 'drho', 'dvx', 'dvy', 'dbx', 'dby' };
+
 for v = 1:5
     if memory.qty == 1
         if memory.typefit < 3
-        switch(v)
-            case 1; rawline = getWline(analyzer.post.drho, memory.ky, memory.kz, 1);
-            case 2; rawline = getWline(analyzer.post.dvx,  memory.ky, memory.kz, 1);
-            case 3; rawline = getWline(analyzer.post.dvy,  memory.ky, memory.kz, 1);
-            case 4; rawline = getWline(analyzer.post.dbx,  memory.ky, memory.kz, 1);
-            case 5; rawline = getWline(analyzer.post.dby,  memory.ky, memory.kz, 1);
-        end
+            rawline = getWline(getfield(analyzer.post,datafields{v}), memory.ky, memory.kz, 1);
         else
-        switch(v)
-            case 1; rawline = getKxline(analyzer.post.drho, memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
-            case 2; rawline = getKxline(analyzer.post.dvx,  memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
-            case 3; rawline = getKxline(analyzer.post.dvy,  memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
-            case 4; rawline = getKxline(analyzer.post.dbx,  memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
-            case 5; rawline = getKxline(analyzer.post.dby,  memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
+            rawline = getKxline(getfield(analyzer.post,datafields{v}), memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
         end
-        end
-
     else
         if memory.typefit < 3
-        switch(v)
-            case 1; rawline = getWline(analyzer.pre.drho, memory.ky, memory.kz, 0);
-            case 2; rawline = getWline(analyzer.pre.dvx,  memory.ky, memory.kz, 0);
-            case 3; rawline = getWline(analyzer.pre.dvy,  memory.ky, memory.kz, 0);
-            case 4; rawline = getWline(analyzer.pre.dbx,  memory.ky, memory.kz, 0);
-            case 5; rawline = getWline(analyzer.pre.dby,  memory.ky, memory.kz, 0);
-        end
+            rawline = getWline(getfield(analyzer.pre,datafields{v}), memory.ky, memory.kz, 0);
         else
-        switch(v)
-            case 1; rawline = getKxline(analyzer.pre.drho, memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
-            case 2; rawline = getKxline(analyzer.pre.dvx,  memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
-            case 3; rawline = getKxline(analyzer.pre.dvy,  memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
-            case 4; rawline = getKxline(analyzer.pre.dbx,  memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
-            case 5; rawline = getKxline(analyzer.pre.dby,  memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
+            rawline = getKxline(getfield(analyzer.pre,datafields{v}), memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
         end
-        end
-
     end
 
     xvals = {analyzer.pre.X, analyzer.post.X};
@@ -177,20 +153,21 @@ for v = 1:5
     switch(memory.typefit)
         case 1;
             plotqty = mean(log(abs(rawline(:,analyzer.linearFrames))));
+            ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(analyzer.frameTimes(analyzer.linearFrames), plotqty, plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
         case 2;
             plotqty = mean(unwrap(angle(rawline(:,analyzer.linearFrames)),pi,2));
+            ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(analyzer.frameTimes(analyzer.linearFrames), plotqty,  plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
         case 3;
             plotqty = mean(log(abs(rawline)));
+            ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(xvals{memory.qty+1}, plotqty, plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
         case 4;
             plotqty = mean(unwrap(angle(rawline),pi,2));
+            ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(xvals{memory.qty+1}, plotqty,  plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
     end
-
-    ymin = min(ymin, min(plotqty));
-    ymax = max(ymax, max(plotqty));
 
     switch(memory.typefit)
         case 1; c = imag(memory.w(memory.varfit,:));
@@ -204,7 +181,7 @@ for v = 1:5
     plot(plotvals{memory.typefit}, plotvals{memory.typefit}*c(1) + c(2),'k-');
 end
 
-%ylim([1.1*min(ymin, c(2)) 1.1*max(ymax, c(2))]);
+ylim([(ymin*(1-.1*sign(ymin))) (ymax*(1+.1*sign(ymax)) )]);
 
 if memory.typefit < 3
     xlabel('Time','fontsize',16);

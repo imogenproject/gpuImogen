@@ -1,12 +1,13 @@
 function [kx omega kxOffset omegaOffset kxRes omegaRes] = analyzePeturbedQ(dq, x, t, linearFrames, preorpost)
 % > dq: Perturbed quantity
-% > xvals: x position values for dq(ymode#, z mode#, x value)
+% > x: x position values for dq(ymode#, z mode#, x value, t value)
+% > t: t values for ...
+% > linearFrames: The set of frames believed to be behaving linearly
+
 yran = size(dq,1);
 zran = size(dq,2);
 
 for u = 1:yran; for v = 1:zran
-
-    % Omega fit
     if strcmp(preorpost,'post')
         
         [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squeeze(log(abs(dq(u,v,2:15,linearFrames))))));
@@ -29,9 +30,20 @@ for u = 1:yran; for v = 1:zran
     kxRes(u,v) = confidenceKxRe.normr + 1i*confidenceKxIm.normr;
     kxOffset(u,v) = kxrefit(2) + 1i*kximfit(2);
  
-    fprintf('*');
 end; end
-fprintf('\n');
+
+omega(isnan(real(omega))) = 1i*imag(omega(isnan(real(omega))));
+omega(isnan(imag(omega))) = real(omega(isnan(imag(omega))));
+
+kx(isnan(real(kx))) = 1i*imag(kx(isnan(real(kx))));
+kx(isnan(imag(kx))) = real(kx(isnan(imag(kx))));
+
+omegaOffset(isnan(real(omegaOffset))) = 1i*imag(omegaOffset(isnan(real(omegaOffset))));
+omegaOffset(isnan(imag(omegaOffset))) = real(omegaOffset(isnan(imag(omegaOffset))));
+
+kxOffset(isnan(real(kxOffset))) = 1i*imag(kxOffset(isnan(real(kxOffset))));
+kxOffset(isnan(imag(kxOffset))) = real(kxOffset(isnan(imag(kxOffset))));
+
 
 end
 
@@ -40,11 +52,14 @@ function [fit, residual] = monovariateFit(x, y)
 
 x = x(:); y = y(:); %make it nx1
 
+N = isnan(y);
+if any(N); x = x(~N); y = y(~N); end
+
 weight = ones(size(x));
 
 N = numel(x);
 
-ans = ([N sum(x.*weight); sum(x.*weight) sum(x.^2 .* weight)]^-1) * [sum(y.*weight); sum(x.*y.*weight)];
+ans = [sum(weight),  sum(x.*weight); sum(x.*weight),  sum(x.^2.*weight) ]^-1 * [sum(y.*weight); sum(x.*y.*weight) ];
 
 fit = [ans(2) ans(1)];
 

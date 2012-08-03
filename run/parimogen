@@ -54,7 +54,7 @@ echo "echo \$PATH" >> $TFILE
 echo "cd $(pwd)" >> $TFILE
 echo "mpirun -np $(expr $nnodes \* $procpn) matlab -nodisplay -nojvm -r \"parImogenLoad('${1}','${redirectStr}','${alias}', $gpuno);\" " >> $TFILE
 
-qsub -q longgpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
+qsub -fj -q longgpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
 #cat $TFILE
 sleep 2;
 
