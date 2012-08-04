@@ -1,19 +1,8 @@
 # This makefile builds the GPU kernels and mex files needed to run gpuImogen
 
-# Change these to suit your system. CUDA_LDIR will be either lib or lib64
+include Makefile.config
 
-#ACISS
-#MATLAB_DIR=/usr/local/packages/MATLAB/R2011b
-#CUDA_DIR = /usr/local/packages/cuda/4.0
-
-#Generic
-MATLAB_DIR=/opt/Matlab/R2012a
-CUDA_DIR = /usr/local/cuda
-
-CUDA_LDIR = lib64
-CUDA_ARCH = sm_20
-
-# Don't mess with these
+# Don't mess with any of this. Modify Makefile.config isntead.
 NVCC_OPTS = -arch=$(CUDA_ARCH) -O1
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 

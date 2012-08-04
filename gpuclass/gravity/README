@@ -27,9 +27,5 @@ Failure to obey the second will severely slow the boundary condition solver.
 To utilize the GPU gravity solver:
 
 Start Matlab
-Go to the GPUmat directory and run GPUstart
 Begin the run from within Matlab
-
-Matlab can't activate GPUmat on its own at the present time. :(
-
 

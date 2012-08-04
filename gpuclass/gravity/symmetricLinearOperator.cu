@@ -14,39 +14,28 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// GPUmat
-#include "GPUmat.hh"
-
-// static paramaters
-static int init = 0;
-static GPUmat *gm;
-
 #include "cudaKernels.h"
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
   if ((nrhs!=3) && ((nlhs != 1) && (nrhs != 2)))
      mexErrMsgTxt("Wrong number of arguments: 1lhs + 2rhs or 3rhs acceptable");
-  if (init == 0) {
-    // Initialize function
-    // mexLock();
-    // load GPUmat
-    gm = gmGetGPUmat();
-    init = 1;
-  }
   /* mex parameters are:
    0 Source data
    1 Destination data
    2 Coefficients [4]
   */
 
+  ArrayMetadata amd;
+
   // Sort out source/dest stuff
-  GPUtype srcArray    = gm->gputype.getGPUtype(prhs[0]);
+  double **srcArray   = getGPUSourcePointers(prhs, &amd, 0,0);
+  double **dstArray;
   double *opCoeffs;
-  GPUtype dstArray;
   if(nrhs == 3) {
-	dstArray    = gm->gputype.getGPUtype(prhs[1]);
+	dstArray    = getGPUSourcePointers(prhs, &amd, 1, 1);
 	opCoeffs    = mxGetPr(prhs[2]);
   } else {
 	//dstArray = create LHS
@@ -55,7 +44,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   }
 
   // Get some control variables sorted out
-  const int *dims    = gm->gputype.getSize(srcArray);
+  int *dims  = amd.dim;
 
   dim3 gridsize;
   gridsize.x = dims[0]*dims[2]/64;
@@ -68,7 +57,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int ny = dims[1];
   int nz = dims[2]/8 - 1;
 
-  SymmetricOperatorKernel<<<gridsize, blocksize>>>((double*)gm->gputype.getGPUptr(srcArray), (double*)gm->gputype.getGPUptr(dstArray), nx, ny, nz, opCoeffs[0], opCoeffs[1], opCoeffs[2], opCoeffs[3]);
+  SymmetricOperatorKernel<<<gridsize, blocksize>>>(srcArray[0], dstArray[0], nx, ny, nz, opCoeffs[0], opCoeffs[1], opCoeffs[2], opCoeffs[3]);
 
 }
 

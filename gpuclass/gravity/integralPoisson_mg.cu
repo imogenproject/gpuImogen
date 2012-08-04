@@ -18,6 +18,7 @@
 
 // Access to Imogen GPU kernels
 #include "cudaKernels.h"
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -36,22 +37,25 @@ if (nrhs != 6) mexErrMsgTxt("Call form:integralPoisson_mg(rhos, poss, phi, bvec,
 int numLevels = mxGetNumberOfElements(prhs[0]);
 short int *arraydims = (short int *)malloc(3*numLevels * sizeof(short int));
 
-// Allocate mmeory for pointers to mass and position mipmaps
+// Allocate memory for pointers to mass and position mipmaps
 double **rhoptr = (double **)malloc(numLevels * sizeof(double*));
 double **posptr = (double **)malloc(numLevels * sizeof(double*));
 
 int j;
+ArrayMetadata amd;
 // Read the GPU variables, get the raw memory pointers,
 // fill out the arrays above
 for(j = 0; j < numLevels; j++) {
 	mxArray *rhos = mxGetCell(prhs[0], j);
 	mxArray *poss = mxGetCell(prhs[1], j);
 
-	GPUtype rhoin = gm->gputype.getGPUtype(rhos);
-	GPUtype posin = gm->gputype.getGPUtype(poss);
+        double **rhoarray = getGPUSourcePointers((const mxArray **)&rhos, &amd, 0, 0);
+        double **posarray = getGPUSourcePointers((const mxArray **)&poss, &amd, 0, 0);
+//	GPUtype rhoin = gm->gputype.getGPUtype(rhos);
+//	GPUtype posin = gm->gputype.getGPUtype(poss);
 
-	int d  = gm->gputype.getNdims(rhoin);
-	int *s = (int *)gm->gputype.getSize(rhoin);
+	int d  = amd.ndims;
+	int *s = amd.dim;
 
 	if(d == 2) {
 		/* 2-D, implictly set Nz = 1 */
@@ -65,8 +69,8 @@ for(j = 0; j < numLevels; j++) {
 		arraydims[3*j+2] = s[2];
 		}
 
-	rhoptr[j] = (double *)gm->gputype.getGPUptr(rhoin); 
-	posptr[j] = (double *)gm->gputype.getGPUptr(posin);
+	rhoptr[j] = *rhoarray;
+	posptr[j] = *posarray;
 	}
 
 // Having created all these arrays above, push them to the GPU
@@ -87,8 +91,9 @@ double *GPU_bvec;
 //   mass**, position**, quantized array bounds
 //   Array of X/Y/Z positions & # of points
 //   Quantization constant
-GPUtype phiout         = gm->gputype.getGPUtype(prhs[2]);
-double *GPU_phiret   = (double *)gm->gputype.getGPUptr(phiout);
+//GPUtype phiout         = gm->gputype.getGPUtype(prhs[2]);
+//double *GPU_phiret   = (double *)gm->gputype.getGPUptr(phiout);
+double *GPU_phiret    = *getGPUSourcePointers(prhs, &amd, 2, 2);
 
 double coarseningConst = *mxGetPr(prhs[4]);
 double *bvec = mxGetPr(prhs[3]);

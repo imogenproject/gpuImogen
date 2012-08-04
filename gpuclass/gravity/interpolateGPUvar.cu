@@ -14,26 +14,18 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// GPUmat
-#include "GPUmat.hh"
-
-// static paramaters
-static int init = 0;
-static GPUmat *gm;
-
 #include "cudaKernels.h"
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
 
-if (init == 0) {
-  gm = gmGetGPUmat();
-  init = 1;
-}
+ArrayMetadata srcmeta;
+ArrayMetadata dstmeta;
+double **srcArray;
+double **dstArray;
 
-GPUtype srcArray;
-GPUtype dstArray;
 int direct;
 int scaleFactor;
 int outputDimensions[3];
@@ -42,19 +34,18 @@ int *launchdims;
 
 if (nrhs == 3) {
   // Get GPU array pointers if both are provided
-  srcArray    = gm->gputype.getGPUtype(prhs[0]);
-  dstArray    = gm->gputype.getGPUtype(prhs[2]);
-//printf("Writing to 3rd argument\n"); fflush(stdout);
+  srcArray = getGPUSourcePointers(prhs, &srcmeta, 0, 0);
+  dstArray = getGPUSourcePointers(prhs, &dstmeta, 2, 2);
   } else if ((nlhs == 1) && (nrhs == 2)) {
-  srcArray    = gm->gputype.getGPUtype(prhs[0]);
+  srcArray = getGPUSourcePointers(prhs, &srcmeta, 0, 0);
   } else mexErrMsgTxt("GPU interpolate error: either 3 RHS or 1LHS + 2RHS arguments required\n");
 
 // Get scaling scaleFactoror
 scaleFactor = (int)*mxGetPr(prhs[1]);
-inputDimensions = gm->gputype.getSize(srcArray);
+inputDimensions = srcmeta.dim;
 
 if (scaleFactor < 0) {
-  // If scaling down, divide output size outputDimensions by scaleFactoror; We launch one thread per output cell
+  // If scaling down, divide output size outputDimensions by scaleFactor; We launch one thread per output cell
   scaleFactor = -scaleFactor;
 
   for(direct = 0; direct < 3; direct++) {
@@ -66,7 +57,6 @@ if (scaleFactor < 0) {
   launchdims = outputDimensions;
   } else {
   // If scaling up, multiply output size outputDimensions by scaleFactoror; We launch one thread per input cell
-//printf("Scaling up.\n");
   direct = 1;  
   outputDimensions[0] = inputDimensions[0] * scaleFactor;
   outputDimensions[1] = inputDimensions[1] * scaleFactor;
@@ -77,10 +67,15 @@ if (scaleFactor < 0) {
 // Creating output array, it will match correct dimensions.
 // If dest array is given, check for dimensional correctness.
 if (nlhs == 1) {
-  dstArray = gm->gputype.create(gpuDOUBLE, 3, outputDimensions, NULL);
-  plhs[0] = gm->gputype.createMxArray(dstArray);
+  int64_t ref[5];
+  ref[0] = 0; ref[1] = (outputDimensions[2] == 1 ? 2 : 3);
+  ref[2] = outputDimensions[0];
+  ref[3] = outputDimensions[1];
+  ref[4] = outputDimensions[2];
+
+  dstArray = makeGPUDestinationArrays(ref, plhs, 1);
   } else {
-  const int *dstdims = gm->gputype.getSize(dstArray);
+  const int *dstdims = dstmeta.dim;
   int d;
   for(d = 0; d < 3; d++) { if(dstdims[d] != outputDimensions[d]) mexErrMsgTxt("GPU interpolate error: destination array is wrong size.\n"); }
   }
@@ -102,9 +97,9 @@ int nz = launchdims[2];
   if(nz == 0) nz = 1;
 
   if(direct > 0)
-      upsampleKernel<<<gridsize, blocksize>>>((double *)gm->gputype.getGPUptr(srcArray), (double *)gm->gputype.getGPUptr(dstArray), scaleFactor, nx, ny, nz);
+      upsampleKernel<<<gridsize, blocksize>>>(srcArray[0], dstArray[0], scaleFactor, nx, ny, nz);
   else
-    downsampleKernel<<<gridsize, blocksize>>>((double *)gm->gputype.getGPUptr(srcArray), (double *)gm->gputype.getGPUptr(dstArray), scaleFactor, nx, ny, nz);
+    downsampleKernel<<<gridsize, blocksize>>>(srcArray[0], dstArray[0], scaleFactor, nx, ny, nz);
   
 
 }

@@ -13,19 +13,3 @@ interpolateGPUvar.cu
 mgbc_gpukern.cu
 symmetricLinearOperator.cu
 
-GPU MHD related files:
-cudaArrayAtomic.cu
-cudaCommon.cu
-cudaFLstep.cu
-cudaKernels.cu
-cudaLinearSubsagn.cu
-cudaMHDKernels.cu
-cudaShift.cu
-cudaWstep.cu
-directionalMaxFinder.cu
-	GlobalMax:
-	DirectionalMax:
-	CFL Direct. Max: Acheived = 130uS; theoretical IO = 52us;
-fluxLimiterKernels.cu
-freezeAndPtot.cu
-
