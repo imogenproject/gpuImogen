@@ -74,11 +74,11 @@ methods (Access = public)
 
         S = serdes; % serializer/deserializer helper class
 
-        S.writeStructsArrays(FILE, obj.equil);
-        S.writeStructsArrays(FILE, obj.front);
-	S.writeStructsArrays(FILE, obj.pre);
-	S.writeStructsArrays(FILE, obj.post);
-	S.writeStructsArrays(FILE, obj.omega);
+        S.writeStructure(FILE, obj.equil);
+        S.writeStructure(FILE, obj.front);
+	S.writeStructure(FILE, obj.pre);
+	S.writeStructure(FILE, obj.post);
+	if numel(obj.linearFrames) > 0; S.writeStructure(FILE, obj.omega); end
 
         fclose(FILE);
 
@@ -124,22 +124,24 @@ methods (Access = public)
 
 	S = serdes;
 
-        obj.equil = S.readStructsArrays(FILE);
-        obj.front = S.readStructsArrays(FILE);
-        obj.pre   = S.readStructsArrays(FILE);
-        obj.post  = S.readStructsArrays(FILE);
-        obj.omega = S.readStructsArrays(FILE);
+        obj.equil = S.readStructure(FILE);
+        obj.front = S.readStructure(FILE);
+        obj.pre   = S.readStructure(FILE);
+        obj.post  = S.readStructure(FILE);
+        if numel(obj.linearFrames) > 0; obj.omega = S.readStructure(FILE); end
 
         fclose(FILE);
     end
 
-    function obj = LinearShockAnalysis(basename, padlen, framerange, numModes)
+    function obj = LinearShockAnalysis(basename, padlen, framerange, numModes, verbosity)
 
-        if nargin == 4
-            fprintf('Recv''d 4 input args; Running fully automatic analysis...\n');
+        if nargin >= 4
+            fprintf('Recv''d %i input args; Running fully automatic analysis...\n', nargin);
             obj.selectFileset(basename, padlen, framerange);
-            obj.performFourierAnalysis(numModes);
-            obj.curveFit_automatic();
+            if nargin == 5; silenceOfTheLambs = verbosity; else; silenceOfTheLambs = 0; end
+
+            obj.performFourierAnalysis(numModes, silenceOfTheLambs);
+            obj.curveFit_automatic(silenceOfTheLambs);
         elseif nargin == 1
             fprintf('Recv''d 1 input arg; Trying deserialization...\n');
             obj.deserialize(basename);
@@ -183,31 +185,40 @@ methods (Access = public)
         obj.originalSrcDirectory = pwd();
     end
 
-    function performFourierAnalysis(obj, numModes)
+    function performFourierAnalysis(obj, numModes, verbose)
 
-        if nargin ~= 2
+        if nargin < 2
             obj.nModes(1) = input('# of Y modes to analyze: ');
             obj.nModes(2) = input('# of Z modes to analyze: ');
         else
             obj.nModes = numModes;
         end
 
+        if nargin < 3; verbose = 1; end
+
         yran = obj.nModes(1); zran = obj.nModes(2); % For shortform convenience
 
         obj.nFrames = numel(obj.inputFrameRange);
 
-        fprintf('One * per frame, 50 * per line: %i frames\n',obj.nFrames);
+        if verbose; fprintf('One * per frame, 50 * per line: %i frames\n',obj.nFrames); end
         %--- Loop over the set of input frames---%
-        for ITER = 1:obj.nFrames
+        ITER = 0;
+        for zeta = 1:obj.nFrames
 
-            dataframe = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(ITER) );
-            fprintf('*');
-            if mod(ITER, 50) == 0; fprintf('\n'); end
+            dataframe = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(zeta) );
+            if ~isa(dataframe, 'struct'); continue; end
+            ITER = ITER + 1;
+
+            if verbose; 
+                fprintf('*');
+                if mod(ITER, 50) == 0; fprintf('\n'); end
+            end
 
             obj.frameTimes(ITER)     = sum(dataframe.time.history);
             obj.frameLinearity(ITER) = isFrameLinear(dataframe.time.history);
 
             if ITER == 1 % Extract equilibrium data from the first frame
+                
                 obj.equil.rho = dataframe.mass(:,1,1)';
                 obj.equil.ener= dataframe.ener(:,1,1)';
 
@@ -259,18 +270,24 @@ methods (Access = public)
             selectY = 1:obj.nModes(1);
             selectZ = 1:obj.nModes(2);
 
+            % Replace the momentum fields with velocity ones
+            dataframe.velX = dataframe.momX ./ dataframe.mass;
+            dataframe.velY = dataframe.momY ./ dataframe.mass;
+            dataframe.velZ = dataframe.momZ ./ dataframe.mass;
+            dataframe = rmfield(dataframe, { 'momX','momY','momZ' } );
+
             for xi = 1:numel(xpre)
                 dq = fft2(squeeze(shiftdim(dataframe.mass(xpre(xi),:,:),1)) - obj.equil.rho(xpre(xi)) );
                 obj.pre.drho(:,:,xi,ITER)= dq(selectY, selectZ);
 
-                dq = fft2(squeeze(shiftdim(dataframe.momX(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - obj.equil.mom(1,xpre(xi))/obj.equil.rho(xpre(xi)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velX(xpre(xi),:,:))) - obj.equil.vel(1,xpre(xi)) );
                 obj.pre.dvx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-                dq = fft2(squeeze(shiftdim(dataframe.momY(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - obj.equil.mom(2,xpre(xi))/obj.equil.rho(xpre(xi)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velY(xpre(xi),:,:))) - obj.equil.vel(2,xpre(xi)) );
                 obj.pre.dvy(:,:,xi,ITER) = dq(selectY, selectZ);
 
                 if size(dataframe.mass,3) > 1
-                dq = fft2(squeeze(shiftdim(dataframe.momZ(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velZ(xpre(xi),:,:) )));
                 obj.pre.dvz(:,:,xi,ITER) = dq(selectY, selectZ);
                 end
 
@@ -289,14 +306,14 @@ methods (Access = public)
                 dq = fft2(squeeze(shiftdim(dataframe.mass(xpost(xi),:,:),1)) - obj.equil.rho(xpost(xi)) );
                 obj.post.drho(:,:,xi,ITER) = dq(selectY, selectZ);
 
-                dq = fft2(squeeze(shiftdim(dataframe.momX(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - obj.equil.mom(1,xpost(xi))/obj.equil.rho(xpost(xi)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velX(xpost(xi),:,:))) - obj.equil.vel(1,xpost(xi)) );
                 obj.post.dvx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-                dq = fft2(squeeze(shiftdim(dataframe.momY(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - obj.equil.mom(2,xpost(xi))/obj.equil.rho(xpost(xi)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velY(xpost(xi),:,:))) - obj.equil.vel(2,xpost(xi)) );
                 obj.post.dvy(:,:,xi,ITER) = dq(selectY, selectZ);
 
                 if size(dataframe.mass,3) > 1
-                dq = fft2(squeeze(shiftdim(dataframe.momZ(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) );
+                dq = fft2(squeeze(shiftdim(dataframe.velZ(xpost(xi),:,:) )));
                 obj.post.dvz(:,:,xi,ITER) = dq(selectY, selectZ);
                 end
 
@@ -322,38 +339,39 @@ methods (Access = public)
     
     end
 
-    function curveFit_automatic(obj)
-        % Use the Grad Student Algorithm to find when the run stops its initial transients and when it goes nonlinear
+    function curveFit_automatic(obj, verbose)
+        if nargin < 2; verbose = 1; end
+
         obj.linearFrames = 1:numel(obj.frameLinearity);
         obj.linearFrames = obj.linearFrames(obj.frameLinearity);
 
-        if numel(obj.linearFrames) < 1; fprintf('FAILURE: No linear frames found; aborting autoanalysis'); return; end
+        if numel(obj.linearFrames) < 1; fprintf('WARNING on %s: No linear frames found; not attempting automatic curvefit\n',getenv('HOSTNAME')); return; end
 
-        obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
+%        obj.lastLinearFrame = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
 
         linearFrames = obj.linearFrames;
-        fprintf('\nAnalyzing shock front (eta)...\n');
+        if verbose; fprintf('\nAnalyzing shock front (eta)\n'); end
 
         [growthrates growresidual phaserates phaseresidual] = analyzeFront(obj.front.FFT, obj.frameTimes, linearFrames);
         obj.omega.front = phaserates + 1i*growthrates;
         obj.omega.frontResidual = phaseresidual + 1i*growresidual;
 
-        fprintf('kx/w from post drho: ');
+        if verbose; fprintf('kx/w from post drho.\n'); end
         [obj.post.drhoKx obj.omega.fromdrho2 obj.post.drhoK0 obj.omega.drho2_0] = analyzePerturbedQ(obj.post.drho, obj.post.X, obj.frameTimes, linearFrames,'post');
-        fprintf('kx/w from post dv: ');
+        if verbose; fprintf('kx/w from post dv\n'); end
         [obj.post.dvxKx obj.omega.fromdvx2 obj.post.dvxK0 obj.omega.dvx2_0]   = analyzePerturbedQ(obj.post.dvx, obj.post.X, obj.frameTimes, linearFrames,'post');
         [obj.post.dvyKx obj.omega.fromdvy2 obj.post.dvyK0 obj.omega.dvy2_0]   = analyzePerturbedQ(obj.post.dvy, obj.post.X, obj.frameTimes, linearFrames,'post');
-        fprintf('kx/w from post db: ');
+        if verbose; fprintf('kx/w from post db\n'); end
         [obj.post.dbxKx obj.omega.fromdbx2 obj.post.dbxK0 obj.omega.dbx2_0]   = analyzePerturbedQ(obj.post.dbx, obj.post.X, obj.frameTimes, linearFrames,'post');
         [obj.post.dbyKx obj.omega.fromdby2 obj.post.dbyK0 obj.omega.dby2_0]   = analyzePerturbedQ(obj.post.dby, obj.post.X, obj.frameTimes, linearFrames,'post');
 
         if obj.is2d == 0
-            fprintf('kx/w from dvz/dbz: ');
+            if verbose; fprintf('kx/w from dvz/dbz\n'); end
             [obj.post.dvzKx obj.omega.fromdvz2] = analyzePerturbedQ(obj.post.dvz, obj.post.X, obj.frameTimes, linearFrames,'post');
             [obj.post.dbzKx obj.omega.fromdbz2] = analyzePerturbedQ(obj.post.dbz, obj.post.X, obj.frameTimes, linearFrames,'post');
         end
 
-        fprintf('kx/w from perturbed pre: ');
+        if verbose; fprintf('kx/w from perturbed pre\n'); end
         [obj.pre.drhoKx obj.omega.fromdrho1 obj.pre.drhoK0 obj.omega.drho1_0] = analyzePerturbedQ(obj.pre.drho, obj.pre.X, obj.frameTimes, linearFrames,'pre');
         [obj.pre.dvxKx obj.omega.fromdvx1   obj.pre.dvxK0 obj.omega.dvx1_0] = analyzePerturbedQ(obj.pre.dvx, obj.pre.X, obj.frameTimes, linearFrames,'pre');
         [obj.pre.dvyKx obj.omega.fromdvy1   obj.pre.dvyK0 obj.omega.dvy1_0] = analyzePerturbedQ(obj.pre.dvy, obj.pre.X, obj.frameTimes, linearFrames,'pre');
@@ -397,6 +415,11 @@ methods (Access = public)
 
     end
 
+    function manualFrameLinearity(obj)
+        obj.frameLinearity(input('Input set of frames to be accepted as linear: ')) = 1
+        obj.frameLinearity = logical(obj.frameLinearity);
+    end
+
     
 
     function curveFit_manual(obj)
@@ -432,36 +455,36 @@ methods (Access = public)
 
     function manfit_memory(obj, s)
         % Store manual fit's data in our memory
-            obj.manfit_state = s;
+        obj.manfit_state = s;
+    end
+
+    function manfit_setKW(obj, y, z, omega, kx, qty)
+        switch(qty);
+            case 1 ; obj.post.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho2(y,z) = omega(1,1);
+                     obj.post.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx2(y,z)  = omega(2,1);
+                     obj.post.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy2(y,z)  = omega(3,1);
+                     obj.post.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx2(y,z)  = omega(4,1);
+                     obj.post.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby2(y,z)  = omega(5,1);
+
+                     obj.post.drhoK0(y,z) = kx(1,2); obj.omega.drho2_0(y,z)   = omega(1,2);
+                     obj.post.dvxK0(y,z) = kx(2,2); obj.omega.dvx2_0(y,z)   = omega(2,2);
+                     obj.post.dvyK0(y,z) = kx(3,2); obj.omega.dvy2_0(y,z)   = omega(3,2);
+                     obj.post.dbxK0(y,z) = kx(4,2); obj.omega.dbx2_0(y,z)   = omega(4,2);
+                     obj.post.dbyK0(y,z) = kx(5,2); obj.omega.dby2_0(y,z)   = omega(5,2);
+                
+            case 0 ; obj.pre.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho1(y,z) = omega(1,1);
+                     obj.pre.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx1(y,z)  = omega(2,1);
+                     obj.pre.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy1(y,z)  = omega(3,1);
+                     obj.pre.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx1(y,z)  = omega(4,1);
+                     obj.pre.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby1(y,z)  = omega(5,1);
+
+                     obj.pre.drhoK0(y,z) = kx(1,2); obj.omega.drho1_0(y,z)   = omega(1,2);
+                     obj.pre.dvxK0(y,z) = kx(2,2); obj.omega.dvx1_0(y,z)   = omega(2,2);
+                     obj.pre.dvyK0(y,z) = kx(3,2); obj.omega.dvy1_0(y,z)   = omega(3,2);
+                     obj.pre.dbxK0(y,z) = kx(4,2); obj.omega.dbx1_0(y,z)   = omega(4,2);
+                     obj.pre.dbyK0(y,z) = kx(5,2); obj.omega.dby1_0(y,z)   = omega(5,2);
         end
-
-        function manfit_setKW(obj, y, z, omega, kx, qty)
-            switch(qty);
-                case 1 ; obj.post.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho2(y,z) = omega(1,1);
-                         obj.post.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx2(y,z)  = omega(2,1);
-                         obj.post.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy2(y,z)  = omega(3,1);
-                         obj.post.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx2(y,z)  = omega(4,1);
-                         obj.post.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby2(y,z)  = omega(5,1);
-
-                         obj.post.drhoK0(y,z) = kx(1,2); obj.omega.drho2_0(y,z)   = omega(1,2);
-                         obj.post.dvxK0(y,z) = kx(2,2); obj.omega.dvx2_0(y,z)   = omega(2,2);
-                         obj.post.dvyK0(y,z) = kx(3,2); obj.omega.dvy2_0(y,z)   = omega(3,2);
-                         obj.post.dbxK0(y,z) = kx(4,2); obj.omega.dbx2_0(y,z)   = omega(4,2);
-                         obj.post.dbyK0(y,z) = kx(5,2); obj.omega.dby2_0(y,z)   = omega(5,2);
-                    
-                case 0 ; obj.pre.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho1(y,z) = omega(1,1);
-                         obj.pre.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx1(y,z)  = omega(2,1);
-                         obj.pre.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy1(y,z)  = omega(3,1);
-                         obj.pre.dbxKx(y,z)  = kx(4,1); obj.omega.fromdbx1(y,z)  = omega(4,1);
-                         obj.pre.dbyKx(y,z)  = kx(5,1); obj.omega.fromdby1(y,z)  = omega(5,1);
-
-                         obj.pre.drhoK0(y,z) = kx(1,2); obj.omega.drho1_0(y,z)   = omega(1,2);
-                         obj.pre.dvxK0(y,z) = kx(2,2); obj.omega.dvx1_0(y,z)   = omega(2,2);
-                         obj.pre.dvyK0(y,z) = kx(3,2); obj.omega.dvy1_0(y,z)   = omega(3,2);
-                         obj.pre.dbxK0(y,z) = kx(4,2); obj.omega.dbx1_0(y,z)   = omega(4,2);
-                         obj.pre.dbyK0(y,z) = kx(5,2); obj.omega.dby1_0(y,z)   = omega(5,2);
-            end
-        end
+    end
 end % Public methods
 
 methods % SET
@@ -495,7 +518,7 @@ methods (Access = protected)
         end
 
         if numel(newframeranges) == 0;
-            error('UNRECOVERABLE: No files indicated existed. Perhaps remove trailing _ from base name?\n'); 
+            error('FATAL: No files indicated existed. Perhaps need to remove _ from base name?'); 
         end
 
     end
@@ -509,17 +532,23 @@ methods (Access = protected)
         if exist(fname, 'file') == 0
             fname = sprintf('%s_FINAL.mat', namebase);
             if exist(fname, 'file') == 0
-                % Weird shit is going on. Run away.
-                error('UNRECOVERABLE: File existed when checked but is not openable.\n');
+                % Weird shit is going on. Run away!
+                error(sprintf('FATAL on %s: File for frame %s_%0*i existed at check time, now isn''t reachable/existent. Wtf?', ...
+                               getenv('HOSTNAME'),namebase,pasdize,frameno) );
             end
         end
 
-        % Load the next frame into workspace; Assign it to a standard variable name.    
-        load(fname);
-        structName = who('sx_*');
-        structName = structName{1};
+        % Load the next frame into workspace; Assign it to a standard variable name.
+        try
+            tempname = load(fname);
+            nom_de_plume = fieldnames(tempname);
+            dataframe = getfield(tempname,nom_de_plume{1});
+        catch ERR
+            fprintf('SERIOUS on %s: Frame %s in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), fname, pwd());
+	    ERR
+            dataframe = -1;
+        end
 
-        eval(sprintf('dataframe = %s;', structName));
     end
 
 end % protected methods;
