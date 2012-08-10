@@ -4,16 +4,34 @@
 starterRun();
 
 %--- Initialize test ---%
-run             = AdvectionInitializer([64 4 4]);
-run.iterMax     = 250;
+run             = AdvectionInitializer([2048 2048]);
+run.iterMax     = 10000;
 run.info        = 'Advection test.';
 run.notes       = 'Simple advection test in the x-direction.';
 
-run.image.interval = 5;
-run.image.mass = true;
-%run.ppSave.dim2 = 20;
+run.image.interval = 25;
+%run.image.mass = true;
 
-run.gpuDeviceNumber = 2;
+run.ppSave.dim1 = 100;
+run.ppSave.dim2 = 25;
+
+run.gpuDeviceNumber = 0;
+
+% Set a background speed at which the fluid is advected
+run.waveDirection = 1;
+run.backgroundMach = -1;
+
+% Set the type of wave to be run.
+% One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
+% The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
+% Any nonzero B will automatically activate magnetic fluxing
+run.waveType = 'sound';
+run.waveAmplitude = .001;
+
+% number of transverse wave periods in Y and Z directions
+run.waveK    = [1 0 0];
+
+run.numWavePeriods = 4;
 
 %--- Run tests ---%
 if (true)
@@ -31,4 +49,3 @@ if (true)
     imogen(icfile);
 end
 
-enderRun();

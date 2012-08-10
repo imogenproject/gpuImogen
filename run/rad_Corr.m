@@ -51,4 +51,3 @@ if (true) %Primary test
     imogen(icfile);
 end
 
-enderRun();

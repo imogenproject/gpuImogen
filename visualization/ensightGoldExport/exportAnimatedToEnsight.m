@@ -103,7 +103,7 @@ for ITER = 1:numel(range)
 
     % Check existance; if fails, try _FINAL then give up
     doesExist = exist(fname, 'file');
-    if doesExist == 0;
+    if (doesExist == 0) & (range(ITER) == max(range))
         fname = sprintf('%s_FINAL.mat', inBasename);
         doesExist = exist(fname, 'file');
     end

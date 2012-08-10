@@ -33,7 +33,7 @@ function flux(run, mass, mom, ener, mag, grav, order)
         otherwise;
             run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
             return;
-    end
+     end
     
 %    switch (order)
 %        case 1;
@@ -42,7 +42,7 @@ function flux(run, mass, mom, ener, mag, grav, order)
 %        case -1;
 %            directVec = [3; 2; 1];
 %            magneticIndices = [2 1; 3 1; 3 2];
-%otherwise;
+%        otherwise;
 %            run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
 %            return;
 %    end
