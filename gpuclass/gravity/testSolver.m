@@ -9,7 +9,7 @@ run.gravity.info='eh';
 run.gravity.mirrorZ = 0;
 
 %R = [16 32 64 128 256];
-R = [128];
+R = [48];
 enorm = zeros(size(R));
 
 for a = 1:numel(R);
@@ -29,7 +29,7 @@ for a = 1:numel(R);
 
     run.DGRID={2/u,2/u,2/u};
 
-    phi = double(bicgstabPotentialSolver_GPU(run, mass));
+    phi = double(bicgstabPotentialSolver_GPU(run, mass, size(mass.array)));
 
     ALPHA=2*pi/3; BETA=-ALPHA; GAMMA=pi/5;
 

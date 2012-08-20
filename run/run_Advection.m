@@ -4,22 +4,23 @@
 starterRun();
 
 %--- Initialize test ---%
-run             = AdvectionInitializer([2048 2048]);
+run             = AdvectionInitializer([512 512 1]);
 run.iterMax     = 10000;
 run.info        = 'Advection test.';
 run.notes       = 'Simple advection test in the x-direction.';
+run.alias = 'TEST'
 
 run.image.interval = 25;
 %run.image.mass = true;
 
 run.ppSave.dim1 = 100;
-run.ppSave.dim2 = 25;
+run.ppSave.dim2 = 12.5;
 
 run.gpuDeviceNumber = 0;
 
 % Set a background speed at which the fluid is advected
 run.waveDirection = 1;
-run.backgroundMach = -1;
+run.backgroundMach = 0;
 
 % Set the type of wave to be run.
 % One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
@@ -29,7 +30,7 @@ run.waveType = 'sound';
 run.waveAmplitude = .001;
 
 % number of transverse wave periods in Y and Z directions
-run.waveK    = [1 0 0];
+run.waveK    = [0 1 0];
 
 run.numWavePeriods = 4;
 

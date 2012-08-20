@@ -12,7 +12,7 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %-----------------------------------------------------------------------------------------------
     % Initialization
     %---------------
-    fluxFactor = 0.5*run.time.dTime ./ run.DGRID{X};
+    fluxFactor = 0.25*run.time.dTime ./ run.DGRID{X};
 
     %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     %Half-Timestep predictor step (first-order upwind,not TVD)

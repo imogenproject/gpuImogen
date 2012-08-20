@@ -14,14 +14,14 @@ function phi = bicgstabPotentialSolver_GPU(run, mass, gridsize, iamrecursed)
 
     % Recursively coarsen in order to propagate low-mode data faster
     if prod(gridsize) > 64^3 % If we > 64^3 on a side
-        mprime = interpolateGPUvar(GPUdouble(mass), -2);
+        mprime = interpolateGPUvar(mass, -2);
         philo = GPUdouble(bicgstabPotentialSolver_GPU(run, mprime, gridsize/2,1))/2;
 
         philo = reshape(philo, gridsize/2);
         phi0 = interpolateGPUvar(philo, 2);
         phi0 = reshape(phi0, [numel(phi0) 1]);
 	else
-        phi0 = zeros([numel(mass) 1], GPUdouble);
+        phi0 = GPU_Type(zeros([numel(mass) 1]));
     end
 
     bcsAndMass = calculateGravityEdge_GPU(mass, run.DGRID, run.gravity.mirrorZ);

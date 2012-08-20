@@ -13,7 +13,7 @@ function relaxingFluid(run, mass, mom, ener, mag, grav, X)
 %>> X        vector index of current fluxing direction (1,2,or 3)                     int
     %--- Initialize ---%
 
-    fluxFactor = run.time.dTime ./ run.DGRID{X};
+    fluxFactor = .5*run.time.dTime ./ run.DGRID{X};
     v          = [mass, mom(1), mom(2), mom(3), ener];
 
     YYY = 1;

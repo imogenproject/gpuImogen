@@ -52,7 +52,7 @@ classdef AdvectionInitializer < Initializer
             obj.mode.fluid      = true;
             obj.mode.magnet     = false;
             obj.mode.gravity    = false;
-            obj.cfl             = 0.4;
+            obj.cfl             = 0.7;
             obj.iterMax         = 1000;
             obj.ppSave.dim1     = 10;
             obj.ppSave.dim3     = 25;
@@ -119,7 +119,7 @@ classdef AdvectionInitializer < Initializer
                 dEpsilon = 0;
 
                 omega = (K*velocity');
-                wavespeed = omega / K(1);
+                wavespeed = omega / norm(K);
             elseif strcmp(obj.waveType, 'sound')
                 drho = obj.waveAmplitude*sin(phase);
                 dv = zeros(size(mom));
@@ -130,7 +130,7 @@ classdef AdvectionInitializer < Initializer
                 dEpsilon = c_s^2 * drho;
 
                 omega = K*velocity' + c_s*norm(K);
-                wavespeed = omega / K(1);
+                wavespeed = omega / norm(K);
             elseif strcmp(obj.waveType, 'alfven')
 
 
