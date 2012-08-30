@@ -33,7 +33,7 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %-----------------------------------------------------------------------------------
     % Reuse advection flux for constraint step for CT
     %------------------------------------------------
-    fluxFactor = run.time.dTime ./ run.DGRID{I};
+    fluxFactor = .5*run.time.dTime ./ run.DGRID{I};
 
     cudaFwdDifference(mag(X).gputag, mag(I).flux(X).gputag, I, fluxFactor);
     mag(X).applyStatics();

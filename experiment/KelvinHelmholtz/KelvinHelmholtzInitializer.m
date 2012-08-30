@@ -72,10 +72,12 @@ classdef KelvinHelmholtzInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics = [];
+            potentialField = [];
+
             indeces = cell(1,3);
             for i=1:3;  indeces{i} = 1:obj.grid(i); end
                        

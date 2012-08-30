@@ -38,10 +38,10 @@ dphi = dp(1,:);
 
 % ./ dt(1,2:end);
 
-    load('~/sonic_test.mat');
+    load('~/fastma_test.mat');
     stat_test.damp( (stat_test.kx==kandmach(1)), (stat_test.ky==kandmach(2)) ) = mean(damp(end)) / 2;%freq;
     stat_test.dphi( (stat_test.kx==kandmach(1)), (stat_test.ky==kandmach(2)) ) = mean(dphi(1:(end-1))) / 2;
-    save('~/sonic_test.mat','stat_test');
+    save('~/fastma_test.mat','stat_test');
 
 
 end

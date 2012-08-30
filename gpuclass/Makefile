@@ -18,7 +18,7 @@ all: base fluids
 base: GPU_cudamemcpy GPU_free GPU_init GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaTVDStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaWstep cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 	mv cudaCommon.cpp temp
 	rm -f *cpp

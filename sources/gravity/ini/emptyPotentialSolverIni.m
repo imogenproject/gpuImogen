@@ -1,4 +1,4 @@
-function emptyPotentialSolverIni(run, mass, grav)
+function emptyPotentialSolverIni(manager, mass)
 % This function handles the initialization process for non-gravitating cases by setting the 
 % gravitational potential array to zero.
 %
@@ -6,5 +6,5 @@ function emptyPotentialSolverIni(run, mass, grav)
 %>< mass    Mass density. object                                            FluidArray
 %>< grav    Gravitational potential array                                   GravityArray
 
-    grav.array = zeros(mass.gridSize);
+    manager.array = 0;
 end

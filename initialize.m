@@ -345,58 +345,6 @@ try
 catch MERR, loc_initializationError('fades',MERR);
 end
 
-%% .gravity.fixedPotential      Carries over any fixed
-try
-    if isfield(ini.gravity,'fixedPotential')
-        run.gravity.fixedPotential = ini.gravity.fixedPotential;
-    else
-        run.gravity.fixedPotential = 0;
-    end
-
-    gpsize = size(run.gravity.fixedPotential);
-    if gpsize(1) > 1; run.appendInfo('Including fixed gravitational potential',1); end;
-
-catch MERR, loc_initializationError('gravity.vars',MERR);
-end
-
-%% .gravity.CONSTANT
-try
-    if isfield(ini.gravity,'constant')
-        run.gravity.constant = ini.gravity.constant;
-    else
-        run.gravity.constant = 1;
-    end
-
-    if isfield(ini.gravity,'iterMax')
-        run.gravity.iterMax = ini.gravity.iterMax;
-    else
-        run.gravity.iterMax = 100;
-    end;
-
-    if isfield(ini.gravity,'tolerance')
-        run.gravity.tolerance = ini.gravity.tolerance;
-    else
-        run.gravity.tolerance = 1e-6;
-    end;
-
-        if isfield(ini.gravity,'bconditionSource')
-        run.gravity.bconditionSource = ini.gravity.bconditionSource;
-    else
-        run.gravity.bconditionSource = GRAV_BCSOURCE_FULL;
-    end
-
-        run.gravity.mirrorZ = ini.gravity.mirrorZ;
-
-catch MERR, loc_initializationError('gravity.constant',MERR);
-end
-
-%% .gravity.solver                Gravity solver
-try   
-    run.gravity.setSolver(ini.gravity.solver);
-    run.appendInfo('Gravity solver', run.gravity.TYPE);
-catch MERR, loc_initializationError('gravity.solver',MERR);
-end
-
 %% .viscosity                   Artificial viscosity settings
 try
     run.fluid.viscosity.type                      = ini.viscosity.type;

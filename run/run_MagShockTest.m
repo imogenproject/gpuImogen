@@ -5,11 +5,12 @@ starterRun();
 
 
 %--- Initialize test ---%
-run               = MagneticShockTubeInitializer([1024 3 3]);
+run               = MagneticShockTubeInitializer([1024 16 1]);
 
 run.alias         = '';
 run.info          = 'Magnetic shock tube test';
 run.notes         = '';
+run.iterMax = 1000;
 
 run.gpuDeviceNumber = 0;
 run.bcMode.x = 'const';

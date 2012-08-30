@@ -1,4 +1,4 @@
-function resultsHandler(run, mass, mom, ener, mag, grav)
+function resultsHandler(run, mass, mom, ener, mag)
 %   Prepare and manage the storage of intermediate and then final results as a trial is run.
 %
 %>< run     Imogen Run manager object.                                          ImogenManager
@@ -76,8 +76,8 @@ function resultsHandler(run, mass, mom, ener, mag, grav)
                 else sl.magZ = []; sl.magY = []; sl.magX = [];
                 end
                 
-                if (run.gravity.ACTIVE && numel(grav.array) > 1)
-                    sl.grav = run.save.getSaveSlice(grav.array, i);
+                if (run.selfGravity.ACTIVE && numel(run.selfGravity.array) > 1)
+                    sl.grav = run.save.getSaveSlice(run.selfGravity.array, i);
                 else sl.grav = []; 
                 end
                 
@@ -101,8 +101,8 @@ function resultsHandler(run, mass, mom, ener, mag, grav)
                     if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                     try
-                        eval( [sliceName ' = sl;'] );
-                        eval( ['save(''' fileName ''',''' sliceName ''');' ] );
+                        brainDamagedIdioticWorkaround(sliceName, sl);
+                        save(fileName, sliceName);
                     catch MERR %#ok<NASGU>
                         fprintf('Unable to save. Skipping');
                     end
@@ -133,7 +133,6 @@ function resultsHandler(run, mass, mom, ener, mag, grav)
         fprintf(fid, '\n\n---+++ Momentum\n%s',    ImogenRecord.valueToString(mom) );
         fprintf(fid, '\n\n---+++ Energy\n%s',      ImogenRecord.valueToString(ener) );
         fprintf(fid, '\n\n---+++ Magnet\n%s',      ImogenRecord.valueToString(mag) );
-        fprintf(fid, '\n\n---+++ Gravity\n%s',     ImogenRecord.valueToString(grav) );
         fclose(fid);
         
             
@@ -205,7 +204,7 @@ function resultsHandler(run, mass, mom, ener, mag, grav)
         end
 
         %--- Print Gravity solver information ---%
-        if ~isempty(run.gravity.info), fprintf(fid, ['\n---++ Gravity\n' run.gravity.info]);
+        if ~isempty(run.selfGravity.info), fprintf(fid, ['\n---++ Gravity\n' run.selfGravity.info]);
         else fprintf(fid, '   * Gravity solver performed without error.');
         end
         fprintf(fid, '\n%%ENDTWISTY%%\n');
@@ -220,6 +219,12 @@ function resultsHandler(run, mass, mom, ener, mag, grav)
     labBarrier(); % Block all labs until lab 1 has finished saving
 
     % Save images
-    run.image.imageSaveHandler(mass, mom, ener, mag, grav);
+    run.image.imageSaveHandler(mass, mom, ener, mag);
     
+end
+
+function brainDamagedIdioticWorkaround(sliceName, sl)
+
+assignin('caller',sliceName, sl);
+
 end

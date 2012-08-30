@@ -1,4 +1,4 @@
-function relaxingFluid(run, mass, mom, ener, mag, grav, X)
+function relaxingFluid(run, mass, mom, ener, mag, X)
 %   This routine is responsible for the actual fluid fluxing. It utilizes the Relaxed, Total 
 %   Variation Diminishing (TVD), Monotone Upwind Scheme for Fluid Dynamics (MUSCL) scheme for
 %   non-linear fluxing terms. The relaxation technique ensures that the non-linear function
@@ -9,7 +9,6 @@ function relaxingFluid(run, mass, mom, ener, mag, grav, X)
 %>< mom      momentum density gputag (cell)                                            FluidArray(3)
 %>< ener     energy density gputag (cell)                                              FluidArray
 %>< mag      magnetic field (face)                                                    MagnetArray(3)
-%>< grav     gravitational potential                                                  GravityArray
 %>> X        vector index of current fluxing direction (1,2,or 3)                     int
     %--- Initialize ---%
 
@@ -45,7 +44,7 @@ cudaArrayAtomic(mass.store.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
                                 run.GAMMA, run.pureHydro);
 
 
-cudaTVDStep(mass.store.gputag, ener.store.gputag, ...
+cudaFluidTVD(mass.store.gputag, ener.store.gputag, ...
             mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...
             mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
             pressa, ...

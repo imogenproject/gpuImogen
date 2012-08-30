@@ -58,9 +58,9 @@ classdef TimeManager < handle
             
             % Skips calculating the timestep if this is the second portion of the step and the 
             % timestep update mode is one per iteration and not every step.
-            if (fluxDirection > 1 && obj.updateMode ~= ENUM.TIMEUPDATE_PER_STEP)
-                return; 
-            end
+%            if (fluxDirection > 1 && obj.updateMode ~= ENUM.TIMEUPDATE_PER_STEP)
+%                return; 
+%            end
             
             cmax        = 1e-2; % Min threshold to prevent excessively large timesteps.
             gridIndex   = 0;    % Defaults max velocity direction to invalid error value.
@@ -90,9 +90,9 @@ classdef TimeManager < handle
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
             %           accounting for maximum simulation time.
             obj.dTime = obj.CFL*obj.parent.MINDGRID(gridIndex)/cmax;
-            newTime   = obj.time + (obj.updateMode + 1)*obj.dTime;
+            newTime   = obj.time + obj.dTime;
             if (newTime > obj.TIMEMAX)
-                obj.dTime = (obj.TIMEMAX - obj.time)/(obj.updateMode + 1);
+                obj.dTime = (obj.TIMEMAX - obj.time);
                 newTime   = obj.TIMEMAX;
             end
             obj.time        = newTime;

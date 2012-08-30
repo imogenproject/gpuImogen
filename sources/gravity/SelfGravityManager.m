@@ -1,4 +1,4 @@
-classdef GravityManager < handle
+classdef SelfGravityManager < handle
 % This is the management class for the potential solver. This is a singleton class to be accessed 
 % using the getInstance() method and not instantiated directly. Currently the gravitational code is
 % setup for a gravitational constant, G, of one.
@@ -21,14 +21,14 @@ classdef GravityManager < handle
     iterMax;            % Max number of iterations before gravity solver stops          double
     tolerance;          % Escape tolerance for the iterative solver                     double
 
-    fixedPotential;     % Adds a predefined fixed potential to any solved-for potential sparse
-
     solve;              % Function handle to the potential solver                       handle
-    initialize;         % Initialize function handle for gravitation solver             handle
+    solverInit;
 
     bconditionSource;   % Determines use of full or interpolated boundary conditions    string
 
     mirrorZ            % If true creates BCs with mass mirrored across lower XY plane  bool [false]
+
+    array;
 
     TYPE;               % Gravity solver type enumeration                               str
     end%PUBLIC
@@ -62,6 +62,7 @@ function createSparseMatrix(obj, grid, dgrid)
                 poissonBlockILU(obj.laplacianMatrix, .05, blockSize, [prod(grid) prod(grid)]);
 
         end
+
 %___________________________________________________________________________________________________ setSolver
 % Attaches the correct solver function to the solve handle property as specified by the input type.
         function setSolver(obj, type)
@@ -71,27 +72,27 @@ function createSparseMatrix(obj, grid, dgrid)
                 %-----------------------------------------------------------------------------------
                 case ENUM.GRAV_SOLVER_EMPTY
                     obj.solve           = @emptyPotentialSolver;
-                    obj.initialize      = @emptyPotentialSolverIni;
+                    obj.solverInit      = @emptyPotentialSolverIni;
                     obj.pMatrixActive   = false;
                 %-----------------------------------------------------------------------------------
                 case ENUM.GRAV_SOLVER_BICONJ
                     obj.solve           = @bicgstabPotentialSolver;
-                    obj.initialize      = @bicgstabPotentialSolverIni;
+                    obj.solverInit      = @bicgstabPotentialSolverIni;
                     obj.pMatrixActive   = true;
                 case ENUM.GRAV_SOLVER_GPU
                     obj.solve           = @bicgstabPotentialSolver_GPU;
-                    obj.initialize      = @bicgstabPotentialSolverIni_GPU;
+                    obj.solverInit      = @bicgstabPotentialSolverIni_GPU;
                     obj.pMatrixActive   = false;
                %-----------------------------------------------------------------------------------
                 case ENUM.GRAV_SOLVER_MULTIGRID
                     obj.solve           = @multigridPotentialSolver;
-                    obj.initialize      = @multigridPotentialSolverIni;
+                    obj.solverInit      = @multigridPotentialSolverIni;
                     obj.pMatrixActive   = false;
                 %-----------------------------------------------------------------------------------
                 otherwise
                     obj.type            = ENUM.GRAV_SOLVER_EMPTY;
                     obj.solve           = @emptyPotentialSolver;
-                    obj.initialize      = @emptyPotentialSolverIni;
+                    obj.solverInit      = @emptyPotentialSolverIni;
                     obj.pMatrixActive   = false;
             end
                 
@@ -101,23 +102,27 @@ function createSparseMatrix(obj, grid, dgrid)
 %___________________________________________________________________________________________________ solvePotential
 % Actual method call for finding the gravitational potential for a given mass distribution. Solver
 % has an initial abort statement that exits if the gravitational solver is not active for a run.
-        function solvePotential(obj, run, mass, grav)
-            if ~obj.ACTIVE; return; end
+        function solvePotential(obj, mass)
+            if ~obj.ACTIVE; obj.array = []; return; end
             
-            if (run.time.iteration == 0) && strcmp(obj.TYPE, ENUM.GRAV_SOLVER_EMPTY)
-                grav.array = obj.fixedPotential;
-            end
-
             if ~strcmp(obj.TYPE, ENUM.GRAV_SOLVER_EMPTY)
-                grav.array = obj.fixedPotential + obj.solve(run, mass.array, mass.gridSize, 0);
+                obj.array = obj.solve(run, mass.array, mass.gridSize, 0);
             end
-
 
         end
 
-%        function mainInitialize(obj, mass, grav)
-            % 
- %       end
+        function initialize(obj, initialConditions, mass)
+
+            obj.setSolver(initialConditions.type);
+            obj.constant         = initialConditions.constant;
+            obj.iterMax          = initialConditions.iterMax;
+            obj.tolerance        = initialConditions.tolerance;
+            obj.bconditionSource = initialConditions.bconditionSource;
+
+            obj.mirrorZ          = initialConditions.mirrorZ;
+
+            obj.solverInit(obj, mass);
+        end
 
     end%PUBLIC
      
@@ -126,15 +131,14 @@ function createSparseMatrix(obj, grid, dgrid)
         
 %___________________________________________________________________________________________________ GravityManager
 % Creates a new GravityManager instance and intializes it with default settings.
-        function obj = GravityManager() 
+        function obj = SelfGravityManager() 
             obj.setSolver( ENUM.GRAV_SOLVER_EMPTY );
             obj.ACTIVE      = false;
-            obj.initialize  = @grav_ini_nonGravitational;
+            obj.solverInit  = @grav_ini_nonGravitational;
 
             obj.tolerance   = 1e-10;
             obj.iterMax     = 100;
             obj.constant    = 1;
-            obj.fixedPotential = 0;
 
             obj.bconditionSource = ENUM.GRAV_BCSOURCE_FULL;
         end
@@ -150,7 +154,7 @@ function createSparseMatrix(obj, grid, dgrid)
         function singleObj = getInstance()
             persistent instance;
             if isempty(instance) || ~isvalid(instance) 
-                instance = GravityManager();
+                instance = SelfGravityManager();
             end
             singleObj = instance;
         end

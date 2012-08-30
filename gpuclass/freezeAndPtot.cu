@@ -26,7 +26,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ( (nrhs!=10) && (nrhs!=2))
      mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, 1)");
-
   // Get GPU array pointers
   int direction = (int)*mxGetPr(prhs[9]);
 
@@ -41,7 +40,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
   gridsize.x = arraySize.y;
-  gridsize.y = arraySize.z;
+  gridsize.y = 1; 
+  gridsize.z = 1;
 
   double **ptot = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1); // ptotal array
 
@@ -54,11 +54,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   fref[4] = 1;
 
   double **freezea = makeGPUDestinationArrays(&fref[0], &plhs[1], 1); // freeze array
-
+return;
   int ispurehydro = (int)*mxGetPr(prhs[9]);
 
+printdim3("arraysize", arraySize);
+printdim3("blocksize", blocksize);
+printdim3("gridsize", gridsize);
+printgputag("mass (reference)", (int64_t *)mxGetData(prhs[0]));
+printgputag("freeze array", fref);
+printf("Actual freeze array pointer is %li\n", freezea[0]);
+
   if(ispurehydro) {
-    cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4],  *mxGetPr(prhs[8]), freezea[0], ptot[0], arraySize.x);
+//    cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4],  *mxGetPr(prhs[8]), freezea[0], ptot[0], arraySize.x);
 //                                                   (*rho,    *E,      *px,     *py,     *pz,      gam,              *freeze,  *ptot,  nx)
   } else {
     cukern_FreezeSpeed_mhd<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], *mxGetPr(prhs[8]), freezea[0], ptot[0], arraySize.x);

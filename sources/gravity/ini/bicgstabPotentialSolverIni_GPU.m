@@ -1,4 +1,4 @@
-function bicgstabPotentialSolverIni(run, mass, grav)
+function bicgstabPotentialSolverIni_GPU(manager, mass)
 % This function initializes the bicgstab solver; It prepares the coefficient matrix and
 % the preconditioner
 %
@@ -6,8 +6,8 @@ function bicgstabPotentialSolverIni(run, mass, grav)
 %>< mass        Mass density                                                    FluidArray
 %>< grav        Gravitational potential                                         GravityArray
 
-run.gravity.createSparseMatrix(mass.gridSize, [run.DGRID{1} run.DGRID{2} run.DGRID{3}]);
+%run.gravity.createSparseMatrix(mass.gridSize, [run.DGRID{1} run.DGRID{2} run.DGRID{3}]);
 
-grav.array = zeros(mass.gridSize);
+grav.array = GPU_Type(zeros(mass.gridSize));
 
 end

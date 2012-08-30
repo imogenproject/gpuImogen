@@ -11,15 +11,10 @@ function imogen(icfile)
 %>> statics     Static arrays with lookup to static values.                 struct
 
     load(icfile);
-    massDen = IC.mass;
-    momDen  = IC.mom;
-    enerDen = IC.ener;
-    magnet  = IC.magnet;
     ini     = IC.ini;
     statics = IC.statics;
-
+    
     % Recover memory and disk used to store ICs
-    clear IC;
     system(['rm -f ' icfile ]);
 
     %--- Parse initial parameters from ini input ---%
@@ -33,51 +28,49 @@ function imogen(icfile)
     run.preliminary();
 
     run.save.logPrint('Creating simulation arrays...\n');
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, massDen, run, statics);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, enerDen, run, statics);
-    grav = GravityArray(ENUM.GRAV, run, statics);
+    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, IC.mass, run, statics);
+    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, IC.ener, run, statics);
     mom  = FluidArray.empty(3,0);
     mag  = MagnetArray.empty(3,0);
     for i=1:3
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, momDen(i,:,:,:), run, statics); 
+        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, IC.mom(i,:,:,:), run, statics); 
         if run.pureHydro == false;
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, magnet(i,:,:,:), run, statics);
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, IC.magnet(i,:,:,:), run, statics);
         else
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
         end
-
     end
+    run.selfGravity.initialize(IC.selfGravity, mass);
+    run.potentialField.initialize(IC.potentialField);
 
     %--- Pre-loop actions ---%
-    clear('massDen','momDen','enerDen','magnet','ini','statics');    
-    run.initialize(mass, mom, ener, mag, grav);
+    clear('IC', 'ini', 'statics');    
+    run.initialize(mass, mom, ener, mag);
     
-    resultsHandler(run, mass, mom, ener, mag, grav);
+    resultsHandler(run, mass, mom, ener, mag);
     run.time.iteration  = 1;
     direction           = [1 -1];
 
     run.save.logPrint('Beginning simulation loop...\n');
 
     clockA = clock;
-
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
-        %run.time.updateUI();
-        for i=1:2 % Two timesteps per iteration
-            run.time.update(mass, mom, ener, mag, i);
-            flux(run, mass, mom, ener, mag, grav, direction(i));
+        run.time.update(mass, mom, ener, mag, i);
+
+        for i=1:2 % Two timesteps per iteration, forward & backward
+            flux(run, mass, mom, ener, mag, direction(i));
             treadmillGrid(run, mass, mom, ener, mag);
-            run.gravity.solvePotential(run, mass, grav);
-            source(run, mass, mom, ener, mag, grav);
+            if i == 1; source(run, mass, mom, ener, mag); end
         end
 
         %--- Intermediate file saves ---%
-        resultsHandler(run, mass, mom, ener, mag, grav);
+        resultsHandler(run, mass, mom, ener, mag);
         run.time.step();
     end
     %%%=== END MAIN LOOP ========================================================================%%%
-    fprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
-                                          etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) );
+    run.save.logPrint(sprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
+                                     etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
     %error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();

@@ -4,17 +4,20 @@
 starterRun();
 
 %--- Initialize test ---%
-run             = AdvectionInitializer([512 512 1]);
-run.iterMax     = 10000;
+run             = AdvectionInitializer([1024 1024 1]);
+run.iterMax     = 10;
 run.info        = 'Advection test.';
 run.notes       = 'Simple advection test in the x-direction.';
-run.alias = 'TEST'
+run.alias = 'TEST';
 
 run.image.interval = 25;
 %run.image.mass = true;
 
+run.activeSlices.x = false;
+run.activeSlices.xyz = false;
+
 run.ppSave.dim1 = 100;
-run.ppSave.dim2 = 12.5;
+run.ppSave.dim2 = 100;
 
 run.gpuDeviceNumber = 0;
 
@@ -30,23 +33,13 @@ run.waveType = 'sound';
 run.waveAmplitude = .001;
 
 % number of transverse wave periods in Y and Z directions
-run.waveK    = [0 1 0];
+run.waveK    = [1 1 0];
 
 run.numWavePeriods = 4;
 
 %--- Run tests ---%
 if (true)
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
-
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
+    icfile = run.saveInitialCondsToFile();
     imogen(icfile);
 end
 

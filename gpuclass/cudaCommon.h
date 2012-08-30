@@ -19,6 +19,10 @@ double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, 
 double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany);
 void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname);
 
+void printdim3(char *name, dim3 dim);
+void printgputag(char *name, int64_t *tag);
+
+
 #define FINITEDIFFX_PREAMBLE \
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\
 int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);\

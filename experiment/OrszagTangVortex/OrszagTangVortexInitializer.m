@@ -69,7 +69,7 @@ classdef OrszagTangVortexInitializer < Initializer
         function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics         = [];
+            statics         = StaticsInitializer(obj.grid);
 
             obj.dGrid       = 1./obj.grid;
             mass            = 25/(36*pi)*ones(obj.grid);

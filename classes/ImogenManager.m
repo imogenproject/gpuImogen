@@ -33,14 +33,23 @@ classdef ImogenManager < handle
         
         %--- Manager Classes ---%
         bc;             % Manages boundary conditions.                              BCManager
-        image;          % Manages image generation and saving.                      ImageManager
-        save;           % Manages updating and saving data.                         SaveManager
+
+        %--- Core operations: Timestep control, conservative CFD/MHD
         time;           % Manages temporal actions.                                 TimeManager
-        gravity;        % Manages potential solver.                                 GravityManager
-        treadmill;      % Manages treadmill actions.                                TreadmillManager
         fluid;          % Manages fluid routines.                                   FluidManager
         magnet;         % Manages magnetic routines.                                MagnetManager
+
+        %--- Source/Sink or nonideal behavior control
+        selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
+        potentialField; % Manages a scalar potential                                PotentialFieldManager
+        treadmill;      % Manages treadmill actions.                                TreadmillManager
+
+        %--- In transition
         parallel;       % Manages parallel processing.                              HaloManager class
+
+        %--- Saving/output
+        image;          % Manages image generation and saving.                      ImageManager
+        save;           % Manages updating and saving data.                         SaveManager
     end%PUBLIC
     
 %===================================================================================================
@@ -133,9 +142,8 @@ classdef ImogenManager < handle
 %___________________________________________________________________________________________________ initialize
 % Run pre-simulation initialization actions that require already initialized initial conditions for
 % the primary array objects.
-        function initialize(obj, mass, mom, ener, mag, grav)
-            obj.gravity.initialize(obj, mass, grav);
-            obj.gravity.solvePotential(obj, mass, grav);
+        function initialize(obj, mass, mom, ener, mag)
+%            obj.gravity.initialize(obj, mass);
             
             obj.fluid.radiation.initialize(obj, mass, mom, ener, mag);
         end
@@ -312,7 +320,7 @@ classdef ImogenManager < handle
         function initializeMode(obj, modeStruct)
             if ( isempty(modeStruct) || ~isstruct(modeStruct) ); return; end
             
-            modes = {'fluid','magnet','gravity'};
+            modes = {'fluid','magnet'};
             for i=1:length(modes)
                 if isfield(modeStruct, modes{i})
                     obj.(modes{i}).ACTIVE = modeStruct.(modes{i});
@@ -377,11 +385,16 @@ classdef ImogenManager < handle
             obj.time        = TimeManager.getInstance();        obj.time.parent         = obj;
             obj.save        = SaveManager.getInstance();        obj.save.parent         = obj;
             obj.image       = ImageManager.getInstance();       obj.image.parent        = obj;
-            obj.gravity     = GravityManager.getInstance();     obj.gravity.parent      = obj;
+
+            obj.potentialField = PotentialFieldManager.getInstance(); obj.potentialField.parent = obj;
+            obj.selfGravity = SelfGravityManager.getInstance(); obj.selfGravity.parent  = obj;
             obj.treadmill   = TreadmillManager.getInstance();   obj.treadmill.parent    = obj;
+
             obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;
             obj.magnet      = MagnetManager.getInstance();      obj.magnet.parent       = obj;
+
             obj.parallel    = ParallelManager.getInstance();    obj.parallel.parent     = obj;
+
             obj.paths       = Paths();
             obj.info        = cell(30,2);
             obj.infoIndex   = 1;

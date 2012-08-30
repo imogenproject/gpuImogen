@@ -62,7 +62,7 @@ classdef BonnerEbertInitializer < Initializer
             
             obj.gravity.solver      = 'biconj';
 
-            obj.gamma               = 2; % Imogen gamma
+            obj.gamma               = 5/3; % Imogen gamma
 
             obj.rho0                = .1;
             obj.sphereGAMMA         = 1;
@@ -105,7 +105,7 @@ classdef BonnerEbertInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField] = calculateInitialConditions(obj)
             
             %--- Ensure that the grid dimensions are even. ---%
             %       Even grid size means that the star will be correctly placed in the center cell.
@@ -140,6 +140,7 @@ classdef BonnerEbertInitializer < Initializer
                                 + 0.5*squeeze(sum(mag .* mag, 1));              % magnetic energy                    
                         
             statics = [];
+            potentialField = [];
         end
         
     end%PROTECTED

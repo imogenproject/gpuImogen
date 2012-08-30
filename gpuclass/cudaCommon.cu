@@ -92,3 +92,12 @@ mexErrMsgTxt("Forcing program halt due to CUDA error");
 
 }
 
+void printdim3(char *name, dim3 dim)
+{
+printf("dim3 %s is [%i %i %i]\n", name, dim.x, dim.y, dim.z);
+}
+
+void printgputag(char *name, int64_t *tag)
+{
+printf("gputag %s is [*=%lu dims=%lu size=(%lu %lu %lu)]\n", name, tag[0], tag[1], tag[2], tag[3], tag[4]);
+}

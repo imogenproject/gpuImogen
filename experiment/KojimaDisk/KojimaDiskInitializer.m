@@ -110,7 +110,8 @@ classdef KojimaDiskInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+            selfGravity = [];
 
             if (obj.grid(3) > 1)
                 if obj.useZMirror == 1
@@ -154,19 +155,21 @@ classdef KojimaDiskInitializer < Initializer
                         + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
                         + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
             
-statics = StaticsInitializer();
+statics = StaticsInitializer(obj.grid);
 
-statics.setFluid_allConstantBC(mass, ener, mom, 1);
+%statics.setFluid_allConstantBC(mass, ener, mom, 1);
 %statics.setMag_allFadeBC(mag, 1, 25);
 
-statics.setFluid_allConstantBC(mass, ener, mom, 2);
+%statics.setFluid_allConstantBC(mass, ener, mom, 2);
 %statics.setMag_allFadeBC(mag, 2, 25);           
- 
+
+            potentialField = PotentialFieldInitializer();
+
             if obj.useZMirror == 1
-                obj.gravity.fixedPotential = grav_GetPointPotential(obj.grid, tempd, ...
+                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
                 [obj.grid(1)/2 obj.grid(2)/2 0] + [.5 .5 0], 1, obj.pointRadius); % Temporary kludge
             else
-                obj.gravity.fixedPotential = grav_GetPointPotential(obj.grid, tempd, ...
+                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
                 obj.grid/2 + [.5 .5 .5], 1, obj.pointRadius); % Temporary kludge
             end
         end

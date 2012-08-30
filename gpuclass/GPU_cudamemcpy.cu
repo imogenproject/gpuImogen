@@ -20,6 +20,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if ((nlhs == 1) & (nrhs==1)) {
     // double -> GPU array
     // It is very important that this all be right because all GPU stuff originates from here.
+
+    // prhs[0]: Matlab array
+    // plhs[0]: returned GPUtag
+    // prototypical call: gputag = GPU_cudamemcpy(rand(128));
     double *from = mxGetPr(prhs[0]);
 
     mwSize dims[2]; dims[0] = 5; dims[1] = 1;
@@ -49,6 +53,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   if((nlhs == 1) & (nrhs == 2)) { 
     // GPU array -> double array or GPU array -> GPU array if numel(prhs[1]) == 1
+    // plhs[0]: returned value
+    // prhs[0]: input array (either double array or gputag
+    // prhs[1]: input numel (gpu -> gpu) or dimensions (gpu -> double)
     int ndims = mxGetNumberOfElements(prhs[1]);
 
     if(ndims > 1) {

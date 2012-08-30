@@ -104,10 +104,12 @@ classdef BowShockInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         % Returns the initial conditions for a bow shock simulation
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
- 
+            potentialField = [];
+            selfGravity = [];
+
             %--- Background Values ---%
             mass        = zeros(obj.grid);
             mom         = zeros([3 obj.grid]);

@@ -1,4 +1,4 @@
-function source(run, mass, mom, ener, mag, grav)
+function source(run, mass, mom, ener, mag)
 % This function sources the non-conservative terms in the MHD equations like gravitational potential
 % and radiation terms. Effectively it provides the means to add terms that cannot be brought within 
 % the del operator, which is the foundation of the spatial fluxing routines.
@@ -8,12 +8,16 @@ function source(run, mass, mom, ener, mag, grav)
 %>< mom			momentum density                                                FluidArray(3)
 %>< ener        energy density                                                  FluidArray
 %>< mag         magnetic field density                                          FluidArray(3)
-%>< grav		gravitational potential                                         GravityArray
+
+    %--- External scalar potential (e.g. non self gravitating component) ---%
+    if run.potentialField.ACTIVE
+        %cudaApplyScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, 2*run.time.dtime, [run.dGrid{1} run.dGrid{2} run.dGrid{3}], run.fluid.minmass*6);
+    end
 
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.
-    if run.gravity.ACTIVE
+    if run.selfGravity.ACTIVE
         enerSource = zeros(run.gridSize);
         for i=1:3
             momSource       = run.time.dTime*mass.thresholdArray ...

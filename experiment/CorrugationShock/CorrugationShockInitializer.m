@@ -125,11 +125,14 @@ classdef CorrugationShockInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         % Returns the initial conditions for a corrugation shock wave according to the settings for
         % the initializer.
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
-        
+        potentialField = [];
+        selfGravity = [];        
+
+
         %--- Attempt to load data from file ---%
             result = [];
             relaxed = [];

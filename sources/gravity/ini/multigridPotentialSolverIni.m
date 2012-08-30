@@ -1,4 +1,4 @@
-function multigridPotentialSolverIni(run, mass, grav)
+function multigridPotentialSolverIni(manager, mass)
 % This function initializes the multigrid potential solver; It generates and stores the finest
 % level position data so that the solver doesn't need to recompute it every time
 %
@@ -8,5 +8,5 @@ function multigridPotentialSolverIni(run, mass, grav)
 
     [rho, poss]           = massQuantization(mass.array, run.gridSize, run.DGRID);
     nlevels               = numel(poss);
-    run.gravity.MG_TOPPOS = poss{nlevels};
+    manager.MG_TOPPOS = poss{nlevels};
 end

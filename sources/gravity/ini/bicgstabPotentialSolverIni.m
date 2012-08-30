@@ -1,4 +1,4 @@
-function bicgstabPotentialSolverIni_GPU(run, mass, grav)
+function bicgstabPotentialSolverIni(manager, mass)
 % This function initializes the bicgstab solver; It prepares the coefficient matrix and
 % the preconditioner
 %
@@ -6,11 +6,8 @@ function bicgstabPotentialSolverIni_GPU(run, mass, grav)
 %>< mass        Mass density                                                    FluidArray
 %>< grav        Gravitational potential                                         GravityArray
 
-%run.gravity.createSparseMatrix(mass.gridSize, [run.DGRID{1} run.DGRID{2} run.DGRID{3}]);
+manager.createSparseMatrix(mass.gridSize, [run.DGRID{1} run.DGRID{2} run.DGRID{3}]);
 
-% FIXME: This needs to start up GPUmat.
-% FIXME: GPUmat needs to be start-able without user interaction
-
-grav.array = zeros(mass.gridSize);
+manager.array = zeros(mass.gridSize);
 
 end

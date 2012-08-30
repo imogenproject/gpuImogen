@@ -79,7 +79,7 @@ classdef MagneticShockTubeInitializer < Initializer
         function [mass, mom, ener, mag, statics, run] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics = [];
+            statics = StaticsInitializer(obj.grid);
             half    = round(obj.grid/2);
             indeces = cell(1,3);
             for i=1:3;  indeces{i} = 1:obj.grid(i); end

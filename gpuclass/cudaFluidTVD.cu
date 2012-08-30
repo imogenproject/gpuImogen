@@ -17,11 +17,16 @@
 #define BLOCKLENP2 62
 #define BLOCKLENP4 64
 
-__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);
-__global__ void cukern_TVDStep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdahf, int nx);
+/*__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);*/
+__global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halflambda, int nx);
+/*__global__ void cukern_TVDStep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdahf, int nx);*/
+__global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double halfLambda, int nx);
 
 __device__ void cukern_FluxLimiter_VanLeer(double deriv[2][BLOCKLENP4], double flux[2][BLOCKLENP4], int who);
 __device__ __inline__ double fluxLimiter_Vanleer(double derivL, double derivR);
+
+__constant__ __device__ double *inputPointers[8];
+__constant__ __device__ double *outputPointers[5];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
@@ -60,10 +65,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if(arraySize.x > 1) {
     if(isPureHydro) {
     //cukern_TVDStep_hydro_uniform                         (*rho,    *E,     *px,      *py,     *pz,     *P,      *Cfreeze, *rhoW,  *enerW,     *pxW,     *pyW,     *pzW,     lambda, nx);
-      cukern_TVDStep_hydro_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[8], *gpu_cf, srcs[9], srcs[10], srcs[11], srcs[12], srcs[13], .5*lambda, arraySize.x);
+      cudaMemcpyToSymbol(inputPointers,  srcs,     5*sizeof(double *), 0, cudaMemcpyHostToDevice);
+      cudaMemcpyToSymbol(outputPointers, &srcs[9], 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
+
+      cukern_TVDStep_hydro_uniform<<<gridsize, blocksize>>>(srcs[8], *gpu_cf, .5*lambda, arraySize.x);
     } else {
     //cukern_TVDStep_mhd_uniform                         (*rho,    *E,      *px,     *py,     *pz,     *bx,     *by,     *bz,     *P,           *Cfreeze, *rhoW,  *enerW,   *pxW,     *pyW,     *pzW, double lambda, int nx);
-      cukern_TVDStep_mhd_uniform<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], *gpu_cf, srcs[9], srcs[10], srcs[11], srcs[12], srcs[13], lambda, arraySize.x);
+      cudaMemcpyToSymbol(inputPointers,  srcs,     8*sizeof(double *), 0, cudaMemcpyHostToDevice);
+      cudaMemcpyToSymbol(outputPointers, &srcs[9], 5*sizeof(double *), 0, cudaMemcpyHostToDevice);      
+      cukern_TVDStep_mhd_uniform  <<<gridsize, blocksize>>>(srcs[8], *gpu_cf, .5*lambda, arraySize.x);
+
     }
   }
 
@@ -74,15 +85,14 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 
 /* blockidx.{xy} is our index in {yz}, and gridDim.{xy} gives the {yz} size */
 /* Expect invocation with n+4 threads */
-__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx)
+__global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halfLambda, int nx)
 {
-double Cinv, rhoinv;
+double c_f, velocity;
 double q_i[5];
 double b_i[3];
 double w_i;
 __shared__ double fluxLR[2][BLOCKLENP4];
 __shared__ double derivLR[2][BLOCKLENP4];
-double *fluxdest;
 
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
@@ -95,36 +105,36 @@ int i;
 bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
 
 /* Step 1 - calculate W values */
-Cinv = 1.0/Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
+c_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
 
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
-    rhoinv = 1.0/rho[x]; /* Preload all these out here */
-    q_i[0] = rho[x];
-    q_i[1] = E[x];       /* So we avoid multiple loops */
-    q_i[2] = px[x];      /* over them inside the flux loop */
-    q_i[3] = py[x];
-    q_i[4] = pz[x];
-    b_i[0] = bx[x];
-    b_i[1] = by[x];
-    b_i[2] = bz[x];
+    q_i[0] = inputPointers[0][x];
+    q_i[1] = inputPointers[1][x];       /* So we avoid multiple loops */
+    q_i[2] = inputPointers[2][x];      /* over them inside the flux loop */
+    q_i[3] = inputPointers[3][x];
+    q_i[4] = inputPointers[4][x];
+    b_i[0] = inputPointers[5][x];
+    b_i[1] = inputPointers[6][x];
+    b_i[2] = inputPointers[7][x];
+    velocity = q_i[2]/q_i[0];
 
     /* rho, E, px, py, pz going down */
     /* Iterate over variables to flux */
     for(i = 0; i < 5; i++) {
         /* Step 1 - Calculate raw fluxes */
         switch(i) {
-            case 0: w_i = q_i[2] * Cinv; break;
-            case 1: w_i = (q_i[2] * (q_i[1] + P[x]) - b_i[0]*(q_i[2]*b_i[0]+q_i[3]*b_i[1]+q_i[4]*b_i[2]) ) * (rhoinv*Cinv); break;
-            case 2: w_i = (q_i[2]*q_i[2]*rhoinv + P[x] - b_i[0]*b_i[0])*Cinv; break;
-            case 3: w_i = (q_i[2]*q_i[3]*rhoinv        - b_i[0]*b_i[1])*Cinv; break;
-            case 4: w_i = (q_i[2]*q_i[4]*rhoinv        - b_i[0]*b_i[2])*Cinv; break;
+            case 0: w_i = q_i[2]; break;
+            case 1: w_i = (velocity * (q_i[1] + P[x]) - b_i[0]*(q_i[2]*b_i[0]+q_i[3]*b_i[1]+q_i[4]*b_i[2])/q_i[0] ); break;
+            case 2: w_i = (velocity*q_i[2] + P[x] - b_i[0]*b_i[0]); break;
+            case 3: w_i = (velocity*q_i[3]        - b_i[0]*b_i[1]); break;
+            case 4: w_i = (velocity*q_i[4]        - b_i[0]*b_i[2]); break;
             }
 
         /* Step 2 - Decouple to L/R flux */
-        fluxLR[0][threadIdx.x] = 0.5*(q_i[i] - w_i); /* Left  going flux */
-        fluxLR[1][threadIdx.x] = 0.5*(q_i[i] + w_i); /* Right going flux */
+        fluxLR[0][threadIdx.x] = (q_i[i]*c_f - w_i); /* Left  going flux */
+        fluxLR[1][threadIdx.x] = (q_i[i]*c_f + w_i); /* Right going flux */
         __syncthreads();
 
         /* Step 3 - Differentiate fluxes & call limiter */
@@ -146,18 +156,9 @@ while(Xtrack < nx+2) {
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
-            switch(i) {
-                case 0: fluxdest = rhoW; break;
-                case 1: fluxdest = enerW; break;
-                case 2: fluxdest = pxW; break;
-                case 3: fluxdest = pyW; break;
-                case 4: fluxdest = pzW; break;
-                }
-
-            fluxdest[x] -= lambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
-                                      fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  ) / Cinv; 
-
-            }
+            outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
+                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  ); 
+          }
 
         __syncthreads();
         }
@@ -168,15 +169,13 @@ while(Xtrack < nx+2) {
 
 }
 
-
-__global__ void cukern_TVDStep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdahf, int nx)
+__global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double halfLambda, int nx)
 {
 double C_f, velocity;
 double q_i[5];
 double w_i;
 __shared__ double fluxLR[2][BLOCKLENP4];
 __shared__ double derivLR[2][BLOCKLENP4];
-double *fluxdest;
 
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
@@ -194,11 +193,11 @@ C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
-    q_i[0] = rho[x];     /* Preload these out here */
-    q_i[1] = E[x];       /* So we avoid multiple loops */
-    q_i[2] = px[x];      /* over them inside the flux loop */
-    q_i[3] = py[x];
-    q_i[4] = pz[x];
+    q_i[0] = inputPointers[0][x]; /* Preload these out here */
+    q_i[1] = inputPointers[1][x]; /* So we avoid multiple loops */
+    q_i[2] = inputPointers[2][x]; /* over them inside the flux loop */
+    q_i[3] = inputPointers[3][x];
+    q_i[4] = inputPointers[4][x];
     velocity = q_i[2] / q_i[0];
 
     /* rho, E, px, py, pz going down */
@@ -224,28 +223,22 @@ while(Xtrack < nx+2) {
         derivLR[0][threadIdx.x] = fluxLR[0][(threadIdx.x-1)%BLOCKLENP4] - fluxLR[0][threadIdx.x]; /* left derivative */
         derivLR[1][threadIdx.x] = fluxLR[0][threadIdx.x] - fluxLR[0][(threadIdx.x+1)%BLOCKLENP4]; /* right derivative */
         __syncthreads();
-        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);
+        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
+/*        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);*/
         __syncthreads();
 
             /* Right flux */
         derivLR[0][threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][(threadIdx.x-1)%BLOCKLENP4]; /* left derivative */
         derivLR[1][threadIdx.x] = fluxLR[1][(threadIdx.x+1)%BLOCKLENP4] - fluxLR[1][threadIdx.x]; /* right derivative */
         __syncthreads();
-        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1);
+        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
+/*        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1);*/
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
-            switch(i) {
-                case 0: fluxdest = rhoW; break;
-                case 1: fluxdest = enerW; break;
-                case 2: fluxdest = pxW; break;
-                case 3: fluxdest = pyW; break;
-                case 4: fluxdest = pzW; break;
-                }
-
-            fluxdest[x] -= lambdahf * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
-                                      fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  );
+            outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
+                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  );
             }
 
         __syncthreads();
@@ -258,9 +251,6 @@ while(Xtrack < nx+2) {
 }
 
 
-
-// NOTE: This function divides the fluxes by two, as this is NOT done in the left/right decoupling phase
-// in order to avoid any more multiplies by 1/2 than necessary.
 __device__ void cukern_FluxLimiter_VanLeer(double deriv[2][BLOCKLENP4], double flux[2][BLOCKLENP4], int who)
 {
 
@@ -288,3 +278,5 @@ if (isnan(r)) { r = 0.0; }
 
 return r;
 }
+
+
