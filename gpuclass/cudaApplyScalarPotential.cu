@@ -134,7 +134,7 @@ for(z = 0; z < arraysize.z; z++) {
   U[myLocAddr]       = pz[globAddr]; // load pz(z) -> phiA
   __syncthreads();
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
-    E[globAddr]     -= ener[myLocAddr] - deltaphi*U[myLocAddr]; // Store E[x] <- ener - dt *pz * dphi/dz
+    E[globAddr]     += ener[myLocAddr] - deltaphi*U[myLocAddr]; // Store E[x] <- ener - dt *pz * dphi/dz
     pz[globAddr]     = U[myLocAddr] - deltaphi*locrho[myLocAddr]; // store pz <- pz - rho dphi/dz;
   }
 
