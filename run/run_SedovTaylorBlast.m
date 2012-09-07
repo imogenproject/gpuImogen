@@ -15,18 +15,7 @@ run.notes   = 'Just a test...';
 
 %--- Run tests ---%
 if (true)
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
-
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
+    icfile = run.saveInitialCondsToFile();
     imogen(icfile);
 end
 
-enderRun();

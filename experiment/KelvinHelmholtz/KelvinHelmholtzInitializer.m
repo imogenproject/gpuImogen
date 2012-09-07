@@ -52,6 +52,10 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
+
+            obj.bcMode.x = 'circ';
+            obj.bcMode.y = 'circ';
+            obj.bcMode.z = 'circ';
             
             obj.direction        = KelvinHelmholtzInitializer.X;
             obj.massRatio        = 8;
@@ -72,11 +76,12 @@ classdef KelvinHelmholtzInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics = [];
             potentialField = [];
+            selfGravity = [];
 
             indeces = cell(1,3);
             for i=1:3;  indeces{i} = 1:obj.grid(i); end

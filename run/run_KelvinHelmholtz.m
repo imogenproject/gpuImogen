@@ -4,31 +4,21 @@
 starterRun();
 
 %--- Initialize test ---%
-run                 = KelvinHelmholtzInitializer([512 256 1]);
-run.iterMax         = 10000;
+run                 = KelvinHelmholtzInitializer([128 128 32]);
+run.iterMax         = 2000;
 run.direction       = KelvinHelmholtzInitializer.X;
-run.image.interval	= 10;
+run.image.interval	= 25;
 run.image.mass		= true;
 run.image.mach		= true;
+run.activeSlices.xyz = true;
 run.info            = 'Kelvin-Helmholtz instability test.';
 run.notes           = '';
 
-run.gpuDeviceNumber = 0;
+run.gpuDeviceNumber = 2;
 
 %--- Run tests ---%
 if (true)
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
-
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
+    icfile = run.saveInitialCondsToFile();
     imogen(icfile);
 end
 
-enderRun();

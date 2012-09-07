@@ -66,10 +66,12 @@ classdef OrszagTangVortexInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics         = StaticsInitializer(obj.grid);
+            potentialField  = [];
+            selfGravity     = [];
 
             obj.dGrid       = 1./obj.grid;
             mass            = 25/(36*pi)*ones(obj.grid);

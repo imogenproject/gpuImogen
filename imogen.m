@@ -34,7 +34,7 @@ function imogen(icfile)
     mag  = MagnetArray.empty(3,0);
     for i=1:3
         mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, IC.mom(i,:,:,:), run, statics); 
-        if run.pureHydro == false;
+        if run.pureHydro == 0
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, IC.magnet(i,:,:,:), run, statics);
         else
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);

@@ -72,11 +72,13 @@ classdef SodShockTubeInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             obj.runCode           = [obj.runCode upper(obj.direction)];
             statics               = []; % No statics used in this problem
+            potentialField        = [];
+            selfGravity           = [];
             half                  = round(obj.grid/2);
             indices               = cell(1,3);
             for i=1:3

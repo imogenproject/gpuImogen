@@ -23,7 +23,11 @@ function run = initialize(ini)
 %% ===== CHECK IF WE ARE USING THE GPU; START GPU ===== %%
 
 run.useGPU = true;
-run.pureHydro = ini.pureHydro;
+if (ini.pureHydro == true) || (ini.pureHydro == 1)
+    run.pureHydro = 1;
+else
+    run.pureHydro = 0;
+end
 
 %% .bcMode                      Edge condition modes
 try

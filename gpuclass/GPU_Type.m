@@ -75,6 +75,10 @@ classdef GPU_Type < handle
             result = obj.numdims;
         end
 
+        function result = numel(obj)
+            result = prod(obj.asize);
+        end
+
         % Cookie-cutter operations for basic math interpertation
         % Warning, these are very much suboptimal due to excessive memory BW use        
         function y = plus(a, b);

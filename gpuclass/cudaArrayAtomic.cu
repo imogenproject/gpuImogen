@@ -23,7 +23,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
   if (nrhs!=3)
-     mexErrMsgTxt("Wrong number of arguments");
+     mexErrMsgTxt("Wrong number of arguments. Expected form: cudaArrayAtomic(gputag, value, [1: set min, 2: set max, 3: NaN->value])");
 
   // Get GPU array pointers
   double val       = *mxGetPr(prhs[1]);

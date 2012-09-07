@@ -408,7 +408,7 @@ classdef ImogenManager < handle
             
 
             obj.useGPU      = true;
-            obj.pureHydro   = false;
+            obj.pureHydro   = 0;
         end
         
     end%PRIVATE

@@ -64,7 +64,7 @@ for(i = 0; i < howmany; i++) {
 
   cudaError_t fail = cudaMalloc((void **)&rv[0], numel*sizeof(double));
   if(fail != cudaSuccess) {
-    printf("%s\n", cudaGetErrorString(fail));
+    printf("On array %i/%i: %s\n", i+1, howmany, cudaGetErrorString(fail));
     mexErrMsgTxt("makeGPUDestinationArrays: I haz an cudaMalloc fail. And a sad.");
     }
 

@@ -88,7 +88,7 @@ end
 
 
 
-function xchgIndices(dontTurnMagArrays, mass, mom, ener, mag, toex)
+function xchgIndices(isFluidOnly, mass, mom, ener, mag, toex)
 l = [1 2 3];
 l(1)=toex; l(toex)=1;
 
@@ -99,7 +99,7 @@ for i = 1:5
     s{i}.store.arrayIndexExchange(toex, 0);
 end
 
-if dontTurnMagArrays == false
+if isFluidOnly == 0
     s = {mag(1).cellMag, mag(2).cellMag, mag(3).cellMag};
     for i = 1:3
         s{i}.arrayIndexExchange(toex, 1);

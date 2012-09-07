@@ -67,14 +67,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     //cukern_TVDStep_hydro_uniform                         (*rho,    *E,     *px,      *py,     *pz,     *P,      *Cfreeze, *rhoW,  *enerW,     *pxW,     *pyW,     *pzW,     lambda, nx);
       cudaMemcpyToSymbol(inputPointers,  srcs,     5*sizeof(double *), 0, cudaMemcpyHostToDevice);
       cudaMemcpyToSymbol(outputPointers, &srcs[9], 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
-
       cukern_TVDStep_hydro_uniform<<<gridsize, blocksize>>>(srcs[8], *gpu_cf, .5*lambda, arraySize.x);
     } else {
     //cukern_TVDStep_mhd_uniform                         (*rho,    *E,      *px,     *py,     *pz,     *bx,     *by,     *bz,     *P,           *Cfreeze, *rhoW,  *enerW,   *pxW,     *pyW,     *pzW, double lambda, int nx);
       cudaMemcpyToSymbol(inputPointers,  srcs,     8*sizeof(double *), 0, cudaMemcpyHostToDevice);
       cudaMemcpyToSymbol(outputPointers, &srcs[9], 5*sizeof(double *), 0, cudaMemcpyHostToDevice);      
       cukern_TVDStep_mhd_uniform  <<<gridsize, blocksize>>>(srcs[8], *gpu_cf, .5*lambda, arraySize.x);
-
     }
   }
 

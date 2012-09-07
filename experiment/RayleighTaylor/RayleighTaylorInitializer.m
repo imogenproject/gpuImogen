@@ -84,10 +84,13 @@ classdef RayleighTaylorInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity]] = calculateInitialConditions(obj)
 
             %--- Ensure that the grid dimensions are even. ---%
             %       Even grid size means that the star will be correctly placed in the center cell.
+            potentialField = [];
+            selfGravity = [];
+
             for i=1:3
                 if (bitget(obj.grid(i),1) && obj.grid(i) > 1);  obj.grid(i) = obj.grid(i) + 1; end
             end
