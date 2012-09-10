@@ -29,7 +29,6 @@ run.injectorSize = 9;
 run.jetMass = 3;
 run.jetMach = 5;
 
-run.gpuDeviceNumber = 2;
 run.pureHydro = 1;
 
 %--- Run tests ---%

@@ -24,9 +24,13 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         % Select ranks on this node, sort them, chose my gpu # by resultant ordering
         thisnode = ranks(hash == mpiInfo(3));
         [dump idx] = sort(thisnode);
-        mygpu = idx(dump == mpiInfo(2));
-        fprintf('Rank %i on activating GPU number %i\n', mpiInfo(2), mygpu-1);
-        GPU_init(mygpu-1);
+        mygpu = idx(dump == mpiInfo(2)) - 1;
+        fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', mpiInfo(2), mpiInfo(1), getenv('HOSTNAME'), mygpu);
+        GPU_init(mygpu);
+
+%        context = parallel_start();
+
+%        [
     else
         GPU_init(gpuno);
     end

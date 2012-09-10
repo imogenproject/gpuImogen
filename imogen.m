@@ -10,7 +10,7 @@ function imogen(icfile)
 %>> ini         Listing of properties and settings for the run.             struct
 %>> statics     Static arrays with lookup to static values.                 struct
 
-    load(icfile);
+    load(icfile)
     ini     = IC.ini;
     statics = IC.statics;
     

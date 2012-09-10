@@ -12,7 +12,6 @@ run.image.interval  = 50;
 run.image.mass      = true;
 run.iterMax = 20000;
 
-run.gpuDeviceNumber = 0;
 
 run.notes = 'Testing new magnetic flux ordering';
 

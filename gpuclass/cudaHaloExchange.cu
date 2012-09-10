@@ -13,6 +13,7 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 #include "cudaCommon.h"
+#include "parallel_halo_arrays.h"
 
 /* X halo routines */
 /* These are the suck; We have to grab 24-byte wide chunks en masse */
@@ -66,6 +67,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   double *pinnedMem[4];
   double *devPMptr[4];
 
+  pParallelTopology parallelTopo;
 
   for(ctr = 0; ctr < 4; ctr++) {
     fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
@@ -85,45 +87,45 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       cukern_HaloXToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_right_read");
 
-      Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_Double);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
       cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_left_write");
       cukern_LinearToHaloXR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_right_write");
-      }; break
+      }; break;
 
     case 1: { /* Y halo arrangement */
       dim3 blocksize; blocksize.x = 256; blocksize.y = 1; blocksize.z = 1;
       dim3 gridsize; gridsize.x = amd.dim[0]/256; gridsize.y = amd.dim[1]; gridsize.z = 1;
       gridsize.x += gridsize.x*256 < amd.dim[0] ? 1 : 0;
 
-      cukern_HaloYToLinear<<<gridsize, blocksize>>>(array[0], devPMptr[0], amd.dim[0], amd.dim[2]);
+      cukern_HaloYToLinearL<<<gridsize, blocksize>>>(array[0], devPMptr[0], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_read");
-      cukern_HaloYToLinear<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0], amd.dim[2]);
+      cukern_HaloYToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0], amd.dim[2]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_read");
 
-      Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_Double);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
-      cukern_LinearToHaloY<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0], amd.dim[2]);
+      cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_write");
-      cukern_LinearToHaloY<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[2]);
+      cukern_LinearToHaloYR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[2]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_write");
       }; break;
 
-    case 2: {
-      /* Z halo arrangement */
+    case 2: { /* Z halo arrangement */
+      dim3 gridsize, blocksize;
       cudaMemcpy(pinnedMem[0], array[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_read");
+      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_readmemcpy");
       cudaMemcpy(pinnedMem[1], &array[0][amd.numel - numToExchange], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_read");
+      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_readmemcpy");
 
-      Parallel_Exchange_Dim_Contig(parallelTopo, 3, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_Double);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 3, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
       cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_write");
+      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_writememcpy");
       cudaMemcpy(&array[0][amd.numel - numToExchange], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_write");
+      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_writememcpy");
       }; break;
     }
 
@@ -131,7 +133,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     cudaFreeHost(pinnedMem[ctr]);
 
 cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, operation, "array min/max/nan sweeping");
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "array min/max/nan sweeping");
 
 }
 

@@ -19,8 +19,6 @@ run.activeSlices.xyz = false;
 run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 100;
 
-run.gpuDeviceNumber = 0;
-
 % Set a background speed at which the fluid is advected
 run.waveDirection = 1;
 run.backgroundMach = 0;

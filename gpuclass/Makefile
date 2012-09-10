@@ -11,6 +11,13 @@ MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
 
+MPI = /usr/local/packages/openmpi/1.4_gcc-4.4-tm
+PGW = /usr/local/packages/parallel-gateway/pgw-0.1
+
+PAR_INCL = -I$(PGW)/include -I$(MPI)/include
+PAR_LDIR = -L$(PGW)/lib -L$(MPI)/lib
+PAR_LIBS = -lpgw -lmpi
+
 ###############################################################################
 all: base fluids
 	echo "Finished compiling GPU support."
@@ -24,12 +31,19 @@ fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatic
 	rm -f *cpp
 	mv temp cudaCommon.cpp
 
+parallel: cudaHaloExchange
+	echo "Done building parallel support."
+
 kerncommon:
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaCommon.cu -o cudaCommon.cpp
 
 cuda% GPU% directionalMax% freezeAnd%:: kerncommon
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+cudaHaloExchange:
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda $@.cu -o $@.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS) $@.cpp cudaCommon.cpp -o $@
 
 clean:
 	rm -f *mexa64 *cpp

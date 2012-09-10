@@ -1,4 +1,8 @@
 #!/bin/bash
+# 1 = runfile
+# 2 = output stream #
+# 3 = alias
+# 4 = GPU to use
 
 # --- Check for input file argument --- #
 if [ -z "${1}" ]; then
@@ -22,6 +26,11 @@ if [ -z "$3" ]; then
   alias=""
 fi
 
+gpuno=${4}
+if [ -z "$4" ]; then
+  gpuno=0
+fi
+
 # --- Test for results directory --- #
 resDir="${HOME}/Results"
 if [ -d $resDir ]; then
@@ -32,4 +41,4 @@ else
 fi
 
 # --- Execute Imogen --- #
- echo "imogenLoad('${1}','${redirectStr}','${alias}');" | nohup nice matlab -nodisplay -nojvm >& $redirectStr
+ echo "imogenLoad('${1}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >& $redirectStr

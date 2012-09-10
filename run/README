@@ -1,0 +1,6 @@
+RUNNING IMOGEN
+
+./imogen runfile stream# (see more options in 'imogen'): Serial operation, running on localhost
+./parimogen runfile stream# (more options in 'parimogen'): Parallel operation, submitted to Torque/PBS
+
+

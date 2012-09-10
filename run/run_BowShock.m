@@ -13,8 +13,6 @@ run.bcMode.z = 'circ';
 
 run.cfl = .5;
 
-run.gpuDeviceNumber = 0;
-
 %--- Adjustable simulation parameters ---%
 
 % Determine the part of the grid occupied by the obstacle

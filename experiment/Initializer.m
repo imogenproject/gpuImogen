@@ -239,7 +239,7 @@ classdef Initializer < handle
              IC.ini = ini;
 
              icfile = [tempname '.mat'];
-             save(icfile, 'IC');
+             save(icfile, 'IC','-v7.3');
         end
 
 %___________________________________________________________________________________________________ getRunSettings

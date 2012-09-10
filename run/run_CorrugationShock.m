@@ -11,7 +11,6 @@ run.theta       = 20;
 run.sonicMach   = 3;
 run.alfvenMach  = .5;
 
-run.gpuDeviceNumber = 0;
 run.bcMode.x = ENUM.BCMODE_FADE;
 
 run.ppSave.dim2 = .1;

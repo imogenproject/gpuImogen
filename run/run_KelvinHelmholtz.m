@@ -14,8 +14,6 @@ run.activeSlices.xyz = true;
 run.info            = 'Kelvin-Helmholtz instability test.';
 run.notes           = '';
 
-run.gpuDeviceNumber = 2;
-
 %--- Run tests ---%
 if (true)
     icfile = run.saveInitialCondsToFile();

@@ -29,7 +29,6 @@ run.bcMode.z        = ENUM.BCMODE_CONST;
 
 %run.addFade(ceil(grid/2), 16, ENUM.POINT_FADE , true, {ENUM.MOM});
 
-run.gpuDeviceNumber = 0;
 run.pureHydro = true;
 run.cfl = .8;
 

@@ -12,7 +12,6 @@ run.info          = 'Magnetic shock tube test';
 run.notes         = '';
 run.iterMax = 1000;
 
-run.gpuDeviceNumber = 0;
 run.bcMode.x = 'const';
 
 %--- Run tests ---%
