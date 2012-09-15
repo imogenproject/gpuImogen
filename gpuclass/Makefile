@@ -12,7 +12,7 @@ MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
 
 MPI = /usr/local/packages/openmpi/1.4_gcc-4.4-tm
-PGW = /usr/local/packages/parallel-gateway/pgw-0.1
+PGW = /usr/local/packages/parallel-gateway/pgw-trunk
 
 PAR_INCL = -I$(PGW)/include -I$(MPI)/include
 PAR_LDIR = -L$(PGW)/lib -L$(MPI)/lib
