@@ -10,11 +10,7 @@ function result = getVorticity(run, imoArray, divideArray)
 
     %--- Initialization ---%
     N = [3 run.gridSize];
-    if ~isa(divideArray.array,'double') %r2009b: iscodistributed
-        parallel = ParallelManager.getInstance();
-        result = zeros(N, parallel.distribution);
-    else    result = zeros(N);
-    end
+    result = zeros(N);
     
     aX = imoArray(1).dataClone();
     aY = imoArray(2).dataClone();

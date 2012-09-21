@@ -19,7 +19,7 @@ MEX_LIBS  =
 MEX_LDIR = -L$(MATLAB_DIR)/runtime/glnxa64
 
 ###############################################################################
-all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_basicinfo
+all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_scatter mpi_basicinfo
 	echo "Finished!"
 
 %::

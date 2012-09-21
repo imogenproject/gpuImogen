@@ -34,5 +34,16 @@ function source(run, mass, mom, ener, mag)
     if run.fluid.radiation.type ~= ENUM.RADIATION_NONE
         ener.array              = ener.array - run.time.dTime*run.fluid.radiation.solve(run, mass, mom, ener, mag);
     end
+
+    if run.potentialField.ACTIVE | run.selfGravity.ACTIVE | (run.fluid.radiation.type ~= ENUM.RADIATION_NONE)
+        % Oh you better believe we need to synchronize up in dis house
+        GIS = GlobalIndexSemantics();
+        S = {mom(1), mom(2), mom(3), ener};
+        for j = 1:4;
+            cudaHaloExchange(S{j}.gputag, [1 2 3], 1, GIS.topology);
+            cudaHaloExchange(S{j}.gputag, [1 2 3], 2, GIS.topology);
+            cudaHaloExchange(S{j}.gputag, [1 2 3], 3, GIS.topology);
+        end
+    end
     
 end

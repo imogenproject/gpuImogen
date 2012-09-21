@@ -8,7 +8,8 @@ function [version, detailedVersion] = versionInfo()
     %-----------------------------------------------------------------------------------------------
     % Read the version file
     %----------------------
-    fid     = fopen('version.txt');
+
+    fid     = fopen('version.txt','r');
     version = deblank(fgetl(fid));
     modDate = fgetl(fid);
     fclose(fid);

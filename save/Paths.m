@@ -5,7 +5,7 @@ classdef Paths < handle
 	properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
         DEFAULT      = 'def';		% ENUMERATION: "Defaulted" warning
         OVERRIDE     = 'over';		% ENUMERATION: "Override" warning
-        RADIX_BUFFER = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'; % Base 36 Radix
+        RADIX_BUFFER = '0123456789ABCDEF'; % Base 16 Radix
     end%CONSTANT
 
 %===================================================================================================
@@ -66,7 +66,12 @@ classdef Paths < handle
 %___________________________________________________________________________________________________ initialize
         function initialize(obj)
             timeManager             = TimeManager.getInstance();
-            startTime               = timeManager.startTime;
+%timeManager.startTime
+%whos
+%
+            startTime               = mpi_scatter(timeManager.startTime,0);
+%timeManager.startTime
+%whos
             
             obj.containerFolder     = datestr(startTime,'mmmyy');
             obj.makePathUnique(startTime);
@@ -111,8 +116,8 @@ classdef Paths < handle
                 runID = obj.alias;
             end
             
-            timeCode = strcat(obj.encodeBase36(startTime(2)), obj.encodeBase36(startTime(3)), ...
-                              obj.encodeBase36(startTime(4)));
+            timeCode = strcat(obj.encodeBase16(startTime(2)), obj.encodeBase16(startTime(3)), ...
+                              obj.encodeBase16(startTime(4)));
 
             suffix = '';
             if ~isempty(runID)
@@ -120,7 +125,7 @@ classdef Paths < handle
             end
             
             for i=0:10000
-                id = obj.encodeBase36(i-1);
+                id = obj.encodeBase16(i-1);
 
                 folderName = strcat(obj.runCode, '_', timeCode, id, suffix);
                 if ~exist(strcat( obj.container, filesep, folderName), 'dir')
@@ -130,9 +135,9 @@ classdef Paths < handle
             end
         end 
     
-%___________________________________________________________________________________________________ encodeBase36
-% Encodes the number into a base 36 string.
-        function result = encodeBase36(obj, number)
+%___________________________________________________________________________________________________ encodeBase16
+% Encodes the number into a hex string.
+        function result = encodeBase16(obj, number)
             %--- Initialize ---%
             if number == 0
                 result = '0';
@@ -140,11 +145,11 @@ classdef Paths < handle
                 result = '';
             end
 
-            %--- Create Base 36 Number ---%
+            %--- Create Base 16 Number ---%
             while number > 0
                 index  = mod(number, length(obj.RADIX_BUFFER));
                 result = strcat(obj.RADIX_BUFFER(index + 1), result);
-                number = floor(number/36);
+                number = floor(number/16);
             end
         end
         

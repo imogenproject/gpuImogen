@@ -10,11 +10,7 @@ function result = getCompression(run, array, divideArray)
 
 
     %--- Initialization ---%
-	if iscodistributed(divideArray.array)
-		result = codistributed.zeros(run.gridSize, run.parallel.distribution);
-	else
-		result = zeros(run.gridSize);
-	end
+	result = zeros(run.gridSize);
 	
 	%--- Calculate compression ---%
     for i=1:3

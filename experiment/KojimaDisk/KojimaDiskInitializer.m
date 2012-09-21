@@ -122,17 +122,14 @@ classdef KojimaDiskInitializer < Initializer
 %            else
 %                obj.bcMode.z    = ENUM.BCMODE_CONST;
 %            end
-            
-            %--- Ensure that the grid dimensions are even. ---%
-            %       Even grid size means that the star will be correctly placed in the center cell.
-            for i=1:2
-                if (bitget(obj.grid(i),1) && obj.grid(i) > 1); obj.grid(i) = obj.grid(i) + 1; end
-            end
 
-            mom     = zeros([3 obj.grid]);
+            GIS = GlobalIndexSemantics();
+            mygrid = GIS.pMySize;
+            
+            mom     = zeros([3 mygrid]);
             
             [mass, mom(1,:,:,:), mom(2,:,:,:), dGrid] = kojimaDisc1(obj.q, obj.gamma, ...
-                            obj.radiusRatio, obj.grid, 1, 1, obj.edgePadding, obj.pointRadius, ...
+                            obj.radiusRatio, obj.grid, 1, obj.edgePadding, obj.pointRadius, ...
                             obj.bgDensityCoeff, obj.diskMomDist, obj.useZMirror);
 
             obj.appendInfo(sprintf('Automatically set dGrid uniformly to %d', dGrid));
@@ -143,7 +140,7 @@ classdef KojimaDiskInitializer < Initializer
  
             obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
             mass    = max(mass, obj.minMass);
-            mag     = zeros([3 obj.grid]);
+            mag     = zeros([3 mygrid]);
             
             if obj.inflatePressure
                 minDiskMass = minFinderND(mass(mass > obj.minMass));
@@ -165,13 +162,13 @@ statics = [];%StaticsInitializer(obj.grid);
 
             potentialField = PotentialFieldInitializer();
 
-           if obj.useZMirror == 1
-               potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
-               [obj.grid(1)/2 obj.grid(2)/2 0] + [.5 .5 0], 1, obj.pointRadius); % Temporary kludge
-           else
-               potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
-               obj.grid/2 + [.5 .5 .5], 1, obj.pointRadius); % Temporary kludge
-           end
+            if obj.useZMirror == 1
+                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
+                [obj.grid(1)/2 obj.grid(2)/2 0] + [.5 .5 0], 1, obj.pointRadius); % Temporary kludge
+            else
+                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
+                obj.grid/2 + [.5 .5 .5], 1, obj.pointRadius); % Temporary kludge
+            end
         end
         
     end%PROTECTED

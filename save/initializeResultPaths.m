@@ -5,7 +5,9 @@ function initializeResultPaths(run)
 %<> run		manager object for the Imogen run								ImogenManager
     run.paths.initialize();
     
-	if labindex == 1
+        GIS = GlobalIndexSemantics();
+        mpi_barrier(); % force all units to evaluate to the same paths
+	if GIS.context.rank == 0; 
 		%-----------------------------------------------------------------------------------------------
 		% Determine directory names
 		%--------------------------

@@ -4,10 +4,12 @@
 starterRun();
 
 %--- Initialize test ---%
-grid                = [400 400 100];
+grid                = [60 60 15];
+
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+
 run                 = KojimaDiskInitializer(grid);
-run.iterMax         = 200;
-run.save            = true;
+run.iterMax         = 3000;
 run.edgePadding     = 0.2;
 run.pointRadius     = 0.25;
 run.radiusRatio     = 0.67;
@@ -17,17 +19,13 @@ run.image.interval  = 5;
 run.image.speed     = true;
 run.image.mass      = true;
 
-%run.specSaves.dim2  = [];
-%run.ppSave.dim2     = 5;
 run.activeSlices.xy = false;
 run.activeSlices.xyz = true;
-run.ppSave.dim3 = 20;
+run.ppSave.dim3 = 10;
 
-run.bcMode.x        = ENUM.BCMODE_CONST;
-run.bcMode.y        = ENUM.BCMODE_CONST;
-run.bcMode.z        = ENUM.BCMODE_CONST;
-
-%run.addFade(ceil(grid/2), 16, ENUM.POINT_FADE , true, {ENUM.MOM});
+run.bcMode.x        = ENUM.BCMODE_CIRCULAR;
+run.bcMode.y        = ENUM.BCMODE_CIRCULAR;
+run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
 
 run.pureHydro = true;
 run.cfl = .8;

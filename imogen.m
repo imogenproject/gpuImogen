@@ -10,6 +10,7 @@ function imogen(icfile)
 %>> ini         Listing of properties and settings for the run.             struct
 %>> statics     Static arrays with lookup to static values.                 struct
 
+    fprintf('imogen.m: loading initial conditions\n');
     load(icfile)
     ini     = IC.ini;
     statics = IC.statics;
@@ -40,13 +41,15 @@ function imogen(icfile)
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
         end
     end
+
+    run.save.logPrint('Creating additional physics arrays...\n');
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
 
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
-    
+   
     resultsHandler(run, mass, mom, ener, mag);
     run.time.iteration  = 1;
     direction           = [1 -1];
@@ -71,7 +74,7 @@ function imogen(icfile)
     %%%=== END MAIN LOOP ========================================================================%%%
     run.save.logPrint(sprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
-    %error('development: error to prevent matlab exiting at end-of-run')
+    error('development: error to prevent matlab exiting at end-of-run')
 
     run.postliminary();
 end

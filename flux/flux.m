@@ -49,17 +49,20 @@ function flux(run, mass, mom, ener, mag, order)
     directVec = circshift(directVec, order*[mod(run.time.iteration-1,3), 0]);
     magneticIndices = circshift(magneticIndices, order*[mod(run.time.iteration-1,3), 0]);
 
+GIS = GlobalIndexSemantics();
+
+
     %===============================================================================================
         if (order > 0) %                             FORWARD FLUXING
     %===============================================================================================
-                for n=1:3
-            if (mass.gridSize(directVec(n)) < 3), continue; end
- %                       run.parallel.redistributeArrays(directVec(n));
-            
+            for n=1:3
+                if (mass.gridSize(directVec(n)) < 3), continue; end
+
                         if run.fluid.ACTIVE
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, directVec(n));
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
+                        xchgFluidHalos(mass, mom, ener, directVec(n));
                         end
 
                         if run.magnet.ACTIVE
@@ -71,7 +74,6 @@ function flux(run, mass, mom, ener, mag, order)
     %===============================================================================================
                 for n=1:3
             if (mass.gridSize(directVec(n)) < 3), continue; end
-%                        run.parallel.redistributeArrays(directVec(n));
                         
                         if run.magnet.ACTIVE
                         magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,:));
@@ -81,6 +83,7 @@ function flux(run, mass, mom, ener, mag, order)
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, directVec(n));
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
+                        xchgFluidHalos(mass, mom, ener, directVec(n));
                         end
                 end
     end
@@ -106,5 +109,14 @@ if isFluidOnly == 0
     end
 end
 
+end
+
+function xchgFluidHalos(mass, mom, ener, dir)
+s = { mass, ener, mom(1), mom(2), mom(3) };
+
+GIS = GlobalIndexSemantics();
+
+for j = 1:5; cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology); end
 
 end
+

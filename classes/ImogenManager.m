@@ -38,14 +38,12 @@ classdef ImogenManager < handle
         time;           % Manages temporal actions.                                 TimeManager
         fluid;          % Manages fluid routines.                                   FluidManager
         magnet;         % Manages magnetic routines.                                MagnetManager
+        parallel;       % Parallel behavior/semantic manager                        ParallelSemantics
 
         %--- Source/Sink or nonideal behavior control
         selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
         potentialField; % Manages a scalar potential                                PotentialFieldManager
         treadmill;      % Manages treadmill actions.                                TreadmillManager
-
-        %--- In transition
-        parallel;       % Manages parallel processing.                              HaloManager class
 
         %--- Saving/output
         image;          % Manages image generation and saving.                      ImageManager
@@ -119,24 +117,12 @@ classdef ImogenManager < handle
 % Function to be called after initialization is complete but before the run has begun.
         function preliminary(obj)
             
-            %--- Write abort file ---%
-            if (labindex == 1 && obj.save.FSAVE)
-                fid = fopen([obj.paths.save filesep obj.pAbortFile],'w');
-                fprintf(fid,'1');
-                fclose(fid);
-            end
-            labBarrier();
-            
             %--- Preliminary setup for children managers ---%
             obj.save.preliminary();
             obj.image.preliminary();
-            obj.parallel.preliminary();
             obj.fluid.preliminary();
             
             %--- Start code profiling if requested by ini ---%
-            if obj.PROFILE
-                if (obj.parallel.ACTIVE), mpiprofile('on'); else profile('on'); end
-            end
         end
         
 %___________________________________________________________________________________________________ initialize
@@ -164,35 +150,14 @@ classdef ImogenManager < handle
             
             %--- Stop and save code profiling if active ---%
             if obj.PROFILE
-                if obj.parallel.ACTIVE
-                    mpiprofile('off');
-                    proInfo = mpiprofile('info');
-                    
-                    if labindex == 1
-                        pInfo = cell(1,numlabs);
-                        pInfo{1} = proInfo;
-                        for i=2:numlabs
-                            [labInfo, index] = labReceive('any',100);
-                            pInfo{index} = labInfo;
-                        end
-                        save(strcat(obj.paths.save, filesep, 'profile'),'pInfo');
-                    else
-                        labSend(proInfo,1,100);
-                    end
-                    labBarrier();
-                    obj.save.logPrint('Save barrier passed for %g\n',labindex);
-                else
-                    profile('off');
-                    proInfo = profile('info');
-                    save(strcat(obj.paths.save, filesep, 'profile'),'proInfo');
-                end
+                profile('off');
+                proInfo = profile('info');
+                save(strcat(obj.paths.save, filesep, 'profile'),'proInfo');
                 
             end
             
             obj.save.logPrint('Run complete.\n');
             obj.save.postliminary();
-
-            % GPU shutdown
 
         end
     
@@ -354,25 +319,8 @@ classdef ImogenManager < handle
         function abortCheck(obj)
             %--- Initialization ---%
             if obj.time.iteration >= obj.time.ITERMAX;    return; end %Skip if already at run's end
-            testTime = rem(now,1);
-            
-            %--- Run abort check ---%
-            if (labindex == 1)
-                if abs(testTime - obj.pAbortTime) > 0.01 %Check every ~15 minutes
-                    fid = fopen([obj.paths.save filesep obj.pAbortFile],'r');
-                    res = fscanf(fid, '%s', 1);
-                    fclose(fid);
-                    res = labBroadcast(1, res);
-                else
-                    res = labBroadcast(1, []);
-                end
-            else
-                res = labBroadcast(1);
-            end
-            if ~isempty(res) &&    strcmp(res,'0'); obj.time.ITERMAX = obj.time.iteration + 1; end
-            obj.pAbortTime = testTime;
-        end
-        
+       
+        end 
     end%PUBLIC
     
 %===================================================================================================
@@ -392,8 +340,6 @@ classdef ImogenManager < handle
 
             obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;
             obj.magnet      = MagnetManager.getInstance();      obj.magnet.parent       = obj;
-
-            obj.parallel    = ParallelManager.getInstance();    obj.parallel.parent     = obj;
 
             obj.paths       = Paths();
             obj.info        = cell(30,2);

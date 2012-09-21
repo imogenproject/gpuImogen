@@ -61,7 +61,8 @@ classdef TimeManager < handle
 %            if (fluxDirection > 1 && obj.updateMode ~= ENUM.TIMEUPDATE_PER_STEP)
 %                return; 
 %            end
-            
+            GIS = GlobalIndexSemantics();
+
             cmax        = 1e-2; % Min threshold to prevent excessively large timesteps.
             gridIndex   = 0;    % Defaults max velocity direction to invalid error value.
 
@@ -77,6 +78,13 @@ classdef TimeManager < handle
 
             [cmax gridIndex] = directionalMaxFinder(mass.gputag, soundSpeed, mom(1).gputag, mom(2).gputag, mom(3).gputag);
             GPU_free(soundSpeed);
+
+            % Communicate the maximum cfl-determining limit to our comrades in arms
+            cmax       = mpi_allgather(cmax);
+if GIS.context.rank == 0; fprintf('cmax across ranks: '); disp(cmax); end
+            gridIndex  = mpi_allgather(gridIndex);
+            [cmax idx] = max(cmax);
+            gridIndex  = gridIndex(idx);
 
             %--- Check for errors ---%
             % If the gridIndex isn't valid then a CFL error is the cause, which means that the 

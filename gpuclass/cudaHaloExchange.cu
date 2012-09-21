@@ -48,7 +48,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
 */
-  if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology\n");
+  if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology\n");
   if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
 
   ArrayMetadata amd;
@@ -59,19 +59,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   int ctr;
   for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
-printf("orient: %i %i %i\n", orient[0], orient[1], orient[2]); fflush(stdout);
+//printf("orient: %i %i %i\n", orient[0], orient[1], orient[2]); fflush(stdout);
 
   int memDimension = orient[xchg]-1; // The actual in-memory direction we're gonna be exchanging
  
   // get # of transverse elements, *3 deep for halo
   int numToExchange = 3 * amd.numel / amd.dim[memDimension];
-printf("numel: %i, dim[dimension]: %i; #2xchg: %i\n", amd.numel, amd.dim[memDimension], numToExchange);
+//printf("numel: %i, dim[dimension]: %i; #2xchg: %i\n", amd.numel, amd.dim[memDimension], numToExchange);
 
   cudaError_t fail = cudaGetLastError(); // Clear the error register
   double *pinnedMem[4];
   double *devPMptr[4];
 
   pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
+
+  if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
+  if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
 
   for(ctr = 0; ctr < 4; ctr++) {
     fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
@@ -81,15 +84,15 @@ printf("numel: %i, dim[dimension]: %i; #2xchg: %i\n", amd.numel, amd.dim[memDime
 
   if(fail != cudaSuccess) { dim3 f; cudaLaunchError(fail, f, f, &amd, ctr, "cudaHaloExchange.malloc"); }
 
-pParallelTopology pt = parallelTopo;
-printf("Topology dump by rank %i: ndim=%i, comm=%i\n", (int)*mxGetPr(prhs[4]), pt->ndim, pt->comm);
-printf("left: %i %i\n right: %i %i\n", pt->neighbor_left[0], pt->neighbor_left[1], pt->neighbor_right[0], pt->neighbor_right[1]);
-printf("procs: %i %i\n", pt->nproc[0], pt->nproc[1]);
-fflush(stdout);
+//pParallelTopology pt = parallelTopo;
+//printf("Topology dump by rank %i: ndim=%i, comm=%i\n", (int)*mxGetPr(prhs[4]), pt->ndim, pt->comm);
+//printf("left: %i %i\n right: %i %i\n", pt->neighbor_left[0], pt->neighbor_left[1], pt->neighbor_right[0], pt->neighbor_right[1]);
+//printf("procs: %i %i\n", pt->nproc[0], pt->nproc[1]);
+//fflush(stdout);
 
   switch(memDimension) {
     case 0: { /* X halo arrangement */
-printf("X halo exchange in progress\n"); fflush(stdout);
+//printf("X halo exchange in progress\n"); fflush(stdout);
       dim3 gridsize; gridsize.x = amd.dim[1]; gridsize.y = amd.dim[2]; gridsize.z = 1;
       dim3 blocksize; blocksize.x = 3; blocksize.y = 1; blocksize.z = 1; // This is horrible.
 
@@ -98,15 +101,15 @@ printf("X halo exchange in progress\n"); fflush(stdout);
       cukern_HaloXToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_right_read");
 
-printf("Left halo tx contents: "); int j; for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[0][j]); }
-printf("\nRight halo tx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[1][j]); }
-printf("\n");
- 
+//printf("Left halo tx contents: "); int j; for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[0][j]); }
+//printf("\nRight halo tx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[1][j]); }
+//printf("\n");
+      cudaDeviceSynchronize(); 
       Parallel_Exchange_Dim_Contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
 
-printf("Left halo rx contents: ");   for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[2][j]); }
-printf("\nRight halo rx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[3][j]); }
-printf("\n");
+//printf("Left halo rx contents: ");   for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[2][j]); }
+//printf("\nRight halo rx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[3][j]); }
+//printf("\n");
 
 
       cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
@@ -116,7 +119,7 @@ printf("\n");
       }; break;
 
     case 1: { /* Y halo arrangement */
-printf("Y halo exchange in progress\n"); fflush(stdout);
+//printf("Y halo exchange in progress\n"); fflush(stdout);
       dim3 blocksize; blocksize.x = 256; blocksize.y = 1; blocksize.z = 1;
       dim3 gridsize; gridsize.x = amd.dim[0]/256; gridsize.y = amd.dim[1]; gridsize.z = 1;
       gridsize.x += gridsize.x*256 < amd.dim[0] ? 1 : 0;
@@ -126,6 +129,7 @@ printf("Y halo exchange in progress\n"); fflush(stdout);
       cukern_HaloYToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0], amd.dim[2]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_read");
 
+      cudaDeviceSynchronize();
       Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
 
       cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
@@ -135,13 +139,14 @@ printf("Y halo exchange in progress\n"); fflush(stdout);
       }; break;
 
     case 2: { /* Z halo arrangement */
-printf("Z halo exchange in progress\n"); fflush(stdout);
+//printf("Z halo exchange in progress\n"); fflush(stdout);
       dim3 gridsize, blocksize;
       cudaMemcpy(pinnedMem[0], array[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_readmemcpy");
       cudaMemcpy(pinnedMem[1], &array[0][amd.numel - numToExchange], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_readmemcpy");
 
+      cudaDeviceSynchronize();
       Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
 
       cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
@@ -154,8 +159,9 @@ printf("Z halo exchange in progress\n"); fflush(stdout);
   for(ctr = 0; ctr < 4; ctr++)
     cudaFreeHost(pinnedMem[ctr]);
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "array min/max/nan sweeping");
+cudaError_t epicFail = cudaDeviceSynchronize();
+if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "halo exchange");
+
 
 free(parallelTopo);
 

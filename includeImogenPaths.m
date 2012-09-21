@@ -6,7 +6,7 @@ function includeImogenPaths()
     %       Iterates over the list of directories provided below and adds them and all their
     %       subdirectories to the Matlab environmental path to access standard Imogen functionality.
     directories = {'classes','equilibrium','experiment','fluid','enums','utils','sources', ...
-                   'io','magnet','parallel','pressure','run','save','shifting', ...
+                   'io','magnet','pressure','run','save','shifting', ...
                    'time','treadmill','users','utils','external','visualization', ...
                    'flux','gpuclass',''};
 
@@ -16,6 +16,7 @@ function includeImogenPaths()
     for i=1:length(directories); 
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
+    addpath('/usr/local/packages/parallel-gateway/pgw-trunk/lib');
     fprintf('Imogen directories have been added to the path listing.\n');
 
     

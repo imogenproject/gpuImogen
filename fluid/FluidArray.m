@@ -66,11 +66,6 @@ classdef FluidArray < ImogenArray
                 obj.threshold = 0;
             end
             
-            if obj.pDistributed
-                obj.distribute(run.parallel.distribution);
-                run.parallel.registerForRedistribution(obj);
-            end
-
         end
 
         function initialArray(obj, array)

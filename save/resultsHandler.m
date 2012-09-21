@@ -92,11 +92,11 @@ function resultsHandler(run, mass, mom, ener, mag)
                 end
                 
                 %--- Save only using lab 1 ---%
-                if labindex == 1
+                GIS = GlobalIndexSemantics();
                     sl.dim = sliceDim;
-
+       
                     fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                                '_', fileSuffix];
+                                '_rank', sprintf('%i',GIS.context.rank), fileSuffix];
                     sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
                     if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
@@ -106,8 +106,6 @@ function resultsHandler(run, mass, mom, ener, mag)
                     catch MERR %#ok<NASGU>
                         fprintf('Unable to save. Skipping');
                     end
-                end
-                labBarrier(); % Block all labs until lab 1 is ready to proceed.
             end
         end
     end

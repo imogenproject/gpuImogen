@@ -10,12 +10,15 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     starterRun();
 
     %--- Initialize MPI and GPU ---%
-    mpi_init();
+    context = parallel_start();
+    topology = parallel_topology(context, 3);
+
+    GIS = GlobalIndexSemantics(context, topology);
 
     mpiInfo = mpi_basicinfo();
     if mpiInfo(1) > 1 % If this is in fact parallel, autoinitialize GPUs
                      % Otherwise initialize.m will choose one manually
-        fprintf('MPI size > 1; We are running in parallel: Autoselecting GPUs\n');
+        if context.rank == 0; fprintf('MPI size > 1; We are running in parallel: Autoselecting GPUs\n'); end
 
         y = mpi_allgather(mpiInfo(2:3));
         ranks = y(1:2:end);
@@ -25,12 +28,8 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         thisnode = ranks(hash == mpiInfo(3));
         [dump idx] = sort(thisnode);
         mygpu = idx(dump == mpiInfo(2)) - 1;
-        fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', mpiInfo(2), mpiInfo(1), getenv('HOSTNAME'), mygpu);
+        fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', context.rank, context.size, getenv('HOSTNAME'), mygpu);
         GPU_init(mygpu);
-
-%        context = parallel_start();
-
-%        [
     else
         GPU_init(gpuno);
     end

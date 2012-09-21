@@ -32,7 +32,6 @@ classdef ImogenArray < handle
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         pArray;         % Storage of the 3D array data.                             double(Nx,Ny,Nz)
         pShiftEnabled;  % Specifies if shifting is active for each dimension.       logical(3)
-        pDistributed;   % Specifies if the object should be distributed.            bool
         pCompatibility; % Matlab version compability identifier.                    str
         pRunManager;    % Access to the ImogenManager singleton for the run.        ImogenManager
         pFades;         % Fade objects for array processing.                        cell(?)
@@ -69,7 +68,6 @@ classdef ImogenArray < handle
             obj.component       = component;
             obj.id              = id;
             obj.bcInfinity      = run.bc.infinity;
-            obj.pDistributed    = run.parallel.ACTIVE;
             obj.pRunManager     = run;
             obj.pFadesValue     = 0.995;
 
@@ -160,28 +158,6 @@ classdef ImogenArray < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-%___________________________________________________________________________________________________ distribute
-% Distributes the serial data array into a data parallel environment according to the distributor
-% argument.
-%>< dist    Codistributor object that specifies the parallel distribution.          Codistributor
-        function distribute(obj, dist)
-            if (obj.pCompatibility > 7.8)
-                if (~isreplicated(obj.pArray) || ~iscodistributed(obj.pArray))
-                    obj.pArray = labBroadcast(1, obj.pArray);
-                end
-                obj.pArray  = codistributed(obj.pArray, dist);
-            else % Handles the change in codistributed between r2009a and r2009b
-                obj.pArray = codistributed(obj.pArray, dist, 'convert');
-            end
-        end
-        
-%___________________________________________________________________________________________________ redistribute
-% Redistributes a parallel array according to the distributor argument.
-%>< dist    Codistributor object the specifies the new distribution.                Codistributor
-        function redistribute(obj, dist)
-            obj.pArray = redistribute(obj.pArray,dist);
-        end
-        
 %___________________________________________________________________________________________________ cleanup
 % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
         function cleanup(obj),    obj.pArray.array =  [];    end

@@ -10,7 +10,9 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
 %>< mag                 Magnetic field array.                                   MagnetArray(3)
 %>> X                   Vector index along which to flux.                       int
 %>> magneticIndices     Index values for the magnetic components to flux        int(2)
- 
+
+    GIS = GlobalIndexSemantics();
+
     for n=1:2
         I = magneticIndices(n); % Component of the b-field to flux.
 
@@ -20,6 +22,9 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
         % Flux Advection step
         relaxingMagnet(run, mag, mag(I).velGrid(X), X, I);
         mag(I).cleanup();
+
+        cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology);
+        cudaHaloExchange(mag(I).gputag, [1 2 3], X, GIS.topology);
     end
     
     mag(I).updateCellCentered();

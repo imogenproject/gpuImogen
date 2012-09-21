@@ -1,5 +1,5 @@
-function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid, GRAVITY, ...
-                                          starMass, edgePadding, pointRadius, minDensityCoeff, momregions, useZMirror)
+function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid, ...
+                                          starMG, edgePadding, pointRadius, minDensityCoeff, momregions, useZMirror)
 % Generates an equilibrium differentially-rotating disc in 2D or 3D.
 % My convention regarding the cell-centered vs corner-centered question while writing this is such:
 % Consider the cell indexed by grid(1,1,1) as filling the space (0,0,0) x (dx,dy,dz);
@@ -34,9 +34,11 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
 
     %___________________________________________________________________________
     %--- Initialization ---%
-    mass = zeros(grid);
-    momX = zeros(grid);
-    momY = zeros(grid);
+    GIS = GlobalIndexSemantics();
+
+    mass = zeros(GIS.pMySize);
+    momX = zeros(GIS.pMySize);
+    momY = zeros(GIS.pMySize);
 
     info        = '';
     discMass    = 0;
@@ -51,7 +53,6 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
         momregions = [1 1 2 1];
     end
 
-    pointMG           = GRAVITY * starMass;
     rdinf.ptrad       = pointRadius;
 
     %--- Find outer disk radius ---%
@@ -78,9 +79,9 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %        axialRadius is the polar coordinate radius looking down on the top of the disk
     %        centerRadius is the spherical coordinate radius from the point mass
     %        If useZMirror is 1, we're simulating only the top half of a disk
-    [X Z] = ndgrid(1:2*rdinf.nRadialZones, 1:grid(3));
+    [X Z] = ndgrid(0:2*rdinf.nRadialZones, 1:grid(3));
 
-    X = X - .5;
+    X = X;
 
     if useZMirror == 1
         Z = Z - .5;
@@ -100,9 +101,8 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %       c1 is the integration constant from solving the Bernoulli equation.
 
 %%% EXPERIMENTAL CODE
-sharpness = 30;
-v = @(r) .5*(exp(sharpness*(r-rdinf.rin)).*(r.^(1-q)) + exp(sharpness*(rdinf.rin-r)).*(r.^(-.5)) ) ./ cosh(sharpness*(r-rdinf.rin));
-
+%sharpness = 30;
+%v = @(r) .5*(exp(sharpness*(r-rdinf.rin)).*(r.^(1-q)) + exp(sharpness*(rdinf.rin-r)).*(r.^(-.5)) ) ./ cosh(sharpness*(r-rdinf.rin));
 
     hsq                = xq * (1/rdinf.rout - 1/rdinf.rin)/(rdinf.rin^xq - rdinf.rout^xq);
     c1                 = -1/rdinf.rin - (hsq/xq)*(rdinf.rin^xq);
@@ -133,18 +133,37 @@ v = @(r) .5*(exp(sharpness*(r-rdinf.rin)).*(r.^(1-q)) + exp(sharpness*(rdinf.rin
     mom = simpleBlur(mom, .4, 2, 1);
     rho = simpleBlur(rho, .4, 2, 1);
 
-    %--- Lathe radial info onto cubical grid --- %
+% Where gravity is no longer acting, attempt to balance only centrifugal acceleration and pressure gradient
+borderlands = (isPartOfDisk) & (rho < 4*lomass);
+drhodr = (circshift(rho,[1 0 0])-circshift(rho,[-1 0 0]))/(2*rdinf.dr);
+momphi = real(sqrt(GAMMA*rdinf.axialRadius.*rho.^GAMMA.*drhodr));
+mom(borderlands) = momphi(borderlands);
+
+%--- Lathe radial info onto cubical grid --- %
     %        I experimented with doing this in one interpolation with not much luck.
+    [Xblk Yblk Zblk] = GIS.ndgridSetXYZ();
+    Xblk = (Xblk - grid(1)/2 - .5)*rdinf.dr;
+    Yblk = (Yblk - grid(2)/2 - .5)*rdinf.dr;
+    Zblk = (Zblk - .5 - floor(grid(3)/2)*(useZMirror == 1))*rdinf.dr;
+    Rblk = sqrt(Xblk.^2+Yblk.^2);
+
     for zct = 1:grid(3)
-        [mass(:,:,zct) momX(:,:,zct) momY(:,:,zct)] = cyl2rect(rdinf.axialRadius(:,zct), rho(:,zct), mom(:,zct), grid(1)/2, rdinf.dr);
+        mass(:,:,zct) = interp1(rdinf.axialRadius(:,zct), rho(:,zct), Rblk(:,:,zct));
+        momX(:,:,zct) = interp1(rdinf.axialRadius(:,zct), mom(:,zct), Rblk(:,:,zct));
+%        [mass(:,:,zct) momX(:,:,zct) momY(:,:,zct)] = cyl2rect(rdinf.axialRadius(:,zct), rho(:,zct), mom(:,zct), grid(1)/2, rdinf.dr);
     end
+    momY = momX.*Xblk./Rblk;
+    momX = -momX.*Yblk./Rblk;
 
-    fprintf('Ratio of Disk/Star mass from radial integration found to be: %g\n', ...
-                              (1+useZMirror)*2*pi*sum(sum(rdinf.axialRadius.*rho))*rdinf.dr*rdinf.dr);
-    fprintf('Radio of Disk/Star mass from grid summation found to be: %g\n', ...
-                              (1+useZMirror)*sum(sum(sum(mass)))*rdinf.dr^3);
+%    fprintf('Ratio of Disk/Star mass from radial integration found to be: %g\n', ...
+%                              (1+useZMirror)*2*pi*sum(sum(rdinf.axialRadius.*rho))*rdinf.dr*rdinf.dr);
+%    fprintf('Radio of Disk/Star mass from grid summation found to be: %g\n', ...
+%                              (1+useZMirror)*sum(sum(sum(mass)))*rdinf.dr^3);
 
-dR = rdinf.dr;
+    dR = rdinf.dr;
+
+%save(sprintf('~/kojimaout-%i.mat',GIS.context.rank));
+%error('Halt, hammerzeit!');
 
 end
 
