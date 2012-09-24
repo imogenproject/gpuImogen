@@ -6,7 +6,7 @@ function phi = grav_GetPointPotential(grid, DGRID, pointpos, GM, softenRadius)
 %===================================================================================================
 % Variables:
 % grid        double [3] - size of grid to solve over
-% dgrid        double [3] or struct - grid step size
+% dgrid       double [3] or struct - grid step size
 % pointpos    double [3] - cell index of point
 %===================================================================================================
 
@@ -35,8 +35,8 @@ if numel(DGRID{1}) > 1
     Y = Y - posapprox(2);
     Z = Z - posapprox(3);
 else
-
-    [X Y Z] = ndgrid(1:grid(1), 1:grid(2), 1:grid(3));
+    GIS = GlobalIndexSemantics();
+    [X Y Z] = GIS.ndgridSetXYZ();
     X = (X - pointpos(1))*DGRID{1};
     Y = (Y - pointpos(2))*DGRID{2};
     Z = (Z - pointpos(3))*DGRID{3};

@@ -81,7 +81,7 @@ classdef TimeManager < handle
 
             % Communicate the maximum cfl-determining limit to our comrades in arms
             cmax       = mpi_allgather(cmax);
-if GIS.context.rank == 0; fprintf('cmax across ranks: '); disp(cmax); end
+%if GIS.context.rank == 0; fprintf('cmax across ranks: '); disp(cmax); end
             gridIndex  = mpi_allgather(gridIndex);
             [cmax idx] = max(cmax);
             gridIndex  = gridIndex(idx);

@@ -11,7 +11,7 @@ function source(run, mass, mom, ener, mag)
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaApplyScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS*20);
+        cudaApplyScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS*6);
     end
 
     %--- Gravitational Potential Sourcing ---%

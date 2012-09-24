@@ -15,9 +15,13 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
 
     GIS = GlobalIndexSemantics(context, topology);
 
+    % If we're running in parallel, print some bookkeeping stuff just to make
+    % sure that everyone is one the same page; Share hashes to make sure that
+    % exactly one processes is using each GPU.
+    %
+    % If serial, select the GPU indicated on the command line.
     mpiInfo = mpi_basicinfo();
-    if mpiInfo(1) > 1 % If this is in fact parallel, autoinitialize GPUs
-                     % Otherwise initialize.m will choose one manually
+    if mpiInfo(1) > 1
         if context.rank == 0; fprintf('MPI size > 1; We are running in parallel: Autoselecting GPUs\n'); end
 
         y = mpi_allgather(mpiInfo(2:3));
@@ -31,6 +35,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', context.rank, context.size, getenv('HOSTNAME'), mygpu);
         GPU_init(mygpu);
     else
+        fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
         GPU_init(gpuno);
     end
 
@@ -40,8 +45,11 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     try
         eval(runFile);
     catch ME
+       GPU_exit(); mpi_barrier(); mpi_finalize(); % OMG GFTO
        rethrow(ME);
     end
+
+    GPU_exit();
 
     mpi_barrier();
     mpi_finalize();

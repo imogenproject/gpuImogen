@@ -148,15 +148,10 @@ classdef ImageManager < handle
                         logArray = ImageManager.findLog(array); % Convert array to natural log.
                         logArray = obj.parent.save.getSaveSlice(logArray,i);
                         logName = sprintf('log_%s',ImageManager.FIELDS{j});                                  
-                        if labindex == 1
-                            obj.saveImage(logArray, logName, obj.parent.save.SLICELABELS{i});                
-                        end                       
+                        obj.saveImage(logArray, logName, obj.parent.save.SLICELABELS{i});                
                     end
                     
-                    if labindex == 1
-                        obj.saveImage(array, name, obj.parent.save.SLICELABELS{i});                
-                    end
-                    labBarrier(); % Block until lab 1 finishes writing images
+                    obj.saveImage(array, name, obj.parent.save.SLICELABELS{i});                
                 end
             end
             obj.frame = obj.frame + 1;
@@ -176,12 +171,13 @@ classdef ImageManager < handle
         % name			name of the array for folder and file                           str     *
         % sliceType     slice type identifier to include in file name (eg. XY or YZ)    str     *
         function saveImage(obj, array, name, sliceType)
+            GIS = GlobalIndexSemantics();
             minVal = min(min(array));
             maxVal = max(max(array));
             rescaledArray = obj.pColordepth * (array' - minVal) / (maxVal - minVal);
-            
+            [GIS.context.rank obj.paths.indexPadding ]
             iterStr = obj.parent.paths.iterationToString(obj.frame);
-            fileName = strcat(name,'_',sliceType,'_',iterStr,'.png');
+            fileName = strcat(name,'_',sliceType,'_',sprintf('rank_%i_',GIS.context.rank),iterStr,'.png');
             filePathName = strcat(obj.parent.paths.image,filesep,name,filesep,fileName);
             imwrite(rescaledArray, obj.COLORMAP, filePathName, 'png', 'CreationTime', ...
                 datestr(clock,'HH:MM mm-dd-yyyy'));

@@ -4,12 +4,12 @@
 starterRun();
 
 %--- Initialize test ---%
-grid                = [60 60 15];
+grid                = [720 720 180];
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 run                 = KojimaDiskInitializer(grid);
-run.iterMax         = 3000;
+run.iterMax         = 50000;
 run.edgePadding     = 0.2;
 run.pointRadius     = 0.25;
 run.radiusRatio     = 0.67;
@@ -21,7 +21,7 @@ run.image.mass      = true;
 
 run.activeSlices.xy = false;
 run.activeSlices.xyz = true;
-run.ppSave.dim3 = 10;
+run.ppSave.dim3 = .5;
 
 run.bcMode.x        = ENUM.BCMODE_CIRCULAR;
 run.bcMode.y        = ENUM.BCMODE_CIRCULAR;

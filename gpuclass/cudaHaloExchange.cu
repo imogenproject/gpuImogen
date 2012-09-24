@@ -39,7 +39,7 @@ pParallelTopology topoStructureToC(const mxArray *prhs);
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 /* Functional form:
-    cudaHaloExchange(arraytag, [orientation 3x1], dimension_to_exchange)
+    cudaHaloExchange(arraytag, [orientation 3x1], dimension_to_exchange, parallel topology information)
 
     1. get neighbors from halo library in dimension_to_exchange direction
     2. determine which memory direction that currently is
@@ -48,7 +48,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
 */
-  if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology\n");
+  if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, isCircular\n");
   if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
 
   ArrayMetadata amd;
@@ -75,6 +75,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
   if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
+
+  /* Be told if the left and right sides of the dimension are circular or not */
+//  int leftCircular  = (int)*mxGetPr(prhs[4]);
+//  int rightCircular = (int)*(mxGetPr(prhs[4])+1);
+  /* If we are an interior node, they are always so */
+//  int myNodeIndex = (parallelTopo.neighbor_left[xchg]+1)%parallelTopo->nproc[xchg];
+//  if(myNodeIndex > 0) leftCircular = 1;
+//  if(myNodeIndex == (parallelTopo->nproc[xchg]-1)) rightCircular = 1;
 
   for(ctr = 0; ctr < 4; ctr++) {
     fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
@@ -105,13 +113,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //printf("\nRight halo tx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[1][j]); }
 //printf("\n");
       cudaDeviceSynchronize(); 
-      Parallel_Exchange_Dim_Contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
 //printf("Left halo rx contents: ");   for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[2][j]); }
 //printf("\nRight halo rx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[3][j]); }
 //printf("\n");
 
-
+      
       cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_left_write");
       cukern_LinearToHaloXR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0]);
@@ -130,7 +138,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_read");
 
       cudaDeviceSynchronize();
-      Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
       cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_write");
@@ -147,7 +155,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_readmemcpy");
 
       cudaDeviceSynchronize();
-      Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[3], pinnedMem[2], numToExchange, MPI_DOUBLE);
+      Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
       cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_writememcpy");
@@ -162,11 +170,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 cudaError_t epicFail = cudaDeviceSynchronize();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "halo exchange");
 
-
 free(parallelTopo);
-
 }
-
 
 /* X halo routines */
 /* These are the suck; We have to grab 24-byte wide chunks en masse */
@@ -311,7 +316,6 @@ for(ctz = 0; ctz < 3; ctz++) {
 
 pParallelTopology topoStructureToC(const mxArray *prhs)
 {
-
 mxArray *a;
 
 pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
@@ -335,31 +339,4 @@ for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
 
 return pt;
 
-   /** Set neighbor_left array
-    
-   mlIntArray = mxCreateNumericArray(2, dims, mxINT32_CLASS, 0);
-   iData = (int *) mxGetData(mlIntArray);
-   for (i = 0; i < ndim; i++) {
-      iData[i] = aTopology.neighbor_left[i];
-   }
-   mxSetFieldByNumber(mlTopology, 0, 2, mlIntArray);
-
-   * Set neighbor_right array
-    
-   mlIntArray = mxCreateNumericArray(2, dims, mxINT32_CLASS, 0);
-   iData = (int *) mxGetData(mlIntArray);
-   for (i = 0; i < ndim; i++) {
-      iData[i] = aTopology.neighbor_right[i];
-   }
-   mxSetFieldByNumber(mlTopology, 0, 3, mlIntArray);
-
-   * Set nproc array
-    
-   mlIntArray = mxCreateNumericArray(2, dims, mxINT32_CLASS, 0);
-   iData = (int *) mxGetData(mlIntArray);
-   for (i = 0; i < ndim; i++) {
-      iData[i] = aTopology.nproc[i];
-   }
-   mxSetFieldByNumber(mlTopology, 0, 4, mlIntArray);
-*/
 }
