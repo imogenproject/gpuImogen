@@ -23,9 +23,9 @@ run.activeSlices.xy = false;
 run.activeSlices.xyz = true;
 run.ppSave.dim3 = .5;
 
-run.bcMode.x        = ENUM.BCMODE_CIRCULAR;
-run.bcMode.y        = ENUM.BCMODE_CIRCULAR;
-run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
+run.bcMode.x        = ENUM.BCMODE_CONST;
+run.bcMode.y        = ENUM.BCMODE_CONST;
+run.bcMode.z        = ENUM.BCMODE_CONST;
 
 run.pureHydro = true;
 run.cfl = .8;

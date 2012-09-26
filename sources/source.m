@@ -39,11 +39,10 @@ function source(run, mass, mom, ener, mag)
         % Oh you better believe we need to synchronize up in dis house
         GIS = GlobalIndexSemantics();
         S = {mom(1), mom(2), mom(3), ener};
-        for j = 1:4;
-            cudaHaloExchange(S{j}.gputag, [1 2 3], 1, GIS.topology);
-            cudaHaloExchange(S{j}.gputag, [1 2 3], 2, GIS.topology);
-            cudaHaloExchange(S{j}.gputag, [1 2 3], 3, GIS.topology);
-        end
+        for j = 1:4; for dir = 1:3
+%            iscirc = double([strcmp(S{j}.bcModes{1,dir},ENUM.BCMODE_CIRCULAR) strcmp(S{j}.bcModes{2,dir}, ENUM.BCMODE_CIRCULAR)]);
+            cudaHaloExchange(S{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));
+        end; end
     end
     
 end

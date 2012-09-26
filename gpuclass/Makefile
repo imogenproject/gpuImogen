@@ -22,7 +22,7 @@ PAR_LIBS = -lpgw -lmpi
 all: base fluids
 	echo "Finished compiling GPU support."
 
-base: GPU_cudamemcpy GPU_free GPU_init GPU_memavail cudaBasicOperations
+base: GPU_init GPU_exit GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
 fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed cudaApplyScalarPotential
@@ -40,10 +40,12 @@ kerncommon:
 cuda% GPU% directionalMax% freezeAnd%:: kerncommon
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
+	rm -f $@.cpp
 
 cudaHaloExchange:
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda $@.cu -o $@.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS) $@.cpp cudaCommon.cpp -o $@
+	rm -f $@.cpp
 
 clean:
 	rm -f *mexa64 *cpp

@@ -95,10 +95,10 @@ function initializeResultPaths(run)
             end
 			fprintf('-----------------------------------------------------------------------------------\n');
 		end
+        end
 
-		run.paths.indexPadding = length(num2str(run.time.ITERMAX));        
-	end
-	labBarrier();
+	run.paths.indexPadding = length(num2str(run.time.ITERMAX));        
+	mpi_barrier();
 end
 
 function created = locDirMaker(run, folderPath, infoStr)

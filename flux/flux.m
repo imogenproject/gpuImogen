@@ -116,7 +116,9 @@ s = { mass, ener, mom(1), mom(2), mom(3) };
 
 GIS = GlobalIndexSemantics();
 
-for j = 1:5; cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology); end
+for j = 1:5;
+  cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));
+end
 
 end
 

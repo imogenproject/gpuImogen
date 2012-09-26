@@ -48,7 +48,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
 */
-  if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, isCircular\n");
+  if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, isCircular\n");
   if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
 
   ArrayMetadata amd;
@@ -77,12 +77,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
 
   /* Be told if the left and right sides of the dimension are circular or not */
-//  int leftCircular  = (int)*mxGetPr(prhs[4]);
-//  int rightCircular = (int)*(mxGetPr(prhs[4])+1);
-  /* If we are an interior node, they are always so */
-//  int myNodeIndex = (parallelTopo.neighbor_left[xchg]+1)%parallelTopo->nproc[xchg];
-//  if(myNodeIndex > 0) leftCircular = 1;
-//  if(myNodeIndex == (parallelTopo->nproc[xchg]-1)) rightCircular = 1;
+  double *interior = mxGetPr(prhs[4]);
+  int leftCircular  = (int)interior[0];
+  int rightCircular = (int)interior[1];
 
   for(ctr = 0; ctr < 4; ctr++) {
     fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
@@ -113,17 +110,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //printf("\nRight halo tx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[1][j]); }
 //printf("\n");
       cudaDeviceSynchronize(); 
-      Parallel_Exchange_Dim_Contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      parallel_exchange_dim_contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
 //printf("Left halo rx contents: ");   for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[2][j]); }
 //printf("\nRight halo rx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[3][j]); }
 //printf("\n");
 
       
-      cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_left_write");
-      cukern_LinearToHaloXR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0]);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_right_write");
+      if(leftCircular) {
+        cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_left_write");
+        }
+      if(rightCircular) {
+        cukern_LinearToHaloXR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0]);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.X_right_write");
+        }
       }; break;
 
     case 1: { /* Y halo arrangement */
@@ -138,12 +139,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_read");
 
       cudaDeviceSynchronize();
-      Parallel_Exchange_Dim_Contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      parallel_exchange_dim_contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
-      cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_write");
-      cukern_LinearToHaloYR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[2]);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_write");
+      if(leftCircular) {
+        cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_write");
+        }
+      if(rightCircular) {
+        cukern_LinearToHaloYR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[2]);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_write");
+        }
       }; break;
 
     case 2: { /* Z halo arrangement */
@@ -155,12 +160,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_readmemcpy");
 
       cudaDeviceSynchronize();
-      Parallel_Exchange_Dim_Contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      parallel_exchange_dim_contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
-      cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_writememcpy");
-      cudaMemcpy(&array[0][amd.numel - numToExchange], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_writememcpy");
+      if(leftCircular) {
+        cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_left_writememcpy");
+        }
+      if(rightCircular) {
+        cudaMemcpy(&array[0][amd.numel - numToExchange], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
+        if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Z_right_writememcpy");
+        }
       }; break;
     }
 

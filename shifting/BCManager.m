@@ -115,6 +115,8 @@ classdef BCManager < handle
                 end
             end
             
+            GIS = GlobalIndexSemantics();
+
             for i=1:3
                 if iscell(result.(fields{i}))
                     secondIndex = length(result.(fields{i}));
@@ -124,6 +126,9 @@ classdef BCManager < handle
                     arrayObj.bcModes{1,i} = result.(fields{i});
                     arrayObj.bcModes{2,i} = result.(fields{i});
                 end
+
+                if GIS.edgeInterior(1,i) == 1; arrayObj.bcModes{1,i} = ENUM.BCMODE_CIRCULAR; end
+                if GIS.edgeInterior(2,i) == 1; arrayObj.bcModes{2,i} = ENUM.BCMODE_CIRCULAR; end
             end
 
             arrayObj.edgeshifts  = cell(2,3);

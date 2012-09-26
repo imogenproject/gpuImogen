@@ -96,8 +96,8 @@ function resultsHandler(run, mass, mom, ener, mag)
                     sl.dim = sliceDim;
        
                     fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                                '_rank', sprintf('%i',GIS.context.rank), fileSuffix];
-                    sliceName = strcat('_sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
+                                '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
+                    sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
                     if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                     try

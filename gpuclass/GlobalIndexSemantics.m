@@ -21,6 +21,7 @@ classdef GlobalIndexSemantics < handle
         pHaloDims;
 
         nodeIndex;
+        edgeInterior;
     end % Private
 
     properties (Dependent = true)
@@ -60,6 +61,9 @@ classdef GlobalIndexSemantics < handle
             obj.pMyOffset = obj.pMySize.*obj.nodeIndex;
 
             obj.pHaloDims = obj.pGlobalDims - (obj.topology.nproc > 1).*double((6*obj.topology.nproc));
+
+            obj.edgeInterior(1,:) = double(obj.nodeIndex > 0);
+            obj.edgeInterior(2,:) = double(obj.nodeIndex < (obj.topology.nproc-1));
 
             instance = obj;
         end % Constructor

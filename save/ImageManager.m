@@ -175,7 +175,7 @@ classdef ImageManager < handle
             minVal = min(min(array));
             maxVal = max(max(array));
             rescaledArray = obj.pColordepth * (array' - minVal) / (maxVal - minVal);
-            [GIS.context.rank obj.paths.indexPadding ]
+
             iterStr = obj.parent.paths.iterationToString(obj.frame);
             fileName = strcat(name,'_',sliceType,'_',sprintf('rank_%i_',GIS.context.rank),iterStr,'.png');
             filePathName = strcat(obj.parent.paths.image,filesep,name,filesep,fileName);
