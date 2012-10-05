@@ -20,8 +20,10 @@ classdef GlobalIndexSemantics < handle
 
         pHaloDims;
 
-        nodeIndex;
-        edgeInterior;
+        nodeIndex; % Node's index in the cartesian topology
+        edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular or exterior
+
+        domainResolution;
     end % Private
 
     properties (Dependent = true)
@@ -51,6 +53,22 @@ classdef GlobalIndexSemantics < handle
             
             obj.nodeIndex = double(mod(obj.topology.neighbor_left + 1, obj.topology.nproc));
 
+% We have | rank | -x | -y | -z |
+% Construct -x topology lines:
+% j = my rank; put my rank at w(i); j = -x(w(i)); if j = my rank then end. if not, w(++i)=j and loop back
+%rxyz = [obj.context.rank; double(obj.topology.neighbor_left)];
+%rxyz = reshape(mpi_allgather(rxyz), [4 obj.context.size])';
+%a = obj.context.rank;
+%b = 1;
+%w(b) = a;
+%while rxyz(w(b),2) ~= obj.context.rank
+%  a=rxyz(w(b),2);
+%  b=b+1
+%  w(b)=a;
+%end
+% We have now constructed the set of left neighbors of which we are part
+%leftring = w
+
             % Make up any deficit in size with the rightmost nodes in each dimension
             for i = 1:obj.topology.ndim;
                 if (obj.nodeIndex(i) == (obj.topology.nproc(i)+1)) && (pMySize(i)*obj.topology.nproc(i) < obj.pGlobalDims(i))
@@ -64,6 +82,8 @@ classdef GlobalIndexSemantics < handle
 
             obj.edgeInterior(1,:) = double(obj.nodeIndex > 0);
             obj.edgeInterior(2,:) = double(obj.nodeIndex < (obj.topology.nproc-1));
+
+            obj.domainResolution = obj.pGlobalDims - 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
             instance = obj;
         end % Constructor
@@ -87,7 +107,7 @@ classdef GlobalIndexSemantics < handle
 
             x=[];
             for j = 1:ndim;
-		q = 1:obj.pMySize(j);
+                q = 1:obj.pMySize(j);
                 q = q + (obj.pMySize(j) - 6*(obj.topology.nproc(j) > 1))*obj.nodeIndex(j) - 3*(obj.topology.nproc(j) > 1) - 1;
                 q(q < 0) = q(q < 0) + obj.pHaloDims(j);
                 x{j} = mod(q, obj.pHaloDims(j)) + 1;
@@ -95,8 +115,7 @@ classdef GlobalIndexSemantics < handle
 
             if ndim == 2; x{3} = 1; end
         
-	    u = x{1}; v = x{2}; w = x{3};       
-
+            u = x{1}; v = x{2}; w = x{3};       
         end
 
         function [u v w] = ndgridSetXYZ(obj)
@@ -119,6 +138,10 @@ classdef GlobalIndexSemantics < handle
             [x z] = ndgrid(a, c);
         end
 
+        function O = onesSetXY(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b)]); end
+        function O = onesSetYZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(b) numel(c)]); end
+        function O = onesSetXZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(c)]); end
+        function O = onesSetXYZ(obj); [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b) numel(c)]); end
 
     end % generic methods
 

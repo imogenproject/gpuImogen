@@ -23,8 +23,8 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
         relaxingMagnet(run, mag, mag(I).velGrid(X), X, I);
         mag(I).cleanup();
 
-        cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology);
-        cudaHaloExchange(mag(I).gputag, [1 2 3], X, GIS.topology);
+        cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology, GIS.edgeInterior(:,I));
+        cudaHaloExchange(mag(I).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
     end
     
     mag(I).updateCellCentered();

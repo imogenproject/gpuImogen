@@ -73,18 +73,23 @@ classdef OrszagTangVortexInitializer < Initializer
             potentialField  = [];
             selfGravity     = [];
 
-            obj.dGrid       = 1./obj.grid;
-            mass            = 25/(36*pi)*ones(obj.grid);
+            GIS             = GlobalIndexSemantics();
 
-            [y,x]           = meshgrid(0:1:(obj.grid(2)-1),0:1:(obj.grid(1)-1));
-            mom             = zeros([3 obj.grid]);
-            mom(1,:,:)      = - mass .* sin( 2*pi*y/(obj.grid(2)-1) );
-            mom(2,:,:)      =   mass .* sin( 2*pi*x/(obj.grid(1)-1) );
+            grid = GIS.domainResolution;
+
+            obj.dGrid       = 1./grid;
+            mass            = 25/(36*pi)*GIS.onesSetXY();
+
+            [x, y]          = GIS.ndgridSetXY(); 
+            mom             = zeros([3 size(x,1) size(x,2) 1]);
+whos
+            mom(1,:,:)      = - mass .* sin( 2*pi*y/(grid(2)-1) );
+            mom(2,:,:)      =   mass .* sin( 2*pi*x/(grid(1)-1) );
 
             mag0            = 1/sqrt(4*pi);
-            mag             = zeros([3 obj.grid]);
-            mag(1,:,:)      = - mag0*sin( 2*pi*y/(obj.grid(2)-1) );
-            mag(2,:,:)      =   mag0*sin( 4*pi*x/(obj.grid(1)-1) );
+            mag             = zeros([3 size(x,1) size(x,2) 1]);
+            mag(1,:,:)      = - mag0*sin( 2*pi*y/(grid(2)-1) );
+            mag(2,:,:)      =   mag0*sin( 4*pi*x/(grid(1)-1) );
 
             ener        = 5/(12*pi)/(obj.gamma - 1) ...                % internal
                             + 0.5*squeeze(sum(mom.*mom,1)) ./ mass ...  % kinetic

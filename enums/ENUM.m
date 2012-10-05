@@ -45,6 +45,8 @@ classdef ENUM
         GRAV_BCSOURCE_INTERP    = 'interpolated';  % Computes boundary conditions at every 4th boundary
                                                    % cell and interpolates
 
+        GRAV_FEELGRAV_COEFF     = 2.0;
+
         %--- Radiation Model Types ---%
         RADIATION_NONE              = 'empty';
         RADIATION_OPTICALLY_THIN    = 'optically_thin';
@@ -57,7 +59,6 @@ classdef ENUM
 	CUATOMIC_SETMIN  = 1;
 	CUATOMIC_SETMAX  = 2;
 	CUATOMIC_FIXNAN  = 3;
-        
     end
 
 end

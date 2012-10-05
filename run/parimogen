@@ -49,6 +49,12 @@ if [ -z "$6" ]; then
   GPUID="0"
 fi
 
+#QUEUE="gpu"
+#if [ -nz "$IMOGEN_QUEUE" ]
+#  QUEUE=$IMOGEN_QUEUE
+#fi
+
+
 # --- Execute Imogen --- #
 # Acquire a temp file and write a script for qsub
 
@@ -58,12 +64,12 @@ echo "module load matlab" >> $TFILE
 echo "module load cuda" >> $TFILE
 echo "echo PATH: \$PATH" >> $TFILE
 echo "cd $(pwd)" >> $TFILE
-echo "mpirun -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${1}','${redirectStr}','${alias}', $GPUID);\" | tee -a ~/imogenout " >> $TFILE
+echo "mpirun --mca btl_tcp_if_include eth2 --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${1}','${redirectStr}','${alias}', $GPUID);\" | tee -a ~/imogenout " >> $TFILE
 
 echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 2 seconds to abort:"
 sleep 2;
 
-qsub -q xlonggpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
+qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
 #cat $TFILE
 sleep 2;
 

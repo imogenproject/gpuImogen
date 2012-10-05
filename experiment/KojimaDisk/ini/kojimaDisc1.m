@@ -116,7 +116,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     bernoulli(~isPartOfDisk) = 0;
 
     rho                = max((bernoulli * (GAMMA-1)/GAMMA).^(1/(GAMMA-1)), lomass);
-    rho(isPartOfDisk)  = max(rho(isPartOfDisk), lomass * 4);
+    rho(isPartOfDisk)  = max(rho(isPartOfDisk), lomass * ENUM.GRAV_FEELGRAV_COEFF);
     
     %edgeRegion = circ_shift(bernoulli, 1, -10) & isPartOfDisk;
     %rho(edgeRegion) = lomass * 4;
@@ -125,7 +125,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %        Apply Kojima momentum to the vast bulk of the disk, apply a blurred function to the
     %        inner and outer perimeters.
 
-    momentumKojima = rdinf.axialRadius.^(1-q) .* rho;
+    momentumKojima = (rdinf.axialRadius.^(1-q) - rdinf.axialRadius) .* rho;
 
     mom = zeros(size(rho));
     mom(isPartOfDisk) = momentumKojima(isPartOfDisk);
@@ -134,7 +134,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     rho = simpleBlur(rho, .4, 2, 1);
 
 % Where gravity is no longer acting, attempt to balance only centrifugal acceleration and pressure gradient
-borderlands = (isPartOfDisk) & (rho < 4*lomass);
+borderlands = (isPartOfDisk) & (rho < ENUM.GRAV_FEELGRAV_COEFF*lomass);
 drhodr = (circshift(rho,[1 0 0])-circshift(rho,[-1 0 0]))/(2*rdinf.dr);
 momphi = real(sqrt(GAMMA*rdinf.axialRadius.*rho.^GAMMA.*drhodr));
 mom(borderlands) = momphi(borderlands);

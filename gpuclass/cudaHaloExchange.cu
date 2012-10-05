@@ -26,10 +26,11 @@ __global__ void cukern_LinearToHaloXR(double *mainarray, double *linarray, int n
 /* Y halo routines */
 /* We grab an X-Z plane, making it easy to copy N linear strips of memory */
 /* Fork off nz by 3 blocks to do the job */
-__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx);
-__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx);
-__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int nz);
-__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int nz);
+__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx, int ny);
+__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx, int ny);
+
+__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int ny);
+__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int ny);
 
 /* Z halo routines */
 /* The easiest; We make one copy of an Nx by Ny by 3 slab of memory */
@@ -130,23 +131,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     case 1: { /* Y halo arrangement */
 //printf("Y halo exchange in progress\n"); fflush(stdout);
       dim3 blocksize; blocksize.x = 256; blocksize.y = 1; blocksize.z = 1;
-      dim3 gridsize; gridsize.x = amd.dim[0]/256; gridsize.y = amd.dim[1]; gridsize.z = 1;
+      dim3 gridsize; gridsize.x = amd.dim[0]/256; gridsize.y = amd.dim[2]; gridsize.z = 1;
       gridsize.x += gridsize.x*256 < amd.dim[0] ? 1 : 0;
 
-      cukern_HaloYToLinearL<<<gridsize, blocksize>>>(array[0], devPMptr[0], amd.dim[0]);
+      cukern_HaloYToLinearL<<<gridsize, blocksize>>>(array[0], devPMptr[0], amd.dim[0], amd.dim[1]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_read");
-      cukern_HaloYToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0], amd.dim[2]);
+      cukern_HaloYToLinearR<<<gridsize, blocksize>>>(array[0], devPMptr[1], amd.dim[0], amd.dim[1]);
       if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_read");
 
       cudaDeviceSynchronize();
       parallel_exchange_dim_contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
 
       if(leftCircular) {
-        cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
+        cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0], amd.dim[1]);
         if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_left_write");
         }
       if(rightCircular) {
-        cukern_LinearToHaloYR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[2]);
+        cukern_LinearToHaloYR<<<gridsize, blocksize>>>(array[0], devPMptr[3], amd.dim[0], amd.dim[1]);
         if(fail != cudaSuccess) cudaLaunchError(fail, gridsize, blocksize, &amd, 0, "cudaHaloExchange.Y_right_write");
         }
       }; break;
@@ -173,8 +174,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       }; break;
     }
 
-  for(ctr = 0; ctr < 4; ctr++)
-    cudaFreeHost(pinnedMem[ctr]);
+  for(ctr = 0; ctr < 4; ctr++) cudaFreeHost(pinnedMem[ctr]);
 
 cudaError_t epicFail = cudaDeviceSynchronize();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "halo exchange");
@@ -241,84 +241,82 @@ mainarray[addr] = linarray[linAddr];
 /* Fork off nz by 3 blocks to do the job */
 
 /* Fork enough threads to cover the X direction , and ny blocks in the y dir  */
-__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx)
+__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx, int ny)
 {
 int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myy = blockIdx.y;
-int ny = gridDim.y;
+int myz = blockIdx.y;
+int nz = gridDim.y;
 
 if(myx >= nx) return;
 
-int addr = myx + nx*myy + 3*nx*ny;
-int linAddr = myx + nx*myy;
+int addr = myx + nx*ny*myz + 3*nx;
+int linAddr = myx + nx*myz;
 
 int ctz;
 for(ctz = 0; ctz < 3; ctz++) {
   linarray[linAddr] = mainarray[addr];
-  addr += nx*ny;
-  linAddr += nx*ny;
+  addr += nx;
+  linAddr += nx*nz;
   }
-
-
 }
 
-__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx)
+__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx, int ny)
 {
 int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myy = blockIdx.y;
-int ny = gridDim.y;
+int myz = blockIdx.y;
+int nz = gridDim.y;
 
 if(myx >= nx) return; 
 
-int addr = myx + nx*myy;
-int linAddr = myx + nx*myy;
+int addr = myx + nx*ny*myz;
+int linAddr = myx + nx*myz;
 
 int ctz;
 for(ctz = 0; ctz < 3; ctz++) {
   mainarray[addr] = linarray[linAddr];
-  addr += nx*ny;
-  linAddr += nx*ny;
+  addr += nx;
+  linAddr += nx*nz;
   }
 
 }
 
-__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int nz)
+__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int ny)
 {
 int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myy = blockIdx.y;
-int ny = gridDim.y;
+int myz = blockIdx.y;
+int nz = gridDim.y;
 
-if(myx >= nx) return; 
+if(myx >= nx) return;
 
-int addr = myx + nx*myy + (nz-6)*nx*ny;
-int linAddr = myx + nx*myy;
+int addr = myx + nx*ny*myz + (ny-6)*nx;
+int linAddr = myx + nx*myz;
 
 int ctz;
 for(ctz = 0; ctz < 3; ctz++) {
   linarray[linAddr] = mainarray[addr];
-  addr += nx*ny;
-  linAddr += nx*ny;
+  addr += nx;
+  linAddr += nx*nz;
   }
 
 
 }
 
-__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int nz)
+__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int ny)
 {
 int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myy = blockIdx.y;
-int ny = gridDim.y;
+int myz = blockIdx.y;
+int nz = gridDim.y;
 
-if(myx >= nx) return; 
+if(myx >= nx) return;
 
-int addr = myx + nx*myy + (nz-3)*nx*ny;
-int linAddr = myx + nx*myy;
+int addr = myx + nx*ny*myz + (ny-3)*nx;
+int linAddr = myx + nx*myz;
 
 int ctz;
 for(ctz = 0; ctz < 3; ctz++) {
   mainarray[addr] = linarray[linAddr];
-  addr += nx*ny;
-  linAddr += nx*ny;
+  addr += nx;
+  linAddr += nx*nz;
   }
 
 }

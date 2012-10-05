@@ -101,10 +101,13 @@ function resultsHandler(run, mass, mom, ener, mag)
                     if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                     try
+fprintf('node %i: %s\n',GIS.context.rank,fileName);
                         brainDamagedIdioticWorkaround(sliceName, sl);
                         save(fileName, sliceName);
                     catch MERR %#ok<NASGU>
                         fprintf('Unable to save. Skipping');
+MERR
+MERR.cause
                     end
             end
         end
