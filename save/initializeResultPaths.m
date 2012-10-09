@@ -96,7 +96,7 @@ function initializeResultPaths(run)
     run.paths.indexPadding = length(num2str(run.time.ITERMAX));        
 
     % Wait until save directory is globally visible
-    secspaused = 0
+    secspaused = 0;
     while true
         ready = mpi_allgather(exist(run.paths.save,'dir'));
 

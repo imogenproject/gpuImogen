@@ -15,13 +15,13 @@ function source(run, mass, mom, ener, mag)
     end
 
     % TESTING
-    GIS = GlobalIndexSemantics();
-    [xg yg] = GIS.ndgridVecs;
-    xg = GPU_Type(xg);
-    yg = GPU_Type(yg);
-    cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
-clear xg
-clear yg
+%    GIS = GlobalIndexSemantics();
+%    [xg yg] = GIS.ndgridVecs;
+%    xg = GPU_Type(run.DGRID{1}*(xg-128.5));
+%    yg = GPU_Type(run.DGRID{2}*(yg-128.5));
+%    cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+%clear xg
+%clear yg
 
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms

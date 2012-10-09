@@ -44,11 +44,13 @@ function imogen(icfile)
 
     run.save.logPrint('Creating additional physics arrays...\n');
     run.selfGravity.initialize(IC.selfGravity, mass);
+run.save.logPrint('done creating self gravity\n');
     run.potentialField.initialize(IC.potentialField);
-
+run.save.logPrint('done initializing fixed potential.\n');
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
+run.save.logPrint('Done clearing and initializing.\n');
    
     resultsHandler(run, mass, mom, ener, mag);
     run.time.iteration  = 1;

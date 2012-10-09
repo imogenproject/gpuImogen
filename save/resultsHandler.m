@@ -101,9 +101,10 @@ function resultsHandler(run, mass, mom, ener, mag)
                     if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                     try
-fprintf('node %i: %s\n',GIS.context.rank,fileName);
-                        brainDamagedIdioticWorkaround(sliceName, sl);
-                        save(fileName, sliceName);
+%fprintf('node %i: %s\n',GIS.context.rank,fileName);
+                      brainDamagedIdioticWorkaround(sliceName, sl);
+                      save(fileName, sliceName);
+%			save('/tmp/imogen_test.mat',sliceName); % testing for slow remote FS
                     catch MERR %#ok<NASGU>
                         fprintf('Unable to save. Skipping');
 MERR

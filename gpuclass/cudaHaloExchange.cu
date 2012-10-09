@@ -336,12 +336,15 @@ int *val;
 int i;
 
 val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
+for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
 
 val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
+for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
 
 val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
+for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
+
+val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
 for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
 
 return pt;

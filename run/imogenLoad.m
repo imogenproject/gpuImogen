@@ -8,6 +8,12 @@ function imogenLoad(runFile, logFile, alias, gpuno)
 
     %-- Initialize Imogen directory ---%
     starterRun();
+ 
+    context = parallel_start();
+    topology = parallel_topology(context, 3);
+
+    GIS = GlobalIndexSemantics(context, topology);
+
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);

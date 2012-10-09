@@ -20,7 +20,6 @@ classdef GlobalIndexSemantics < handle
 
         pHaloDims;
 
-        nodeIndex; % Node's index in the cartesian topology
         edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular or exterior
 
         domainResolution;
@@ -51,37 +50,19 @@ classdef GlobalIndexSemantics < handle
 
             pMySize = floor(obj.pGlobalDims ./ double(obj.topology.nproc));
             
-            obj.nodeIndex = double(mod(obj.topology.neighbor_left + 1, obj.topology.nproc));
-
-% We have | rank | -x | -y | -z |
-% Construct -x topology lines:
-% j = my rank; put my rank at w(i); j = -x(w(i)); if j = my rank then end. if not, w(++i)=j and loop back
-%rxyz = [obj.context.rank; double(obj.topology.neighbor_left)];
-%rxyz = reshape(mpi_allgather(rxyz), [4 obj.context.size])';
-%a = obj.context.rank;
-%b = 1;
-%w(b) = a;
-%while rxyz(w(b),2) ~= obj.context.rank
-%  a=rxyz(w(b),2);
-%  b=b+1
-%  w(b)=a;
-%end
-% We have now constructed the set of left neighbors of which we are part
-%leftring = w
-
             % Make up any deficit in size with the rightmost nodes in each dimension
             for i = 1:obj.topology.ndim;
-                if (obj.nodeIndex(i) == (obj.topology.nproc(i)+1)) && (pMySize(i)*obj.topology.nproc(i) < obj.pGlobalDims(i))
+                if (double(obj.topology.coord(i)) == (obj.topology.nproc(i)+1)) && (pMySize(i)*obj.topology.nproc(i) < obj.pGlobalDims(i))
                     pMySize(i) = pMySize(i) + obj.pGlobalDims(i) - pMySize(i)*obj.topology.nproc(i);
                 end
             end
             obj.pMySize = pMySize;
-            obj.pMyOffset = obj.pMySize.*obj.nodeIndex;
+            obj.pMyOffset = obj.pMySize.*double(obj.topology.coord);
 
             obj.pHaloDims = obj.pGlobalDims - (obj.topology.nproc > 1).*double((6*obj.topology.nproc));
 
-            obj.edgeInterior(1,:) = double(obj.nodeIndex > 0);
-            obj.edgeInterior(2,:) = double(obj.nodeIndex < (obj.topology.nproc-1));
+            obj.edgeInterior(1,:) = double(obj.topology.coord > 0);
+            obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
 
             obj.domainResolution = obj.pGlobalDims - 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
@@ -108,7 +89,7 @@ classdef GlobalIndexSemantics < handle
             x=[];
             for j = 1:ndim;
                 q = 1:obj.pMySize(j);
-                q = q + (obj.pMySize(j) - 6*(obj.topology.nproc(j) > 1))*obj.nodeIndex(j) - 3*(obj.topology.nproc(j) > 1) - 1;
+                q = q + (obj.pMySize(j) - 6*(obj.topology.nproc(j) > 1))*double(obj.topology.coord(j)) - 3*(obj.topology.nproc(j) > 1) - 1;
                 q(q < 0) = q(q < 0) + obj.pHaloDims(j);
                 x{j} = mod(q, obj.pHaloDims(j)) + 1;
             end
