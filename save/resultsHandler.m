@@ -26,7 +26,6 @@ function resultsHandler(run, mass, mom, ener, mag)
     if run.save.saveData
         
         %--- Preparation for save using lab 1 ---%
-        if labindex == 1
             switch saveState
                 case 2;            
                     fileSuffix         = 'FINAL'; 
@@ -45,10 +44,9 @@ function resultsHandler(run, mass, mom, ener, mag)
             sl.ver    = run.version;
             sl.iter   = iteration;
             
-            if run.treadmill.ACTIVE,    sl.tread = run.treadmill.toStruct(); end
-            
-        end
+        if run.treadmill.ACTIVE,    sl.tread = run.treadmill.toStruct(); end
 
+           
         for i=1:size(run.save.SLICE,1) % For each slice type
             switch (i)
                 case {1 2 3};    % 1D Slices

@@ -16,10 +16,8 @@ function includeImogenPaths()
     for i=1:length(directories); 
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
-    addpath('/usr/local/packages/parallel-gateway/pgw-trunk/lib');
+    addpath('/home2/ekeever1/parallel-gateway/build/lib');
     fprintf('Imogen directories have been added to the path listing.\n');
-
-    
     
     %--- Add compatibility directories ---%
     %       To deal with incompatibilities created by multiple Matlab versions, as well as missing

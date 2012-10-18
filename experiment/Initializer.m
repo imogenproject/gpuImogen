@@ -221,10 +221,12 @@ classdef Initializer < handle
                 [mass, mom, ener, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
             end
 
-            if isempty(obj.slice)
-                obj.slice = ceil(obj.grid/2);
-            end
+%            if isempty(obj.slice)
+                obj.slice = ceil(size(mass)/2);
+%            end
             run = obj.getRunSettings();
+
+            GIS = GlobalIndexSemantics(); if GIS.context.rank == 0; fprintf('Done calculating initial conditions.\n'); end
         end
 
         function icfile = saveInitialCondsToFile(obj)

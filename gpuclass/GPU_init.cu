@@ -56,9 +56,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if(fail == cudaErrorInvalidDevice)      mexErrMsgTxt("GPU_init: selected device DNE");
     if(fail == cudaErrorSetOnActiveProcess) mexErrMsgTxt("GPU_init: already initialized, dingus");
 
-    cudaDeviceProp devinfo;
-    cudaGetDeviceProperties(&devinfo, deviceNum);
-    printAboutDevice(devinfo, deviceNum);
+//    cudaDeviceProp devinfo;
+//    cudaGetDeviceProperties(&devinfo, deviceNum);
+//    printAboutDevice(devinfo, deviceNum);
     return;
   }
 

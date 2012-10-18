@@ -125,7 +125,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %        Apply Kojima momentum to the vast bulk of the disk, apply a blurred function to the
     %        inner and outer perimeters.
 
-%    momentumKojima = (rdinf.axialRadius.^(1-q) - rdinf.axialRadius) .* rho;
+%    momentumKojima = (rdinf.axialRadius.^(1-q) - 1*rdinf.axialRadius) .* rho;
     momentumKojima = (rdinf.axialRadius.^(1-q) ) .* rho;
 
     mom = zeros(size(rho));

@@ -12,7 +12,8 @@ MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
 
 MPI = /usr/local/packages/openmpi/1.4_gcc-4.4-tm
-PGW = /usr/local/packages/parallel-gateway/pgw-trunk
+#PGW = /usr/local/packages/parallel-gateway/pgw-trunk
+PGW = /home2/ekeever1/parallel-gateway/build
 
 PAR_INCL = -I$(PGW)/include -I$(MPI)/include
 PAR_LDIR = -L$(PGW)/lib -L$(MPI)/lib
@@ -25,7 +26,7 @@ all: base fluids
 base: GPU_init GPU_exit GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed cudaSourceScalarPotential
+fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed cudaSourceScalarPotential cudaSourceRotatingFrame cudaHaloExchange
 	echo "Done building fluid kernels."
 	mv cudaCommon.cpp temp
 	rm -f *cpp

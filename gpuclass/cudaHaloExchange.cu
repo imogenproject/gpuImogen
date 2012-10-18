@@ -90,6 +90,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   if(fail != cudaSuccess) { dim3 f; cudaLaunchError(fail, f, f, &amd, ctr, "cudaHaloExchange.malloc"); }
 
+  MPI_Comm commune = MPI_Comm_f2c(parallelTopo->comm);
+
 //pParallelTopology pt = parallelTopo;
 //printf("Topology dump by rank %i: ndim=%i, comm=%i\n", (int)*mxGetPr(prhs[4]), pt->ndim, pt->comm);
 //printf("left: %i %i\n right: %i %i\n", pt->neighbor_left[0], pt->neighbor_left[1], pt->neighbor_right[0], pt->neighbor_right[1]);
@@ -112,6 +114,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //printf("\n");
       cudaDeviceSynchronize(); 
       parallel_exchange_dim_contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      MPI_Barrier(commune);
 
 //printf("Left halo rx contents: ");   for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[2][j]); }
 //printf("\nRight halo rx content: "); for(j = 0; j < numToExchange; j++) { printf("%i ", (int)pinnedMem[3][j]); }
@@ -141,6 +144,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
       cudaDeviceSynchronize();
       parallel_exchange_dim_contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      MPI_Barrier(commune);
 
       if(leftCircular) {
         cukern_LinearToHaloYL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0], amd.dim[1]);
@@ -162,6 +166,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
       cudaDeviceSynchronize();
       parallel_exchange_dim_contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
+      MPI_Barrier(commune);
 
       if(leftCircular) {
         cudaMemcpy(array[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);

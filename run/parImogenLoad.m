@@ -15,6 +15,8 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
 
     GIS = GlobalIndexSemantics(context, topology);
 
+    mpi_barrier();
+
     % If we're running in parallel, print some bookkeeping stuff just to make
     % sure that everyone is one the same page; Share hashes to make sure that
     % exactly one processes is using each GPU.
@@ -38,6 +40,8 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
         GPU_init(gpuno);
     end
+
+    mpi_barrier();
 
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);

@@ -10,7 +10,6 @@ function imogen(icfile)
 %>> ini         Listing of properties and settings for the run.             struct
 %>> statics     Static arrays with lookup to static values.                 struct
 
-    fprintf('imogen.m: loading initial conditions\n');
     load(icfile)
     ini     = IC.ini;
     statics = IC.statics;
@@ -28,6 +27,7 @@ function imogen(icfile)
     run.save.saveIniSettings(ini);
     run.preliminary();
 
+    mpi_barrier();
     run.save.logPrint('Creating simulation arrays...\n');
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, IC.mass, run, statics);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, IC.ener, run, statics);
@@ -42,16 +42,15 @@ function imogen(icfile)
         end
     end
 
-    run.save.logPrint('Creating additional physics arrays...\n');
     run.selfGravity.initialize(IC.selfGravity, mass);
-run.save.logPrint('done creating self gravity\n');
     run.potentialField.initialize(IC.potentialField);
-run.save.logPrint('done initializing fixed potential.\n');
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
-run.save.logPrint('Done clearing and initializing.\n');
    
+    mpi_barrier();
+    run.save.logPrint('Running initial save...\n');
+
     resultsHandler(run, mass, mom, ener, mag);
     run.time.iteration  = 1;
     direction           = [1 -1];

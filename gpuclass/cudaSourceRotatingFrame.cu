@@ -87,21 +87,26 @@ double locY;
 double locRho;
 double dmom; double dener;
 double locMom[2];
+double inv_rsqr, xy;
 
 for(; myy < ny; myy += BLOCKDIMY) {
   locY = Ry[myy];
+
+  inv_rsqr = 2.0/(locX*locX+locY*locY);
+  xy = locX*locY;
 
   locRho = rho[globaddr];
   locMom[0] = px[globaddr];
   locMom[1] = py[globaddr];
  
-  /* -2 w cross(p + rho w cross r) = [rho w^2 x - w py, w px - rho w^2 y, 0]
-      w fixed as [0 0 w_z] */
-
-  dmom = DT*OMEGA*(locRho*OMEGA*locX - locMom[1]); /* dpx */
+/*  dmom = DT*OMEGA*(2*(x y px + x x py)/r^2 - rho w x); dpx */
+  dmom         = DT*OMEGA*(-(xy*locMom[0] + locY*locY*locMom[1])*inv_rsqr + OMEGA*locX*locRho);
   px[globaddr] = locMom[0] + dmom;
-  dener = dmom*locMom[0] / locRho;
-  dmom = DT*OMEGA*(locMom[0] - locRho*OMEGA*locY);
+  dener        = dmom*locMom[0] / locRho;
+
+/*  dmom = DT*OMEGA*(-2*(x x px + x y py)/r^2 - rho w y); dpy */
+  dmom         = DT*OMEGA*( (locX*locX*locMom[0] + xy*locMom[1])*inv_rsqr + OMEGA*locY*locRho);
+  py[globaddr] = locMom[1] + dmom;
   E[globaddr] += dener + dmom*locMom[1] / locRho;
 
   globaddr += nx*BLOCKDIMY;
