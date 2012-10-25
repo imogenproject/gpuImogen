@@ -20,12 +20,37 @@
 __global__ void  cukern_applyScalarPotential(double *rho, double *E, double *px, double *py, double *pz, double *phi, int3 arraysize);
 /*mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.potentialField.gputag, 2*run.time.dTime);*/
 
-__constant__ __device__ double devLambda[4];
+__constant__ __device__ double devLambda[7];
+
+#define LAMX devLambda[0]
+#define LAMY devLambda[1]
+#define LAMZ devLambda[2]
+
+// Define: F = -beta * rho * grad(phi)
+// rho_g = density for full effect of gravity 
+// rho_c = minimum density to feel gravity at all
+// beta = { rho_g < rho         : 1                                 }
+//        { rho_c < rho < rho_g : [(rho-rho_c)/(rho_rho_g-rho_c)]^2 }
+//        {         rho < rho_c : 0                                 }
+
+// This provides a continuous (though not differentiable at rho = rho_g) way to surpress gravitation of the background fluid
+// The original process of cutting gravity off below a critical density a few times the minimum
+// density is believed to cause "blowups" at the inner edge of circular flow profiles due to being
+// discontinuous. If even smoothness is insufficient and smooth differentiability is required,
+// a more-times-continuous profile can be constructed, but let's not go there unless forced.
+
+// Density below which we force gravity effects to zero
+#define RHOMIN devLambda[3]
+#define RHOGRAV devLambda[4]
+// 1 / (rho_g - rho_c)
+#define G1 devLambda[5]
+// rho_c / (rho_g - rho_c)
+#define G2 devLambda[6]
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // At least 2 arguments expected
     // Input and result
-    if ((nrhs!=9) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, phi, dt, d3x, rhomin)\n");
+    if ((nrhs!=10) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, phi, dt, d3x, rhomin, rho_fullg)\n");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -41,17 +66,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     double dt = *mxGetPr(prhs[6]);
     double *dx = mxGetPr(prhs[7]);    
-    double lambda[4];
+    double lambda[7];
     lambda[0] = dt/(2.0*dx[0]);
     lambda[1] = dt/(2.0*dx[1]);
     lambda[2] = dt/(2.0*dx[2]);
-    lambda[3] = *mxGetPr(prhs[8]); /* minimum rho */
+    lambda[3] = *mxGetPr(prhs[8]); /* minimum rho, rho_c */
+    lambda[4] = *mxGetPr(prhs[9]); /* rho_g */
 
-//    printf("arraysize: %i %i %i\n", arraysize.x, arraysize.y, arraysize.z);
-//    printf("gridsize: %i %i %i\n", gridsize.x, gridsize.y, gridsize.z);
-//    printf("lambda: %F %F %F\n", lambda[0], lambda[1], lambda[2]);
+    lambda[5] = 1.0/(lambda[4] - lambda[3]); /* 1/(rho_g - rho_c) */
+    lambda[6] = lambda[3]*lambda[5];
 
-    cudaMemcpyToSymbol(devLambda, lambda, 4*sizeof(double), 0, cudaMemcpyHostToDevice);
+    cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
     cukern_applyScalarPotential<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], arraysize);
 
     cudaError_t epicFail = cudaGetLastError();
@@ -114,6 +139,7 @@ for(z = 0; z < arraysize.z; z++) {
 
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
     deltaphi         = devLambda[0]*(V[myLocAddr+1]-V[myLocAddr-1]);
+    if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
     ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * px * dphi/dx
     px[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store px <- px - dt * rho dphi/dx;
   }
@@ -122,6 +148,7 @@ for(z = 0; z < arraysize.z; z++) {
   __syncthreads();
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
     deltaphi         = devLambda[1]*(V[myLocAddr+BLOCKDIMX]-V[myLocAddr-BLOCKDIMX]);
+   if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
     ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * py * dphi/dy
     py[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store py <- py - rho dphi/dy;
   }
@@ -129,6 +156,7 @@ for(z = 0; z < arraysize.z; z++) {
   W[myLocAddr]       = phi[globAddr + deltaz]; // load phi(z+1) -> phiC
   __syncthreads();
   deltaphi           = devLambda[2]*(W[myLocAddr] - U[myLocAddr]);
+  if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
   __syncthreads();
 
   U[myLocAddr]       = pz[globAddr]; // load pz(z) -> phiA
