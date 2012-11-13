@@ -26,10 +26,20 @@ function relaxingFluid(run, mass, mom, ener, mag, X)
                                  mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
                                  run.GAMMA, run.pureHydro);
 
+
+GIS = GlobalIndexSemantics();
+hostarray = GPU_cudamemcpy(freezea);
+mpi_dimreduce(hostarray,X-1,GIS.topology);
+GPU_free(freezea);
+freezea = GPU_cudamemcpy(hostarray);
+
 [v(1).store.array v(5).store.array v(L(1)+1).store.array v(L(2)+1).store.array v(L(3)+1).store.array] = cudaFluidW(mass.gputag, ener.gputag, ...
                    mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
                    mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
                    pressa, freezea, fluxFactor, run.pureHydro);
+
+
+%saveDEBUG(mass.array,sprintf('mass after w upwind'));
 
 GPU_free(pressa); GPU_free(freezea);
 cudaArrayAtomic(mass.store.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
@@ -42,7 +52,11 @@ cudaArrayAtomic(mass.store.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
                                 mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...
                                 mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
                                 run.GAMMA, run.pureHydro);
-
+GIS = GlobalIndexSemantics();
+hostarray = GPU_cudamemcpy(freezea);
+mpi_dimreduce(hostarray,X-1,GIS.topology);
+GPU_free(freezea);
+freezea = GPU_cudamemcpy(hostarray);
 
 cudaFluidTVD(mass.store.gputag, ener.store.gputag, ...
             mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...

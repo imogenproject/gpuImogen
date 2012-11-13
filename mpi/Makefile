@@ -1,34 +1,26 @@
-# This script compiles the handful of binary modules needed for Imogen to support GPU gravitation.
-# These must be rebuilt EVERY TIME GPUMAT IS UPDATED or Matlab will segfault when they are used.
+# Compiles (real) MPI support needed in Matlab that PGW doesn't yet include.
 
-# Change these to suit your system. CUDA_LDIR will be either lib or lib64
-#MATLAB_DIR=/opt/Matlab/matlab2010b
-MATLAB_DIR =/usr/local/packages/MATLAB/R2011b
-CUDA_DIR   = /usr/local/packages/cuda/4.0
-CUDA_LDIR  = lib64
-CUDA_ARCH  = sm_20
+include ../Make.config
 
 # Don't mess with these
 NVCC_OPTS = -arch=$(CUDA_ARCH) -O1
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include $(GPUMAT_INCL)
 
-#MPIOPTS   := $(shell mpicc --show | sed -e 's/^.*bin\/gcc //' -e 's/-pthread//')
-MEX_OPTS  = -DUNIX
-MEX_INCL  = -I$(MATLAB_DIR)/extern/include
-MEX_LIBS  = 
+MEX_OPTS = -DUNIX
+MEX_INCL = -I$(MATLAB_DIR)/extern/include
+MEX_LIBS = 
 MEX_LDIR = -L$(MATLAB_DIR)/runtime/glnxa64
 
+PAR_INCL = -I$(PGW_DIR)/include -I$(MPI_DIR)/include
+PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
+PAR_LIBS = -lpgw -lmpi
+
 ###############################################################################
-all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_scatter mpi_basicinfo
+all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_scatter mpi_basicinfo mpi_dimreduce
 	echo "Finished!"
 
 %::
-	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $@.c -o $@
-
-#%::
-#	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
-#	mex $(MPISHIT) $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
-#	rm -f $@.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $@.c -o $@
 
 clean:
 	rm -f *mexa64 *cpp

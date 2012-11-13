@@ -13,6 +13,14 @@
 #include "cublas.h"
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+
+The cudaArrayAtomic function is meant to perform operations that operate elementsize
+on single arrays. The only such functions yet encountered are in "control" functions where
+we require that either density be kept to a minimum value, or that NaNs be replaced by 0s.
+
+*/
+
 __global__ void cukern_ArraySetMin(double *array, double min,    int n);
 __global__ void cukern_ArraySetMax(double *array, double max,    int n);
 __global__ void cukern_ArrayFixNaN(double *array, double fixval, int n);

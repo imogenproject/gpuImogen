@@ -14,6 +14,13 @@
 
 #include "cudaCommon.h" // This defines the getGPUSourcePointers and makeGPUDestinationArrays utility functions
 
+/* THIS FUNCTION
+
+This function calculates a single half-step of the conserved transport part of the fluid equations
+(CFD or MHD) which is used as the predictor input to the matching TVD function.
+
+*/
+
 __global__ void cukern_Wstep_mhd_uniform  (double *P, double *Cfreeze, double lambdaqtr, int nx);
 __global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double lambdaqtr, int nx);
 

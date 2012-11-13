@@ -1,8 +1,8 @@
-# This makefile builds the GPU kernels and mex files needed to run gpuImogen
+# This makefile builds the GPU kernels needed to run gpuImogen
 
-include Makefile.config
+include ../Make.config
 
-# Don't mess with any of this. Modify Makefile.config isntead.
+# Don't mess with any of this. Modify the above config file instead
 NVCC_OPTS = -arch=$(CUDA_ARCH) -O1
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
@@ -11,12 +11,8 @@ MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
 
-MPI = /usr/local/packages/openmpi/1.4_gcc-4.4-tm
-#PGW = /usr/local/packages/parallel-gateway/pgw-trunk
-PGW = /home2/ekeever1/parallel-gateway/build
-
-PAR_INCL = -I$(PGW)/include -I$(MPI)/include
-PAR_LDIR = -L$(PGW)/lib -L$(MPI)/lib
+PAR_INCL = -I$(PGW_DIR)/include -I$(MPI_DIR)/include
+PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
 PAR_LIBS = -lpgw -lmpi
 
 ###############################################################################
@@ -39,9 +35,9 @@ kerncommon:
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaCommon.cu -o cudaCommon.cpp
 
 cuda% GPU% directionalMax% freezeAnd%:: kerncommon
-	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
-	rm -f $@.cpp
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -g -cuda $@.cu -o $@.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp -g cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
+#	rm -f $@.cpp
 
 cudaHaloExchange:
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda $@.cu -o $@.cpp

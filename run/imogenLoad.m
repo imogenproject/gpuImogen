@@ -26,6 +26,9 @@ function imogenLoad(runFile, logFile, alias, gpuno)
        rethrow(ME);
     end
 
+    mpi_barrier();
+    mpi_finalize();
+
     exit();
 
 end

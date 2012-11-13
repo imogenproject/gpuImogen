@@ -68,6 +68,7 @@ GIS = GlobalIndexSemantics();
                         if run.magnet.ACTIVE
                         magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,:));
                         end
+
                 end
     %===============================================================================================        
         else %                                       BACKWARD FLUXING
@@ -83,7 +84,9 @@ GIS = GlobalIndexSemantics();
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
                         relaxingFluid(run, mass, mom, ener, mag, directVec(n));
                         xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
+
                         xchgFluidHalos(mass, mom, ener, directVec(n));
+
                         end
                 end
     end
@@ -117,7 +120,12 @@ s = { mass, ener, mom(1), mom(2), mom(3) };
 GIS = GlobalIndexSemantics();
 
 for j = 1:5;
-  cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));
+%  FIXME: This is braindead and stupid. Precompute this per array; Consider storing in the gputag.
+  ec = double([strcmp(s{j}.bcModes{1,dir},'circ'); strcmp(s{j}.bcModes{2,dir},'circ')]);
+
+  cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir) + ec);
+%  cudaHaloExchange(s{j}.gputag, [1 2 3], 2, GIS.topology, GIS.edgeInterior(:,2));
+%  cudaHaloExchange(s{j}.gputag, [1 2 3], 3, GIS.topology, GIS.edgeInterior(:,3));
 end
 
 end

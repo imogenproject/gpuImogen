@@ -46,7 +46,7 @@ classdef GlobalIndexSemantics < handle
 
         function obj = setup(obj, global_size)
 
-            obj.pGlobalDims = global_size;
+            obj.pGlobalDims = global_size + 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
             pMySize = floor(obj.pGlobalDims ./ double(obj.topology.nproc));
             
@@ -64,10 +64,15 @@ classdef GlobalIndexSemantics < handle
             obj.edgeInterior(1,:) = double(obj.topology.coord > 0);
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
 
-            obj.domainResolution = obj.pGlobalDims - 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
+            obj.domainResolution = global_size;
 
             instance = obj;
         end % Constructor
+
+        function makeDimCircular(obj, dim)
+            if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
+            obj.edgeInterior(:,dim) = 1;
+        end
 
         function localset = LocalIndexSet(obj, globalset, d)
             localset = [];

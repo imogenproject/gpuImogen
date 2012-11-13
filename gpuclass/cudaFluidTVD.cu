@@ -13,6 +13,16 @@
 #include "cublas.h"
 #include "cudaCommon.h"
 
+/* THIS FUNCTION 
+
+This is the Cuda Fluid TVD function; It takes a single forward-time step, CFD or MHD, of the
+conserved-transport part of the fluid equations using a total variation diminishing scheme to
+perform a non-oscillatory update.
+
+Requires predicted half-step values from a 1st order upwind scheme.
+
+*/
+
 #define BLOCKLEN 60
 #define BLOCKLENP2 62
 #define BLOCKLENP4 64

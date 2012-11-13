@@ -69,7 +69,7 @@ echo "mpirun --mca btl_tcp_if_include eth2 --bynode -np $NP matlab -nodisplay -n
 echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 2 seconds to abort:"
 sleep 2;
 
-qsub -q longgpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
+qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o ~/Results/logfile${2}.out
 #cat $TFILE
 sleep 2;
 

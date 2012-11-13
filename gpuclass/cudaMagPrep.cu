@@ -14,6 +14,30 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+This function takes momentum and density arrays to interpolate to second order the velocity fields
+required by the MHD routines to perform magnetic field evolution.
+
+The interpolation is two dimensional, involving a backwards average in the I (velocity) direction
+and a centered 2nd order average in the X (magnetic) direction, such that the stencil is
+
+             
+    +---+-------+
+    |I\X|-1 0 1 |
+    +---+-------+
+A = | 0 | 1 2 1 | / 4 
+    |-1 | 1 2 1 |
+    +---+-------+
+
+where A is computed using
+
+[  (p(i-1,x+1)+p(i,x+1))/(m(i-1,x+1)+m(i,x+1))
+ 2*(p(i-1,x  )+p(i,x  ))/(m(i-1,x  )+m(i,x  ))
+   (p(i-1,x-1)+p(i,x-1))/(m(i-1,x-1)+m(i,x-1)) ] / 4
+
+The alternative, averaging pointwise velocities, is experimentally seen to be numerically unstable.
+*/
+
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel);
 
 __global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx);
@@ -90,6 +114,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 cudaError_t epicFail = cudaGetLastError();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, velDirection, "mag prep velocity avg");
 
+cudaDeviceSynchronize();
+
     // Interpolate the velocity to 2nd order
     if(amd.dim[magDirection-1] > 1) {
         switch(magDirection) {
@@ -117,6 +143,8 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
         // FIXME: Detect this condition ahead of time and never bother with this array in the first place
         }
 
+cudaDeviceSynchronize();
+
 epicFail = cudaGetLastError();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, magDirection, "mag prep interpolation");
 
@@ -134,6 +162,54 @@ if(addr > numel) return;
 v[addr] = p[addr] / m[addr];
 }
 
+/*cukern_Vavg_vx_by(double *v, double *p, double *rho, int3 dim);
+{
+
+int nx = dim.x; int ny = dim.y; int nz = dim.z; // Kill them all and let the compiler sort them out. The Optimizer will recognize his own.
+
+__shared__ double tileA[TILEX][TILEY]
+__shared__ double tileB[TILEX][TILEY]
+
+int myx = threadIdx.x + (TILEX-2)*blockIdx.x - 1;
+int myy = threadIdx.y + (TILEY-2)*blockIdx.y - 1;
+
+if(myx >= nx) return;
+if(myy >= ny) return;
+
+myx += nx; myy += ny;
+myx %= nx; myy %= ny;
+
+int globAddr = myx + nx*myy;
+
+int z;
+
+int xwrite = (
+
+int iwrite = (threadIdx.x > 0) && (threadIdx.x < (TILEX-1)) && (threadIdx.y > 0) && (threadIdx.y < (TILEY-1));
+
+for(z = 0; z < nz; z++) {
+  tileA[threadIdx.x][threadIdx.y] = p[globAddr];
+  tileB[threadIdx.x][threadIdx.y] = rho[globAddr];
+
+  __syncthreads();
+
+  if(iwrite) {
+    v[globAddr] = (tileA[threadIdx.x-1][threadIdx.y] + tileA[threadIdx.x][threadIdx.y])/ \
+                  (tileB[threadIdx.x-1][threadIdx.y] + tileB[threadIdx.x][threadIdx.y]);
+
+    }
+
+//[  (p(i-1,x+1)+p(i,x+1))/(m(i-1,x+1)+m(i,x+1))
+// 2*(p(i-1,x  )+p(i,x  ))/(m(i-1,x  )+m(i,x  ))
+//   (p(i-1,x-1)+p(i,x-1))/(m(i-1,x-1)+m(i,x-1)) ]
+//
+
+  globAddr += nx*ny;
+  }
+
+
+}
+*/
 
 __global__ void cukern_VelocityBkwdAverage_X(double *v, double *p, double *m, int nx)
 {

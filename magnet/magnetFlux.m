@@ -19,14 +19,22 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
         % Prepare arrays for magnetic flux step at cell corners (2nd order grid-aligned velocity)
 	mag(I).velGrid(X).array = cudaMagPrep(mom(X).gputag, mass.gputag, [I X]);
 
+%cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
+        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, [1;1]);
+        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], I, GIS.topology, [1;1]);
+
         % Flux Advection step
         relaxingMagnet(run, mag, mag(I).velGrid(X), X, I);
         mag(I).cleanup();
 
-        cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology, GIS.edgeInterior(:,I));
-        cudaHaloExchange(mag(I).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
     end
-    
+
     mag(I).updateCellCentered();
     mag(X).updateCellCentered();
+
+%    cudaHaloExchange(mag(X).cellMag.gputag, [1 2 3], I, GIS.topology, GIS.edgeInterior(:,I));
+%    cudaHaloExchange(mag(X).cellMag.gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
+%    cudaHaloExchange(mag(I).cellMag.gputag, [1 2 3], I, GIS.topology, GIS.edgeInterior(:,I));
+%    cudaHaloExchange(mag(I).cellMag.gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
+
 end

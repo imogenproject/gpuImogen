@@ -82,7 +82,6 @@ classdef OrszagTangVortexInitializer < Initializer
 
             [x, y]          = GIS.ndgridSetXY(); 
             mom             = zeros([3 size(x,1) size(x,2) 1]);
-whos
             mom(1,:,:)      = - mass .* sin( 2*pi*y/(grid(2)-1) );
             mom(2,:,:)      =   mass .* sin( 2*pi*x/(grid(1)-1) );
 

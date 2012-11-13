@@ -2,14 +2,18 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-GIS = GlobalIndexSemantics(); GIS.setup([1042 1024 1]);
+GIS = GlobalIndexSemantics(); GIS.setup([1024 1024 1]);
 
 %--- Initialize test ---%
-run                 = OrszagTangVortexInitializer([1042 1024 1]);
+
+run.bcModes.x = 'circ';
+run.bcModes.y = 'circ';
+
+run                 = OrszagTangVortexInitializer([1024 1024 1]);
 run.info            = 'Orszag-Tang vortex test.';
 run.notes           = '';
 run.profile         = false;
-run.image.interval  = 50;
+run.image.interval  = 10;
 run.image.mass      = true;
 run.iterMax = 20000;
 

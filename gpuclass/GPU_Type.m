@@ -56,7 +56,7 @@ classdef GPU_Type < handle
         function result = get.array(obj)
             % Return blank if not allocated, or dump the GPU array to CPU if we are
             if obj.allocated == false; result = []; return; end
-            result = GPU_cudamemcpy(obj.GPU_MemPtr, obj.asize);
+            result = GPU_cudamemcpy(obj.GPU_MemPtr);
         end
 
         function result = eq(obj)
@@ -185,7 +185,7 @@ classdef GPU_Type < handle
                 obj.asize     = arrin.asize;
                 obj.numdims   = arrin.numdims;
 
-                obj.GPU_MemPtr = GPU_cudamemcpy(arrin.GPU_MemPtr, prod(arrin.asize));
+                obj.GPU_MemPtr = GPU_cudamemcpy(arrin.GPU_MemPtr, 1);
             elseif (isa(arrin, 'int64') == 1) && (numel(arrin) == 5)
                 % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
                 obj.allocated = true;

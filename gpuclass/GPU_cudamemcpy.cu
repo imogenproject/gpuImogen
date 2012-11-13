@@ -17,83 +17,72 @@
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
-  if ((nlhs == 1) & (nrhs==1)) {
-    // double -> GPU array
-    // It is very important that this all be right because all GPU stuff originates from here.
+  if(nlhs != 1) { mexErrMsgTxt("GPU_cudamemcpy: Must have 1 return argument for copied array."); }
 
-    // prhs[0]: Matlab array
-    // plhs[0]: returned GPUtag
-    // prototypical call: gputag = GPU_cudamemcpy(rand(128));
-    double *from = mxGetPr(prhs[0]);
+  int arg1isml = mxIsDouble(prhs[0]);
 
-    mwSize dims[2]; dims[0] = 5; dims[1] = 1;
-    plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
-
-    int64_t *retptr = (int64_t *)mxGetData(plhs[0]);
-
-    size_t Nel = mxGetNumberOfElements(prhs[0]);
-    
-    double *rmem;
-
-    cudaError_t fail = cudaMalloc((void **)&rmem, Nel * sizeof(double));
-    if(fail == cudaErrorMemoryAllocation) mexErrMsgTxt("GPU_cudamemcpy: H2D, Cuda unable to allocate memory. We're boned.");
-    retptr[0] = (int64_t)rmem;
-
-    fail = cudaMemcpy((void *)rmem, (void *)from, Nel * sizeof(double), cudaMemcpyHostToDevice);
-    if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: H2D, Copy to device failed.");
-
-    // Given that we've succeeded, now tag the result with the array dimensions
-    retptr[1] = mxGetNumberOfDimensions(prhs[0]); // r[1] = number of dims
-    const mwSize *idims = mxGetDimensions(prhs[0]); // r[2:2+r[1]] = dimension size
-    for(Nel = 0; Nel < retptr[1]; Nel++) retptr[2+Nel] = idims[Nel]; 
-    for(; Nel < 3; Nel++) { retptr[2+Nel] = 1; } // or 1 if blank
-
-    return;
-  }
-
-  if((nlhs == 1) & (nrhs == 2)) { 
-    // GPU array -> double array or GPU array -> GPU array if numel(prhs[1]) == 1
-    // plhs[0]: returned value
-    // prhs[0]: input array (either double array or gputag
-    // prhs[1]: input numel (gpu -> gpu) or dimensions (gpu -> double)
-    int ndims = mxGetNumberOfElements(prhs[1]);
-
-    if(ndims > 1) {
-      double *d = mxGetPr(prhs[1]);
-      mwSize dims[3]; dims[0] = dims[1] = dims[2] = 1;
-      int i; for(i = 0; i < ndims; i++) { dims[i] = (int)d[i]; }
-    
-      plhs[0] = mxCreateNumericArray(ndims, dims, mxDOUBLE_CLASS, mxREAL);
-
-      int64_t *q = (int64_t *)mxGetData(prhs[0]);
-      if(q[0] == 0) mexErrMsgTxt("GPU_cudamemcpy: D2H, wtf r u doin, gpu pointer is not initialized.");
-      double *Dmem = (double *)q[0];
-     
-      cudaError_t fail = cudaMemcpy(mxGetPr(plhs[0]), Dmem, dims[0]*dims[1]*dims[2]*sizeof(double), cudaMemcpyDeviceToHost);
-      if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: D2H, Copy to host failed.");
-    } else {  
-      double *d = mxGetPr(prhs[1]);
-      size_t numel = (size_t)d[0];
+  if(nrhs == 1) {
+    // Copy an input Matlab array to GPU, and return a gputag.
+    if(arg1isml) {
+      double *from = mxGetPr(prhs[0]);
 
       mwSize dims[2]; dims[0] = 5; dims[1] = 1;
- 
       plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
+
       int64_t *retptr = (int64_t *)mxGetData(plhs[0]);
+      size_t Nel = mxGetNumberOfElements(prhs[0]);
+      double *rmem;
 
-      int64_t *from = (int64_t *)mxGetData(prhs[0]);
-      if(from[0] == 0) mexErrMsgTxt("GPU_cudamemcpy: D2D, wtf r u doin, gpu pointer is not initialized");
+      cudaError_t fail = cudaMalloc((void **)&rmem, Nel * sizeof(double));
+      if(fail == cudaErrorMemoryAllocation) mexErrMsgTxt("GPU_cudamemcpy: H2D, error attempting to allocate memory (cudaErrorMemoryAllocation). We've been had.");
+      retptr[0] = (int64_t)rmem;
 
-      cudaError_t fail = cudaMalloc((void **)&retptr[0], numel * sizeof(double));
-      if(fail == cudaErrorMemoryAllocation) mexErrMsgTxt("GPU_cudamemcpy: D2D, Cuda unable to allocate memory. We're boned.");
+      fail = cudaMemcpy((void *)rmem, (void *)from, Nel * sizeof(double), cudaMemcpyHostToDevice);
+      if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: H2D, Copy to device failed.");
 
-      fail = cudaMemcpy((void *)retptr[0], (void *)from[0], numel * sizeof(double), cudaMemcpyDeviceToDevice);
+      // Given that we've succeeded, now tag the result with the array dimensions
+      retptr[1] = mxGetNumberOfDimensions(prhs[0]); // r[1] = number of dims
+      const mwSize *idims = mxGetDimensions(prhs[0]); // r[2:2+r[1]] = dimension size
+      for(Nel = 0; Nel < retptr[1]; Nel++) retptr[2+Nel] = idims[Nel];
+      for(; Nel < 3; Nel++) { retptr[2+Nel] = 1; } // or 1 if blank
+
+      return;
+      }
+
+    // Copy an input gpu array back to cpu if D2D is not specified by a second argument.
+    if(arg1isml == 0) {
+      int64_t *gputag = (int64_t *)mxGetData(prhs[0]);
+      mwSize odims[3];
+      int j;
+      for(j = 0; j < gputag[1]; j++) { odims[j] = (mwSize)gputag[j+2]; }
+      plhs[0] = mxCreateNumericArray((int)gputag[1], odims, mxDOUBLE_CLASS, mxREAL);
+      
+      double *src = (double *)gputag[0];
+      double *dst = mxGetPr(plhs[0]);
+
+      cudaError_t fail = cudaMemcpy(dst, src, gputag[2]*gputag[3]*gputag[4]*sizeof(double), cudaMemcpyDeviceToHost);
+      if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: D2H, Copy to host failed.");
+  
+      return;
+      }
+  } else if(nrhs == 2) {
+    if(arg1isml == 0) {
+      mwSize dout[2]; dout[0] = 5; dout[1] = 1;
+      plhs[0] = mxCreateNumericArray(2, dout, mxINT64_CLASS, mxREAL);
+      int64_t *srctag = (int64_t *)mxGetData(prhs[0]);
+      int64_t *dsttag = (int64_t *)mxGetData(plhs[0]);
+
+      int j;
+      for(j = 1; j < 5; j++) { dsttag[j] = srctag[j]; }
+
+      cudaError_t fail = cudaMalloc((void **)&dsttag[0], srctag[2]*srctag[3]*srctag[4]*sizeof(double));
+      if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: D2D, error attempting to allocate memory (cudaErrorMemoryAllocation). We've been had.");
+  
+      fail = cudaMemcpy((void *)dsttag[0], (void *)srctag[0], srctag[2]*srctag[3]*srctag[4]* sizeof(double), cudaMemcpyDeviceToDevice);
       if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: D2D, Copy failed.");
 
-      int i;
-      for(i = 1; i < 5; i++) { retptr[i] = from[i]; } // copy metadata tags to destination array
-    }
-
-    return;
+      return;
+      }
   }
 
   mexErrMsgTxt("syntax is one of:\n  GPU_MemPtr = GPU_cudamemcpy(double arr),\n  double = GPU_cudamemcpy(GPU_MemPtr, dims),\n  GPU_MemPtr = GPU_cudamemcpy(GPU_MemPtr src, numel in src)");
