@@ -2,20 +2,20 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-GIS = GlobalIndexSemantics(); GIS.setup([1024 1024 1]);
+GIS = GlobalIndexSemantics(); GIS.setup([16384 16384 1]);
 
 %--- Initialize test ---%
 
 run.bcModes.x = 'circ';
 run.bcModes.y = 'circ';
 
-run                 = OrszagTangVortexInitializer([1024 1024 1]);
+run                 = OrszagTangVortexInitializer([16384 16384 1]);
 run.info            = 'Orszag-Tang vortex test.';
 run.notes           = '';
 run.profile         = false;
-run.image.interval  = 10;
+run.image.interval  = 50;
 run.image.mass      = true;
-run.iterMax = 20000;
+run.iterMax = 99999;
 
 %run.notes = 'Testing new magnetic flux ordering';
 

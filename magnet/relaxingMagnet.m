@@ -34,8 +34,8 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     [mag(I).flux(X).array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow.GPU_MemPtr, fluxFactor, X);
 
 %    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
-    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,x)+ec);
-    cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,x)+ec);
+    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X)+ec);
+    cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X)+ec);
 
 
     mag(I).applyStatics();
@@ -51,9 +51,7 @@ function relaxingMagnet(run, mag, velGrid, X, I)
 
     % FIXME: fix this braindead hack
     ec = double([strcmp(mag(X).bcModes{1,I},'circ'); strcmp(mag(X).bcModes{2,I},'circ')]);
-    cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology,GIS.edgeInterior(:,x)+ec);
+    cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology,GIS.edgeInterior(:,I)+ec);
 
-
-%saveDEBUG(mag(X).array,sprintf('magX after flux constraint'));
 
 end

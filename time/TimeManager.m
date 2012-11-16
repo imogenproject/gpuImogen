@@ -68,7 +68,6 @@ classdef TimeManager < handle
 
             %--- Find max velocity ---%
             %           Find the maximum fluid velocity in the grid and its vector direction.
-            %soundSpeed = pressure('sound', obj.parent, mass, mom, ener, mag);
             if obj.parent.pureHydro == 1
                 soundSpeed = cudaSoundspeed(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, obj.parent.GAMMA);
             else
@@ -79,8 +78,8 @@ classdef TimeManager < handle
             [cmax gridIndex] = directionalMaxFinder(mass.gputag, soundSpeed, mom(1).gputag, mom(2).gputag, mom(3).gputag);
             GPU_free(soundSpeed);
             % Communicate the maximum cfl-determining limit to our comrades in arms
+            % FIXME: Make this use mpi_reduce (and implement an interface to it in /mpi)
             cmax       = mpi_allgather(cmax);
-%if GIS.context.rank == 0; fprintf('cmax across ranks: '); disp(cmax); end
             gridIndex  = mpi_allgather(gridIndex);
             [cmax idx] = max(cmax);
             gridIndex  = gridIndex(idx);
