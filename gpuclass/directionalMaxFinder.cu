@@ -33,6 +33,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if((nlhs == 1) && ((nrhs != 3) && (nrhs != 1)))
      mexErrMsgTxt("Either 1 or 3 arguments for one rturn argument");
 
+  cudaCheckError("entering directionalMaxFinder");
+
 ArrayMetadata amd;
 
 switch(nrhs) {

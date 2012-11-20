@@ -27,6 +27,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if ( (nrhs!=10) && (nrhs!=2))
      mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, 1)");
 
+  cudaCheckError("entering freezeAndPtot");
+
   int ispurehydro = (int)*mxGetPr(prhs[9]);
 
   // Get GPU array pointers

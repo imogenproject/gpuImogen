@@ -33,6 +33,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int numel; dim3 gridsize;
 
   if( (nlhs != 1) || (nrhs != 3)) { mexErrMsgTxt("circshift operator is shifted = cudaShift([nx ny nz], orig, shift_type)"); }
+
+  cudaCheckError("entering cudaShift");
+
   double *shiftamt = mxGetPr(prhs[0]);
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 1, 1);

@@ -11,6 +11,7 @@ classdef ImogenArray < handle
         component;      % Vector component of the array (0,1,2,3).                  int
         id;             % Identifier specifying the object data type.               cell(1,?)
         bcModes;        % Boundary condition types for each direction.              cell(2,3)
+        bcHaloShare;    % Whether to take part in the halo exchange                 double 2x3
         bcInfinity;     % Number of cells to infinity for edges.                    int
         edgeStore;      % Stored edge values for shifting.                          Edges
 

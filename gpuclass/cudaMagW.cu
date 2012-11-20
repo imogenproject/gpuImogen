@@ -30,6 +30,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=4) || (nlhs != 2)) mexErrMsgTxt("Wrong number of arguments: need [magW,velFlow] = cudaMagWflux(mag, velgrid, lambda, dir)\n");
 
+  cudaCheckError("entering cudaMagW");
+
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);

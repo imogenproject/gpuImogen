@@ -16,7 +16,7 @@ function includeImogenPaths()
     for i=1:length(directories); 
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
-    addpath('/home2/ekeever1/parallel-gateway/build/lib');
+    addpath('/home/erik/parallel-gateway/build/lib');
     fprintf('Imogen directories have been added to the path listing.\n');
     
     %--- Add compatibility directories ---%

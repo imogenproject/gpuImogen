@@ -40,6 +40,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   ArrayMetadata amd;
   double **atomArray = getGPUSourcePointers(prhs, &amd, 0, 0);
 
+cudaCheckError("Entering cudaArrayAtomic");
+
   switch(operation) {
     case 1: cukern_ArraySetMin<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
     case 2: cukern_ArraySetMax<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;

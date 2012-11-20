@@ -93,7 +93,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     gridsize = setLaunchParams(&amd.dim[0]);
 
-    int op = (int)*mxGetPr(prhs[1]);
+int op = (int)*mxGetPr(prhs[1]);
+
+cudaCheckError("Entering cudaBasicOperations");
+
     switch(op) {
       case 1: cukern_sqrt<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
       case 2: cukern_log<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;

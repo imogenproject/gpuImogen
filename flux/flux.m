@@ -121,11 +121,9 @@ GIS = GlobalIndexSemantics();
 
 for j = 1:5;
 %  FIXME: This is braindead and stupid. Precompute this per array; Consider storing in the gputag.
-  ec = double([strcmp(s{j}.bcModes{1,dir},'circ'); strcmp(s{j}.bcModes{2,dir},'circ')]);
+%  ec = double([strcmp(s{j}.bcModes{1,dir},'circ'); strcmp(s{j}.bcModes{2,dir},'circ')]);
 
-  cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir) + ec);
-%  cudaHaloExchange(s{j}.gputag, [1 2 3], 2, GIS.topology, GIS.edgeInterior(:,2));
-%  cudaHaloExchange(s{j}.gputag, [1 2 3], 3, GIS.topology, GIS.edgeInterior(:,3));
+  cudaHaloExchange(s{j}.gputag, [1 2 3], dir, GIS.topology, s{j}.bcHaloShare);
 end
 
 end

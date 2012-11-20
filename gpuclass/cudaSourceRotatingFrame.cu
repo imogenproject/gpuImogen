@@ -28,6 +28,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=8) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, omega, dt, xvector, yvector)\n");
 
+  cudaCheckError("entering cudaSourceRotatingFrame");
+
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);

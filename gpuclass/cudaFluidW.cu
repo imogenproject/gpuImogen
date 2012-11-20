@@ -35,7 +35,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ((nrhs!=12) || (nlhs != 5)) mexErrMsgTxt("Wrong number of arguments: need [5] = cudaWflux(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?)\n");
 
-
+  cudaCheckError("entering cudaFluidW");
 
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);

@@ -43,6 +43,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ((nrhs!=17) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: call cudaTVDStep(rho, E, px, py, pz, bx, by, bz, P, rho_out, E_out, px_out, py_out, pz_out, C_freeze, lambda, purehydro?)\n");
 
+  cudaCheckError("entering fluidTVD");
+
   // Get source array info and create destination arrays
   ArrayMetadata amd;
 
@@ -52,6 +54,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Get the GPU freeze speed. Differs in that it is not the same size
   ArrayMetadata fmd;
   double **gpu_cf = getGPUSourcePointers(prhs, &fmd, 14, 14); 
+
+
 
   // Get flux factor (dt / d) amd determine if we are doing the hydro case or the MHD case
   double lambda   = *mxGetPr(prhs[15]);

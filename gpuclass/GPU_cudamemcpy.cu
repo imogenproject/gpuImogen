@@ -12,12 +12,14 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// static paramaters
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
   if(nlhs != 1) { mexErrMsgTxt("GPU_cudamemcpy: Must have 1 return argument for copied array."); }
+
+  cudaCheckError("entering GPU_cudamemcpy");
 
   int arg1isml = mxIsDouble(prhs[0]);
 

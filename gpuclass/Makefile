@@ -3,10 +3,12 @@
 include ../Make.config
 
 # Don't mess with any of this. Modify the above config file instead
-NVCC_OPTS = -arch=$(CUDA_ARCH) -O1
+GEN_OPTS = 
+
+NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
-MEX_OPTS  = -DUNIX
+MEX_OPTS  = -DUNIX $(GEN_OPTS)
 MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas

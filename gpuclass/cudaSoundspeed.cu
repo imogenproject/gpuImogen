@@ -24,6 +24,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if( (nlhs != 1) || ( (nrhs != 9) && (nrhs != 6) ))
     mexErrMsgTxt("calling form for cudaSoundspeed is c_s = cudaSoundspeed(mass, ener, momx, momy, momz, bx, by, bz, gamma);");
 
+  cudaCheckError("entering cudaSoundspeed");
+
   dim3 blocksize; blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
   ArrayMetadata amd;
   dim3 gridsize;

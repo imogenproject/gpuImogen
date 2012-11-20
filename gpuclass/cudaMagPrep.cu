@@ -55,6 +55,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=3) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need velInterp = cudaMagPrep(mom, mass, [dirvel dirmag])\n");
 
+  cudaCheckError("entering cudaMagPrep");
+
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);

@@ -23,6 +23,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mexErrMsgTxt("Arguments must be cudaFwdDifference(array, flux, direction, flux factor)\n");
         }
 
+  cudaCheckError("entering cudaFwdDifference");
+
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);

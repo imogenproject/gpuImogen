@@ -49,8 +49,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
 */
-  if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, isCircular\n");
+  if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, circularity\n");
   if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
+
+  cudaCheckError("entering cudaHaloExchange");
 
   ArrayMetadata amd;
   double **array = getGPUSourcePointers(prhs, &amd, 0,0);
@@ -79,22 +81,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   /* Be told if the left and right sides of the dimension are circular or not */
   double *interior = mxGetPr(prhs[4]);
-  int leftCircular  = (int)interior[0];
-  int rightCircular = (int)interior[1];
+  int leftCircular  = (int)interior[2*memDimension];
+  int rightCircular = (int)interior[2*memDimension+1];
 
 #ifdef NO_PINNEDMEM
   for(ctr = 0; ctr < 4; ctr++) {
-    pinnedMem[ctr] = malloc(numToExchange * sizeof(double));
-//    fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
-//    if(fail != cudaSuccess) break;
+    pinnedMem[ctr] = (double *)malloc(numToExchange * sizeof(double));
     fail = cudaMalloc((double **)&devPMptr[ctr], numToExchange * sizeof(double));
-    if(fail != cudaSuccess) break;
-//    fail = cudaHostGetDevicePointer((void **)&devPMptr[ctr], (void *)pinnedMem[ctr], 0);
+    cudaCheckError("cudaHaloExchange memory alloc w/o pinned memory");
     }
 #else 
   for(ctr = 0; ctr < 4; ctr++) {
     fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
-    if(fail != cudaSuccess) break;
+    cudaCheckError("cudahaloExchange pinned memory alloc");
     fail = cudaHostGetDevicePointer((void **)&devPMptr[ctr], (void *)pinnedMem[ctr], 0);
     }
 #endif
@@ -116,14 +115,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       #ifdef NO_PINNEDMEM
       cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
       cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaCheckError("cudaHaloExchange X, NO_PINNEDMEM, D2H");
       #endif 
       cudaDeviceSynchronize(); 
       parallel_exchange_dim_contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
-
+MPI_Barrier(MPI_COMM_WORLD);
+cudaDeviceSynchronize();
       #ifdef NO_PINNEDMEM
       cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
       cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
+      cudaCheckError("cudaHaloExchange X, NO_PINNEDMEM, H2D");
       #endif
+
+cudaDeviceSynchronize();
 
       if(leftCircular) {
         cukern_LinearToHaloXL<<<gridsize, blocksize>>>(array[0], devPMptr[2], amd.dim[0]);
@@ -148,6 +152,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       #ifdef NO_PINNEDMEM
       cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
       cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaCheckError("cudaHaloExchange Y, NO_PINNEDMEM, D2H");
       #endif
 
       cudaDeviceSynchronize();
@@ -156,6 +161,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       #ifdef NO_PINNEDMEM
       cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
       cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
+      cudaCheckError("cudaHaloExchange Y, NO_PINNEDMEM, H2D");
       #endif
 
       if(leftCircular) {
@@ -178,6 +184,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       #ifdef NO_PINNEDMEM
       cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
       cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaCheckError("cudaHaloExchange Z, NO_PINNEDMEM, D2H");
       #endif
 
       cudaDeviceSynchronize();
@@ -186,6 +193,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       #ifdef NO_PINNEDMEM
       cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
       cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
+      cudaCheckError("cudaHaloExchange Z, NO_PINNEDMEM, H2D");
       #endif
 
       if(leftCircular) {
@@ -199,10 +207,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       }; break;
     }
 
+#ifdef NO_PINNEDMEM
+  for(ctr = 0; ctr < 4; ctr++) {
+    free(pinnedMem[ctr]);
+    cudaFree(devPMptr[ctr]);
+    }
+#else
   for(ctr = 0; ctr < 4; ctr++) cudaFreeHost(pinnedMem[ctr]);
+#endif
 
 cudaError_t epicFail = cudaDeviceSynchronize();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "halo exchange");
+cudaCheckError("cudaHaloExchange: post exchange device sync");
+/*if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, memDimension, "halo exchange");*/
 
 free(parallelTopo);
 }

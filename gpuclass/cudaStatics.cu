@@ -19,6 +19,8 @@ __global__ void cukern_applySpecial_fade(double *arr, double *linAddrs, double *
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if( (nlhs != 0) || (nrhs != 7)) { mexErrMsgTxt("cudaStatics operator is cudaStatics(array, linearIndices, constants, fadeCoeffs, blockdim, permutation, offsetindex)"); }
 
+  cudaCheckError("entering cudaSatics");
+
   ArrayMetadata ama, amf;
 
   int blockdim = (int)*mxGetPr(prhs[4]);

@@ -1,35 +1,20 @@
 #!/bin/bash
-# 1 = runfile
-# 2 = output stream #
-# 3 = alias
-# 4 = GPU to use
-
-# --- Check for input file argument --- #
-if [ -z "${1}" ]; then
-  echo ">>> ERROR: No run file specified. Aborting script."
-  exit 1
-fi
-
-# --- Determine user name --- #
-myName=`whoami`
-
-# --- Determine stream output --- #
-stream=${2}
-if [ -z "$2" ]; then
-  stream="1"
-fi
-redirectStr="${HOME}/Results/logfile${stream}.out"
-
-# --- Determine Alias String --- #
-alias=${3}
-if [ -z "$3" ]; then
-  alias=""
-fi
-
-gpuno=${4}
-if [ -z "$4" ]; then
-  gpuno=0
-fi
+# 1: "serial"
+# +- 2: runfile 
+# +- 3: output stream #
+# +- 4: GPU # to use
+#
+# 1: "parallel"
+# +- 2 = runfile
+# +- 3 = output stream #
+# +- 4 = optionally np
+#
+# 1: "cluster"
+# +- 2 = runfile
+# +- 3 = output stream #
+# +- 4 = #nodes
+# +- 5 = PPN
+# +- 6 = optionally np (default = nodes*ppn)
 
 # --- Test for results directory --- #
 resDir="${HOME}/Results"
@@ -40,5 +25,102 @@ else
   echo ">>> WARNING: No Results directory found. One has been created."
 fi
 
-# --- Execute Imogen --- #
- echo "imogenLoad('${1}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >& $redirectStr
+if [ -z "${1}" ]; then
+  echo ">>> ERROR: No input specified. See top of this file:"
+  head -n18 imogen
+  exit 1
+fi
+
+if [ ${1} = "help" ]; then
+  echo "       /=============\\"
+  echo "+----=< *IMOGEN HELP* >=======----------------------------------------"
+  echo "|      \\=============/"
+  echo "|"
+  echo "| Serial operation: ./imogen serial   runfile streamnumber GPUnumber"
+  echo "| Local parallel:   ./imogen parallel runfile streamnumber #procs"
+  echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np]"
+  echo "|"
+  echo "|    Serial and local parallel operation execute directly; Cluster"
+  echo "|    operation makes request to qsub."
+  echo "|"
+  echo "+==============================---------------------------------------"
+
+  exit 0
+fi
+
+# --- Check for input file argument --- #
+if [ -z "${2}" ]; then
+  echo ">>> ERROR: No run file specified. Minimum: ./imogen [serial|parallel|cluster] runfile"
+  exit 1
+fi
+RUNFILE=${2}
+
+# --- Determine stream output --- #
+stream=${3}
+if [ -z "$3" ]; then
+  stream="1"
+fi
+redirectStr="${HOME}/Results/logfile${stream}.out"
+
+if [ -x "$redirectStr" ]; then
+  echo ">>> WARNING: requested output stream exists; Appending."
+fi
+
+
+if [ ${1} = "serial" ]; then
+  # ./imogen serial runfile stream GPU#
+  gpuno=${4}
+  if [ -z "$4" ]; then
+    gpuno=0
+  fi
+
+  echo "imogenLoad('${RUNFILE}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >> $redirectStr &
+    
+  exit 0
+fi
+
+if [ ${1} = "parallel" ]; then
+  # ./imogen parallel runfile stream# nprocs
+  numproc=${4}
+  if [ -z "$numproc" ]; then
+    numproc=1
+    echo ">>> WARNING: Parallel run defaulting to np=1"
+  fi
+
+  mpirun -np $numproc matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);" >> $redirectStr &
+
+  exit 0
+fi
+
+if [ ${1} = "cluster" ]; then
+# ./imogen cluster runfile stream #nodes PPN [np]
+  nnodes=${4};
+  if [ -z "$4" ]; then nnodes="1"; fi
+
+  procpn=${5};
+  if [ -z "$5" ]; then procpn="1"; fi;
+
+  NP=${6}
+  if [ -z "$6" ]; then NP=$(expr $nnodes \* $procpn); fi
+
+  TFILE=$(mktemp);
+  echo "module load mpi-tor/openmpi-1.4.5_gcc-4.4.6" >> $TFILE
+  echo "module load matlab" >> $TFILE
+  echo "module load cuda" >> $TFILE
+  echo "echo PATH: \$PATH" >> $TFILE
+  echo "cd $(pwd)" >> $TFILE
+  echo "mpirun --mca btl_tcp_if_include eth2 --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);\" | tee -a ~/imogenout " >> $TFILE
+
+  echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 3 seconds to abort:"
+sleep 3;
+
+  qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
+  sleep 2;
+  rm $TFILE
+
+  exit 0
+fi
+
+echo ">>> ERROR: See top of 'imogen' file for input instructions."
+head -n18 imogen
+

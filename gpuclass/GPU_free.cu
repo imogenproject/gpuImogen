@@ -12,7 +12,7 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// static paramaters
+#include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // wrapper for cudaFree().
@@ -25,8 +25,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   double *d = (double *)t[0];
 
   cudaError_t result = cudaFree(d);
-
-  if(result == cudaErrorInvalidDevicePointer) mexErrMsgTxt("GPU_free: cuda claims invalid device pointer.");
+  cudaCheckError("After GPU_free()");
 
   return;
 }

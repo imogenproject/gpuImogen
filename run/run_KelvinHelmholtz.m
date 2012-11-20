@@ -4,7 +4,7 @@
 starterRun();
 
 %--- Initialize test ---%
-run                 = KelvinHelmholtzInitializer([128 128 32]);
+run                 = KelvinHelmholtzInitializer([512 512 1]);
 run.iterMax         = 2000;
 run.direction       = KelvinHelmholtzInitializer.X;
 run.image.interval	= 25;

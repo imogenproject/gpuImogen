@@ -23,6 +23,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mexErrMsgTxt("Arguments must be result = cudaFwdAverage(array, direction)\n");
         }
 
+    cudaCheckError("entering cudaFwdAverage");
+
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);

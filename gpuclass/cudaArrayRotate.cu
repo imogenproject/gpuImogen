@@ -40,6 +40,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   dim3 gridsize;
 
   if((nlhs != 1) || (nrhs != 2)) { mexErrMsgTxt("cudaArrayRotate operator is rotated = cudaArrayRotate(array, dir)\n"); }
+  cudaCheckError("entering cudaArrayRotate");
+
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
 
@@ -87,8 +89,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       double **destPtr = makeGPUDestinationArrays(newref, plhs, 1);
 
       cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1]);
-      cudaError_t epicFail = cudaGetLastError();
-      if(epicFail != cudaSuccess)
 
       break;      
     }

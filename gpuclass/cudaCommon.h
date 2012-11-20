@@ -17,7 +17,10 @@ typedef struct {
 
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
 double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany);
+
+void cudaCheckError(char *where);
 void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname);
+const char *errorName(cudaError_t E);
 
 void printdim3(char *name, dim3 dim);
 void printgputag(char *name, int64_t *tag);
