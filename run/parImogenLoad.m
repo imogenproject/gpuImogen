@@ -35,7 +35,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         [dump idx] = sort(thisnode);
         mygpu = idx(dump == mpiInfo(2)) - 1;
         fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', context.rank, context.size, getenv('HOSTNAME'), mygpu);
-        GPU_init(0);
+        GPU_init(mygpu);
     else
         fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
         GPU_init(gpuno);
