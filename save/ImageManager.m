@@ -27,6 +27,9 @@ classdef ImageManager < handle
         mach;   speed;
         
         logarithmic;  % Contains fields to save as logarithmic images.              struct
+
+        parallelUniformColors; % logical: Do or do not determine the color scaling based on global rather
+                               % than local min/max values
         
     end%PUBLIC
     
@@ -174,6 +177,13 @@ classdef ImageManager < handle
             GIS = GlobalIndexSemantics();
             minVal = min(min(array));
             maxVal = max(max(array));
+
+            if obj.parallelUniformColors == true
+                 glob = mpi_allgather([minVal maxVal]);
+                 minVal = min(glob(1:2:end));
+                 maxVal = max(glob(2:2:end));
+            end
+            
             rescaledArray = obj.pColordepth * (array' - minVal) / (maxVal - minVal);
 
             iterStr = obj.parent.paths.iterationToString(obj.frame);

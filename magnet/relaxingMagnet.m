@@ -30,12 +30,12 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     fluxFactor = 2*fluxFactor; %Multiply to get full timestep
 
     % FIXME: fix this braindead hack
-    ec = double([strcmp(mag(I).bcModes{1,X},'circ'); strcmp(mag(I).bcModes{2,X},'circ')]);
+%    ec = double([strcmp(mag(I).bcModes{1,X},'circ'); strcmp(mag(I).bcModes{2,X},'circ')]);
     [mag(I).flux(X).array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow.GPU_MemPtr, fluxFactor, X);
 
 %    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
-    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X)+ec);
-    cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X)+ec);
+    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+    cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
 
 
     mag(I).applyStatics();
@@ -50,8 +50,8 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     mag(X).applyStatics();
 
     % FIXME: fix this braindead hack
-    ec = double([strcmp(mag(X).bcModes{1,I},'circ'); strcmp(mag(X).bcModes{2,I},'circ')]);
-    cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology,GIS.edgeInterior(:,I)+ec);
+%    ec = double([strcmp(mag(X).bcModes{1,I},'circ'); strcmp(mag(X).bcModes{2,I},'circ')]);
+    cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology,mag(X).bcHaloShare);
 
 
 end

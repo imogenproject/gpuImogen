@@ -328,6 +328,10 @@ try
     else imageSaveState = 'Inactive';
     end
     run.appendInfo('Image saving is', imageSaveState);
+
+    if isfield(ini.image,'parallelUniformColors');
+        run.image.parallelUniformColors = ini.image.parallelUniformColors; end
+
 catch MERR, loc_initializationError('image',MERR);
 end
 

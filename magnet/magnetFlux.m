@@ -20,8 +20,8 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
 	mag(I).velGrid(X).array = cudaMagPrep(mom(X).gputag, mass.gputag, [I X]);
 
 %cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
-        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, [1;1]);
-        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], I, GIS.topology, [1;1]);
+        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], I, GIS.topology, mag(I).bcHaloShare);
 
         % Flux Advection step
         relaxingMagnet(run, mag, mag(I).velGrid(X), X, I);
