@@ -40,11 +40,11 @@ function source(run, mass, mom, ener, mag)
     %--- Radiation Sourcing ---%
     %       If radiation is active, the radiation terms are subtracted, as a sink, from the energy
     %       equation.
-    if run.fluid.radiation.type ~= ENUM.RADIATION_NONE
-        ener.array              = ener.array - run.time.dTime*run.fluid.radiation.solve(run, mass, mom, ener, mag);
+    if strcmp(run.fluid.radiation.type, ENUM.RADIATION_NONE) == false
+        run.fluid.radiation.solve(run, mass, mom, ener, mag);
     end
 
-    if run.potentialField.ACTIVE | run.selfGravity.ACTIVE | (run.fluid.radiation.type ~= ENUM.RADIATION_NONE)
+    if run.potentialField.ACTIVE | run.selfGravity.ACTIVE
         % Oh you better believe we need to synchronize up in dis house
         GIS = GlobalIndexSemantics();
         S = {mom(1), mom(2), mom(3), ener};

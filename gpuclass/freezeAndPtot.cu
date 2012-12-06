@@ -14,11 +14,13 @@
 
 #include "cudaCommon.h"
 
-__global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double gam, double *freeze, double *ptot, int nx);
-__global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double gam, double *freeze, double *ptot, int nx);
+__global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx);
+__global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx);
 
 #define BLOCKDIM 64
 #define MAXPOW   5
+
+__device__ __constant__ double gammafunc[4];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
@@ -62,11 +64,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double **freezea = makeGPUDestinationArrays(&fref[0], &plhs[1], 1); // freeze array
 
+  double hostgf[4];
+    hostgf[0] = *mxGetPr(prhs[8]);
+    hostgf[1] = hostgf[0] - 1.0;
+    hostgf[2] = hostgf[0]*hostgf[1];
+    hostgf[3] = 2.0 - hostgf[0];
+  
+  cudaMemcpyToSymbol(gammafunc, &hostgf[0],     4*sizeof(double), 0, cudaMemcpyHostToDevice);
+
+
   if(ispurehydro) {
-    cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4],  *mxGetPr(prhs[8]), freezea[0], ptot[0], arraySize.x);
+    cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4]     , freezea[0], ptot[0], arraySize.x);
 //                                                   (*rho,    *E,      *px,     *py,     *pz,      gam,              *freeze,  *ptot,  nx)
   } else {
-    cukern_FreezeSpeed_mhd<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], *mxGetPr(prhs[8]), freezea[0], ptot[0], arraySize.x);
+    cukern_FreezeSpeed_mhd<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]     , freezea[0], ptot[0], arraySize.x);
 //                                                 (*rho,    *E,      *px,     *py,     *pz,     *bx,     *by,     *bz,     gam,              *freeze,  *ptot,  nx)
   }
   free(ptot);
@@ -78,45 +89,71 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 
 }
 
-__global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double gam, double *freeze, double *ptot, int nx)
+#define gam gammafunc[0]
+#define gm1 gammafunc[1]
+#define gg1 gammafunc[2]
+#define twomg gammafunc[3]
+
+__global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx)
 {
 /* gridDim = [ny nz], nx = nx */
 int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);
-int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
+nx += nx*(blockIdx.x + gridDim.x*blockIdx.y);
+//int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
-double Cs, CsMax;
+double Cs;
 double psqhf, bsqhf;
-double gg1 = gam*(gam-1.0);
-double gm1 = gam - 1.0;
-double twomg = 2.0 - gam;
+//double gg1 = gam*(gam-1.0);
+//double gm1 = gam - 1.0;
+//double twomg = 2.0 - gam;
 
 __shared__ double locBloc[BLOCKDIM];
 
-CsMax = 0.0;
+//CsMax = 0.0;
 locBloc[threadIdx.x] = 0.0;
 
-if(x >= addrMax) return; // If we get a very low resolution
+if(x >= nx) return; // If we get a very low resolution
 
-while(x < addrMax) {
+while(x < nx) {
   psqhf = .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
   bsqhf = .5*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]);
   // we calculate P* = Pgas + Pmag
   Cs = gm1*(E[x] - psqhf/rho[x]) + twomg*bsqhf;
   if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
 
+  // We calculate the freezing speed in the X direction: max of |v|+c_fast
   Cs = gg1*(E[x] - psqhf/rho[x]) + (2.0 - gg1)*bsqhf/rho[x];
   if(Cs < 0.0) Cs = 0.0;
   Cs = sqrt(Cs) + abs(px[x]/rho[x]);
-  if(Cs > CsMax) CsMax = Cs;
+  if(Cs > locBloc[threadIdx.x]) locBloc[threadIdx.x] = Cs;
 
   x += BLOCKDIM;
   }
 
-locBloc[threadIdx.x] = CsMax;
-
 __syncthreads();
 
-if (threadIdx.x % 8 > 0) return; // keep one in 8 threads
+if(threadIdx.x >= 32) return; // We have only one block left: haha, no more __syncthreads() needed
+if(locBloc[threadIdx.x+32] > locBloc[threadIdx.x]) { locBloc[threadIdx.x] = locBloc[threadIdx.x+32]; }
+
+if(threadIdx.x >= 16) return;
+if(locBloc[threadIdx.x+16] > locBloc[threadIdx.x]) { locBloc[threadIdx.x] = locBloc[threadIdx.x+16]; }
+
+if(threadIdx.x >= 8) return;
+if(locBloc[threadIdx.x+8] > locBloc[threadIdx.x]) {  locBloc[threadIdx.x] = locBloc[threadIdx.x+8];  }
+
+if(threadIdx.x >= 4) return;
+if(locBloc[threadIdx.x+4] > locBloc[threadIdx.x]) {  locBloc[threadIdx.x] = locBloc[threadIdx.x+4];  }
+
+if(threadIdx.x >= 2) return;
+if(locBloc[threadIdx.x+2] > locBloc[threadIdx.x]) {  locBloc[threadIdx.x] = locBloc[threadIdx.x+2];  }
+
+if(threadIdx.x == 0) {
+  if(locBloc[1] > locBloc[0]) {  locBloc[0] = locBloc[1];  }
+
+  freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0];
+  }
+
+/*if (threadIdx.x % 8 > 0) return; // keep one in 8 threads
 
 // Each searches the max of the nearest 8 points
 for(x = 1; x < 8; x++) {
@@ -131,19 +168,19 @@ for(x = 8; x < BLOCKDIM; x+= 8) {
   if(locBloc[threadIdx.x+x] > locBloc[0]) locBloc[0] = locBloc[threadIdx.x+x];
   }
 
-freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0];
+freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
 
 }
 
-__global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double gam, double *freeze, double *ptot, int nx)
+__global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx)
 {
 int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
 double Cs, CsMax;
 double psqhf;
-double gg1 = gam*(gam-1.0);
-double gm1 = gam - 1.0;
+//double gg1 = gam*(gam-1.0);
+//double gm1 = gam - 1.0;
 
 __shared__ double locBloc[BLOCKDIM];
 

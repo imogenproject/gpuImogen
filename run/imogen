@@ -39,6 +39,7 @@ if [ ${1} = "help" ]; then
   echo "| Serial operation: ./imogen serial   runfile streamnumber GPUnumber"
   echo "| Local parallel:   ./imogen parallel runfile streamnumber #procs"
   echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np]"
+  echo "|                   (tees realtime output to ~/imogenout)"
   echo "|"
   echo "|    Serial and local parallel operation execute directly; Cluster"
   echo "|    operation makes request to qsub."
@@ -62,7 +63,7 @@ if [ -z "$3" ]; then
 fi
 redirectStr="${HOME}/Results/logfile${stream}.out"
 
-if [ -x "$redirectStr" ]; then
+if [ -f "$redirectStr" ]; then
   echo ">>> WARNING: requested output stream exists; Appending."
 fi
 

@@ -89,25 +89,29 @@ function resultsHandler(run, mass, mom, ener, mag)
                     end
                 end
                 
-                %--- Save only using lab 1 ---%
                 GIS = GlobalIndexSemantics();
-                    sl.dim = sliceDim;
+
+                % Saves the layout of nodes, the global array size, and this subset's offset
+                pInfo.geometry   = GIS.getNodeGeometry();
+                pInfo.globalDims = GIS.domainResolution;
+                pInfo.myOffset   = GIS.domainOffset;
+
+                sl.parallel = pInfo;
+                sl.dim = sliceDim;
        
-                    fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                                '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
-                    sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
-                    if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
+                fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
+                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
+                sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
+                if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
-                    try
-%fprintf('node %i: %s\n',GIS.context.rank,fileName);
-                      brainDamagedIdioticWorkaround(sliceName, sl);
-                      save(fileName, sliceName);
-%			save('/tmp/imogen_test.mat',sliceName); % testing for slow remote FS
-                    catch MERR %#ok<NASGU>
-                        fprintf('Unable to save. Skipping');
-MERR
-MERR.cause
-                    end
+                try
+                    brainDamagedIdioticWorkaround(sliceName, sl);
+                    save(fileName, sliceName);
+                catch MERR %#ok<NASGU>
+                    fprintf('Unable to save. Skipping');
+                    MERR
+                    MERR.cause
+                end
             end
         end
     end

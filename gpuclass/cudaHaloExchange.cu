@@ -54,11 +54,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   cudaCheckError("entering cudaHaloExchange");
 
-  ArrayMetadata amd;
-  double **array = getGPUSourcePointers(prhs, &amd, 0,0);
-
   int xchg = (int)*mxGetPr(prhs[2]) - 1;
   int orient[3];
+
+  pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
+
+  if(parallelTopo->nproc[xchg] == 1) return;
+  // Do not waste time if we can't possibly have any work to do
+
+  ArrayMetadata amd;
+  double **array = getGPUSourcePointers(prhs, &amd, 0,0);
 
   int ctr;
   for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
@@ -73,8 +78,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   cudaError_t fail = cudaGetLastError(); // Clear the error register
   double *pinnedMem[4];
   double *devPMptr[4];
-
-  pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
 
   if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
   if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.

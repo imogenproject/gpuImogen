@@ -43,7 +43,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ((nrhs!=17) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: call cudaTVDStep(rho, E, px, py, pz, bx, by, bz, P, rho_out, E_out, px_out, py_out, pz_out, C_freeze, lambda, purehydro?)\n");
 
-  cudaCheckError("entering fluidTVD");
+  cudaCheckError("entering FluidTVD");
 
   // Get source array info and create destination arrays
   ArrayMetadata amd;
@@ -55,9 +55,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   ArrayMetadata fmd;
   double **gpu_cf = getGPUSourcePointers(prhs, &fmd, 14, 14); 
 
-
-
-  // Get flux factor (dt / d) amd determine if we are doing the hydro case or the MHD case
+  // Get flux factor (dt / dx) amd determine if we are doing the hydro case or the MHD case
   double lambda   = *mxGetPr(prhs[15]);
   int isPureHydro = (int)*mxGetPr(prhs[16]);
 
@@ -104,7 +102,8 @@ double q_i[5];
 double b_i[3];
 double w_i;
 __shared__ double fluxLR[2][BLOCKLENP4];
-__shared__ double derivLR[2][BLOCKLENP4];
+__shared__ double fluxDerivA[BLOCKLENP4+1];
+__shared__ double fluxDerivB[BLOCKLENP4+1];
 
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
@@ -115,6 +114,8 @@ Xindex += nx*(threadIdx.x < 2);
 int x; /* = Xindex % nx; */
 int i;
 bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+
+unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
 
 /* Step 1 - calculate W values */
 c_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
@@ -151,25 +152,19 @@ while(Xtrack < nx+2) {
 
         /* Step 3 - Differentiate fluxes & call limiter */
             /* left flux */
-        derivLR[0][threadIdx.x] = fluxLR[0][(threadIdx.x-1)%BLOCKLENP4] - fluxLR[0][threadIdx.x]; /* left derivative */
-        derivLR[1][threadIdx.x] = fluxLR[0][threadIdx.x] - fluxLR[0][(threadIdx.x+1)%BLOCKLENP4]; /* right derivative */
-        __syncthreads();
-        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
-//        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);
+        fluxDerivA[threadIdx.x] = fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x]; 
+        fluxDerivB[threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL];
         __syncthreads();
 
-            /* Right flux */
-        derivLR[0][threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][(threadIdx.x-1)%BLOCKLENP4]; /* left derivative */
-        derivLR[1][threadIdx.x] = fluxLR[1][(threadIdx.x+1)%BLOCKLENP4] - fluxLR[1][threadIdx.x]; /* right derivative */
-        __syncthreads();
-        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
-  //      cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1); 
+            /* right flux */
+        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
+        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
             outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
-                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  ); 
+                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
           }
 
         __syncthreads();
@@ -187,7 +182,8 @@ double C_f, velocity;
 double q_i[5];
 double w_i;
 __shared__ double fluxLR[2][BLOCKLENP4];
-__shared__ double derivLR[2][BLOCKLENP4];
+__shared__ double fluxDerivA[BLOCKLENP4+1];
+__shared__ double fluxDerivB[BLOCKLENP4+1];
 
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
@@ -198,6 +194,8 @@ Xindex += nx*(threadIdx.x < 2);
 int x; /* = Xindex % nx; */
 int i;
 bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+
+unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
 
 /* Step 1 - calculate W values */
 C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
@@ -232,25 +230,19 @@ while(Xtrack < nx+2) {
 
         /* Step 3 - Differentiate fluxes & call limiter */
             /* left flux */
-        derivLR[0][threadIdx.x] = fluxLR[0][(threadIdx.x-1)%BLOCKLENP4] - fluxLR[0][threadIdx.x]; /* left derivative */
-        derivLR[1][threadIdx.x] = fluxLR[0][threadIdx.x] - fluxLR[0][(threadIdx.x+1)%BLOCKLENP4]; /* right derivative */
+        fluxDerivA[threadIdx.x] = fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x];
+        fluxDerivB[threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL];
         __syncthreads();
-        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
-/*        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 0);*/
-        __syncthreads();
-
-            /* Right flux */
-        derivLR[0][threadIdx.x] = fluxLR[1][threadIdx.x] - fluxLR[1][(threadIdx.x-1)%BLOCKLENP4]; /* left derivative */
-        derivLR[1][threadIdx.x] = fluxLR[1][(threadIdx.x+1)%BLOCKLENP4] - fluxLR[1][threadIdx.x]; /* right derivative */
-        __syncthreads();
-        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(derivLR[0][threadIdx.x], derivLR[1][threadIdx.x]);
-/*        cukern_FluxLimiter_VanLeer(derivLR, fluxLR, 1);*/
+        
+            /* right flux */
+        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
+        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
             outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
-                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIdx.x-1]  );
+                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  );
             }
 
         __syncthreads();
@@ -263,27 +255,12 @@ while(Xtrack < nx+2) {
 }
 
 
-__device__ void cukern_FluxLimiter_VanLeer(double deriv[2][BLOCKLENP4], double flux[2][BLOCKLENP4], int who)
-{
-
-double r;
-
-r = deriv[0][threadIdx.x] * deriv[1][threadIdx.x];
-if(r < 0.0) r = 0.0;
-
-r = r / ( deriv[0][threadIdx.x] + deriv[1][threadIdx.x]);
-if (isnan(r)) { r = 0.0; }
-
-flux[who][threadIdx.x] += r;
-
-}
-
 __device__ double fluxLimiter_Vanleer(double derivL, double derivR)
 {
 double r;
 
 r = derivL * derivR;
-if(r < 0.0) r = 0.0;
+if(r < 0.0) { r = 0.0; }
 
 r = r / ( derivL + derivR);
 if (isnan(r)) { r = 0.0; }

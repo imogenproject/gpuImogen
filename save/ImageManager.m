@@ -119,13 +119,14 @@ classdef ImageManager < handle
                             array = obj.parent.save.getSaveSlice(array,i);
                             
                         case 'pTot'
-                            array = pressure('total', obj.parent, mass, mom, ener, mag);
+                            a = pressure('total', obj.parent, mass, mom, ener, mag);
+                            array = GPU_cudamemcpy(a); GPU_free(a);
                             array = obj.parent.save.getSaveSlice(array,i);
                             
                         case 'pGas'
-                            array = pressure('gas', obj.parent, mass, mom, ener, mag);
+                            a = pressure('gas', obj.parent, mass, mom, ener, mag);
+                            array = GPU_cudamemcpy(a); GPU_free(a);
                             array = obj.parent.save.getSaveSlice(array,i);
-                            
                         case 'mach'
                             array = getMach(mass, mom, ener, mag, obj.parent.GAMMA);
                             array = obj.parent.save.getSaveSlice(array,i);

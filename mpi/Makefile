@@ -20,7 +20,7 @@ all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_scatter mpi_basicinfo m
 	echo "Finished!"
 
 %::
-	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $@.c -o $@
+	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $@.c mpi_common.c -o $@
 
 clean:
 	rm -f *mexa64 *cpp

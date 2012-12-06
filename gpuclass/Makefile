@@ -18,18 +18,21 @@ PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
 PAR_LIBS = -lpgw -lmpi
 
 ###############################################################################
-all: base fluids
+all: base fluids parallel lambda
 	echo "Finished compiling GPU support."
 
 base: GPU_init GPU_exit GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed cudaSourceScalarPotential cudaSourceRotatingFrame cudaHaloExchange
+fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 	mv cudaCommon.cpp temp
 	rm -f *cpp
 	mv temp cudaCommon.cpp
 
+lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation
+	echo "Done building source/sink term kernels"
+  
 parallel: cudaHaloExchange
 	echo "Done building parallel support."
 

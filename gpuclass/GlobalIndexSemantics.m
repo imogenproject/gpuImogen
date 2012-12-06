@@ -23,6 +23,7 @@ classdef GlobalIndexSemantics < handle
         edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular or exterior
 
         domainResolution;
+        domainOffset;
     end % Private
 
     properties (Dependent = true)
@@ -65,15 +66,19 @@ classdef GlobalIndexSemantics < handle
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
 
             obj.domainResolution = global_size;
+            obj.domainOffset     = obj.pMyOffset - double(6*obj.topology.coord);
 
             instance = obj;
         end % Constructor
 
+        % Assigns the given dimension to be circular, enabling edge sharing across the outer boundary
         function makeDimCircular(obj, dim)
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.edgeInterior(:,dim) = 1;
         end
 
+        % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
+        % Renders the 3 edge cells into halo automatically
         function localset = LocalIndexSet(obj, globalset, d)
             localset = [];
             pLocalMax = obj.pMyOffset + obj.pMySize;
@@ -88,6 +93,7 @@ classdef GlobalIndexSemantics < handle
             end
         end
 
+        % Gets the 1xN vectors containing 1:N_i for all 3 dimensions
         function [u v w] = ndgridVecs(obj)
             ndim = numel(obj.pGlobalDims);
 
@@ -104,6 +110,8 @@ classdef GlobalIndexSemantics < handle
             u = x{1}; v = x{2}; w = x{3};       
         end
 
+        % These return the part of ndgrid(1:globalsize(1), ...) that would reside on this node
+        % Halo is automatically part of it.
         function [u v w] = ndgridSetXYZ(obj)
             [a b c] = obj.ndgridVecs();
             [u v w] = ndgrid(a, b, c);
@@ -124,10 +132,29 @@ classdef GlobalIndexSemantics < handle
             [x z] = ndgrid(a, c);
         end
 
+        % These generate a set of ones the size of the part of the global grid residing on this node
         function O = onesSetXY(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b)]); end
         function O = onesSetYZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(b) numel(c)]); end
         function O = onesSetXZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(c)]); end
         function O = onesSetXYZ(obj); [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b) numel(c)]); end
+
+        % Function returns an nx x ny x nz array whose (i,j,k) index contains the rank of the node residing on the
+        % nx by ny by nz topology at that location.
+        function G = getNodeGeometry(obj)
+            G = zeros(obj.topology.nproc);
+            xi = mpi_allgather( mod(obj.topology.neighbor_left(1)+1, obj.topology.nproc(1)) );
+            yi = mpi_allgather( mod(obj.topology.neighbor_left(2)+1, obj.topology.nproc(2)) );
+            zi = mpi_allgather( mod(obj.topology.neighbor_left(3)+1, obj.topology.nproc(3)) );
+
+            i0 = xi + obj.topology.nproc(1)*(yi + obj.topology.nproc(2)*zi) + 1;
+            G(i0) = 0:(numel(G)-1);
+        end
+
+        function index = getMyNodeIndex(obj)
+            index = double(mod(obj.topology.neighbor_left+1, obj.topology.nproc));
+        end
+
+        
 
     end % generic methods
 

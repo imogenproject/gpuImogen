@@ -11,6 +11,8 @@ classdef RadiationSubInitializer < handle
         exponent;       % Radiation model exponent value.                       double
         initialMaximum; % Maximum percentage radiation loss compared to         double (%)
                         %   internal energy for initial conditions. 
+        coolLength;
+        strengthMethod;
     end %PUBLIC
 
 %===================================================================================================
@@ -29,6 +31,8 @@ classdef RadiationSubInitializer < handle
             obj.type            = ENUM.RADIATION_NONE;
             obj.exponent        = 0.5;
             obj.initialMaximum  = 0;
+            obj.coolLength = 9999;
+            obj.strengthMethod = 'inimax';
         end
         
     end%GET/SET

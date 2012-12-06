@@ -10,8 +10,12 @@ classdef Radiation < handle
         type;           % Enumerated type of radiation model to use.                string
         strength;       % Strength coefficient for the radiation calculation.       double
         exponent;       % Radiation exponent.                                       double
+        
+        coolLength;     % Alternative cooling rate parameter
         initialMaximum; % Initial maximum radiation value used to calculate the     double
                         %   strength coefficient paramter.                          
+        strengthMethod; 
+
         solve;          % Handle to raditaion function for simulation.              @func
     end%PUBLIC
     
@@ -63,16 +67,31 @@ classdef Radiation < handle
                 obj.strength = 0;
                 return
             end
-                                
-            unscaledRadiation = obj.solve(run, mass, mom, ener, mag);
+                       
+
+            if strcmp(obj.strengthMethod, 'inimax')         
+                unscaledRadiation = GPU_Type(cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, 1));
             
-            kineticEnergy     = 0.5*(mom(1).array .* mom(1).array + mom(2).array .* mom(2).array ...
-                                    + mom(3).array .* mom(3).array) ./ mass.array;
-            magneticEnergy    = 0.5*(mag(1).array .* mag(1).array + mag(2).array .* mag(2).array ...
-                                    + mag(3).array .* mag(3).array);
+                kineticEnergy     = 0.5*(mom(1).array .* mom(1).array + mom(2).array .* mom(2).array ...
+                                        + mom(3).array .* mom(3).array) ./ mass.array;
+                magneticEnergy    = 0.5*(mag(1).array .* mag(1).array + mag(2).array .* mag(2).array ...
+                                        + mag(3).array .* mag(3).array);
             
-            obj.strength      = (obj.initialMaximum/100)* ...
-                   minFinderND( (ener.array - kineticEnergy - magneticEnergy) ./ unscaledRadiation );
+                obj.strength      = obj.initialMaximum* ...
+                   minFinderND( (ener.array - kineticEnergy - magneticEnergy) ./ unscaledRadiation.array );
+
+fprintf('Radiation strength: %f\n', obj.strength);
+            end
+
+            if strcmp(obj.strengthMethod,'coollen')
+                vpre = mom(1).array(1,1) / mass.array(1,1); % preshock vx
+
+                ppost = .75*.5*vpre^2; % strong shock approximation
+                rhopost = 4;
+                obj.strength = (.25*vpre/obj.coolLength) * 4^(obj.exponent-2) * ppost^(1-obj.exponent);
+
+fprintf('Radiation strength: %f\n', obj.strength);
+            end
         end
         
 %___________________________________________________________________________________________________ noRadiationSolver
@@ -84,8 +103,7 @@ classdef Radiation < handle
 %___________________________________________________________________________________________________ opticallyThinSolver
 % Solver for free radiation.
         function result = opticallyThinSolver(obj, run, mass, mom, ener, mag)
-            gasPressure = pressure(ENUM.PRESSURE_GAS, run, mass, mom, ener, mag);
-            result      = obj.strength*mass.array.^(2 - obj.exponent) .* gasPressure.^obj.exponent;
+            cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, obj.strength * run.time.dTime);
         end
         
     end%PUBLIC
