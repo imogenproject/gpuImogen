@@ -4,25 +4,25 @@
 starterRun();
 
 %--- Initialize test ---%
-grid                = [250 256 128];
+grid                = [768 768 384];
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 run                 = KojimaDiskInitializer(grid);
-run.iterMax         = 200;
-run.edgePadding     = 0.2;
+run.iterMax         = 50000;
+run.edgePadding     = 0.1;
 run.pointRadius     = 0.20;
 run.radiusRatio     = 0.65;
-run.q = 2.0;
+run.q = 2.2;
 
-run.image.interval  = 10;
+run.image.interval  = 50;
 %run.image.speed     = true;
 run.image.mass      = true;
 
 run.activeSlices.xy = true;
-run.activeSlices.xz = true;
-run.activeSlices.xyz = false;
-%run.ppSave.dim3 = .5;
+%run.activeSlices.xz = true;
+run.activeSlices.xyz = true
+run.ppSave.dim3 = .5;
 
 run.bcMode.x        = ENUM.BCMODE_CONST;
 run.bcMode.y        = ENUM.BCMODE_CONST;

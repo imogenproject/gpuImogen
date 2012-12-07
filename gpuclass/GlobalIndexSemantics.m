@@ -36,7 +36,7 @@ classdef GlobalIndexSemantics < handle
                 obj = instance; return;
             end
 
-            if nargin ~= 2; error('GlocalIndexSemantics(parallelContext, parallelTopology): all args required'); end
+            if nargin ~= 2; error('GlobalIndexSemantics(parallelContext, parallelTopology): all args required'); end
 
             obj.topology = topology;
             obj.context = context;
