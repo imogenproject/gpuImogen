@@ -115,7 +115,7 @@ if [ ${1} = "cluster" ]; then
   echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 3 seconds to abort:"
 sleep 3;
 
-  qsub -q longgpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
+  qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
   sleep 2;
   rm $TFILE
 

@@ -172,13 +172,15 @@ freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
 
 }
 
+
+#define cs0sq .04 
 __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx)
 {
 int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
 double Cs, CsMax;
-double psqhf;
+double psqhf, rholoc;
 //double gg1 = gam*(gam-1.0);
 //double gm1 = gam - 1.0;
 
@@ -190,13 +192,14 @@ locBloc[threadIdx.x] = 0.0;
 if(x >= addrMax) return; // If we get a very low resolution
 
 while(x < addrMax) {
+  rholoc = rho[x];
   psqhf = .5*(px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]);
 
-  Cs = gm1*(E[x] - psqhf/rho[x]);
-  if(Cs < 0.0) Cs = 0; /* Constrain pressure to non-negativity */
+  Cs = gm1*(E[x] - psqhf/rholoc);
+  if(gam*Cs < rholoc*cs0sq) Cs = rholoc*cs0sq/gam; /* Constrain temperature to a minimum value */
   ptot[x] = Cs;
 
-  Cs      = sqrt(gam * Cs / rho[x]) + abs(px[x]/rho[x]);
+  Cs      = sqrt(gam * Cs / rholoc) + abs(px[x]/rholoc);
   if(Cs > CsMax) CsMax = Cs;
 
   x += BLOCKDIM;

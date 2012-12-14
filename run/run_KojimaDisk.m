@@ -9,8 +9,8 @@ grid                = [768 768 384];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 run                 = KojimaDiskInitializer(grid);
-run.iterMax         = 50000;
-run.edgePadding     = 0.1;
+run.iterMax         = 40000;
+run.edgePadding     = 0.2;
 run.pointRadius     = 0.20;
 run.radiusRatio     = 0.65;
 run.q = 2.2;
@@ -29,10 +29,12 @@ run.bcMode.y        = ENUM.BCMODE_CONST;
 run.bcMode.z        = ENUM.BCMODE_CONST;
 
 run.pureHydro = true;
-run.cfl = .8;
+run.cfl = .75;
 
 run.info        = 'Kojima disk simulation';
 run.notes       = '';
+
+run.image.parallelUniformColors = true;
 
 %--- Run tests ---%
 if (true) %Primary test

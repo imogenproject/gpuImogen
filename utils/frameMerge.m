@@ -1,4 +1,4 @@
-function massiveFrame = frameMerge(prefix, ranks, padding, framenum)
+function massiveFrame = frameMerge(prefix, padding, framenum)
 
 f0 = frameNumberToData(prefix, padding, 0, framenum); % We need one for reference
 
@@ -16,13 +16,16 @@ if numel(f0.magX) > 0
     massiveFrame.magZ = zeros(globalRes);
 end
 
-ranks = f0.parallel.geometry;
+%ranks = f0.parallel.geometry;
+ranks = [0 1 2;3 4 5;6 7 8];
 fieldset = {'mass','momX','momY','momZ','ener'};
 bset     = {'magX','magY','magZ'};
 
   for u = 1:numel(ranks)
     frame = frameNumberToData(prefix, padding, ranks(u), framenum);
-    frmsize = size(frame.mass) - 6*(size(ranks) > 1);
+    fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
+    rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
+    frmsize = fs - 6*(rs > 1);
     if numel(frmsize) == 2; frmsize(3) = 1; end
 
     frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...

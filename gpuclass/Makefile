@@ -20,7 +20,7 @@ PAR_LIBS = -lpgw -lmpi
 ###############################################################################
 all: base fluids parallel lambda
 	echo "Finished compiling GPU support."
-	mv cudaZCommon.cpp temp
+	mv cudaCommon.cpp temp
 	rm -f *cpp
 	mv temp cudaCommon.cpp
 
