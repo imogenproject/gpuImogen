@@ -142,10 +142,9 @@ classdef GlobalIndexSemantics < handle
         % nx by ny by nz topology at that location.
         function G = getNodeGeometry(obj)
             G = zeros(obj.topology.nproc);
-            xi = mpi_allgather( mod(obj.topology.neighbor_left(1)+1, obj.topology.nproc(1)) );
-            yi = mpi_allgather( mod(obj.topology.neighbor_left(2)+1, obj.topology.nproc(2)) );
-            zi = mpi_allgather( mod(obj.topology.neighbor_left(3)+1, obj.topology.nproc(3)) );
-
+            xi = mpi_allgather( obj.topology.coord(1) );
+            yi = mpi_allgather( obj.topology.coord(2) );
+            zi = mpi_allgather( obj.topology.coord(3) );
             i0 = xi + obj.topology.nproc(1)*(yi + obj.topology.nproc(2)*zi) + 1;
             G(i0) = 0:(numel(G)-1);
         end
