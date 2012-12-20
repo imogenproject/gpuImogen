@@ -7,7 +7,7 @@
 #include "mpi_common.h"
 
 
-/*pParallelTopology topoStructureToC(const mxArray *prhs); */
+pParallelTopology topoStructureToC(const mxArray *prhs); 
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -105,7 +105,7 @@ free(tmpstore);
 
 }
 
-/*pParallelTopology topoStructureToC(const mxArray *prhs)
+pParallelTopology topoStructureToC(const mxArray *prhs)
 {
 mxArray *a;
 
@@ -139,5 +139,5 @@ for(i = pt->ndim; i < 4; i++) {
 return pt;
 
 }
-*/
+
 

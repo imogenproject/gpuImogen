@@ -15,7 +15,7 @@ run.image.mass      = true;
 run.image.parallelUniformColors = true;
 run.iterMax = 3;
 
-run.notes = 'Test that this turkey still flies';
+run.notes = 'Test that this turkey still flies with anticipated behavior.';
 
 %--- Run tests ---%
 if (true)

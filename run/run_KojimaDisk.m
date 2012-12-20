@@ -4,12 +4,20 @@
 starterRun();
 
 %--- Initialize test ---%
+<<<<<<< HEAD
 grid                = [768 768 384];
+=======
+grid                = [200 200 400];
+>>>>>>> 52856bd54b13eb0e736aa2a3c7071515ccd607cf
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 run                 = KojimaDiskInitializer(grid);
+<<<<<<< HEAD
 run.iterMax         = 40000;
+=======
+run.iterMax         = 20;
+>>>>>>> 52856bd54b13eb0e736aa2a3c7071515ccd607cf
 run.edgePadding     = 0.2;
 run.pointRadius     = 0.20;
 run.radiusRatio     = 0.65;

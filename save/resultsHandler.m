@@ -119,25 +119,25 @@ function resultsHandler(run, mass, mom, ener, mag)
     %-----------------------------------------------------------------------------------------------
     % Save Info File
     %---------------
-    if (saveState && labindex == 1)
+    if saveState
                 
         %-------------------------------------------------------------------------------------------
         % Store Array Information
         %------------------------
-        if run.save.done
-            fid = fopen([run.paths.save '/arrays-end.log'],'a');
-            fprintf(fid,'---++ Arrays at Complete:');
-        else
-            fid = fopen([run.paths.save '/arrays-ini.log'],'a');
-            fprintf(fid,'---++ Arrays at Creation:');
-        end
-
-        fprintf(fid, '\n\n---+++ Run Manager\n%s', ImogenRecord.valueToString(run, {'parent'}) );
-        fprintf(fid, '\n\n---+++ Mass\n%s',        ImogenRecord.valueToString(mass) );
-        fprintf(fid, '\n\n---+++ Momentum\n%s',    ImogenRecord.valueToString(mom) );
-        fprintf(fid, '\n\n---+++ Energy\n%s',      ImogenRecord.valueToString(ener) );
-        fprintf(fid, '\n\n---+++ Magnet\n%s',      ImogenRecord.valueToString(mag) );
-        fclose(fid);
+%        if run.save.done
+%            fid = fopen([run.paths.save '/arrays-end.log'],'a');
+%            fprintf(fid,'---++ Arrays at Complete:');
+%        else
+%            fid = fopen([run.paths.save '/arrays-ini.log'],'a');
+%            fprintf(fid,'---++ Arrays at Creation:');
+%        end
+%
+%        fprintf(fid, '\n\n---+++ Run Manager\n%s', ImogenRecord.valueToString(run, {'parent'}) );
+%        fprintf(fid, '\n\n---+++ Mass\n%s',        ImogenRecord.valueToString(mass) );
+%        fprintf(fid, '\n\n---+++ Momentum\n%s',    ImogenRecord.valueToString(mom) );
+%        fprintf(fid, '\n\n---+++ Energy\n%s',      ImogenRecord.valueToString(ener) );
+%        fprintf(fid, '\n\n---+++ Magnet\n%s',      ImogenRecord.valueToString(mag) );
+%        fclose(fid);
         
             
         %---------------------------------------------------------------------------------------
@@ -220,15 +220,14 @@ function resultsHandler(run, mass, mom, ener, mag)
             disp(strcat('Results files saved to directory: ', run.paths.save));
         end
     end
-    labBarrier(); % Block all labs until lab 1 has finished saving
+%    labBarrier(); % Block all labs until lab 1 has finished saving
 
     % Save images
     run.image.imageSaveHandler(mass, mom, ener, mag);
     
 end
 
+% Just go with it, ok?
 function brainDamagedIdioticWorkaround(sliceName, sl)
-
-assignin('caller',sliceName, sl);
-
+  assignin('caller',sliceName, sl);
 end
