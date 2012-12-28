@@ -125,13 +125,12 @@ classdef SaveManager < handle
 %_________________________________________________________________________________________ logPrint
 % Prints information to the standard output as well as a log file.
     function logPrint(obj, printLine, varargin)
-            GIS=GlobalIndexSemantics();
-if GIS.context.rank == 0
+        if mpi_amirank0() 
 %            fid       = fopen([obj.parent.paths.save, filesep, sprintf('logfile_rank%i.out',GIS.context.rank) ],'a');
 %            disp([GIS.context.rank fid]);
 %            fprintf(fid, printLine, varargin{:});
             fprintf(printLine, varargin{:});
-end
+        end
 %            fclose(fid);
     end
     

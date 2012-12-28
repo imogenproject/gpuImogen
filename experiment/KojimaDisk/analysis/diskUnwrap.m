@@ -7,7 +7,7 @@ function polmass = diskUnwrap(mass)
 grid = size(mass);
 
 % R and Phi components for transform
-rho = 0:.5:floor(grid(1)/2)-.5;
+rho = 0:1:floor(grid(1)/2)-.5;
 phi = (0:.5*pi/(floor(grid(2)/2)):2*pi) - .5*pi/floor(grid(2)/2);
 
 % Map to cartesian components
@@ -19,6 +19,8 @@ polarrayy = rho' * imag(mu) + grid(2)/2 + .5;
 %polarrayx(polarrayx > 2048)'
 
 % Generate interpolation
-polmass = interp2(mass,polarrayx,polarrayy);
+for z = 1:size(mass,3);
+  polmass(:,:,z) = interp2(mass(:,:,z),polarrayx,polarrayy);
+end
 
 end

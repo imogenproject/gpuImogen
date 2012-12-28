@@ -100,13 +100,15 @@ function resultsHandler(run, mass, mom, ener, mag)
                 sl.dim = sliceDim;
        
                 fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
+                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix, '.nc'];
                 sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
                 if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                 try
-                    brainDamagedIdioticWorkaround(sliceName, sl);
-                    save(fileName, sliceName);
+%                  brainDamagedIdioticWorkaround(sliceName, sl);
+
+%                    save(fileName, sliceName);
+                  util_Frame2NCD(sl, fileName);
                 catch MERR %#ok<NASGU>
                     fprintf('Unable to save. Skipping');
                     MERR

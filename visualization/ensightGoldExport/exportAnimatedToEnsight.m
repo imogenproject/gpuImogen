@@ -16,7 +16,7 @@ if nargin < 4
     if timeNormalization == 0; timeNormalization = 1; end;
 end
 
-pertonly = input('Export perturbed quantities (1) or full (0)? ');
+pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 
 %--- Initialization ---%
 fprintf('Beginning export of %i files\n', numel(range));
@@ -33,44 +33,45 @@ if nargin == 4; timeNormalization = 1; end;
 equilframe = [];
 
 %--- Loop over given frame range ---%
-for ITER = 1:numel(range)
+parfor ITER = 1:numel(range)
     % Take first guess; Always replace _START
     fname = sprintf('%s_%0*i.mat', inBasename, padlength, range(ITER));
-    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
+%    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
 
     % Check existance; if fails, try _FINAL then give up
-    if exist(fname, 'file') == 0
-        fname = sprintf('%s_FINAL.mat', inBasename);
-        if exist(fname, 'file') == 0
+%    if exist(fname, 'file') == 0
+%        fname = sprintf('%s_FINAL.mat', inBasename);
+%        if exist(fname, 'file') == 0
             % Weird shit is going on. Run away.
-            error('UNRECOVERABLE: File existed when checked but is not openable.\n');
-        end
-    end
+%            error('UNRECOVERABLE: File existed when checked but is not openable.\n');
+%        end
+%    end
     
-    fprintf('Exporting %s as frame %i... ', fname, exportedFrameNumber);
-    load(fname);
+    fprintf('Exporting %s as frame %i... ', fname, ITER);
+%    load(fname);
 
-    structName = who('sx_*');
-    structName = structName{1};
+ %   structName = who('sx_*');
+ %   structName = structName{1};
+    fprintf('f');
+    dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
 
-    if ITER == 1
-        eval(sprintf('equilframe = %s;', structName));
-    end
+ %   if (ITER == 1) && (pertonly == 1)
+ %       equilframe = dataframe;
+ %   end
 
-    eval(sprintf('dataframe = %s;', structName));
-    clear -regexp 'sx_';
+%    eval(sprintf('dataframe = %s;', structName));
+%    clear -regexp 'sx_';
     
-    if pertonly == 1
-        dataframe = subtractEquil(dataframe, equilframe);
-    end
-
-    writeEnsightDatafiles(outBasename, exportedFrameNumber, dataframe);
+%    if pertonly == 1
+%        dataframe = subtractEquil(dataframe, equilframe);
+%    end
+    fprintf('%cw',8);
+    writeEnsightDatafiles(outBasename, ITER-1, dataframe);
     if range(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, range, dataframe, timeNormalization);
     end
 
-    exportedFrameNumber = exportedFrameNumber + 1;
-    fprintf('done.\n');
+    fprintf('%cdone.\n',8);
 end
 
 end
@@ -98,13 +99,13 @@ existrange = [];
 
 for ITER = 1:numel(range)
     % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, range(ITER));
-    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
+    fname = sprintf('%s_rank0_%0*i.mat', inBasename, padlength, range(ITER));
+    if range(ITER) == 0; fname = sprintf('%s_rank0_START.mat', inBasename); end
 
     % Check existance; if fails, try _FINAL then give up
     doesExist = exist(fname, 'file');
     if (doesExist == 0) & (range(ITER) == max(range))
-        fname = sprintf('%s_FINAL.mat', inBasename);
+        fname = sprintf('%s_rank0_FINAL.mat', inBasename);
         doesExist = exist(fname, 'file');
     end
     

@@ -226,7 +226,7 @@ classdef Initializer < handle
 %            end
             run = obj.getRunSettings();
 
-            GIS = GlobalIndexSemantics(); if GIS.context.rank == 0; fprintf('Done calculating initial conditions.\n'); end
+            if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
         end
 
         function icfile = saveInitialCondsToFile(obj)

@@ -16,7 +16,7 @@ PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
 PAR_LIBS = -lpgw -lmpi
 
 ###############################################################################
-all: mpi_init mpi_finalize mpi_barrier mpi_allgather mpi_scatter mpi_basicinfo mpi_dimreduce
+all: mpi_amirank0 mpi_allgather mpi_barrier mpi_basicinfo mpi_dimreduce mpi_finalize mpi_init mpi_scatter
 	echo "Finished!"
 
 %::

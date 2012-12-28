@@ -13,7 +13,7 @@ run.profile         = false;
 run.image.interval  = 20;
 run.image.mass      = true;
 run.image.parallelUniformColors = true;
-run.iterMax = 3;
+run.iterMax = 60;
 
 run.notes = 'Test that this turkey still flies with anticipated behavior.';
 

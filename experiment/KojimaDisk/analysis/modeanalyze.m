@@ -1,4 +1,4 @@
-function result = modeanalyze(radialIndex, optString)
+function result = diskModeAnalyze(radialIndex, optString)
 % This function sequentially loads disk MAT files from a list, unwraps them, and performs a mode
 % spectrum analysis.
 %>> radialIndex: The radial cell # to examine modes at; set to zero for radial averaging

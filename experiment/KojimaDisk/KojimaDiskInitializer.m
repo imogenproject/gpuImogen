@@ -61,7 +61,7 @@ classdef KojimaDiskInitializer < Initializer
             obj.bcInfinity          = 5;
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
-            obj.bgDensityCoeff      = 1e-4;
+            obj.bgDensityCoeff      = 1e-5;
             
             obj.gravity.constant        = 1;
             obj.pointMass               = 1;

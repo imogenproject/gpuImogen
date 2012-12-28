@@ -52,8 +52,10 @@ function [version, detailedVersion] = versionInfo()
     headerLine = '===========================================================';
     index      = floor(0.5 * (length(headerLine) - (length(header) + 2)));
     headerLine(index:(index + length(header)+1)) = [' ' header ' '];
-    
-    fprintf('\n\n%s\n',headerLine);
-    fprintf('   Updated: %s       Created: March, 2007               \n', modDate);
-    fprintf('===========================================================\n');
+
+    if mpi_amiroot()
+        fprintf('\n\n%s\n',headerLine);
+        fprintf('   Updated: %s       Created: March, 2007               \n', modDate);
+        fprintf('===========================================================\n');
+    end
 end

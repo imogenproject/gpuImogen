@@ -17,7 +17,9 @@ function includeImogenPaths()
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
     addpath('~/parallel-gateway/build/lib');
-    fprintf('Imogen directories have been added to the path listing.\n');
+
+    % There's no actual pressing need to announce this
+    % printf('Imogen directories have been added to the path listing.\n');
     
     %--- Add compatibility directories ---%
     %       To deal with incompatibilities created by multiple Matlab versions, as well as missing

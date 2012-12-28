@@ -6,7 +6,6 @@ GIS = GlobalIndexSemantics();
 
 % gather data onto rank 0
 
-
 if GIS.context.rank == 0
   fprintf('Values for %s saved as dbsave # %i\n', namestring, savect);
 end

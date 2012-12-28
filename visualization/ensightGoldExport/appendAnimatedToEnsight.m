@@ -18,35 +18,29 @@ maxFrameno = max(addrange);
 if nargin == 4; timeNormalization = 1; end;
 
 %--- Loop over given frame range ---%
-for ITER = 1:numel(addrange)
+parfor ITER = 1:numel(addrange)
     % Take first guess; Always replace _START
     fname = sprintf('%s_%0*i.mat', inBasename, padlength, addrange(ITER));
-    if addrange(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
+%    if addrange(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
 
     % Check existance; if fails, try _FINAL then give up
-    if exist(fname, 'file') == 0
-        fname = sprintf('%s_FINAL.mat', inBasename);
-        if exist(fname, 'file') == 0
+%    if exist(fname, 'file') == 0
+%        fname = sprintf('%s_FINAL.mat', inBasename);
+%        if exist(fname, 'file') == 0
             % Weird shit is going on. Run away.
-            error('UNRECOVERABLE: File previously checked out but now does not exist.\n');
-        end
-    end
+%            error('UNRECOVERABLE: File previously checked out but now does not exist.\n');
+%        end
+%    end
     
-    fprintf('Exporting %s as frame %i... ', fname, exportedFrameNumber);
-    load(fname);
+    fprintf('Exporting %s as frame %i... ', fname,  numel(oldrange)+ITER+1);
 
-    structName = who('sx_*');
-    structName = structName{1};
+    dataframe = util_LoadWholeFrame(inBasename, padlength, addrange(ITER));
 
-    eval(sprintf('dataframe = %s;', structName));
-    clear -regexp 'sx_';
-    
-    writeEnsightDatafiles(outBasename, exportedFrameNumber, dataframe) 
+    writeEnsightDatafiles(outBasename, numel(oldrange)+ITER+1, dataframe);
     if addrange(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, [oldrange addrange], dataframe, timeNormalization);
     end
 
-    exportedFrameNumber = exportedFrameNumber + 1;
     fprintf('done.\n');
 end
 
@@ -58,13 +52,13 @@ existrange = [];
 
 for ITER = 1:numel(range)
     % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, range(ITER));
-    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
+    fname = sprintf('%s_rank0_%0*i.mat', inBasename, padlength, range(ITER));
+    if range(ITER) == 0; fname = sprintf('%s_rank0_START.mat', inBasename); end
 
     % Check existance; if fails, try _FINAL then give up
     doesExist = exist(fname, 'file');
     if doesExist == 0;
-        fname = sprintf('%s_FINAL.mat', inBasename);
+        fname = sprintf('%s_rank0_FINAL.mat', inBasename);
         doesExist = exist(fname, 'file');
     end
     

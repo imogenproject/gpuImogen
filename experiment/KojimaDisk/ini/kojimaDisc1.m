@@ -131,14 +131,14 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     mom = zeros(size(rho));
     mom(isPartOfDisk) = momentumKojima(isPartOfDisk);
 
-    mom = simpleBlur(mom, .4, 2, 1);
-    rho = simpleBlur(rho, .4, 2, 1);
+ %   mom = simpleBlur(mom, .4, 2, 1);
+ %   rho = simpleBlur(rho, .4, 2, 1);
 
 % Where gravity is no longer acting, attempt to balance only centrifugal acceleration and pressure gradient
-borderlands = (isPartOfDisk) & (rho < ENUM.GRAV_FEELGRAV_COEFF*lomass);
-drhodr = (circshift(rho,[1 0 0])-circshift(rho,[-1 0 0]))/(2*rdinf.dr);
-momphi = real(sqrt(GAMMA*rdinf.axialRadius.*rho.^GAMMA.*drhodr));
-mom(borderlands) = momphi(borderlands);
+%borderlands = (isPartOfDisk) & (rho < ENUM.GRAV_FEELGRAV_COEFF*lomass);
+%drhodr = (circshift(rho,[1 0 0])-circshift(rho,[-1 0 0]))/(2*rdinf.dr);
+%momphi = real(sqrt(GAMMA*rdinf.axialRadius.*rho.^GAMMA.*drhodr));
+%mom(borderlands) = momphi(borderlands);
 
 %--- Lathe radial info onto cubical grid --- %
     %        I experimented with doing this in one interpolation with not much luck.
@@ -148,16 +148,20 @@ mom(borderlands) = momphi(borderlands);
     Zblk = (Zblk - .5 - floor(grid(3)/2)*(useZMirror == 1))*rdinf.dr;
     Rblk = sqrt(Xblk.^2+Yblk.^2);
 
-    for zct = 1:grid(3)
-        mass(:,:,zct) = interp1(rdinf.axialRadius(:,zct), rho(:,zct), Rblk(:,:,zct));
-        momX(:,:,zct) = interp1(rdinf.axialRadius(:,zct), mom(:,zct), Rblk(:,:,zct));
+    zd = GIS.pMyOffset(3);
+
+    for zct = 1:size(Xblk,3);
+        mass(:,:,zct) = interp1(rdinf.axialRadius(:,zct+zd), rho(:,zct+zd), Rblk(:,:,zct));
+        momX(:,:,zct) = interp1(rdinf.axialRadius(:,zct+zd), mom(:,zct+zd), Rblk(:,:,zct));
 %        [mass(:,:,zct) momX(:,:,zct) momY(:,:,zct)] = cyl2rect(rdinf.axialRadius(:,zct), rho(:,zct), mom(:,zct), grid(1)/2, rdinf.dr);
     end
-    momY = momX.*Xblk./Rblk;
-    momX = -momX.*Yblk./Rblk;
+    momY = momX.*Xblk./Rblk; % py = p_phi cos(phi)
+    momX = -momX.*Yblk./Rblk; % px = p_phi sin(phi)
 
-%    fprintf('Ratio of Disk/Star mass from radial integration found to be: %g\n', ...
-%                              (1+useZMirror)*2*pi*sum(sum(rdinf.axialRadius.*rho))*rdinf.dr*rdinf.dr);
+if GIS.context.rank == 0
+    p = kojimaDiskParams(q, radiusRatio, GAMMA)
+    if p.Mdisk > .1; fprintf('WARNING: Disk mass > .1 star mass; nonselfgravity model not reliable.\n'); end
+end
 %    fprintf('Radio of Disk/Star mass from grid summation found to be: %g\n', ...
 %                              (1+useZMirror)*sum(sum(sum(mass)))*rdinf.dr^3);
 

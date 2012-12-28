@@ -49,9 +49,6 @@ function flux(run, mass, mom, ener, mag, order)
     directVec = circshift(directVec, order*[mod(run.time.iteration-1,3), 0]);
     magneticIndices = circshift(magneticIndices, order*[mod(run.time.iteration-1,3), 0]);
 
-GIS = GlobalIndexSemantics();
-
-
     %===============================================================================================
         if (order > 0) %                             FORWARD FLUXING
     %===============================================================================================

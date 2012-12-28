@@ -75,7 +75,7 @@ classdef Paths < handle
             
             obj.containerFolder     = datestr(startTime,'mmmyy');
             obj.makePathUnique(startTime);
-            obj.printHostVariables(startTime);
+            if mpi_amirank0(); obj.printHostVariables(startTime); end
         end
         
 %___________________________________________________________________________________________________ iterationToString
@@ -91,8 +91,8 @@ classdef Paths < handle
 
 %___________________________________________________________________________________________________ printHostVariables
 		function printHostVariables(obj, startTime)
-            fprintf('\n\nRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
-			fprintf('\tRunning on %s\n',            obj.hostName);
+                    fprintf('\n\nRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
+		    fprintf('\tRunning on %s\n',            obj.hostName);
 			fprintf('\tImogen directory: %s\n',     obj.imogen);
 			fprintf('\tOutput directory: %s\n\n\n',	obj.results);
 		end

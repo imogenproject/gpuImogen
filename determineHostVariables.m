@@ -50,9 +50,11 @@ function [host, imogenRootPath, resultPath] = determineHostVariables()
         else
             imogenRootPath = 'C:\imogen';
             resultPath = 'C:\Results';
+
+            if mpi_amirank0()
+                fprintf('Unable to ascertain host and user id. Environmental paths may be incorrect.\n');
+                fprintf('Imogen registered the following values for your system:\nHost: %s\nUser: %s', ...
+                            host, user); end
         end
-        fprintf('Unable to ascertain host and user id. Environmental paths may be incorrect.\n');
-        fprintf('Imogen registered the following values for your system:\nHost: %s\nUser: %s', ...
-                    host, user);
     end    
 end
