@@ -15,9 +15,9 @@ fprintf(CASE, '\nVARIABLE\n');
 
 fprintf(CASE, 'scalar per node: 1 mass %s.mass.****\n', basename);
 fprintf(CASE, 'scalar per node: 1 energy %s.ener.****\n', basename);
-if ~isempty(frame.grav)
+if isfield(frame, 'grav'); if ~isempty(frame.grav)
     fprintf(CASE, 'scalar per node: 1 grav_potential %s.grav.****\n', basename);
-end
+end; end
 
 fprintf(CASE, 'vector per node: 1 momentum %s.mom.****\n', basename);
 

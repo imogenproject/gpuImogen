@@ -6,9 +6,9 @@ function exportEnsightDatafiles(basename, frameNo, frame)
 makeEnsightScalarFile(sprintf('%s.mass.%04i', basename, frameNo), frame.mass, 'mass');
 makeEnsightScalarFile(sprintf('%s.ener.%04i', basename, frameNo), frame.ener, 'energy');
 
-if ~isempty(frame.grav)
+if isfield(frame,'grav'); if ~isempty(frame.grav)
     makeEnsightScalarFile(sprintf('%s.grav.%04i', basename, frameNo), frame.grav, 'gravity');
-end
+end; end
 
 makeEnsightVectorFile(sprintf('%s.mom.%04i', basename, frameNo), ...
                       frame.momX, frame.momY, frame.momZ, 'momentum');

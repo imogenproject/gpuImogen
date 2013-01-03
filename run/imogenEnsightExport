@@ -1,0 +1,16 @@
+#!/bin/bash
+# imogenEnsightExport outname inname padsize frameset 
+
+D=$(pwd);
+
+RUNSTRING="cd('~/gpuimogen'); includeImogenPaths; cd('$D'); mpi_init(); exportAnimatedToEnsight('${1}', '${2}', ${3}, ${4}, ${5}); mpi_barrier(); mpi_finalize(); exit";
+
+TFILE=$(mktemp);
+  echo "module load mpi-tor/openmpi-1.4.5_gcc-4.4.6" >> $TFILE
+  echo "module load matlab" >> $TFILE
+  echo "mpirun --mca btl_tcp_if_include torbr --bynode -np 24 matlab -nodisplay -nojvm -r \"$RUNSTRING\" | tee -a ~/imogenexport " >> $TFILE
+
+echo $TFILE
+
+qsub -q generic -l nodes=12:ppn=2 $TFILE
+

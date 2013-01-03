@@ -25,17 +25,35 @@ exportedFrameNumber = 0;
 if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 
-range = removeNonexistantEntries(inBasename, padlength, range);
+%range = removeNonexistantEntries(inBasename, padlength, range);
 maxFrameno = max(range);
 
 if nargin == 4; timeNormalization = 1; end;
 
 equilframe = [];
 
+minf = mpi_basicinfo();
+
+ntotal = numel(range); % number of frames to write
+nforme = floor(ntotal/minf(1)); % minimum each rank must take
+nadd = ntotal - nforme * minf(1); % number left over
+if minf(2) < nadd % I must take one more
+  nforme = nforme + 1;
+  ninit = minf(2)*nforme;
+
+  localrange = (ninit+1):(ninit+nforme);
+else
+  ninit = nadd + minf(2)*nforme;
+  localrange = (ninit+1):(ninit+nforme);
+end
+
+tic;
+fprintf('Rank %i exporting frames %i to %i inclusive.\n', minf(2),localrange(1),localrange(end));
+
 %--- Loop over given frame range ---%
-parfor ITER = 1:numel(range)
+for ITER = ninit+(1:nforme)
     % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, range(ITER));
+    fname = sprintf('%s_%0*i', inBasename, padlength, range(ITER));
 %    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
 
     % Check existance; if fails, try _FINAL then give up
@@ -47,12 +65,11 @@ parfor ITER = 1:numel(range)
 %        end
 %    end
     
-    fprintf('Exporting %s as frame %i... ', fname, ITER);
+    fprintf('Rank %i exporting %s as frame %i: %g; ', minf(2), fname, ITER, toc);
 %    load(fname);
 
  %   structName = who('sx_*');
  %   structName = structName{1};
-    fprintf('f');
     dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
 
  %   if (ITER == 1) && (pertonly == 1)
@@ -65,14 +82,15 @@ parfor ITER = 1:numel(range)
 %    if pertonly == 1
 %        dataframe = subtractEquil(dataframe, equilframe);
 %    end
-    fprintf('%cw',8);
+    fprintf('Rank %i load: %g; ', minf(2), toc);
     writeEnsightDatafiles(outBasename, ITER-1, dataframe);
     if range(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, range, dataframe, timeNormalization);
     end
 
-    fprintf('%cdone.\n',8);
 end
+
+fprintf('Rank %i finished. total %g.\n', minf(2), toc);
 
 end
 
