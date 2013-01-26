@@ -18,6 +18,8 @@ for N = 1:numel(frameset)
 
   modes(:,:,:,N) = squeeze(mft(:,1:24,:));
 
+save('modeAnalysis.mat','modes');
+
   fprintf('Printing picture %i...\n', N);
 
   fig = diskModePlot(cframe, mft, innercut);

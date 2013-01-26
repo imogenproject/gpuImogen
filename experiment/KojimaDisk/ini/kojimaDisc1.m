@@ -79,7 +79,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %        axialRadius is the polar coordinate radius looking down on the top of the disk
     %        centerRadius is the spherical coordinate radius from the point mass
     %        If useZMirror is 1, we're simulating only the top half of a disk
-    [X Z] = ndgrid(0:2*rdinf.nRadialZones, 1:grid(3));
+    [X Z] = ndgrid(0:2*rdinf.nRadialZones, 1:(grid(3)+6) ); % +3 for the 3 boundary cells
 
     X = X;
 

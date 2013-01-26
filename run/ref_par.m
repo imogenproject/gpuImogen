@@ -15,9 +15,9 @@ run.pointRadius     = 0.15;
 run.radiusRatio     = 0.70;
 run.q = 2.1;
 
-run.image.interval  = 50;
+run.image.interval  = 1;
 %run.image.speed     = true;
-%run.image.mass      = true;
+run.image.mass      = true;
 
 run.activeSlices.xy = false;
 %run.activeSlices.xz = true;

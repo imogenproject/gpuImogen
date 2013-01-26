@@ -58,7 +58,7 @@ classdef GlobalIndexSemantics < handle
                 end
             end
             obj.pMySize = pMySize;
-            obj.pMyOffset = obj.pMySize.*double(obj.topology.coord);
+            obj.pMyOffset = (obj.pMySize-6).*double(obj.topology.coord);
 
             obj.pHaloDims = obj.pGlobalDims - (obj.topology.nproc > 1).*double((6*obj.topology.nproc));
 

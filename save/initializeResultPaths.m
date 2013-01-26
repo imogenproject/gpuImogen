@@ -1,13 +1,17 @@
-function initializeResultPaths(run)
+function initializeResultPaths(run, serializedPaths)
 % Creates the directories to store results based on the user input save settings and stores them as
 % a Paths object contained within the ImogenManager instance for the run.
 %
-%<> run        manager object for the Imogen run								ImogenManager
-    run.paths.initialize();
-    
-    GIS = GlobalIndexSemantics();
+%<> run              manager object for the Imogen run								ImogenManager
+%>> serializedPaths  If present, path structure to resume from.
+    if nargin == 1
+        run.paths.initialize();
+    else
+        run.paths.deserialize(serializedPaths);
+    end
+   
     mpi_barrier(); % force all units to evaluate to the same paths
-    if GIS.context.rank == 0; 
+    if mpi_amirank0() && (nargin == 1)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
@@ -105,7 +109,8 @@ function initializeResultPaths(run)
         secspaused = secspaused+1;
     end 
 
-    if GIS.context.rank == 0; fprintf('Waited %is for global results directory visibility\n',secspaused); end
+    if mpi_amirank0(); fprintf('Waited %is for global results directory visibility\n',secspaused); end
+
     mpi_barrier();
 
 end

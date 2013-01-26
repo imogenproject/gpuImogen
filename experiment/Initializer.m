@@ -217,8 +217,13 @@ classdef Initializer < handle
                 ener    = obj.pFileData.ener;
                 mag     = obj.pFileData.mag;
                 statics = StaticsInitializer(obj.grid);
+
+                ini  = load([path filesep 'ini_settings.mat']);
+                obj.populateValues(ini.ini);
+
             else
                 [mass, mom, ener, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
+                if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
             end
 
 %            if isempty(obj.slice)
@@ -226,7 +231,6 @@ classdef Initializer < handle
 %            end
             run = obj.getRunSettings();
 
-            if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
         end
 
         function icfile = saveInitialCondsToFile(obj)
@@ -292,9 +296,16 @@ classdef Initializer < handle
 %___________________________________________________________________________________________________ loadDataFromFile
         function loadDataFromFile(obj, filePathToLoad)
             if isempty(filePathToLoad); return; end
+            % filePathToLoad should contain the prefix only, i.e. '~/Results/Dec12/blah/3D_XYZ
             
-            path                        = fileparts(filePathToLoad);
-            data                        = load(filePathToLoad);
+            GIS = GlobalIndexSemantics();
+
+            % Evaluate which of the savefiles is associated with my rank.
+            aboot = savefileInfo(filePathToLoad);
+            myfile = sprintf('%s/%srank%i_%.*i.%s',aboot.path,aboot.prefix,aboot.rank,aboot.pad,aboot.frameno,aboot.extension);
+           
+            path                        = fileparts(filePathToLoad); % path to directory with savedata
+            data                        = load(myfile);
             fields                      = fieldnames(data);
             obj.pFileData.mass          = data.(fields{1}).mass;
             obj.pFileData.ener          = data.(fields{1}).ener;

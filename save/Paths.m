@@ -66,12 +66,7 @@ classdef Paths < handle
 %___________________________________________________________________________________________________ initialize
         function initialize(obj)
             timeManager             = TimeManager.getInstance();
-%timeManager.startTime
-%whos
-%
             startTime               = mpi_scatter(timeManager.startTime,0);
-%timeManager.startTime
-%whos
             
             obj.containerFolder     = datestr(startTime,'mmmyy');
             obj.makePathUnique(startTime);
@@ -79,11 +74,38 @@ classdef Paths < handle
         end
         
 %___________________________________________________________________________________________________ iterationToString
-		function result = iterationToString(obj, iteration)
+        function result = iterationToString(obj, iteration)
         % Pads an iteration value with zeros for consistent save length of intermediate slice data.
-			result = Paths.paddedNumber(iteration, obj.indexPadding);
-		end
-		
+            result = Paths.paddedNumber(iteration, obj.indexPadding);
+        end
+
+        % Dump the paths object to a structure to be saved so we can easily resume.
+        function result = serialize(obj)
+
+            result.imogen          = obj.imogen;
+            result.resultPath      = obj.results;        
+            result.indexPadding    = obj.indexPadding;
+            result.hostName        = obj.hostName; % Replace this on restart regardless OFC
+            result.saveFolder      = obj.saveFolder;
+            result.containerFolder = obj.containerFolder;
+            result.runCode         = obj.runCode;
+            result.alias           = obj.alias;
+
+        end
+
+        % Recreate the paths object from a save serialization from above.
+        function deserialize(obj, serial_struct)
+            obj.imogen          = serial_struct.imogen;
+            obj.results         = serial_struct.resultPath;
+            obj.indexPadding    = serial_struct.indexPadding;
+            obj.hostName        = serial_struct.hostName; % Replace this on restart regardless OFC
+            obj.saveFolder      = serial_struct.saveFolder;
+            obj.containerFolder = serial_struct.containerFolder;
+            obj.runCode         = serial_struct.runCode;
+            obj.alias           = serial_struct.alias;
+
+        end
+	
 	end%PUBLIC
 	
 %===================================================================================================

@@ -3,7 +3,7 @@ classdef TimeManager < handle
 % singleton class to be accessed using the getInstance() method and not instantiated directly.
 
 %===================================================================================================
-        properties (Constant = true, Transient = true) %                 C O N S T A N T         [P]
+    properties (Constant = true, Transient = true) %                 C O N S T A N T         [P]
     end%CONSTANT
     
 %===================================================================================================
@@ -23,7 +23,7 @@ classdef TimeManager < handle
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
         running;     % Specifies if the simulation should continue running.          logical
-        end%PUBLIC
+    end%PUBLIC
         
 %===================================================================================================
     properties (SetAccess = public, GetAccess = private) %                          P R I V A T E [P]
@@ -38,7 +38,7 @@ classdef TimeManager < handle
                       && (obj.wallTime < obj.WALLMAX);
         end
         
-        end%GET/SET
+    end%GET/SET
         
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
@@ -163,6 +163,7 @@ classdef TimeManager < handle
                 cTime   = now;
                 curTime = strcat(datestr(cTime , 'HH:MM PM'),' on', datestr(cTime, ' mm-dd-yy'));
                 save.logPrint('[[ %0.3g%% | %s |  %s ]]\n', compPer, infoStr, curTime);
+dbstack
             end
 
             obj.parent.abortCheck();
@@ -177,25 +178,43 @@ classdef TimeManager < handle
         
 %___________________________________________________________________________________________________ step
 % Increments the iteration variable by one for the next loop.
-                function step(obj)
+        function step(obj)
             obj.updateUI();
-                        obj.iteration   = obj.iteration + 1;
+            obj.iteration   = obj.iteration + 1;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
-                end
+        end
                 
 %___________________________________________________________________________________________________ toStruct
 % Converts the TimeManager object to a structure for saving and non-class use.
 % # result        The structure resulting from conversion of the TimeManager object.                        Struct
-                function result = toStruct(obj)
-                        result.time                        = obj.time;
-                        result.history                = obj.history(1:obj.iteration);
-                        result.iterMax                = obj.ITERMAX;
-                        result.timeMax                = obj.TIMEMAX;
-            result.wallMax      = obj.WALLMAX;
-                        result.started                = datestr( obj.startTime );
-                        result.iteration        = obj.iteration;
-                end
+        function result = toStruct(obj)
+            result.time       = obj.time;
+            result.history    = obj.history(1:obj.iteration);
+            result.iterMax    = obj.ITERMAX;
+            result.timeMax    = obj.TIMEMAX;
+            result.wallMax    = obj.WALLMAX;
+            result.started    = datestr( obj.startTime );
+            result.iteration  = obj.iteration;
+        end
         
+% Converts the existing time struct into a nice shiny 
+        function resumeFromSavedTime(obj, elapsed, newlimit)
+% Fields in new limit value:
+%newlimit.itermax = 20;
+%newlimit.timemax = 100;
+%newlimit.frame = 8;
+
+            obj.time       = elapsed.time;
+            obj.history    = elapsed.history;
+            obj.ITERMAX    = newlimit.itermax;
+            obj.TIMEMAX    = newlimit.timemax;
+            obj.WALLMAX    = elapsed.wallMax;
+            obj.iteration  = elapsed.iteration;
+            obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
+            obj.timePercent = 100*obj.time/obj.TIMEMAX;
+            obj.updateWalltime();
+        end 
+
     end%PUBLIC 
         
 %===================================================================================================
@@ -205,18 +224,18 @@ classdef TimeManager < handle
 % Creates a new TimeManager instance.
         function obj = TimeManager() 
             obj.startTime   = clock;
-                        obj.time        = 0;
-                        obj.dTime       = 0;
-                        obj.iteration   = 0;
-                        obj.ITERMAX     = 1000;
-                        obj.TIMEMAX     = 5000;
+            obj.time        = 0;
+            obj.dTime       = 0;
+            obj.iteration   = 0;
+            obj.ITERMAX     = 1000;
+            obj.TIMEMAX     = 5000;
             obj.WALLMAX     = 1e5;
-                        obj.history     = zeros(obj.ITERMAX,1);
+            obj.history     = zeros(obj.ITERMAX,1);
             obj.updateMode  = ENUM.TIMEUPDATE_PER_ITERATION;
             obj.iterPercent = 0;
             obj.timePercent = 0;
             obj.wallPercent = 0;
-                end
+        end
                 
 %___________________________________________________________________________________________________ appendHistory
 % Appends a new dTime value to the history.
