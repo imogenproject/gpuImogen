@@ -173,7 +173,7 @@ freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
 }
 
 
-#define cs0sq .0059
+#define cs0sq .02
 __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx)
 {
 int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);

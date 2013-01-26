@@ -49,6 +49,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     try
         eval(runFile);
     catch ME
+       fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
        GPU_exit(); mpi_barrier(); mpi_finalize(); % OMG GFTO
        rethrow(ME);
     end

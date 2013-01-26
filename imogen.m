@@ -1,5 +1,5 @@
 %function imogen(massDen, momDen, enerDen, magnet, ini, statics)
-function imogen(icfile)
+function imogen(icfile, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
 %
@@ -9,13 +9,12 @@ function imogen(icfile)
 %>> magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
 %>> ini         Listing of properties and settings for the run.             struct
 %>> statics     Static arrays with lookup to static values.                 struct
-
     load(icfile)
     ini     = IC.ini;
     statics = IC.statics;
     
     % Recover memory and disk used to store ICs
-    system(['rm -f ' icfile ]);
+%    system(['rm -f ' icfile ]);
 
     %--- Parse initial parameters from ini input ---%
     %       The initialize function parses the ini structure input and populates all of the manager
@@ -23,36 +22,90 @@ function imogen(icfile)
     %       establishes all of the save directories for the run, creating whatever directories are
     %       needed in the process. 
     run = initialize(ini);
-    initializeResultPaths(run);
+
+    if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
+
+    if RESTARTING
+        % Recreates our original paths exactly w/o changing
+        initializeResultPaths(run, IC.originalPathStruct);
+    else
+        % Generate unique new paths
+        initializeResultPaths(run);
+    end
+
     run.save.saveIniSettings(ini);
     run.preliminary();
 
     mpi_barrier();
     run.save.logPrint('Creating simulation arrays...\n');
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, IC.mass, run, statics);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, IC.ener, run, statics);
-    mom  = FluidArray.empty(3,0);
-    mag  = MagnetArray.empty(3,0);
-    for i=1:3
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, IC.mom(i,:,:,:), run, statics); 
-        if run.pureHydro == 0
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, IC.magnet(i,:,:,:), run, statics);
-        else
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
+
+    if RESTARTING
+        % If reloading from time-evolved point,
+        % garner important values from saved files:
+        % (1) save paths [above]
+        % (2) Q(x,t0) from saved files
+        origpath=pwd(); cd(run.paths.save);
+        dframe = util_LoadFrameSegment('3D_XYZ',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
+        % (3) serialized time history, from saved data files, except for newly adultered time limits.
+        run.time.resumeFromSavedTime(dframe.time, resumeinfo);
+
+        % (4) Recall and give a somewhat late init to indexing semantics.
+        GIS = GlobalIndexSemantics(); GIS.setup(dframe.parallel.globalDims);
+
+        cd(origpath); clear origpath;
+
+        mass = FluidArray(ENUM.SCALAR, ENUM.MASS, dframe.mass, run, statics);
+        ener = FluidArray(ENUM.SCALAR, ENUM.ENER, dframe.ener, run, statics);
+        mom  = FluidArray.empty(3,0); mag  = MagnetArray.empty(3,0);
+        fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
+
+        for i = 1:3;
+            mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, getfield(dframe, fieldnames{i}), run, statics);
+            if run.pureHydro == 0
+                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(dframe,fieldnames{i}), run, statics);
+            else
+                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
+            end
         end
-    end
+
+     else % IC contains Q(x,t0)
+        mass = FluidArray(ENUM.SCALAR, ENUM.MASS, IC.mass, run, statics);
+        ener = FluidArray(ENUM.SCALAR, ENUM.ENER, IC.ener, run, statics);
+        mom  = FluidArray.empty(3,0);
+        mag  = MagnetArray.empty(3,0);
+        for i=1:3
+            mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, IC.mom(i,:,:,:), run, statics); 
+            if run.pureHydro == 0
+                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, IC.magnet(i,:,:,:), run, statics);
+            else
+                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
+            end
+        end
+    end    
 
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
+    %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%
+    IC.mass = []; IC.ener = [];
+    IC.mom = [];  IC.mag  = [];
+    IC.amResuming = 1;
+    IC.originalPathStruct = run.paths.serialize();
+
+    GIS = GlobalIndexSemantics();
+    save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC');
+
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
    
     mpi_barrier();
-    run.save.logPrint('Running initial save...\n');
-
-    resultsHandler(run, mass, mom, ener, mag);
-    run.time.iteration  = 1;
+    if ~RESTARTING
+        run.save.logPrint('Running initial save...\n');
+        resultsHandler(run, mass, mom, ener, mag);
+        run.time.iteration  = 1;
+    else
+        run.save.logPrint(sprintf('Simulation resuming at iteration %i.\n',run.time.iteration));
+    end
     direction           = [1 -1];
 
     run.save.logPrint('Beginning simulation loop...\n');

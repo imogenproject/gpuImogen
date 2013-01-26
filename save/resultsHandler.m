@@ -32,12 +32,14 @@ function resultsHandler(run, mass, mom, ener, mag)
                     
                 case 1;            
                     fileSuffix         = 'START';
-                    run.save.firstSave = false; % Update for later saves.
+%                    run.save.firstSave = false; % Update for later saves.
                     
                 otherwise;        
                     fileSuffix         = run.paths.iterationToString(iteration);
             end
-        
+
+        run.save.firstSave = false; % Update for later saves.
+
             sl.gamma  = run.GAMMA;
             sl.time   = run.time.toStruct();
             sl.about  = run.about;

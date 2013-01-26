@@ -110,12 +110,12 @@ if [ ${1} = "cluster" ]; then
   echo "module load cuda" >> $TFILE
   echo "echo PATH: \$PATH" >> $TFILE
   echo "cd $(pwd)" >> $TFILE
-  echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);\" | tee -a ~/imogenout " >> $TFILE
+  echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);\" | tee -a ~/imogenoutB " >> $TFILE
 
   echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 3 seconds to abort:"
 sleep 3;
 
-  qsub -q longgpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
+  qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
 
   sleep 2;
   #rm $TFILE
