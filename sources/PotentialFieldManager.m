@@ -14,6 +14,8 @@ classdef PotentialFieldManager < handle
 
     currentCoefficient  % Permits coefficient to be rescaled on the fly
     field;     % Adds a predefined fixed potential to any solved-for potential sparse
+
+    starState; % [X Y Z, R, Px Py Pz, Lx Ly Lz, Mass, rhoVac EVac] 13x1
     end%PUBLIC
     
 %===================================================================================================

@@ -82,8 +82,9 @@ function imogen(icfile, resumeinfo)
             end
         end
     end    
-
+%IC.selfGravity.compactObjectStates
     run.selfGravity.initialize(IC.selfGravity, mass);
+%run.selfGravity.compactObjects
     run.potentialField.initialize(IC.potentialField);
     %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%
     IC.mass = []; IC.ener = [];
@@ -108,8 +109,18 @@ function imogen(icfile, resumeinfo)
     end
     direction           = [1 -1];
 
-    run.save.logPrint('Beginning simulation loop...\n');
 
+%starState = GIS.domainResolution*run.DGRID{1}/2;
+%starState(4) = .1;
+%starState(5:10) = 0;
+%starState(11) = 1;
+%starState(12) = run.fluid.MINMASS;
+%starState(13) = 5*run.fluid.MINMASS;
+%starState(14) = run.fluid.MINMASS*.02*3/10
+%run.selfGravity.addCompactObject(starState);
+
+
+    run.save.logPrint('Beginning simulation loop...\n');
     clockA = clock;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
@@ -129,6 +140,9 @@ function imogen(icfile, resumeinfo)
     run.save.logPrint(sprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
+
+starpath = sprintf('%s/starpath.mat',run.paths.save);
+save(starpath,run.selfGravity.compactObjects{1}.history);
 
     run.postliminary();
 end

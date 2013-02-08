@@ -66,7 +66,7 @@ classdef GlobalIndexSemantics < handle
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
 
             obj.domainResolution = global_size;
-            obj.domainOffset     = obj.pMyOffset - double(6*obj.topology.coord);
+            obj.domainOffset     = obj.pMyOffset;% - double(6*obj.topology.coord);
 
             instance = obj;
         end % Constructor
@@ -91,6 +91,18 @@ classdef GlobalIndexSemantics < handle
                     localset{n} = q((q >= obj.pMyOffset(n)) & (q <= pLocalMax(n))) - obj.pMyOffset(n) + 1;
                 end
             end
+        end
+
+        % Return the index of the lower left corner in both local and global coordinates
+        % Such that subtracting them from a 1:size(array) will make the lower-left corner that isn't part of the halo [0 0 0] in local coords and whatever it is in global coords
+        function LL = cornerIndices(obj)
+            ndim = numel(obj.pGlobalDims);
+
+            LL=[1 1 1; (obj.pMyOffset+1)]';
+            for j = 1:ndim;
+                LL(j,:) = LL(j,:) - 3*(obj.topology.nproc(j) > 1);
+            end
+
         end
 
         % Gets the 1xN vectors containing 1:N_i for all 3 dimensions

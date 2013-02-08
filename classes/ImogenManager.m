@@ -335,7 +335,7 @@ classdef ImogenManager < handle
             obj.image       = ImageManager.getInstance();       obj.image.parent        = obj;
 
             obj.potentialField = PotentialFieldManager.getInstance(); obj.potentialField.parent = obj;
-            obj.selfGravity = SelfGravityManager.getInstance(); obj.selfGravity.parent  = obj;
+            obj.selfGravity = GravityManager.getInstance(); obj.selfGravity.parent  = obj;
             obj.treadmill   = TreadmillManager.getInstance();   obj.treadmill.parent    = obj;
 
             obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;

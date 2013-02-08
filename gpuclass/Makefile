@@ -30,7 +30,7 @@ base: GPU_init GPU_exit GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
-lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation
+lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
 	echo "Done building source/sink term kernels"
   
 parallel: cudaHaloExchange
@@ -44,7 +44,12 @@ cuda% GPU% directionalMax% freezeAnd%:: kerncommon
 	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp -g cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
 #	rm -f $@.cpp
 
-cudaHaloExchange:
+cudaHaloExchange: kerncommon
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda $@.cu -o $@.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS) $@.cpp cudaCommon.cpp -o $@
+	rm -f $@.cpp
+
+cudaAccretingStar: kerncommon
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda $@.cu -o $@.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS) $@.cpp cudaCommon.cpp -o $@
 	rm -f $@.cpp

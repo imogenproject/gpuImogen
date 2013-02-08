@@ -15,6 +15,8 @@ classdef SelfGravityInitializer < handle
         bconditionSource;   % String: Determines function used to find BCs         string
         mirrorZ;            % If 1, mirrors gravity across the lower Z plane       true/false
 
+        compactObjectStates;
+
         type;
     end %PUBLIC
 

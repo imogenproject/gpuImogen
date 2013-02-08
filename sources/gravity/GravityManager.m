@@ -1,9 +1,7 @@
-classdef SelfGravityManager < handle
+classdef GravityManager < handle
 % This is the management class for the potential solver. This is a singleton class to be accessed 
 % using the getInstance() method and not instantiated directly. Currently the gravitational code is
 % setup for a gravitational constant, G, of one.
-
-    
 %===================================================================================================
     properties (Constant = true, Transient = true) %                         C O N S T A N T     [P]
     end%CONSTANT
@@ -13,7 +11,7 @@ classdef SelfGravityManager < handle
     ACTIVE;             % Specifies that gravity spolver state                          logical 
     info;               % Stores gravity solver report information                      str        
 
-    laplacianMatrix;   % 6th order discrete Laplacian for gravity solver                sparse
+    laplacianMatrix;   % 4th order discrete Laplacian for gravity solver                sparse
     lowerConditioner;  % Incomplete LU factorizations to precondition the gravity       sparse
     upperConditioner;  % Solver for rapid solution                                      sparse
 
@@ -23,6 +21,8 @@ classdef SelfGravityManager < handle
 
     solve;              % Function handle to the potential solver                       handle
     solverInit;
+
+    compactObjects;     % CompactObject{} 
 
     bconditionSource;   % Determines use of full or interpolated boundary conditions    string
 
@@ -122,6 +122,25 @@ function createSparseMatrix(obj, grid, dgrid)
             obj.mirrorZ          = initialConditions.mirrorZ;
 
             obj.solverInit(obj, mass);
+
+            obj.compactObjects = [];
+
+            for n = 1:size(initialConditions.compactObjectStates)
+                % Compact object states:
+                % [m R x y z vx vy vz lx ly lz]
+
+                % Stellar state vector:
+                % [x y z R px py pz lx ly lz M rho_v rho_g E_v]
+                s  = initialConditions.compactObjectStates(n,:);
+                M  = s(1);
+                fluid = obj.parent.fluid;
+                e0 = fluid.MINMASS*.02 * 3/10; % Awful hack for min pressure
+                obj.addCompactObject([s(3) s(4) s(5) s(2) M*s(6) M*s(7) M*s(8) s(9) s(10) s(11) M fluid.MINMASS 5*fluid.MINMASS e0]);
+            end
+        end
+
+        function addCompactObject(obj, stateVector)
+            obj.compactObjects{end+1} = CompactObject(stateVector);
         end
 
     end%PUBLIC
@@ -131,7 +150,7 @@ function createSparseMatrix(obj, grid, dgrid)
         
 %___________________________________________________________________________________________________ GravityManager
 % Creates a new GravityManager instance and intializes it with default settings.
-        function obj = SelfGravityManager() 
+        function obj = GravityManager() 
             obj.setSolver( ENUM.GRAV_SOLVER_EMPTY );
             obj.ACTIVE      = false;
             obj.solverInit  = @grav_ini_nonGravitational;
@@ -154,7 +173,7 @@ function createSparseMatrix(obj, grid, dgrid)
         function singleObj = getInstance()
             persistent instance;
             if isempty(instance) || ~isvalid(instance) 
-                instance = SelfGravityManager();
+                instance = GravityManager();
             end
             singleObj = instance;
         end

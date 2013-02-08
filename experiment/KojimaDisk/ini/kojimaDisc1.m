@@ -143,8 +143,8 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
 %--- Lathe radial info onto cubical grid --- %
     %        I experimented with doing this in one interpolation with not much luck.
     [Xblk Yblk Zblk] = GIS.ndgridSetXYZ();
-    Xblk = (Xblk - grid(1)/2 - .5)*rdinf.dr;
-    Yblk = (Yblk - grid(2)/2 - .5)*rdinf.dr;
+    Xblk = (Xblk - (grid(1)+1)/2)*rdinf.dr;
+    Yblk = (Yblk - (grid(2)+1)/2)*rdinf.dr;
     Zblk = (Zblk - .5 - floor(grid(3)/2)*(useZMirror == 1))*rdinf.dr;
     Rblk = sqrt(Xblk.^2+Yblk.^2);
 

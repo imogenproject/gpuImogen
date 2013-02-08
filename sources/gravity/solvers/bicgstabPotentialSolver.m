@@ -12,9 +12,9 @@ function phi = bicgstabPotentialSolver(run, mass, phi0)
     %       Poisson's equation.
     if run.time.iteration < 4; tic; end
 
-    bcsAndMass = calculateGravityEdge(mass, run.DGRID, run.gravity.mirrorZ, run.gravity.bconditionSource);
-    if run.gravity.constant ~= 1
-        bcsAndMass = run.gravity.constant*bcsAndMass;
+    bcsAndMass = calculateGravityEdge(mass, run.DGRID, run.selfGravity.mirrorZ, run.selfGravity.bconditionSource);
+    if run.selfGravity.constant ~= 1
+        bcsAndMass = run.selfGravity.constant*bcsAndMass;
     end
 
     if run.time.iteration < 4; t4bc = toc; end
@@ -25,7 +25,7 @@ function phi = bicgstabPotentialSolver(run, mass, phi0)
     bcsAndMass = L2_PolynomialPrecondition(bcsAndMass, mass.gridSize, 0);
 
     [phi, flag, relres, iter] = bicgstab(@(x) findLaplacianTimesRHS(x, mass.gridSize, run.DGRID{1}), bcsAndMass, ...
-                                    run.gravity.tolerance, run.gravity.iterMax, ...
+                                    run.selfGravity.tolerance, run.selfGravity.iterMax, ...
                                     [], [], reshape(phi0, [numel(phi0) 1]) );
 
     if run.time.iteration < 4;
@@ -34,10 +34,10 @@ function phi = bicgstabPotentialSolver(run, mass, phi0)
 
     %--- Warn of Problems with Solver ---%
     if (flag)
-        run.gravity.info = [run.gravity.info sprintf(['\nERROR - Gravity BiCgStab: ' ...
+        run.selfGravity.info = [run.selfGravity.info sprintf(['\nERROR - Gravity BiCgStab: ' ...
 										'[Code Iteration %g] [Flag %g] ' ...
                                       '[Residual %g] [BiCgStab Iteration: %g of %g]'],...
-                                      run.time.iteration, flag, relres, iter, run.gravity.iterMax)];
+                                      run.time.iteration, flag, relres, iter, run.selfGravity.iterMax)];
     end
     
     %--- Convert potential results back to domain-shaped array ---%
