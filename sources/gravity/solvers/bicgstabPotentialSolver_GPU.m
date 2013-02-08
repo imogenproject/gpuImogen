@@ -24,9 +24,9 @@ function phi = bicgstabPotentialSolver_GPU(run, mass, gridsize, iamrecursed)
         phi0 = GPU_Type(zeros([numel(mass) 1]));
     end
 
-    bcsAndMass = calculateGravityEdge_GPU(mass, run.DGRID, run.gravity.mirrorZ);
-    if run.gravity.constant ~= 1
-        bcsAndMass = run.gravity.constant*bcsAndMass;
+    bcsAndMass = calculateGravityEdge_GPU(mass, run.DGRID, run.selfGravity.mirrorZ);
+    if run.selfGravity.constant ~= 1
+        bcsAndMass = run.selfGravity.constant*bcsAndMass;
     end
 
     if run.time.iteration < 4; t4bc = toc; end
@@ -36,7 +36,7 @@ function phi = bicgstabPotentialSolver_GPU(run, mass, gridsize, iamrecursed)
     bcsAndMass = polyPreconditionL2_GPU(bcsAndMass, size(mass), 0);
 
     [phi, flag, relres, iter] = bicgstab_GPU(@(x) findLaplacianTimesRHS(x, gridsize, run.DGRID{1}), ...
-                    bcsAndMass, run.gravity.tolerance, run.gravity.iterMax, phi0);
+                    bcsAndMass, run.selfGravity.tolerance, run.selfGravity.iterMax, phi0);
 
     if (run.time.iteration < 4)
 	if nargin == 4; fprintf('    '); end
@@ -45,10 +45,10 @@ function phi = bicgstabPotentialSolver_GPU(run, mass, gridsize, iamrecursed)
 
     %--- Warn of Problems with Solver ---%
     if (flag)
-        run.gravity.info = [run.gravity.info sprintf(['\nERROR - Gravity BiCgStab: ' ...
+        run.selfGravity.info = [run.selfGravity.info sprintf(['\nERROR - Gravity BiCgStab: ' ...
 										'[Code Iteration %g] [Flag %g] ' ...
                                       '[Residual %g] [BiCgStab Iteration: %g of %g]'],...
-                                      run.time.iteration, flag, relres, iter, run.gravity.iterMax)];
+                                      run.time.iteration, flag, relres, iter, run.selfGravity.iterMax)];
     end
     
     %--- Convert potential results back to domain-shaped array and cast back to double ---%

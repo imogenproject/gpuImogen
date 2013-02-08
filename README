@@ -3,9 +3,9 @@ equations of compressible ideal MHD using a TVD method that is second order in s
 
 Simulations are started from the run/ directory using the 'imogen' command residing there. Run
   ./imogen help
-to get information on the ways of running Imogen.
+to get information on how to run Imogen
 
-Imogen runs in parallel on both the GPU and on multiple computers via MPI.
+Imogen runs in parallel on both the GPU and on multiple computers with GPUs via MPI.
 
 You must edit Make.config appropriately, then run 'make' in both the mpi and gpuclass directories
 to build the compiled components.

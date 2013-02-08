@@ -81,6 +81,18 @@ return rvals;
 
 }
 
+void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim)
+{
+
+blockdim->x = blkX;
+blockdim->y = blkY;
+blockdim->z = 1;
+
+griddim->x = dims[0] / (blkX-2*nhalo); griddim->x += (griddim->x * (blkX-2*nhalo) < dims[0]);
+griddim->y = dims[1] / (blkY-2*nhalo); griddim->y += (griddim->y * (blkY-2*nhalo) < dims[1]);
+griddim->z = 1;
+}
+
 void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname)
 {
 if(E == cudaSuccess) return;
@@ -118,7 +130,7 @@ const char *errorName(cudaError_t E)
 /* Written the stupid way because nvcc is idiotically claims these are all "case inaccessible" if it's done with a switch.
 
 WRONG, asshole! */
-
+// OM...
 NOM(cudaSuccess)
 NOM(cudaErrorMissingConfiguration)
 NOM(cudaErrorMemoryAllocation)
@@ -176,12 +188,12 @@ NOM(cudaErrorProfilerDisabled)
 NOM(cudaErrorProfilerNotInitialized)
 NOM(cudaErrorProfilerAlreadyStarted)
 NOM(cudaErrorProfilerAlreadyStopped)
-//cudaErrorAssert
-//cudaErrorTooManyPeers
-//cudaErrorHostMemoryAlreadyRegistered
-//cudaErrorHostMemoryNotRegistered
-//cudaErrorOperatingSystem
+/*cudaErrorAssert
+cudaErrorTooManyPeers
+cudaErrorHostMemoryAlreadyRegistered
+cudaErrorHostMemoryNotRegistered
+cudaErrorOperatingSystem*/
 NOM(cudaErrorStartupFailure)
-
+// ... NOM, ASSHOLE!
 return NULL;
 }
