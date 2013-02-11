@@ -166,6 +166,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         cudaCheckError("running cudaStarAccretes()");
         fail = cudaMemcpy((void *)hostDeltas, (void *)stateOut, 8*sizeof(double)*nparts, cudaMemcpyDeviceToHost);
         cudaCheckError("copying accretion results to host");
+
+        cudaFree(stateOut);
         }
     
 
@@ -177,7 +179,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             for(k = 0; k < 5; k++) { localFinalDelta[k] += hostDeltas[8*j+k]; }
             // localFinalDelta[0 1 2 3 4] = absorbed [mass px py pz E] / dV        
         }
+
+        free(hostDeltas);
     }
+
     // Add up all the changes
     double finalDelta[7];
     int mpi_error = MPI_Allreduce((void *)&localFinalDelta[0], (void *)&finalDelta[0], 5, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
