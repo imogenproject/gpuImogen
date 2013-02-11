@@ -163,7 +163,6 @@ classdef TimeManager < handle
                 cTime   = now;
                 curTime = strcat(datestr(cTime , 'HH:MM PM'),' on', datestr(cTime, ' mm-dd-yy'));
                 save.logPrint('[[ %0.3g%% | %s |  %s ]]\n', compPer, infoStr, curTime);
-dbstack
             end
 
             obj.parent.abortCheck();
@@ -212,7 +211,7 @@ dbstack
             obj.iteration  = elapsed.iteration;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
             obj.timePercent = 100*obj.time/obj.TIMEMAX;
-            obj.updateWalltime();
+            obj.updateWallTime();
         end 
 
     end%PUBLIC 
