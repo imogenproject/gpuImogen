@@ -23,6 +23,7 @@ classdef TimeManager < handle
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
         running;     % Specifies if the simulation should continue running.          logical
+        dtAverage;   % The accumulated mean timestep                                 double
     end%PUBLIC
         
 %===================================================================================================
@@ -78,18 +79,25 @@ classdef TimeManager < handle
             GPU_free(soundSpeed);
             % Communicate the maximum cfl-determining limit to our comrades in arms
             % FIXME: Make this use mpi_reduce (and implement an interface to it in /mpi)
+            % WARNING: Well it seems that nowhere is idx actually /used/, so I'm dropping
+            % WARNING: it until a use pops up.
+%            cmaxB       = mpi_max(cmax);
+%if mpi_amirank0(); disp(cmaxB); end
             cmax       = mpi_allgather(cmax);
+%if mpi_amirank0(); disp(cmax'); end
             gridIndex  = mpi_allgather(gridIndex);
             [cmax idx] = max(cmax);
             gridIndex  = gridIndex(idx);
+
             %--- Check for errors ---%
             % If the gridIndex isn't valid then a CFL error is the cause, which means that the 
             % propagation over the last step was too large and has corrupted the run.
-            if (gridIndex < 1)
+            if ~isreal(cmax)
+%(gridIndex < 1)
                 fireCFLError(run, cmax); 
                 gridIndex = 1; 
             end
-            
+ 
             %--- Calculate new timestep ---%
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
             %           accounting for maximum simulation time.
@@ -102,6 +110,41 @@ classdef TimeManager < handle
             obj.time        = newTime;
             obj.timePercent = 100*newTime/obj.TIMEMAX;
             obj.appendHistory();
+
+            % Accumulate the average timestep thus far;
+            if (obj.iteration > 2) && mpi_amirank0()
+                ratio = obj.dTime / obj.dtAverage;
+                if ratio > 1000; fprintf('WARNING: Next time step at iteration %i is %g, %i times running mean\n', ...
+                                 obj.iteration, obj.dTime, round(ratio)); end
+                if ratio < .001; fprintf('WARNING: Next time step at iteration %i is %g, 1/%i of running mean\n', ...
+                                 obj.iteration, obj.dTime,round(1/ratio)); end
+
+if (ratio > 1000) || (ratio < .001)
+fprintf('Pounding the shit out of the momentum array for doing this\n');
+vmax = 20*obj.parent.DGRID{1}/obj.dtAverage;
+
+rho = mass.array;
+p = sqrt(mom(1).array.^2+mom(2).array.^2+mom(3).array.^2);
+v = p ./ rho;
+
+s = size(v);
+
+% Identify all cells that are being assholes and punish them AND their neighbors
+assholes = find(v > vmax);
+assholes = unique([assholes; assholes+1; assholes-1; assholes+s(1); assholes-s(1)]);
+
+  mass.array(assholes) = mass.array(assholes)*2;
+mom(1).array(assholes) = 1.5*mom(1).array(assholes)./v(assholes);
+mom(2).array(assholes) = 1.5*mom(2).array(assholes)./v(assholes);
+mom(3).array(assholes) = 1.5*mom(3).array(assholes)./v(assholes);
+  ener.array(assholes) = 1.5*mass.array(assholes).^(5/3) + .5*(mom(1).array(assholes).^2 + mom(2).array(assholes).^2 + mom(3).array(assholes).^2)./mass.array(assholes);
+
+% Eat my shit, blowups
+end
+
+            end
+
+            obj.dtAverage = ( (obj.iteration-1)*obj.dtAverage + obj.dTime)/obj.iteration;
         end
 
 %___________________________________________________________________________________________________ updateUI
@@ -212,6 +255,7 @@ classdef TimeManager < handle
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
             obj.timePercent = 100*obj.time/obj.TIMEMAX;
             obj.updateWallTime();
+            obj.dtAverage  = mean(obj.history);
         end 
 
     end%PUBLIC 
@@ -234,6 +278,7 @@ classdef TimeManager < handle
             obj.iterPercent = 0;
             obj.timePercent = 0;
             obj.wallPercent = 0;
+            obj.dtAverage   = 0;
         end
                 
 %___________________________________________________________________________________________________ appendHistory

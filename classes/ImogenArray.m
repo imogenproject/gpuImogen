@@ -161,7 +161,18 @@ classdef ImogenArray < handle
 
 %___________________________________________________________________________________________________ cleanup
 % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
-        function cleanup(obj),    obj.pArray.array =  [];    end
+        function cleanup(obj)
+            obj.pArray.clearArray();
+        end
+
+        function delete(obj)
+            if isfield(obj, 'boundaryData')
+                obj.boundaryData.compIndex.clearArray();
+                obj.boundaryData.compValue.clearArray();
+                obj.boundaryData.compCoeff.clearArray();
+            end
+            obj.pArray.clearArray();
+        end
         
 %___________________________________________________________________________________________________ shift
 % Shifts the input array along the specified direction and by the specified number of cells

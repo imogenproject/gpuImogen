@@ -18,7 +18,7 @@ function imogenLoad(runFile, logFile, alias, gpuno)
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);
 
-    GPU_init(gpuno);
+    GPU_ctrl(gpuno);
 
     try
         eval(runFile);
@@ -26,6 +26,7 @@ function imogenLoad(runFile, logFile, alias, gpuno)
        rethrow(ME);
     end
 
+    GPU_ctrl('exit');
     mpi_barrier();
     mpi_finalize();
 

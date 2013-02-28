@@ -24,7 +24,7 @@ all: base fluids parallel lambda
 	rm -f *cpp
 	mv temp cudaCommon.cpp
 
-base: GPU_init GPU_exit GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
+base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
 fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed

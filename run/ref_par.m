@@ -4,7 +4,7 @@
 starterRun();
 
 %--- Initialize test ---%
-grid                = [256 256 256];
+grid                = [600 600  256];
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
@@ -21,7 +21,7 @@ run.image.mass      = true;
 
 run.activeSlices.xy = false;
 %run.activeSlices.xz = true;
-run.activeSlices.xyz = true;
+run.activeSlices.xyz = false;
 run.ppSave.dim3 = 50;
 
 run.bcMode.x        = ENUM.BCMODE_CONST;

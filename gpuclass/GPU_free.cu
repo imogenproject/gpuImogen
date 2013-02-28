@@ -24,6 +24,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double *d = (double *)t[0];
 
+  cudaCheckError("Before GPU_free()");
   cudaError_t result = cudaFree(d);
   cudaCheckError("After GPU_free()");
 

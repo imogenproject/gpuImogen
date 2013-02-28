@@ -223,6 +223,8 @@ classdef Initializer < handle
 
             else
                 [mass, mom, ener, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
+                obj.minMass = max(mpi_allgather(obj.minMass));
+
                 if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
             end
 

@@ -164,6 +164,14 @@ classdef GPU_Type < handle
         function y = transpose(a); y = GPU_Type(cudaArrayRotate(a.GPU_MemPtr,2)); return; end
         function y = Ztranspose(a); y = GPU_Type(cudaArrayRotate(a.GPU_MemPtr,3)); return; end
 
+        function clearArray(obj)
+            if obj.allocated== true; GPU_free(obj.GPU_MemPtr); end
+            obj.allocated = false;
+            obj.GPU_MemPtr = int64([0 0 0 0 0 0]);
+            obj.asize = [0 0 0];
+            obj.numdims = 2;
+        end
+
     end % generic methods
 
     methods (Access = private)
@@ -197,14 +205,6 @@ classdef GPU_Type < handle
             else
                  error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
             end
-        end
-
-        function clearArray(obj)
-                if obj.allocated == true; GPU_free(obj.GPU_MemPtr); end
-                obj.allocated = false;
-                obj.GPU_MemPtr = int64([0 0 0 0 0]);
-                obj.asize = [0 0 0];
-                obj.numdims = 2;
         end
 
     end % Private methods

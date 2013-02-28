@@ -110,7 +110,7 @@ cudaError_t epicFail = cudaGetLastError();
 if(epicFail == cudaSuccess) return;
 
 printf("Encountered error at %s: %s -> %s\n", where, errorName(epicFail), cudaGetErrorString(epicFail));
-mexErrMsgTxt("Forcing program halt due to pre-existing CUDA error");
+mexErrMsgTxt("Forcing program halt due to CUDA error");
 }
 
 void printdim3(char *name, dim3 dim)

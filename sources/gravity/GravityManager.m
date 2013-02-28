@@ -135,7 +135,7 @@ function createSparseMatrix(obj, grid, dgrid)
                 M  = s(1);
                 fluid = obj.parent.fluid;
                 e0 = fluid.MINMASS*.02 * 3/10; % Awful hack for min pressure
-                obj.addCompactObject([s(3) s(4) s(5) s(2) M*s(6) M*s(7) M*s(8) s(9) s(10) s(11) M fluid.MINMASS 5*fluid.MINMASS e0]);
+                obj.addCompactObject([s(3) s(4) s(5) s(2) M*s(6) M*s(7) M*s(8) s(9) s(10) s(11) M fluid.MINMASS ENUM.GRAV_FEELGRAV_COEFF*fluid.MINMASS e0]);
             end
         end
 

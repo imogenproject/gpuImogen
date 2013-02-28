@@ -59,6 +59,7 @@ classdef CompactObject < handle
             if nargin == 1
                 if numel(ini) == 14;
                     obj.stateVector = ini; else
+                    % x y z r px py pz lx ly lz M rho_v rhog_v E_v
                     obj.stateVector = [0 0 0 1 0 0 0 0 0 0 1 1e-4 5e-4 1e-4]; end
             else
                 obj.stateVector = [0 0 0 1 0 0 0 0 0 0 1 1e-4 5e-4 1e-4];

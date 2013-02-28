@@ -117,9 +117,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         lowleft[j] = (i0[j]-1+3*(topologySize[j] > 1) )*H; // Use topologySize to avoid accreting from halo region, which would get doublecounted
         upright[j] = (i0[j]-1+amd.dim[j]-3*(topologySize[j] > 1))*H;
 
-        if(lowleft[j] > starState[STAR_X+j] + starState[STAR_RADIUS]) mustAccrete = 0; // If our left  > R_star from the star, no accretion
-        if(upright[j] < starState[STAR_X+j] - starState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
+        if(lowleft[j] > originalStarState[STAR_X+j] + originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our left  > R_star from the star, no accretion
+        if(upright[j] < originalStarState[STAR_X+j] - originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
         }
+
+
+int bee;
+MPI_Comm_rank(MPI_COMM_WORLD, &bee);
+//printf("rank %i: LL=[%g %g %g] *=[%g %g %g] UR=[%g %g %g] mustAccrete=%i", bee, lowleft[0], lowleft[1], lowleft[2], originalStarState[STAR_X+0], originalStarState[STAR_X+1], originalStarState[STAR_X+2], upright[0], upright[1], upright[2], mustAccrete); fflush(stdout);
+
+//mustAccrete = 0; // BECAUSE FUCK YOU MOTHERFUCKER 
 
     // Each rank stores its final accumulated sum here
     double localFinalDelta[7];
@@ -128,8 +135,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     double *hostDeltas;
 
     if(mustAccrete) {
-//        printf("Accreting...\n");
-        int starRadInCells = originalStarState[STAR_RADIUS] / H + 4;
+//        printf("rank %i accreting...\n",bee);
+        int starRadInCells = originalStarState[STAR_RADIUS] / H + 2;
         // Determine the target region
         dim3 acBlock, acGrid;
         acBlock.x = ACCRETE_NX; acBlock.y = ACCRETE_NY; acBlock.z = 1;
@@ -144,9 +151,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
         // Makes sure that we don't accrete from the halo zone
         int3 LL;
-        LL.x = (int)((originalStarState[0] - originalStarState[3])/H) - 4;
-	LL.y = (int)((originalStarState[1] - originalStarState[3])/H) - 4;
-	LL.z = (int)((originalStarState[2] - originalStarState[3])/H) - 4;
+        LL.x = (int)((originalStarState[0] - originalStarState[3])/H) - 2;
+	LL.y = (int)((originalStarState[1] - originalStarState[3])/H) - 2;
+	LL.z = (int)((originalStarState[2] - originalStarState[3])/H) - 2;
+//printf("Orig  LL: %i %i %i\n", LL.x, LL.y, LL.z);
         // Force the block to not begin further left than the left part of our fluid domain
         if(LL.x < 3*(topologySize[0] > 1)) LL.x = 3*(topologySize[0] > 1);
         if(LL.y < 3*(topologySize[1] > 1)) LL.y = 3*(topologySize[1] > 1);
@@ -159,6 +167,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         int nvertical = 2*starRadInCells + 8;
         if( (LL.z + nvertical) > (amd.dim[2]-3*(topologySize[2] > 1)) ) LL.z = amd.dim[2] - 3*(topologySize[2] > 1) - nvertical;
         
+//printf("check LL: %i %i %i\n", LL.x, LL.y, LL.z);
+//printf("check gs: %i %i %i\n", acGrid.x, acGrid.y, acGrid.z);
+//printf("check bs: %i %i %i\n", acBlock.x,acBlock.y,acBlock.z);
+
         // call accretion kernel: transfers bits of changed state to outputState
         cudaStarAccretes<<<acGrid, acBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], LL, H, amd.dim[0], amd.dim[1], amd.dim[2], stateOut, 2*starRadInCells+8);
 
@@ -166,8 +178,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         cudaCheckError("running cudaStarAccretes()");
         fail = cudaMemcpy((void *)hostDeltas, (void *)stateOut, 8*sizeof(double)*nparts, cudaMemcpyDeviceToHost);
         cudaCheckError("copying accretion results to host");
-
+        cudaDeviceSynchronize();
+cudaCheckError("sync after copy start");
         cudaFree(stateOut);
+cudaCheckError("free stateOut after copy & sync");
         }
     
 
@@ -226,15 +240,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gp[3] = originalStarState[STAR_Z] + .5*outputDelta[STAR_Z];
     gp[4] = H;
     gp[5] = originalStarState[VACUUM_RHO];
-    gp[6] = originalStarState[VACUUM_RHO]*5;
+    gp[6] = originalStarState[VACUUM_RHOG];
     gp[7] = 1.0/(originalStarState[VACUUM_RHOG] - originalStarState[VACUUM_RHO]);
     gp[8] = originalStarState[VACUUM_RHO] *gp[7];
+
+//if(mustAccrete) {
+//  int qq;
+//  printf("copied to gravParams: ");
+//  for(qq = 0; qq < 9; qq++) { printf("%lg ",gp[qq]); }
+//printf("\n");
+//  }
+    cudaCheckError("memcpy to symbol before gravitate");
     cudaMemcpyToSymbol(gravParams, &gp[0], 9*sizeof(double), 0, cudaMemcpyHostToDevice);
     cudaCheckError("point gravity symbol copy");
-
-//printf("gravity constants [g*m*dt, x y z, h, rho0, rhoG, c0, c1: ");
-//for(j = 0; j < 9; j++) { printf("%g ", gp[j]); }
-//printf("; m*, dt: %g %g\n", originalStarState[STAR_MASS], dtime);
+    cudaDeviceSynchronize();
 
     dim3 gravBlock, gravGrid;
 
@@ -350,7 +369,6 @@ for(z = 0; z < 7; z++) { stateOut[i0+z] = accFactor * dstate[z]; }
 
 void __global__ cudaStarGravitation(double *rho, double *px, double *py, double *pz, double *E, int3 arraysize)
 {
-
 int myx = threadIdx.x + GRAVITY_NX*blockIdx.x;
 int myy = threadIdx.y + GRAVITY_NY*blockIdx.y;
 
@@ -371,8 +389,11 @@ __shared__ double locMom[GRAVITY_NX][GRAVITY_NY];
 
 double dQ;
 
-int Amax = arraysize.x*arraysize.y*arraysize.z;
-for(; globAddr < Amax; globAddr += arraysize.x*arraysize.y) {
+//int Amax = arraysize.x*arraysize.y*arraysize.z;
+int dAddr = arraysize.x * arraysize.y;
+int z;
+for(z = 0; z < arraysize.z; z++) {
+//; globAddr < Amax; globAddr += arraysize.x*arraysize.y) {
   locRho[threadIdx.x][threadIdx.y] = rho[globAddr];
   locE  [threadIdx.x][threadIdx.y] = E[globAddr];
 
@@ -399,6 +420,7 @@ for(; globAddr < Amax; globAddr += arraysize.x*arraysize.y) {
     }
 
     dz += H;
+    globAddr += dAddr;
   }
 
 }

@@ -45,7 +45,8 @@ classdef ENUM
         GRAV_BCSOURCE_INTERP    = 'interpolated';  % Computes boundary conditions at every 4th boundary
                                                    % cell and interpolates
 
-        GRAV_FEELGRAV_COEFF     = 2.0;
+        % How many times denser than run.fluid.MINMASS before gravity is felt by the fluid
+        GRAV_FEELGRAV_COEFF     = 4.0;
 
         %--- Radiation Model Types ---%
         RADIATION_NONE              = 'empty';

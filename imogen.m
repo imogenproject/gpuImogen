@@ -109,29 +109,16 @@ function imogen(icfile, resumeinfo)
     end
     direction           = [1 -1];
 
-
-%starState = GIS.domainResolution*run.DGRID{1}/2;
-%starState(4) = .1;
-%starState(5:10) = 0;
-%starState(11) = 1;
-%starState(12) = run.fluid.MINMASS;
-%starState(13) = 5*run.fluid.MINMASS;
-%starState(14) = run.fluid.MINMASS*.02*3/10
-%run.selfGravity.addCompactObject(starState);
-
-
     run.save.logPrint('Beginning simulation loop...\n');
     clockA = clock;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(mass, mom, ener, mag, i);
-
         for i=1:2 % Two timesteps per iteration, forward & backward
             flux(run, mass, mom, ener, mag, direction(i));
             treadmillGrid(run, mass, mom, ener, mag);
             if i == 1; source(run, mass, mom, ener, mag); end
         end
-
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
         run.time.step();
@@ -141,8 +128,18 @@ function imogen(icfile, resumeinfo)
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
 
-starpath = sprintf('%s/starpath.mat',run.paths.save);
-save(starpath,run.selfGravity.compactObjects{1}.history);
+if mpi_amirank0()
+  starpath = sprintf('%s/starpath.mat',run.paths.save);
+  stardata = run.selfGravity.compactObjects{1}.history;
+  save(starpath,'stardata');
+end
+
+    % Delete GPU arrays to make Matlab happy
+    mass.cleanup(); ener.cleanup();
+    for i = 1:3; mom(i).cleanup(); end
+    if run.pureHydro == 0;
+        for i = 1:3; mag(i).array = 1; end;
+    end
 
     run.postliminary();
 end

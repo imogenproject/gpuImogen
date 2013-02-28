@@ -123,7 +123,7 @@ function resultsHandler(run, mass, mom, ener, mag)
     %-----------------------------------------------------------------------------------------------
     % Save Info File
     %---------------
-    if saveState
+    if saveState && mpi_amirank0()
                 
         %-------------------------------------------------------------------------------------------
         % Store Array Information

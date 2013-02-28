@@ -20,21 +20,18 @@ __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, dou
 #define BLOCKDIM 64
 #define MAXPOW   5
 
-__device__ __constant__ double gammafunc[4];
+__device__ __constant__ double gammafunc[5];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   // At least 2 arguments expected
   // Input and result
-  if ( (nrhs!=10) && (nrhs!=2))
-     mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, 1)");
+  if ( (nrhs!=11) && (nrhs!=2))
+     mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, direct=1, csmin)");
 
   cudaCheckError("entering freezeAndPtot");
 
   int ispurehydro = (int)*mxGetPr(prhs[9]);
-
-  // Get GPU array pointers
-  int direction = (int)*mxGetPr(prhs[9]);
 
   int nArrays;
   if(ispurehydro) { nArrays = 5; } else { nArrays = 8; }
@@ -64,13 +61,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double **freezea = makeGPUDestinationArrays(&fref[0], &plhs[1], 1); // freeze array
 
-  double hostgf[4];
+  double hostgf[5];
     hostgf[0] = *mxGetPr(prhs[8]);
     hostgf[1] = hostgf[0] - 1.0;
     hostgf[2] = hostgf[0]*hostgf[1];
     hostgf[3] = 2.0 - hostgf[0];
+    hostgf[4] = (*mxGetPr(prhs[10]))*(*mxGetPr(prhs[10])); // min c_s squared ;
   
-  cudaMemcpyToSymbol(gammafunc, &hostgf[0],     4*sizeof(double), 0, cudaMemcpyHostToDevice);
+  cudaMemcpyToSymbol(gammafunc, &hostgf[0],     5*sizeof(double), 0, cudaMemcpyHostToDevice);
 
 
   if(ispurehydro) {
@@ -93,6 +91,10 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 #define gm1 gammafunc[1]
 #define gg1 gammafunc[2]
 #define twomg gammafunc[3]
+#define cs0sq gammafunc[4]
+// Alias this so it makes sense despite the optimizations
+#define PRESSURE Cs
+
 
 __global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx)
 {
@@ -102,7 +104,8 @@ nx += nx*(blockIdx.x + gridDim.x*blockIdx.y);
 //int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
 double Cs;
-double psqhf, bsqhf;
+double T, bsqhf;
+double rhoinv;
 //double gg1 = gam*(gam-1.0);
 //double gm1 = gam - 1.0;
 //double twomg = 2.0 - gam;
@@ -115,16 +118,20 @@ locBloc[threadIdx.x] = 0.0;
 if(x >= nx) return; // If we get a very low resolution
 
 while(x < nx) {
-  psqhf = .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
+  T = .5*rhoinv*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
   bsqhf = .5*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]);
+  rhoinv = 1.0/rho[x];
+
   // we calculate P* = Pgas + Pmag
-  Cs = gm1*(E[x] - psqhf/rho[x]) + twomg*bsqhf;
-  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
+  Cs = gm1*(E[x] - T) + twomg*bsqhf;
+  if(gam*PRESSURE*rhoinv < cs0sq) PRESSURE = cs0sq/(gam*rhoinv);
+//  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
+  ptot[x] = PRESSURE;
 
   // We calculate the freezing speed in the X direction: max of |v|+c_fast
-  Cs = gg1*(E[x] - psqhf/rho[x]) + (2.0 - gg1)*bsqhf/rho[x];
+  Cs = gg1*(E[x] - T) + (2.0 - gg1)*bsqhf*rhoinv;
   if(Cs < 0.0) Cs = 0.0;
-  Cs = sqrt(Cs) + abs(px[x]/rho[x]);
+  Cs = sqrt(Cs) + abs(px[x]*rhoinv);
   if(Cs > locBloc[threadIdx.x]) locBloc[threadIdx.x] = Cs;
 
   x += BLOCKDIM;
@@ -169,18 +176,16 @@ for(x = 8; x < BLOCKDIM; x+= 8) {
   }
 
 freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
-
 }
 
-
-#define cs0sq .02
+// cs0sq = gamma rho^(gamma-1))
 __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx)
 {
 int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
 double Cs, CsMax;
-double psqhf, rholoc;
+double psqhf, rhoinv;
 //double gg1 = gam*(gam-1.0);
 //double gm1 = gam - 1.0;
 
@@ -192,14 +197,17 @@ locBloc[threadIdx.x] = 0.0;
 if(x >= addrMax) return; // If we get a very low resolution
 
 while(x < addrMax) {
-  rholoc = rho[x];
-  psqhf = .5*(px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]);
+  rhoinv   = 1.0/rho[x];
+  psqhf    = .5*(px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]);
 
-  Cs = gm1*(E[x] - psqhf/rholoc);
-  if(gam*Cs < rholoc*cs0sq) Cs = rholoc*cs0sq/gam; /* Constrain temperature to a minimum value */
-  ptot[x] = Cs;
+  PRESSURE = gm1*(E[x] - psqhf*rhoinv);
+  if(gam*PRESSURE*rhoinv < cs0sq) {
+    PRESSURE = cs0sq/(gam*rhoinv);
+    E[x] = psqhf*rhoinv + PRESSURE/gm1;
+    } /* Constrain temperature to a minimum value */
+  ptot[x] = PRESSURE;
 
-  Cs      = sqrt(gam * Cs / rholoc) + abs(px[x]/rholoc);
+  Cs      = sqrt(gam * PRESSURE *rhoinv) + abs(px[x]*rhoinv);
   if(Cs > CsMax) CsMax = Cs;
 
   x += BLOCKDIM;
@@ -214,6 +222,7 @@ if (threadIdx.x % 8 > 0) return; // keep threads  [0 8 16 ...]
 // Each searches the max of the nearest 8 points
 for(x = 1; x < 8; x++) {
   if(locBloc[threadIdx.x+x] > locBloc[threadIdx.x]) locBloc[threadIdx.x] = locBloc[threadIdx.x+x];
+  __syncthreads();
   }
 
 // The last thread takes the max of these maxes

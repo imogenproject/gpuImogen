@@ -38,7 +38,7 @@ if [ ${1} = "help" ]; then
   echo "|"
   echo "| Serial operation: ./imogen serial   runfile streamnumber GPUnumber"
   echo "| Local parallel:   ./imogen parallel runfile streamnumber #procs"
-  echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np]"
+  echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np] [queue]"
   echo "|                   (tees realtime output to ~/imogenout)"
   echo "|"
   echo "|    Serial and local parallel operation execute directly; Cluster"
@@ -94,7 +94,7 @@ if [ ${1} = "parallel" ]; then
 fi
 
 if [ ${1} = "cluster" ]; then
-# ./imogen cluster runfile stream #nodes PPN [np]
+# ./imogen cluster runfile stream #nodes PPN [np] queue
   nnodes=${4};
   if [ -z "$4" ]; then nnodes="1"; fi
 
@@ -104,22 +104,23 @@ if [ ${1} = "cluster" ]; then
   NP=${6}
   if [ -z "$6" ]; then NP=$(expr $nnodes \* $procpn); fi
 
+  QUEUE=${7}
+  if [ -z "$7" ]; then QUEUE="gpu"; fi
+
   TFILE=$(mktemp);
   echo "module load mpi-tor/openmpi-1.4.5_gcc-4.4.6" >> $TFILE
-  echo "module load matlab" >> $TFILE
+  echo "module load matlab/r2012b" >> $TFILE
   echo "module load cuda" >> $TFILE
   echo "echo PATH: \$PATH" >> $TFILE
   echo "cd $(pwd)" >> $TFILE
   echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);\" | tee -a ~/imogenoutB " >> $TFILE
 
-  echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 3 seconds to abort:"
-sleep 3;
+  echo -n "DOING: qsub -q $QUEUE -l nodes=$nnodes:ppn=$procpn, calling mpirun with -np $NP in 4... "
+#  echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 4 seconds to abort:"
+  sleep 1; echo -n "3... "; sleep 1; echo -n "2... "; sleep 1; echo -n "1... "; sleep 1
 
-  qsub -q gpu -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
-
-  sleep 2;
+  qsub -j oe -q $QUEUE -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
   #rm $TFILE
-
   exit 0
 fi
 
