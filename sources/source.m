@@ -17,6 +17,12 @@ GIS = GlobalIndexSemantics();
 %    end
 
 
+    % TESTING: uncomment to enable rotating frame.
+    %[xg yg] = GIS.ndgridVecs;
+    %xg = GPU_Type(run.DGRID{1}*(xg-200.5));
+    %yg = GPU_Type(run.DGRID{2}*(yg-200.5));
+    %cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+
     for n = 1:numel(run.selfGravity.compactObjects)
 %    if run.accretingStar.ACTIVE
         % Determine if any part of the central star's "consumption zone" is within my domain
@@ -41,14 +47,10 @@ GIS = GlobalIndexSemantics();
 % [fluid flux]   ^^^  [half accrete] [half star drift] [source grav.pot.] [.5 drift] [.5 accrete] [fluid flux]
     end
 
-
-    % TESTING
-%    [xg yg] = GIS.ndgridVecs;
-%    xg = GPU_Type(run.DGRID{1}*(xg-128.5));
-%    yg = GPU_Type(run.DGRID{2}*(yg-128.5));
-%    cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
-%    clear xg
-%    clear yg
+    % TESTING: Uncomment to enable new rotating frames
+    %cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+    %clear xg
+    %clear yg
 
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms

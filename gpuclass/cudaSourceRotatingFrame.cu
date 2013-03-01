@@ -53,7 +53,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     lambda[0] = omega;
     lambda[1] = dt;
 
-    cudaMemcpyToSymbol(devLambda, lambda, 2*sizeof(double), 0, cudaMemcpyHostToDevice);
+    cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
     cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], xvec[0], yvec[0], arraysize);
 
     cudaError_t epicFail = cudaGetLastError();
@@ -61,12 +61,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 }
 
-/*
- * dP = -rho(2 w cross v + w cross w cross r)
- * dE = -v dot dP
+/* 
+ * a  = -[2 w X v + w X (w X r) ]
+ * dv = -[2 w X v + w X (w X r) ] dt
+ * dp = -rho dv = -rho [[2 w X v + w X (w X r) ] dt
+ * dp = -[2 w X p + rho w X (w X r) ] dt
+ *
+ * w X p = |I  J  K | = <-w py, w px, 0> = u
+ *         |0  0  w |
+ *         |px py pz|
+ *
+ * w X r = <-w y, w x, 0> = s; 
+ * w X s = |I   J  K| = <-w^2 x, -w^2 y, 0> = -w^2<x,y,0> = b
+ *         |0   0  w|
+ *         |-wy wx 0|
+ * dp = -[2 u + rho b] dt
+ *    = -[2 w<-py, px, 0> - rho w^2 <x, y, 0>] dt
+ *    = w dt [2<py, -px> + rho w <x, y>] in going to static frame
+ * 
+ * dE = -v dot dp
  */
-
-/* rho, E, Px, Py, Pz: arraysize sized arrays
+/* rho, E, Px, Py, Pz: arraysize-sized arrays
    omega: scalar
    Rx: [nx 1 1] sized array
    Ry: [ny 1 1] sized array */
@@ -82,32 +97,32 @@ int nx = arraysize.x; int ny = arraysize.y;
 
 if(myx >= arraysize.x) return; 
 
-int globaddr = globaddr = myx + nx*(myy + ny*myz);
+int globaddr = myx + nx*(myy + ny*myz);
 
 double locX = Rx[myx];
 double locY;
 double locRho;
 double dmom; double dener;
 double locMom[2];
-double inv_rsqr, xy;
+/*double inv_rsqr, xy;*/
 
 for(; myy < ny; myy += BLOCKDIMY) {
   locY = Ry[myy];
 
-  inv_rsqr = 2.0/(locX*locX+locY*locY);
-  xy = locX*locY;
+/*  inv_rsqr = 2.0/(locX*locX+locY*locY);
+  xy = locX*locY;*/
 
   locRho = rho[globaddr];
   locMom[0] = px[globaddr];
   locMom[1] = py[globaddr];
  
 /*  dmom = DT*OMEGA*(2*(x y px + x x py)/r^2 - rho w x); dpx */
-  dmom         = DT*OMEGA*(-(xy*locMom[0] + locY*locY*locMom[1])*inv_rsqr + OMEGA*locX*locRho);
+  dmom         = DT*OMEGA*(2*locMom[1] + OMEGA*locX*locRho);
   px[globaddr] = locMom[0] + dmom;
   dener        = dmom*locMom[0] / locRho;
 
 /*  dmom = DT*OMEGA*(-2*(x x px + x y py)/r^2 - rho w y); dpy */
-  dmom         = DT*OMEGA*( (locX*locX*locMom[0] + xy*locMom[1])*inv_rsqr + OMEGA*locY*locRho);
+  dmom         = DT*OMEGA*(-2*locMom[0] + OMEGA*locY*locRho);
   py[globaddr] = locMom[1] + dmom;
   E[globaddr] += dener + dmom*locMom[1] / locRho;
 
