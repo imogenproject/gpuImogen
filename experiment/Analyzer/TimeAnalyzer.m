@@ -69,7 +69,7 @@ methods (Access = public)
         output = [];
 
         for iter = 1:obj.nFrames
-            dataframe = obj.frameNumberToData(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(iter));
+            dataframe = util_LoadWholeFrame(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(iter));
             output{iter} = afunc(dataframe);
         end
     end
@@ -111,34 +111,6 @@ methods (Access = protected)
 
         if numel(newframeranges) == 0;
             error('FATAL: No files indicated existed. Perhaps need to remove _ from base name?');
-        end
-
-    end
-
-    function dataframe = frameNumberToData(obj, namebase, padsize, frameno)
-        % Take first guess; Always replace _START
-        fname = sprintf('%s_%0*i.mat', namebase, padsize, frameno);
-        if frameno == 0; fname = sprintf('%s_START.mat', namebase); end
-
-        % Check existance; if fails, try _FINAL then give up
-        if exist(fname, 'file') == 0
-            fname = sprintf('%s_FINAL.mat', namebase);
-            if exist(fname, 'file') == 0
-                % Weird shit is going on. Run away!
-                error(sprintf('FATAL on %s: File for frame %s_%0*i existed at check time, now isn''t reachable/existent. Wtf?', ...
-                               getenv('HOSTNAME'),namebase,pasdize,frameno) );
-            end
-        end
-
-        % Load the next frame into workspace; Assign it to a standard variable name.
-        try
-            tempname = load(fname);
-            nom_de_plume = fieldnames(tempname);
-            dataframe = getfield(tempname,nom_de_plume{1});
-        catch ERR
-            fprintf('SERIOUS on %s: Frame %s in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), fname, pwd());
-            ERR
-            dataframe = -1;
         end
 
     end

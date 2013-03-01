@@ -46,7 +46,7 @@ ANALYSIS.nModes = [yran zran];
 %--- Loop over given frame range ---%
 for ITER = 1:numel(range)
     
-    dataframe = frameNumberToData(inBasename, padlength, range(ITER) );
+    dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
     fprintf('*');
     if mod(ITER, 100) == 0; fprintf('\n'); end
 
@@ -166,7 +166,7 @@ close(figno);
 
 fprintf('Run indicated as being in linear regime for saveframes %i to %i inclusive.\n', min(linearFrames), max(linearFrames));
 
-ANALYSIS.lastLinearFrame = frameNumberToData(inBasename, padlength, linearFrames(end) );
+ANALYSIS.lastLinearFrame = util_LoadWholeFrame( inBasename, padlength, linearFrames(end) );
 ANALYSIS.linearFrames = linearFrames;
 
 fprintf('\nAnalyzing shock front (eta)...\n');
@@ -235,25 +235,3 @@ end
 
 end
 
-function dataframe = frameNumberToData(inBasename, padlength, frameno)
-    % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, frameno);
-    if frameno == 0; fname = sprintf('%s_START.mat', inBasename); end
-
-    % Check existance; if fails, try _FINAL then give up
-    if exist(fname, 'file') == 0
-        fname = sprintf('%s_FINAL.mat', inBasename);
-        if exist(fname, 'file') == 0
-            % Weird shit is going on. Run away.
-            error('UNRECOVERABLE: File existed when checked but is not openable.\n');
-        end
-    end
-
-    % Load the next frame into workspace; Assign it to a standard variable name.    
-    load(fname);
-    structName = who('sx_*');
-    structName = structName{1};
-
-    eval(sprintf('dataframe = %s;', structName));
-end
-    
