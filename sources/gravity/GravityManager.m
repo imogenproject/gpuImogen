@@ -137,6 +137,11 @@ function createSparseMatrix(obj, grid, dgrid)
                 e0 = fluid.MINMASS*.02 * 3/10; % Awful hack for min pressure
                 obj.addCompactObject([s(3) s(4) s(5) s(2) M*s(6) M*s(7) M*s(8) s(9) s(10) s(11) M fluid.MINMASS ENUM.GRAV_FEELGRAV_COEFF*fluid.MINMASS e0]);
             end
+
+            if mpi_amirank0()
+                run = ImogenManager.getInstance();
+                run.save.logPrint(sprintf('Total of %i CompactObjects present on grid.\n', numel(obj.compactObjects)));
+            end
         end
 
         function addCompactObject(obj, stateVector)

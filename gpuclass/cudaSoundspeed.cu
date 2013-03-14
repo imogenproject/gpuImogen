@@ -73,7 +73,7 @@ double csq;
 
 while(x < n) {
 //  csq = ( (gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])/rho[x]) + (2.0 -.5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]))/rho[x] );
-    csq = gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])/rho[x]) + (1.0 - .5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x])/rho[x];
+    csq = (gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])) + (3 - .5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]))/rho[x] ;
     if(csq < 0.0) csq = 0.0;
     dout[x] = sqrt(csq);
     x += dx;
@@ -89,7 +89,7 @@ int dx = blockDim.x * gridDim.x;
 double csq;
 
 while(x < n) {
-    csq = gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])/rho[x]);
+    csq = gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]))/rho[x];
     // Imogen's energy flux is unfortunately not positivity preserving
     if(csq < 0.0) csq = 0.0;
     dout[x] = sqrt(csq);

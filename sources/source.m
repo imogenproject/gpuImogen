@@ -16,12 +16,14 @@ GIS = GlobalIndexSemantics();
 %        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
 %    end
 
-
+omega = 0;
     % TESTING: uncomment to enable rotating frame.
-    %[xg yg] = GIS.ndgridVecs;
-    %xg = GPU_Type(run.DGRID{1}*(xg-200.5));
-    %yg = GPU_Type(run.DGRID{2}*(yg-200.5));
-    %cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+    if omega ~= 0
+        [xg yg] = GIS.ndgridVecs;
+        xg = GPU_Type(run.DGRID{1}*(xg-200.5));
+        yg = GPU_Type(run.DGRID{2}*(yg-200.5));
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+    end
 
     for n = 1:numel(run.selfGravity.compactObjects)
 %    if run.accretingStar.ACTIVE
@@ -48,9 +50,10 @@ GIS = GlobalIndexSemantics();
     end
 
     % TESTING: Uncomment to enable new rotating frames
-    %cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
-    %clear xg
-    %clear yg
+    if omega ~= 0
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        clear xg, yg
+    end
 
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms

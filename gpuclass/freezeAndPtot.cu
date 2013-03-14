@@ -118,11 +118,27 @@ locBloc[threadIdx.x] = 0.0;
 if(x >= nx) return; // If we get a very low resolution
 
 while(x < nx) {
+  rhoinv = 1.0/rho[x];
   T = .5*rhoinv*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
   bsqhf = .5*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]);
-  rhoinv = 1.0/rho[x];
 
+// THIS IS THE NEW CODE
+//  Cs = gm1*(E[x] - T) + twomg*bsqhf;
+  // Calculate internal energy and enforce positivity.
+  Cs = E[x] - T - bsqhf;
+  if(gam*PRESSURE*rhoinv < cs0sq) {
+    E[x] = PRESSURE = T + bsqhf + cs0sq/(gam*rhoinv);
+    PRESSURE -= T; } else { PRESSURE += bsqhf; }
+//  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
+  ptot[x] = gm1*PRESSURE + twomg*bsqhf;
+
+  // We calculate the freezing speed in the X direction: max of |v|+c_fast
+  Cs = (gg1*(PRESSURE) + (2.0 - gg1)*bsqhf)*rhoinv;
+  Cs = sqrt(Cs) + abs(px[x]*rhoinv);
+
+// THIS IS THE ORIGINAL CODE
   // we calculate P* = Pgas + Pmag
+/*
   Cs = gm1*(E[x] - T) + twomg*bsqhf;
   if(gam*PRESSURE*rhoinv < cs0sq) PRESSURE = cs0sq/(gam*rhoinv);
 //  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
@@ -131,7 +147,9 @@ while(x < nx) {
   // We calculate the freezing speed in the X direction: max of |v|+c_fast
   Cs = gg1*(E[x] - T) + (2.0 - gg1)*bsqhf*rhoinv;
   if(Cs < 0.0) Cs = 0.0;
-  Cs = sqrt(Cs) + abs(px[x]*rhoinv);
+  Cs = sqrt(Cs) + abs(px[x]*rhoinv); */
+
+
   if(Cs > locBloc[threadIdx.x]) locBloc[threadIdx.x] = Cs;
 
   x += BLOCKDIM;

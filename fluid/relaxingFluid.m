@@ -75,7 +75,7 @@ cudaFluidTVD(mass.store.gputag, ener.store.gputag, ...
             mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
             pressa, ...
             mass.gputag, ener.gputag, mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
-            freezea, fluxFactor, run.pureHydro);
+            freezea, fluxFactor, run.pureHydro);%, [run.fluid.MINMASS, run.GAMMA]);
 
 % The CUDA routines directly overwrite the array so we must apply statics manually
 mass.applyStatics();
@@ -86,7 +86,7 @@ mom(3).applyStatics();
 
 GPU_free(pressa);
 GPU_free(freezea);
-cudaArrayAtomic(mass.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
+cudaArrayAtomic(mass.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN); % this is handled by the fluid calls now
 
 for t = 1:5; v(t).cleanup(); end % Delete upwind storage arrays
 

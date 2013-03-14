@@ -10,7 +10,7 @@ classdef PotentialFieldManager < handle
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public, Transient = true) %         P U B L I C  [P]
-    ACTIVE;             % Specifies that gravity spolver state                          logical 
+    ACTIVE;             % Specifies whether static potential field is active                 logical 
 
     currentCoefficient  % Permits coefficient to be rescaled on the fly
     field;     % Adds a predefined fixed potential to any solved-for potential sparse
@@ -32,14 +32,17 @@ classdef PotentialFieldManager < handle
 
         function initialize(self, initialConds)
 
+            run = ImogenManager.getInstance();
             if isempty(initialConds.field)
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
                 self.field = 0;
+                if mpi_amirank0(); run.save.logPrint('Static potential field is OFF\n'); end
             else
                 self.ACTIVE = true;
                 self.currentCoefficient = initialConds.constant;
                 self.field = GPU_Type(initialConds.field * self.currentCoefficient);
+                if mpi_amirank0(); run.save.logPrint('Static potential fiels is ON\n'); end
             end
         end
 
