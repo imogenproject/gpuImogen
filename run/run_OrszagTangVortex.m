@@ -2,7 +2,7 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-grid = [2048 2048 1];
+grid = [1024 1024 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
@@ -11,16 +11,16 @@ run                 = OrszagTangVortexInitializer(grid);
 run.info            = 'Orszag-Tang vortex: Resolution 1';
 run.notes           = '';
 run.profile         = false;
-run.image.interval  = 20;
+run.image.interval  = 50;
 run.image.mass      = true;
 run.image.parallelUniformColors = true;
-run.iterMax = 50000;
+run.iterMax = 10;
 
 run.notes = 'Test that this turkey still flies in parallel and make some awesome pics';
 
 %--- Run tests ---%
 if (true)
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

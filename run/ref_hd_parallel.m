@@ -38,7 +38,7 @@ run.image.parallelUniformColors = true;
 
 %--- Run tests ---%
 if (true) %Primary test
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

@@ -1,20 +1,24 @@
 %function imogen(massDen, momDen, enerDen, magnet, ini, statics)
-function imogen(icfile, resumeinfo)
+function imogen(input, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
 %
-%>> massDen     Mass density array (cell-centered).                         double  [nx ny nz]
-%>> momDen      Momentum density array (cell-centered).                     double  [3 nx ny nz]
-%>> enerDen     Energy density array (cell-centered).                       double  [nx ny nz]
-%>> magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
-%>> ini         Listing of properties and settings for the run.             struct
-%>> statics     Static arrays with lookup to static values.                 struct
-    load(icfile)
+%>> IC.massDen     Mass density array (cell-centered).                         double  [nx ny nz]
+%>> IC.momDen      Momentum density array (cell-centered).                     double  [3 nx ny nz]
+%>> IC.enerDen     Energy density array (cell-centered).                       double  [nx ny nz]
+%>> IC.magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
+%>> IC.ini         Listing of properties and settings for the run.             struct
+%>> IC.statics     Static arrays with lookup to static values.                 struct
+    if isa(input, 'file')
+        load(input);
+    else
+        IC = input;
+        clear input;
+        evalin('caller','clear IC'); % Make ML release the memory used above
+    end
+      
     ini     = IC.ini;
     statics = IC.statics;
-    
-    % Recover memory and disk used to store ICs
-%    system(['rm -f ' icfile ]);
 
     %--- Parse initial parameters from ini input ---%
     %       The initialize function parses the ini structure input and populates all of the manager
@@ -38,6 +42,7 @@ function imogen(icfile, resumeinfo)
 
     mpi_barrier();
     run.save.logPrint('Creating simulation arrays...\n');
+    mf0 = GPU_memavail();
 
     if RESTARTING
         % If reloading from time-evolved point,
@@ -82,10 +87,15 @@ function imogen(icfile, resumeinfo)
             end
         end
     end    
-%IC.selfGravity.compactObjectStates
+
+    mf1 = GPU_memavail();
+    run.save.logPrint(sprintf('rank %i: GPU reports %5.6dMB used by fluid state arrays\n', mpi_myrank(), (mf0-mf1)/1048576));
+
+    %IC.selfGravity.compactObjectStates
     run.selfGravity.initialize(IC.selfGravity, mass);
-%run.selfGravity.compactObjects
+    %run.selfGravity.compactObjects
     run.potentialField.initialize(IC.potentialField);
+
     %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%
     IC.mass = []; IC.ener = [];
     IC.mom = [];  IC.mag  = [];
@@ -128,7 +138,7 @@ function imogen(icfile, resumeinfo)
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
 
-if mpi_amirank0()
+if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
   starpath = sprintf('%s/starpath.mat',run.paths.save);
   stardata = run.selfGravity.compactObjects{1}.history;
   save(starpath,'stardata');

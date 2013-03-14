@@ -53,26 +53,26 @@ classdef JetInitializer < Initializer
             obj.gamma            = 5/3;
             obj.runCode          = 'Jet';
             obj.info             = 'Jet trial.';
-            obj.mode.fluid                 = true;
-            obj.mode.magnet                 = false;
-            obj.mode.gravity         = false;
-            obj.cfl                		 = 0.7;
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.7;
             obj.iterMax          = 250;
-            obj.bcMode.x                 = 'trans';
-            obj.bcMode.y                 = 'fade';
-            obj.bcMode.z         = 'circ';
+            obj.bcMode.x         = ENUM.BCMODE_CONST;
+            obj.bcMode.y         = ENUM.BCMODE_CONST;
+            obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 10;
             
-            obj.direction       = JetInitializer.X;
-            obj.flip            = false;
-            obj.injectorSize    = 2;
+            obj.direction        = JetInitializer.X;
+            obj.flip             = false;
+            obj.injectorSize     = 2;
 
-            obj.jetMass         = 1;
-            obj.jetMach         = 1;
-            obj.jetMags         = [0 0 0];
-            obj.backMass        = 1;
-            obj.backMags        = [0 0 0];
+            obj.jetMass          = 1;
+            obj.jetMach          = 1;
+            obj.jetMags          = [0 0 0];
+            obj.backMass         = 1;
+            obj.backMags         = [0 0 0];
             
             obj.operateOnInput(input, [512 256 1]);
         end
@@ -98,9 +98,10 @@ classdef JetInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            
+            potentialField = [];
+            selfGravity = [];
             if isempty(obj.offset)
                 obj.offset = [ceil(obj.grid(1)/10), ceil(obj.grid(2)/2), ceil(obj.grid(3)/2)];
             end

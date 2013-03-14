@@ -2,28 +2,29 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-GIS = GlobalIndexSemantics(); GIS.setup([1024 128 1]);
+grid = [1024 128 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
-run         = CorrugationShockInitializer([1024 128 1]);
+run         = CorrugationShockInitializer(grid);
 
-run.iterMax     = 20000;
+run.iterMax     = 20000
 run.theta       = 0;
 run.sonicMach   = 5;
 run.alfvenMach  = .5;
 
-run.bcMode.x = ENUM.BCMODE_FADE;
+run.bcMode.x = ENUM.BCMODE_CONST;
 
 run.ppSave.dim2 = 5;
 run.ppSave.dim3 = 100;
-run.seedAmplitude = 100e-8;
+run.seedAmplitude = 100e-6;
 
-run.image.interval = 50;
+run.image.interval = 1;
 run.image.mass = true;
 %run.image.magY = true;
 run.image.pGas = true;
 
-run.numericalICfile = sprintf('/data/Results/NASdata/shock_ini/IC_ms%i_ma0pt%2i_ang%i/3D_XYZ_FINAL.mat', run.sonicMach, round(100*run.alfvenMach), run.theta);
+%run.numericalICfile = sprintf('/data/Results/NASdata/shock_ini/IC_ms%i_ma0pt%2i_ang%i/3D_XYZ_FINAL.mat', run.sonicMach, round(100*run.alfvenMach), run.theta);
 
 %run.radiation.type = ENUM.RADIATION_OPTICALLY_THIN;
 %run.radiation.coolLength = .10;
@@ -36,7 +37,7 @@ run.info        = sprintf('Corrugation instability test [Th=%g, Ms=%g, Ma=%g] wi
 
 %--- Run tests ---%
 if (true) %Primary test
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

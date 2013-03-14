@@ -13,13 +13,13 @@ run.profile         = false;
 run.image.interval  = 20;
 run.image.mass      = true;
 run.image.parallelUniformColors = true;
-run.iterMax = 60;
+run.iterMax = 6000;
 
 run.notes = 'Test that this turkey still flies with anticipated behavior.';
 
 %--- Run tests ---%
 if (true)
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

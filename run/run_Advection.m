@@ -3,15 +3,18 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
+grid = [256 256 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+
 %--- Initialize test ---%
-run             = AdvectionInitializer([1024 1024 1]);
-run.iterMax     = 10;
+run             = AdvectionInitializer(grid);
+run.iterMax     = 1000;
 run.info        = 'Advection test.';
 run.notes       = 'Simple advection test in the x-direction.';
-run.alias = 'TEST';
+run.alias = 'ADVECT';
 
-run.image.interval = 25;
-%run.image.mass = true;
+run.image.interval = 20;
+run.image.mass = true;
 
 run.activeSlices.x = false;
 run.activeSlices.xyz = false;
@@ -27,17 +30,17 @@ run.backgroundMach = 0;
 % One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
 % The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
 % Any nonzero B will automatically activate magnetic fluxing
-run.waveType = 'sound';
+run.waveType = 'entropy';
 run.waveAmplitude = .001;
 
 % number of transverse wave periods in Y and Z directions
 run.waveK    = [1 1 0];
 
-run.numWavePeriods = 4;
+run.numWavePeriods = 1;
 
 %--- Run tests ---%
 if (true)
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

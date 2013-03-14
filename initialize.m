@@ -20,8 +20,8 @@ function run = initialize(ini)
     [run.version, run.detailedVersion]                        = versionInfo();
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
-%% ===== CHECK IF WE ARE USING THE GPU; START GPU ===== %%
-
+%% ===== GPU settings ===== %%
+% run.useGPU is legacy junk
 run.useGPU = true;
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
     run.pureHydro = 1;

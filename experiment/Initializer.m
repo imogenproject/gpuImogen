@@ -210,6 +210,8 @@ classdef Initializer < handle
         end
         
 %___________________________________________________________________________________________________ getInitialConditions
+% Given simulation parameters filled out in a superclass, uses the superclass' calculateInitialConditions
+% function to get Q(x,0) fluid fields.
         function [mass, mom, ener, mag, statics, potentialField, selfGravity, run] = getInitialConditions(obj)
             if ~isempty(obj.pLoadFile)
                 mass    = obj.pFileData.mass;
@@ -228,6 +230,7 @@ classdef Initializer < handle
                 if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
             end
 
+% This is an ugly hack; slice determination is a FAIL since parallelization.
 %            if isempty(obj.slice)
                 obj.slice = ceil(size(mass)/2);
 %            end
@@ -235,6 +238,7 @@ classdef Initializer < handle
 
         end
 
+        % These either dump ICs to a file or return them as a structure.
         function icfile = saveInitialCondsToFile(obj)
              [mass, mom, ener, magnet, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
              IC.mass = mass;
@@ -248,6 +252,19 @@ classdef Initializer < handle
 
              icfile = [tempname '.mat'];
              save(icfile, 'IC','-v7.3');
+        end
+
+        function IC = saveInitialCondsToStructure(obj)
+             [mass, mom, ener, magnet, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
+             IC.mass = mass;
+             IC.mom = mom;
+             IC.ener = ener;
+             IC.magnet = magnet;
+             if isempty(statics); IC.statics = StaticsInitializer(obj.grid); else IC.statics = statics; end
+             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
+             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+             IC.ini = ini;
+
         end
 
 %___________________________________________________________________________________________________ getRunSettings

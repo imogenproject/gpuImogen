@@ -3,9 +3,12 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
+grid = [1024 512 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+
 %--- Initialize test ---%
-run                 = JetInitializer([1024 512 1]);
-run.iterMax         = 10000;
+run                 = JetInitializer(grid);
+run.iterMax         = 1000;
 run.injectorSize    = 15;
 run.offset          = [20 256 0];
 run.bcMode.x        = 'const';
@@ -18,7 +21,7 @@ run.image.interval  = 10;
 run.image.mass      = true;
 %run.image.speed     = true;
 
-run.info            = 'Fluid jet test in 3D.';
+run.info            = 'Fluid jet test in 2D.';
 run.notes           = '';
 
 run.activeSlices.xyz = false;
@@ -33,7 +36,7 @@ run.pureHydro = 1;
 
 %--- Run tests ---%
 if (true)
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 

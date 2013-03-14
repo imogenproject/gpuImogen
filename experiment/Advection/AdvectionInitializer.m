@@ -60,7 +60,10 @@ classdef AdvectionInitializer < Initializer
             obj.activeSlices.xyz= true;
             obj.activeSlices.x  = true;
             
-            obj.bcMode          = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.x          = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.y          = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.z          = ENUM.BCMODE_CIRCULAR;
+
             
             obj.operateOnInput(input);
         end

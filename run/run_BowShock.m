@@ -3,15 +3,17 @@ starterRun();
 
 %--- Initialize bow shock ---%
 grid = [1024 1024 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+
 run                 = BowShockInitializer(grid);
-run.iterMax         = 2500;
+run.iterMax         = 2000;
 %run.bcMode.z	    = 'circ';
 
 run.bcMode.x = 'const';
 run.bcMode.y = 'circ';
 run.bcMode.z = 'circ';
 
-run.cfl = .5;
+run.cfl = .7;
 
 %--- Adjustable simulation parameters ---%
 
@@ -39,7 +41,7 @@ run.ballThermalPressure = 3;
 run.ballLock = true;
 
 %--- Adjustable output parameters ---%
-run.image.interval  = 10;
+run.image.interval  = 20;
 run.image.mass      = true;
 %run.image.speed     = true;
 %run.image.pGas      = true;
@@ -59,7 +61,7 @@ run.notes           = '';
 
 %--- Run tests ---%
 if (true)
-    icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 
