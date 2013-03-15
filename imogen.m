@@ -89,11 +89,9 @@ function imogen(input, resumeinfo)
     end    
 
     mf1 = GPU_memavail();
-    run.save.logPrint(sprintf('rank %i: GPU reports %5.6dMB used by fluid state arrays\n', mpi_myrank(), (mf0-mf1)/1048576));
+    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\n', mpi_myrank(), (mf0-mf1)/1048576));
 
-    %IC.selfGravity.compactObjectStates
     run.selfGravity.initialize(IC.selfGravity, mass);
-    %run.selfGravity.compactObjects
     run.potentialField.initialize(IC.potentialField);
 
     %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%

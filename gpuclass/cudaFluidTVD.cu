@@ -23,9 +23,9 @@ Requires predicted half-step values from a 1st order upwind scheme.
 
 */
 
-#define BLOCKLEN 60
-#define BLOCKLENP2 62
-#define BLOCKLENP4 64
+#define BLOCKLEN 92
+#define BLOCKLENP2 (BLOCKLEN+2)
+#define BLOCKLENP4 (BLOCKLEN+4)
 
 /*__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);*/
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halflambda, int nx);
@@ -37,11 +37,15 @@ __device__ __inline__ double fluxLimiter_Vanleer(double derivL, double derivR);
 
 __constant__ __device__ double *inputPointers[8];
 __constant__ __device__ double *outputPointers[5];
+__constant__ __device__ double fluidParams[2];
+
+#define RHOMIN fluidParams[0]
+#define MIN_ETHERM fluidParams[1]
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // At least 2 arguments expected
   // Input and result
-  if ((nrhs!=17) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: call cudaTVDStep(rho, E, px, py, pz, bx, by, bz, P, rho_out, E_out, px_out, py_out, pz_out, C_freeze, lambda, purehydro?)\n");
+  if ((nrhs!=18) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: call cudaTVDStep(rho, E, px, py, pz, bx, by, bz, P, rho_out, E_out, px_out, py_out, pz_out, C_freeze, lambda, purehydro?)\n");
 
   cudaCheckError("entering FluidTVD");
 
@@ -72,6 +76,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   gridsize.x = arraySize.y;
   gridsize.y = arraySize.z;
+
+  double *mins = mxGetPr(prhs[17]);
+  double rhomin = mins[0];
+  double gamma = mins[1];
+  double gamHost[2];
+
+  gamHost[0] = rhomin;
+// assert     cs > cs_min
+//     g P / rho > g rho_min^(g-1)
+// (g-1) e / rho > rho_min^(g-1)
+//             e > rho rho_min^(g-1)/(g-1)
+  gamHost[1] = powl(rhomin, gamma-1.0)/(gamma-1.0);
+  cudaMemcpyToSymbol(fluidParams, &gamHost[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
 
   // Invoke the kernel
   if(arraySize.x > 1) {
@@ -120,6 +137,8 @@ unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
 /* Step 1 - calculate W values */
 c_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
 
+double prop_i[5];
+
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
@@ -163,12 +182,28 @@ while(Xtrack < nx+2) {
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
-            outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
+            prop_i[i] = outputPointers[i][x] - halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
                                                    fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
           }
 
         __syncthreads();
         }
+
+    if( doIflux && (Xindex < nx) ) {
+      prop_i[0] = (prop_i[0] < RHOMIN) ? RHOMIN : prop_i[0]; // enforce min density
+
+      w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0] + .5*(b_i[0]*b_i[0] + b_i[1]*b_i[1] + b_i[2]*b_i[2]);
+
+      if((prop_i[1] - w_i) < prop_i[0]*MIN_ETHERM) {
+        prop_i[1] = prop_i[0]*MIN_ETHERM + w_i;
+        }
+
+      outputPointers[0][x] = prop_i[0];
+      outputPointers[1][x] = prop_i[1];
+      outputPointers[2][x] = prop_i[2];
+      outputPointers[3][x] = prop_i[3];
+      outputPointers[4][x] = prop_i[4];
+      }
 
     Xindex += BLOCKLEN;
     Xtrack += BLOCKLEN;
@@ -194,6 +229,7 @@ Xindex += nx*(threadIdx.x < 2);
 int x; /* = Xindex % nx; */
 int i;
 bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+double prop_i[5];
 
 unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
 
@@ -241,11 +277,26 @@ while(Xtrack < nx+2) {
 
         /* Step 4 - Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
-            outputPointers[i][x] -= halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
+            prop_i[i] = outputPointers[i][x] - halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
                                                    fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  );
             }
 
         __syncthreads();
+        }
+
+    if( doIflux && (Xindex < nx) ) {
+        prop_i[0] = (prop_i[0] < RHOMIN) ? RHOMIN : prop_i[0];
+        w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0];
+
+        if((prop_i[1] - w_i) < prop_i[0]*MIN_ETHERM) {
+            prop_i[1] = w_i + prop_i[0]*MIN_ETHERM;
+            }
+
+        outputPointers[0][x] = prop_i[0];
+        outputPointers[1][x] = prop_i[1];
+        outputPointers[2][x] = prop_i[2];
+        outputPointers[3][x] = prop_i[3];
+        outputPointers[4][x] = prop_i[4];
         }
 
     Xindex += BLOCKLEN;

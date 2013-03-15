@@ -35,6 +35,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         [dump idx] = sort(thisnode);
         mygpu = idx(dump == mpiInfo(2)) - 1;
         [sysStatus sysOutput] = system('hostname');
+mygpu = mygpu*2;
         fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', context.rank, context.size, sysOutput(1:(end-1)), mygpu);
         GPU_ctrl(mygpu);
     else

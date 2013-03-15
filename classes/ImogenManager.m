@@ -45,6 +45,9 @@ classdef ImogenManager < handle
         potentialField; % Manages a scalar potential                                PotentialFieldManager
         treadmill;      % Manages treadmill actions.                                TreadmillManager
 
+        frameRotateOmega;
+        frameRotateCenter;
+
         %--- Saving/output
         image;          % Manages image generation and saving.                      ImageManager
         save;           % Manages updating and saving data.                         SaveManager

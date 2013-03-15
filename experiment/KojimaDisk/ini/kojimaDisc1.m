@@ -99,11 +99,6 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %--- Constants of integration ---%
     %       hsq is useless here because of our unit scaling.
     %       c1 is the integration constant from solving the Bernoulli equation.
-
-%%% EXPERIMENTAL CODE
-%sharpness = 30;
-%v = @(r) .5*(exp(sharpness*(r-rdinf.rin)).*(r.^(1-q)) + exp(sharpness*(rdinf.rin-r)).*(r.^(-.5)) ) ./ cosh(sharpness*(r-rdinf.rin));
-
     hsq                = xq * (1/rdinf.rout - 1/rdinf.rin)/(rdinf.rin^xq - rdinf.rout^xq);
     c1                 = -1/rdinf.rin - (hsq/xq)*(rdinf.rin^xq);
 
@@ -118,27 +113,16 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     rho                = max((bernoulli * (GAMMA-1)/GAMMA).^(1/(GAMMA-1)), lomass);
     rho(isPartOfDisk)  = max(rho(isPartOfDisk), lomass * ENUM.GRAV_FEELGRAV_COEFF);
     
-    %edgeRegion = circ_shift(bernoulli, 1, -10) & isPartOfDisk;
-    %rho(edgeRegion) = lomass * 4;
-    
     %--- Compute momentum distribution ---%
     %        Apply Kojima momentum to the vast bulk of the disk, apply a blurred function to the
     %        inner and outer perimeters.
 
-    momentumKojima = (rdinf.axialRadius.^(1-q) - 1*rdinf.axialRadius) .* rho; % When testing rotating frame
-%    momentumKojima = (rdinf.axialRadius.^(1-q) ) .* rho;
+    momentumKojima = (rdinf.axialRadius.^(1-q) ) .* rho;
 
     mom = zeros(size(rho));
     mom(isPartOfDisk) = momentumKojima(isPartOfDisk);
 
- %   mom = simpleBlur(mom, .4, 2, 1);
- %   rho = simpleBlur(rho, .4, 2, 1);
-
-% Where gravity is no longer acting, attempt to balance only centrifugal acceleration and pressure gradient
-%borderlands = (isPartOfDisk) & (rho < ENUM.GRAV_FEELGRAV_COEFF*lomass);
-%drhodr = (circshift(rho,[1 0 0])-circshift(rho,[-1 0 0]))/(2*rdinf.dr);
-%momphi = real(sqrt(GAMMA*rdinf.axialRadius.*rho.^GAMMA.*drhodr));
-%mom(borderlands) = momphi(borderlands);
+    mom = mom - 1*rdinf.axialRadius.*rho; % Subtract frame rotation effects from _all_ points, including background fluid.
 
 %--- Lathe radial info onto cubical grid --- %
     %        I experimented with doing this in one interpolation with not much luck.
@@ -162,13 +146,8 @@ if GIS.context.rank == 0
     p = kojimaDiskParams(q, radiusRatio, GAMMA)
     if p.Mdisk > .1; fprintf('WARNING: Disk mass > .1 star mass; nonselfgravity model not reliable.\n'); end
 end
-%    fprintf('Radio of Disk/Star mass from grid summation found to be: %g\n', ...
-%                              (1+useZMirror)*sum(sum(sum(mass)))*rdinf.dr^3);
 
     dR = rdinf.dr;
-
-%save(sprintf('~/kojimaout-%i.mat',GIS.context.rank));
-%error('Halt, hammerzeit!');
 
 end
 

@@ -16,43 +16,28 @@ GIS = GlobalIndexSemantics();
 %        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
 %    end
 
-omega = 0;
     % TESTING: uncomment to enable rotating frame.
-    if omega ~= 0
+    if run.frameRotateOmega ~= 0
         [xg yg] = GIS.ndgridVecs;
-        xg = GPU_Type(run.DGRID{1}*(xg-200.5));
-        yg = GPU_Type(run.DGRID{2}*(yg-200.5));
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        xg = GPU_Type(run.DGRID{1}*(xg-run.frameRotateCenter(1)));
+        yg = GPU_Type(run.DGRID{2}*(yg-run.frameRotateCenter(2)));
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
-%    if run.accretingStar.ACTIVE
-        % Determine if any part of the central star's "consumption zone" is within my domain
-% Need to track star's
-% position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
-% Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
-
+        % Applies gravitational sourcing from all compact objects to my domain,
+        % And performs a simple accretion action if any part of their zone is in my domain.
+        % Need to track star's
+        % position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
+        % Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
         lowleft = GIS.cornerIndices();
         run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, run.time.dTime, GIS.topology.nproc) );
-%starState = GIS.domainResolution*run.DGRID{1}/2;
-%starState(4) = .1;
-%starState(5:10) = 0;
-%starState(11) = 1;
-%starState(12) = run.fluid.MINMASS;
-%starState(13) = 5*run.fluid.MINMASS;
-%starState(14) = run.fluid.MINMASS*.02*3/10;
-        % Determined how much matter from our segment of the grid flows onto the star
-     %   deltaVector = cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, starState, lowleft, run.DGRID{1}, run.time.dTime);
-
-% The order for 2nd order time evolution is:
-% [calculate accretion rate]
-% [fluid flux]   ^^^  [half accrete] [half star drift] [source grav.pot.] [.5 drift] [.5 accrete] [fluid flux]
     end
 
-    % TESTING: Uncomment to enable new rotating frames
-    if omega ~= 0
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
-        clear xg, yg
+    if run.frameRotateOmega ~= 0
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        clear xg
+        clear yg;
     end
 
     %--- Gravitational Potential Sourcing ---%

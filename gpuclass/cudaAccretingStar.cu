@@ -121,12 +121,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         if(upright[j] < originalStarState[STAR_X+j] - originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
         }
 
-
-int bee;
-MPI_Comm_rank(MPI_COMM_WORLD, &bee);
-//printf("rank %i: LL=[%g %g %g] *=[%g %g %g] UR=[%g %g %g] mustAccrete=%i", bee, lowleft[0], lowleft[1], lowleft[2], originalStarState[STAR_X+0], originalStarState[STAR_X+1], originalStarState[STAR_X+2], upright[0], upright[1], upright[2], mustAccrete); fflush(stdout);
-
-//mustAccrete = 0; // BECAUSE FUCK YOU MOTHERFUCKER 
+    int bee;
+    MPI_Comm_rank(MPI_COMM_WORLD, &bee);
+    //printf("rank %i: LL=[%g %g %g] *=[%g %g %g] UR=[%g %g %g] mustAccrete=%i", bee, lowleft[0], lowleft[1], lowleft[2], originalStarState[STAR_X+0], originalStarState[STAR_X+1], originalStarState[STAR_X+2], upright[0], upright[1], upright[2], mustAccrete); fflush(stdout);
 
     // Each rank stores its final accumulated sum here
     double localFinalDelta[7];

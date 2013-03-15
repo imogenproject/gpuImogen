@@ -5,25 +5,23 @@ classdef GlobalIndexSemantics < handle
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
-
+        circularBCs;
     end % Public
 
     properties (SetAccess = private, GetAccess = public)
         context;
         topology;
-        pGlobalDims; % The size of the entire global array in total (halo-included) coordinates
-        
-        pMySize; pMyOffset; % Size/osset for total (halo-included) array
-        % i.e. if pGlobalDims = [256 256] and we have a [2 4] processor topology,
-        % pMySize will report [128 64] and pMyOffset will be multiples of [128 64],
-        % even though only [122 58] cells are usable per tile with 6 lost to halo.
-
-        pHaloDims;
+        pGlobalDims; % The size of global input domain size + halo added on [e.g. 512 500]
+        pMySize;     % The size of the local domain + any added halo [256 500
+        pMyOffset;   % The offset of the local domain taking the lower left corner of the
+                     % input domain (excluding halo).
+        pHaloDims;   % The input global domain size, with no halo added [e.g. 500 500]
 
         edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular or exterior
 
         domainResolution;
         domainOffset;
+
     end % Private
 
     properties (Dependent = true)
@@ -67,6 +65,8 @@ classdef GlobalIndexSemantics < handle
 
             obj.domainResolution = global_size;
             obj.domainOffset     = obj.pMyOffset;% - double(6*obj.topology.coord);
+
+            obj.circularBCs = true;
 
             instance = obj;
         end % Constructor
@@ -112,9 +112,14 @@ classdef GlobalIndexSemantics < handle
             x=[];
             for j = 1:ndim;
                 q = 1:obj.pMySize(j);
-                q = q + (obj.pMySize(j) - 6*(obj.topology.nproc(j) > 1))*double(obj.topology.coord(j)) - 3*(obj.topology.nproc(j) > 1) - 1;
-                q(q < 0) = q(q < 0) + obj.pHaloDims(j);
-                x{j} = mod(q, obj.pHaloDims(j)) + 1;
+                % This line degerates to the identity operation if nproc(j) = 1
+                q = q + obj.pMyOffset(j) - 3*(obj.topology.nproc(j) > 1) - 1;
+
+                if (obj.topology.nproc(j) > 1) && obj.circularBCs
+                    q(q < 0) = q(q < 0) + obj.pHaloDims(j);
+                    q = mod(q, obj.pHaloDims(j)) + 1;
+                end
+                x{j} = q;
             end
 
             if ndim == 2; x{3} = 1; end

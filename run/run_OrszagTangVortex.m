@@ -14,7 +14,7 @@ run.profile         = false;
 run.image.interval  = 50;
 run.image.mass      = true;
 run.image.parallelUniformColors = true;
-run.iterMax = 10;
+run.iterMax = 10000;
 
 run.notes = 'Test that this turkey still flies in parallel and make some awesome pics';
 

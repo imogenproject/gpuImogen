@@ -122,6 +122,9 @@ classdef KojimaDiskInitializer < Initializer
 %                obj.bcMode.z    = ENUM.BCMODE_CONST;
 %            end
 
+            obj.frameRotateOmega = 1;
+            obj.frameRotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
+
             GIS = GlobalIndexSemantics();
             mygrid = GIS.pMySize;
             

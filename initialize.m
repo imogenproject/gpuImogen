@@ -20,6 +20,9 @@ function run = initialize(ini)
     [run.version, run.detailedVersion]                        = versionInfo();
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
+run.frameRotateOmega = ini.frameRotateOmega;
+run.frameRotateCenter = ini.frameRotateCenter;
+
 %% ===== GPU settings ===== %%
 % run.useGPU is legacy junk
 run.useGPU = true;

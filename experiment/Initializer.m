@@ -44,6 +44,9 @@ classdef Initializer < handle
         useGPU;         % This is always true for GPUimogen
         gpuDeviceNumber; % ID of the device to attempt to run on
         pureHydro;      % if true, uses nonmagnetic flux routines
+
+        frameRotateOmega; % Scalar: Rotation rate of the frame [0 = disabled]
+        frameRotateCenter; % [X Y]: Point in the xy plane about which the rotation occurs
     end %PUBLIC
 
 %===================================================================================================
@@ -103,6 +106,9 @@ classdef Initializer < handle
             obj.useGPU               = true;
             obj.gpuDeviceNumber            = 0;
             obj.pureHydro = 0;
+
+            obj.frameRotateOmega = 0;
+            obj.frameRotateCenter = [0 0];
 
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)

@@ -407,7 +407,7 @@ px    q_i[2] = inputPointers[2][x];  over them inside the flux loop
         /* calculate local freezing speed */
         locPsq = abs(velocity_half) + sqrt(FLUID_GG1*locPsq/q_i[0]);
         if(locPsq > freezeSpeed[threadIdx.x]) {
-          if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locP;
+          if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locPsq;
           }
         }
 
