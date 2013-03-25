@@ -82,17 +82,17 @@ classdef AdvectionInitializer < Initializer
             potentialField = [];
             selfGravity = [];
 
+            GIS = GlobalIndexSemantics();
+
             obj.dGrid = ones(1,3) / obj.grid(1); % set the total grid length to be 1. 
 
-            [xGrid yGrid zGrid] = ndgrid(2*pi*(1:obj.grid(1))/obj.grid(1), ...
-                                         2*pi*(1:obj.grid(2))/obj.grid(2), ...
-                                         2*pi*(1:obj.grid(3))/obj.grid(3));
+            [xGrid yGrid zGrid] = GIS.ndgridSetXYZ();
 
             % Store equilibrium parameters
-            mass     = 1*ones(obj.grid);
-            mom      = zeros([3, obj.grid]);
-            mag      = zeros([3, obj.grid]);
-            ener     = ones(obj.grid)*obj.pressure/(obj.gamma-1); 
+            mass     = 1*ones(GIS.pMySize);
+            mom      = zeros([3, GIS.pMySize]);
+            mag      = zeros([3, GIS.pMySize]);
+            ener     = ones(GIS.pMySize)*obj.pressure/(obj.gamma-1); 
 
             c_s      = sqrt(obj.gamma*obj.pressure);
             for i = 1:3; mag(i,:,:,:) = obj.backgroundB(i); end
