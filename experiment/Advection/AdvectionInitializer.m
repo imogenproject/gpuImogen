@@ -84,7 +84,7 @@ classdef AdvectionInitializer < Initializer
 
             GIS = GlobalIndexSemantics();
 
-            obj.dGrid = ones(1,3) / obj.grid(1); % set the total grid length to be 1. 
+            obj.dGrid = 1 ./ obj.grid; % set the total grid length to be 1. 
 
             [xGrid yGrid zGrid] = GIS.ndgridSetXYZ();
 
@@ -109,9 +109,9 @@ classdef AdvectionInitializer < Initializer
 
             % omega = c_wave k
             % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
-            K     = obj.grid(1) * obj.waveK * 2 * pi ./ obj.grid;
+            K     = 2*pi*obj.waveK ./ obj.grid
             B0    = obj.backgroundB;
-            phase = obj.waveK(1)*xGrid + obj.waveK(2)*yGrid + obj.waveK(3)*zGrid; % K.X is used much.
+            phase = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
             
             if obj.waveDirection >= 0; obj.waveDirection = 1; else; obj.waveDirection = -1; end
 
@@ -191,7 +191,7 @@ classdef AdvectionInitializer < Initializer
 
             % forward speed = background speed + wave speed. Time = length / speed
             if abs(wavespeed) < .05*c_s; wavespeed = c_s; end
-            obj.timeMax  = 2*pi*obj.numWavePeriods / (norm(K)*abs(wavespeed)); 
+            obj.timeMax  = obj.numWavePeriods / abs(wavespeed);
 
             if max(abs(obj.backgroundB)) > 0; obj.mode.magnet = true; obj.cfl = .4; obj.pureHydro = 0; else; obj.pureHydro = 1; end
 
