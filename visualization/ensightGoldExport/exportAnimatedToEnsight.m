@@ -1,4 +1,4 @@
-function exportAnimatedToEnsight(outBasename, inBasename, padlength, range, timeNormalization)
+function exportAnimatedToEnsight(outBasename, inBasename, padlength, range, timeNormalization, autoparallel)
 %>> outBasename:       Base filename for output Ensight files
 %>> inBasename:        Input filename for Imogen .mat savefiles
 %>> padlength:         Number of zeros in Imogen filenames
@@ -12,8 +12,7 @@ if nargin < 4
     inBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
     padlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
     range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
-    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
-    if timeNormalization == 0; timeNormalization = 1; end;
+    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt enter 1): ');
 end
 
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
@@ -28,15 +27,22 @@ if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 %range = removeNonexistantEntries(inBasename, padlength, range);
 maxFrameno = max(range);
 
-if nargin == 4; timeNormalization = 1; end;
-
 equilframe = [];
 
-minf = mpi_basicinfo();
+% If running under automatic or not sure, ask about doing this in parallel
+% Note that trying this if MPI isn't started equals CRASH COREDUMP TIME
+if (nargin < 6) || (autoparallel == 0)
+  autoparallel = input('Attempt to run in parallel (1/0)? ');
+end
+if autoparallel == 1; minf = mpi_basicinfo(); else; minf = [1 0]; end
 
+% Attempt to most evenly partition work among workers
 ntotal = numel(range); % number of frames to write
 nforme = floor(ntotal/minf(1)); % minimum each rank must take
 nadd = ntotal - nforme * minf(1); % number left over
+
+fprintf('Work distributed among %i workers.\n', minf(1));
+
 if minf(2) < nadd % I must take one more
   nforme = nforme + 1;
   ninit = minf(2)*nforme;
@@ -54,31 +60,14 @@ fprintf('Rank %i exporting frames %i to %i inclusive.\n', minf(2),localrange(1),
 for ITER = ninit+(1:nforme)
     % Take first guess; Always replace _START
     fname = sprintf('%s_%0*i', inBasename, padlength, range(ITER));
-%    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
-
-    % Check existance; if fails, try _FINAL then give up
-%    if exist(fname, 'file') == 0
-%        fname = sprintf('%s_FINAL.mat', inBasename);
-%        if exist(fname, 'file') == 0
-            % Weird shit is going on. Run away.
-%            error('UNRECOVERABLE: File existed when checked but is not openable.\n');
-%        end
-%    end
-    
     fprintf('Rank %i exporting %s as frame %i: %g; ', minf(2), fname, ITER, toc);
-%    load(fname);
 
- %   structName = who('sx_*');
- %   structName = structName{1};
     dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
 
  %   if (ITER == 1) && (pertonly == 1)
  %       equilframe = dataframe;
  %   end
 
-%    eval(sprintf('dataframe = %s;', structName));
-%    clear -regexp 'sx_';
-    
 %    if pertonly == 1
 %        dataframe = subtractEquil(dataframe, equilframe);
 %    end
