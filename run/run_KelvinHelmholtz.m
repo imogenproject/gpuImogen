@@ -3,16 +3,19 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
-grid = [1024 1024 1];
+grid = [512 512 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run                 = KelvinHelmholtzInitializer(grid);
-run.iterMax         = 2000;
+run.iterMax         = 100000;
+
+run.mach = 2.0;
+run.timeMax = (sqrt(5/3)/run.mach)*20;
+
 run.direction       = KelvinHelmholtzInitializer.X;
-run.image.interval  = 25;
+run.image.interval  = 100;
 run.image.mass      = true;
-run.image.mach      = true;
 run.activeSlices.xy = true;
 run.info            = 'Kelvin-Helmholtz instability test.';
 run.notes           = '';

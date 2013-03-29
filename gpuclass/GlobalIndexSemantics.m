@@ -170,7 +170,21 @@ classdef GlobalIndexSemantics < handle
             index = double(mod(obj.topology.neighbor_left+1, obj.topology.nproc));
         end
 
-        
+        % Given a set of values to index a global-sized array, restrict it to those within the local domain.
+        %function [out index] = findIndicesInMyDomain(obj, in, indexMode)
+        %    if (nargin == 2) || (indexMode == 1); in = in - 1; end % convert to zero-based indexing
+
+            % Translate indices back to x-y-z coordinates.
+        %    delta = obj.pGlobalDims(1)*obj.pGlobalDims(2);
+        %    z = (in - mod(in, delta))/delta;
+        %    in = in - z*delta;
+        %    delta = obj.pGlobalDims(1);
+        %    y = (in - mod(in, delta))/delta;
+        %    x = in - y*delta;
+
+        %    i0 = find(
+
+        %end        
 
     end % generic methods
 

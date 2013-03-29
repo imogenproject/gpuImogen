@@ -97,11 +97,11 @@ classdef ImogenArray < handle
         end
 
         function result = get.gputag(obj)
-            if isa(obj.pArray,'GPU_Type');
+%            if isa(obj.pArray,'GPU_Type');
                 result = obj.pArray.GPU_MemPtr;
-            else
-                result = [];
-            end
+ %           else
+  %              result = [];
+   %         end
         end
 
         function initialArray(obj, array)

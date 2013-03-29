@@ -83,12 +83,16 @@ classdef KelvinHelmholtzInitializer < Initializer
             potentialField = [];
             selfGravity = [];
 
+            GIS = GlobalIndexSemantics();
+
             indeces = cell(1,3);
             for i=1:3;  indeces{i} = 1:obj.grid(i); end
-                       
-            mass    = ones(obj.grid);
-            mom     = zeros([3 obj.grid]);
-            mag     = zeros([3 obj.grid]);
+                     
+            obj.dGrid = 1./obj.grid;
+  
+            mass    = ones(GIS.pMySize);
+            mom     = zeros([3 GIS.pMySize]);
+            mag     = zeros([3 GIS.pMySize]);
             speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
 
             half    = ceil(obj.grid/2);

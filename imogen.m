@@ -11,12 +11,14 @@ function imogen(input, resumeinfo)
 %>> IC.statics     Static arrays with lookup to static values.                 struct
     if isa(input, 'file')
         load(input);
+        disp('Resuming from file');
     else
         IC = input;
         clear input;
         evalin('caller','clear IC'); % Make ML release the memory used above
+        disp('Starting for first time');
     end
-      
+
     ini     = IC.ini;
     statics = IC.statics;
 
