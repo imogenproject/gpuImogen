@@ -17,7 +17,7 @@ valstab = zeros([nstats 6]);
 coeffstab = zeros([nstats 6]);
 indextab = zeros([nstats 6]);
 
-% Explicitly write out the permutation group for [1 2 3]
+% Explicitly write out all elements of the permutation group for [1 2 3]
 permGroup = [1 2 3; 1 3 2; 2 1 3; 2 3 1; 3 1 2; 3 2 1];
 
 % For every element create a list of statics data

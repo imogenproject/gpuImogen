@@ -105,13 +105,17 @@ classdef JetInitializer < Initializer
             if isempty(obj.offset)
                 obj.offset = [ceil(obj.grid(1)/10), ceil(obj.grid(2)/2), ceil(obj.grid(3)/2)];
             end
-                
-            mass    = obj.backMass * ones(obj.grid);
-            mom     = zeros([3 obj.grid]);
-            mag     = zeros([3 obj.grid]);
+               
+            obj.dGrid = [1 1 1]/obj.grid(2);
+
+            GIS = GlobalIndexSemantics();
+ 
+            mass    = obj.backMass * ones(GIS.pMySize);
+            mom     = zeros([3 GIS.pMySize]);
+            mag     = zeros([3 GIS.pMySize]);
             
             %--- Magnetic background ---%
-            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(obj.grid); end
+            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pMySize); end
             
             %--- Total energy ---%
             magSquared    = squeeze( sum(mag .* mag, 1) );
@@ -127,11 +131,8 @@ classdef JetInitializer < Initializer
                         + 0.5*(jetMom^2)/obj.jetMass ...            % kinetic
                         + 0.5*sum(obj.jetMags .* obj.jetMags, 2);   % magnetic
 
-            statics = StaticsInitializer(obj.grid);
+            statics = StaticsInitializer();
              
-            lind = zeros(obj.grid);
-            lind(1:end) = 1:prod(obj.grid);
-
             xMin = max(obj.offset(1)-2,1);        xMax = min(obj.offset(1)+2,obj.grid(1));
             yMin = max(obj.offset(2)-obj.injectorSize,1);        yMax = min(obj.offset(2)+obj.injectorSize,obj.grid(2));
             zMin = max(obj.offset(3)-obj.injectorSize,1);        zMax = min(obj.offset(3)+obj.injectorSize,obj.grid(3));
@@ -139,14 +140,14 @@ classdef JetInitializer < Initializer
             statics.valueSet = {0, obj.jetMass, jetMom, jetEner, obj.jetMags(1), ...
                             obj.jetMags(2), obj.jetMags(3), obj.backMass, ener(1,1)};
 
-            iBack = indexSet(obj.grid, (xMin-2):(xMin-1),(yMin-2):(yMax+2), zMin:zMax);
-            iTop  = indexSet(obj.grid, xMin:xMax,    (yMax+1):(yMax+2), zMin:zMax);
-            iBot  = indexSet(obj.grid, xMin:xMax,    (yMin-2):(yMin-1), zMin:zMax);
+            iBack = statics.indexSetForVolume( (xMin-2):(xMin-1),(yMin-2):(yMax+2), zMin:zMax);
+            iTop  = statics.indexSetForVolume( xMin:xMax,    (yMax+1):(yMax+2), zMin:zMax);
+            iBot  = statics.indexSetForVolume( xMin:xMax,    (yMin-2):(yMin-1), zMin:zMax);
 
             injCase = [iBack; iTop; iBot];
 
-            statics.indexSet = {indexSet(obj.grid,xMin:xMax+1,yMin:yMax,zMin:zMax), injCase, indexSet(obj.grid, (obj.grid(1)-1):obj.grid(1),1:obj.grid(2),1) };
-            statics.indexSet{4} = indexSet(obj.grid,1:(obj.grid(1)-2), 1:2, 1);
+            statics.indexSet = {statics.indexSetForVolume(xMin:xMax+1,yMin:yMax,zMin:zMax), injCase, statics.indexSetForVolume( (obj.grid(1)-1):obj.grid(1),1:obj.grid(2),1) };
+            statics.indexSet{4} = statics.indexSetForVolume(1:(obj.grid(1)-2), 1:2, 1);
 
             statics.associateStatics(ENUM.MASS, ENUM.SCALAR,   statics.CELLVAR, 1, 2);
             statics.associateStatics(ENUM.ENER, ENUM.SCALAR,   statics.CELLVAR, 1, 4);

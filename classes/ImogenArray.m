@@ -263,9 +263,9 @@ classdef ImogenArray < handle
             [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
 
             % Compile them into 6 arrays of index/value/coefficient, one for each possible axes arrangement.
-            [SI SV SC] = staticsPrecompute(SI, SV, SC, statics.arrayDimensions); 
+            [SI SV SC] = staticsPrecompute(SI, SV, SC, statics.GIS.pMySize); 
 
-            % Collect boundary conditions for each of x, y and z fluxing; precompiled nto 6 nice lists
+            % Collect boundary conditions for each of x, y and z fluxing; precompiled into 6 nice lists
             boundaryConds = Edges(obj.bcModes, obj.pArray, 0);
 
             % Merge these lists together with the "other" statics,

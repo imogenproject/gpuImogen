@@ -41,7 +41,7 @@ classdef Edges < handle
                 
     %--- Initialize edge parameters ---%
             N               = size(array);
-            dim             = ndims(array.array); % fine, waste bandwidth, just stfu
+            dim             = ndims(array); % fine, waste bandwidth, just stfu
             obj.TOLERANCE   = tolerance;
                 
             if (dim > 2)
@@ -56,14 +56,14 @@ classdef Edges < handle
     %--- Store Edge ICs ---%
             obj.ACTIVE      = false(2, 3);
 
-            S = StaticsInitializer(size(array)); % I only love you for your index calculator
+            S = StaticsInitializer(); % I only love you for your index calculator
 
 	    obj.boundaryStatics.index = [];
 	    obj.boundaryStatics.coeff = [];
 	    obj.boundaryStatics.value = [];
 	    obj.boundaryStatics(2) = obj.boundaryStatics(1);
 	    obj.boundaryStatics(3) = obj.boundaryStatics(1);
-	    
+
             for n=1:2
             for i=1:dim
                 iIndex      = obj.pIndex;
@@ -71,9 +71,9 @@ classdef Edges < handle
 		    % Constant BCs: hold the three cells adjacent to that edge fixed at all times
                     case ENUM.BCMODE_CONST
                         if (n == 1)
-                            uslice = 1:3;
+                            uslice = (1:3)+S.GIS.pMyOffset(i);
                         else
-                            uslice = (-2:0) + size(array,i);
+                            uslice = (-2:0) + size(array,i) + S.GIS.pMyOffset(i);
                         end
 
 			if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end
@@ -146,7 +146,7 @@ classdef Edges < handle
             % FIXME: Fix the wall, fade and transparent BCs
             for i = 1:3
                 if numel(obj.boundaryStatics(i).value) == 0; continue; end
-                [obj.boundaryStatics(i).index obj.boundaryStatics(i).value obj.boundaryStatics(i).coeff] = staticsPrecompute(obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, S.arrayDimensions);
+                [obj.boundaryStatics(i).index obj.boundaryStatics(i).value obj.boundaryStatics(i).coeff] = staticsPrecompute(obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, S.GIS.pMySize);
 %                [obj.boundaryStatics.index obj.boundaryStatics.value obj.boundaryStatics.coeff] = staticsPrecompute(obj.boundaryStatics.index, obj.boundaryStatics.value, obj.boundaryStatics.coeff, S.arrayDimensions);
 
             end
