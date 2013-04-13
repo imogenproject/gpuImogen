@@ -5,7 +5,6 @@ classdef GlobalIndexSemantics < handle
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
-        circularBCs;
     end % Public
 
     properties (SetAccess = private, GetAccess = public)
@@ -23,6 +22,10 @@ classdef GlobalIndexSemantics < handle
         domainOffset;
 
     end % Private
+
+    properties (SetAccess = private, GetAccess = private)
+        localXvector; localYvector; localZvector; circularBCs;
+    end
 
     properties (Dependent = true)
     end % Dependent
@@ -66,7 +69,9 @@ classdef GlobalIndexSemantics < handle
             obj.domainResolution = global_size;
             obj.domainOffset     = obj.pMyOffset;% - double(6*obj.topology.coord);
 
-            obj.circularBCs = true;
+            obj.circularBCs = [1 1 1];
+
+            obj.updateGridVecs();
 
             instance = obj;
         end % Constructor
@@ -74,8 +79,25 @@ classdef GlobalIndexSemantics < handle
         % Assigns the given dimension to be circular, enabling edge sharing across the outer boundary
         function makeDimCircular(obj, dim)
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
-            obj.edgeInterior(:,dim) = 1;
+            obj.circularBCs(dim) = 1;
+            obj.updateGridVecs();
         end
+
+        function makeDimNotCircular(obj, dim)
+            if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
+            obj.circularBCs(dim) = 0;
+            obj.updateGridVecs();
+        end
+
+
+        % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
+        function [u v w] = toLocalCoords(obj, x, y, z)
+            u = []; v = []; w = [];
+            if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<obj.pMySize(1))); end
+            if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<obj.pMySize(2))); end
+            if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<obj.pMySize(3))); end
+        end
+
 
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
         % Renders the 3 edge cells into halo automatically
@@ -106,7 +128,7 @@ classdef GlobalIndexSemantics < handle
         end
 
         % Gets the 1xN vectors containing 1:N_i for all 3 dimensions
-        function [u v w] = ndgridVecs(obj)
+        function updateGridVecs(obj)
             ndim = numel(obj.pGlobalDims);
 
             x=[];
@@ -115,38 +137,38 @@ classdef GlobalIndexSemantics < handle
                 % This line degerates to the identity operation if nproc(j) = 1
                 q = q + obj.pMyOffset(j) - 3*(obj.topology.nproc(j) > 1) - 1;
 
-                if (obj.topology.nproc(j) > 1) && obj.circularBCs
-                    q(q < 0) = q(q < 0) + obj.pHaloDims(j);
-                    q = mod(q, obj.pHaloDims(j)) + 1;
+                % If the edges are periodic, wrap coordinates around
+                if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
+                    q = mod(q + obj.pHaloDims(j) - 1, obj.pHaloDims(j)) + 1;
                 end
                 x{j} = q;
             end
 
             if ndim == 2; x{3} = 1; end
         
-            u = x{1}; v = x{2}; w = x{3};       
+            obj.localXvector = x{1}; obj.localYvector = x{2}; obj.localZvector = x{3};       
+        end
+
+        function [u v w] = ndgridVecs(obj)
+            u = obj.localXvector; v = obj.localYvector; w = obj.localZvector;
         end
 
         % These return the part of ndgrid(1:globalsize(1), ...) that would reside on this node
         % Halo is automatically part of it.
         function [u v w] = ndgridSetXYZ(obj)
-            [a b c] = obj.ndgridVecs();
-            [u v w] = ndgrid(a, b, c);
+            [u v w] = ndgrid(obj.localXvector, obj.localYvector, obj.localZvector);
         end
 
         function [x y] = ndgridSetXY(obj)
-            [a b c] = obj.ndgridVecs();
-            [x y] = ndgrid(a, b);
+            [x y] = ndgrid(obj.localXvector, obj.localYvector);
         end
 
         function [y z] = ndgridSetYZ(obj)
-            [a b c] = obj.ndgridVecs();
-            [y z] = ndgrid(b, c);
+            [y z] = ndgrid(obj.localYvector, obj.localZvector);
         end
 
         function [x z] = ndgridSetXZ(obj)
-            [a b c] = obj.ndgridVecs();
-            [x z] = ndgrid(a, c);
+            [x z] = ndgrid(obj.localXvector, obj.localZvector);
         end
 
         % These generate a set of ones the size of the part of the global grid residing on this node

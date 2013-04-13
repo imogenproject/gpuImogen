@@ -1,6 +1,7 @@
 function imageMerge(prefix, ranks, padding, set, print)
 
 if nargin < 5; print = 0; end
+if nargin < 4; fprintf('In directory containing images, run:\n  imageMerge(prefix, rank ordering, # padding, [set], print=true/false);\n'); return; end
 
 nprocessed = 0;
 for n = set

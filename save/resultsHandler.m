@@ -112,8 +112,9 @@ function resultsHandler(run, mass, mom, ener, mag)
 %                    save(fileName, sliceName);
                   util_Frame2NCD(sl, fileName);
                 catch MERR %#ok<NASGU>
-                    fprintf('Unable to save. Skipping');
-                    MERR
+                    fprintf('In resultsHandler:115, unable to save frame. Skipping');
+                    MERR.identifier
+                    MERR.message
                     MERR.cause
                 end
             end

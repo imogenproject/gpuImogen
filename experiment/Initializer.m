@@ -251,7 +251,7 @@ classdef Initializer < handle
              IC.mom = mom;
              IC.ener = ener;
              IC.magnet = magnet;
-             if isempty(statics); IC.statics = StaticsInitializer(obj.grid); else IC.statics = statics; end
+             if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
              IC.ini = ini;
@@ -266,7 +266,7 @@ classdef Initializer < handle
              IC.mom = mom;
              IC.ener = ener;
              IC.magnet = magnet;
-             if isempty(statics); IC.statics = StaticsInitializer(obj.grid); else IC.statics = statics; end
+             if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
              IC.ini = ini;

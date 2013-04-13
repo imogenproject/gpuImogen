@@ -11,12 +11,12 @@ function imogen(input, resumeinfo)
 %>> IC.statics     Static arrays with lookup to static values.                 struct
     if isa(input, 'file')
         load(input);
-        disp('Resuming from file');
+        if mpi_amirank0(); disp('Resuming from file'); end
     else
         IC = input;
         clear input;
         evalin('caller','clear IC'); % Make ML release the memory used above
-        disp('Starting for first time');
+        if mpi_amirank0(); disp('Starting for first time'); end
     end
 
     ini     = IC.ini;
@@ -91,7 +91,8 @@ function imogen(input, resumeinfo)
     end    
 
     mf1 = GPU_memavail();
-    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\n', mpi_myrank(), (mf0-mf1)/1048576));
+    asize = mass.gridSize();
+    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), (mf0-mf1)/1048576,asize(1), asize(2), asize(3) ) );
 
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
