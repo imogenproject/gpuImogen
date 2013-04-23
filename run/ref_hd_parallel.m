@@ -4,7 +4,7 @@
 starterRun();
 
 %--- Initialize test ---%
-grid                = [600 600  256];
+grid                = [400 400  256];
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 

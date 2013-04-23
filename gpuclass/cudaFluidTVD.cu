@@ -228,10 +228,10 @@ Xindex += nx*(threadIdx.x < 2);
 
 int x; /* = Xindex % nx; */
 int i;
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLENP2);
 double prop_i[5];
 
-unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
+unsigned int threadIndexL = (threadIdx.x-1+BLOCKLENP4)%BLOCKLENP4;
 
 /* Step 1 - calculate W values */
 C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
@@ -298,6 +298,8 @@ while(Xtrack < nx+2) {
         outputPointers[3][x] = prop_i[3];
         outputPointers[4][x] = prop_i[4];
         }
+
+    __syncthreads();
 
     Xindex += BLOCKLEN;
     Xtrack += BLOCKLEN;

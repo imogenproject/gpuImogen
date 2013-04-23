@@ -121,7 +121,8 @@ classdef TimeManager < handle
 
 if (ratio > 1000) || (ratio < .001)
 fprintf('Pounding the shit out of the momentum array for doing this\n');
-vmax = 20*obj.parent.DGRID{1}/obj.dtAverage;
+vmax = 10*obj.parent.DGRID{1}/obj.dtAverage;
+
 
 rho = mass.array;
 p = sqrt(mom(1).array.^2+mom(2).array.^2+mom(3).array.^2);
@@ -129,17 +130,16 @@ v = p ./ rho;
 
 s = size(v);
 
-% Identify all cells that are being assholes and punish them AND their neighbors
-assholes = find(v > vmax);
-assholes = unique([assholes; assholes+1; assholes-1; assholes+s(1); assholes-s(1)]);
+% Identify all cells that are being badcells and guillotine them, HARD
+badcells = find(v > vmax);
+badcells = unique([badcells; badcells+1; badcells-1; badcells+s(1); badcells-s(1)]);
 
-  mass.array(assholes) = mass.array(assholes)*2;
-mom(1).array(assholes) = 1.5*mom(1).array(assholes)./v(assholes);
-mom(2).array(assholes) = 1.5*mom(2).array(assholes)./v(assholes);
-mom(3).array(assholes) = 1.5*mom(3).array(assholes)./v(assholes);
-  ener.array(assholes) = 1.5*mass.array(assholes).^(5/3) + .5*(mom(1).array(assholes).^2 + mom(2).array(assholes).^2 + mom(3).array(assholes).^2)./mass.array(assholes);
+  mass.array(badcells) = mass.array(badcells)*1;
+mom(1).array(badcells) = 0*mom(1).array(badcells)./(mass.array(badcells).*v(badcells));
+mom(2).array(badcells) = 0*mom(2).array(badcells)./(mass.array(badcells).*v(badcells));
+mom(3).array(badcells) = 0*mom(3).array(badcells)./(mass.array(badcells).*v(badcells));
+  ener.array(badcells) = 1*mass.array(badcells).^(5/3) + .5*(mom(1).array(badcells).^2 + mom(2).array(badcells).^2 + mom(3).array(badcells).^2)./mass.array(badcells);
 
-% Eat my shit, blowups
 end
 
             end

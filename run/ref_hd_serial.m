@@ -7,6 +7,9 @@ starterRun();
 grid                = [192 192 128];
 
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
+GIS.makeDimNotCircular(1);
+GIS.makeDimNotCircular(2);
+GIS.makeDimNotCircular(3);
 
 run                 = KojimaDiskInitializer(grid);
 run.iterMax         = 10;

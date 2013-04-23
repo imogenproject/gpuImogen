@@ -25,8 +25,8 @@ __global__ void cukern_Wstep_mhd_uniform  (double *P, double *Cfreeze, double la
 __global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double lambdaqtr, int nx);
 
 #define BLOCKLEN 92
-#define BLOCKLENP2 (BlOCKLEN+2)
-#define BLOCKLENP4 (BLOCKLEN+4)
+#define BLOCKLENP2 94
+#define BLOCKLENP4 96
 
 __constant__ __device__ double *inputPointers[8];
 __constant__ __device__ double *outputPointers[5];
@@ -61,7 +61,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   dim3 blocksize, gridsize;
 
   // This bit is actually redundant now since arrays are always rotated so the fluid step is finite-differenced in the X direction
-  blocksize.x = BLOCKLEN+4; blocksize.y = blocksize.z = 1;
+  blocksize.x = BLOCKLENP4; blocksize.y = blocksize.z = 1;
   switch(fluxDirection) {
     case 1: // X direction flux: u = x, v = y, w = z;
       gridsize.x = arraySize.y;
@@ -312,6 +312,8 @@ __shared__ double fluxArray[4*(BLOCKLENP4)];
 __shared__ double freezeSpeed[BLOCKLENP4];
 freezeSpeed[threadIdx.x] = 0;
 
+__shared__ double pressRef[4];
+
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
 int Xindex = (threadIdx.x-2);
@@ -326,18 +328,41 @@ C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
 double locPsq;
 double locE;
 
+// int stopme = (blockIdx.x == 0) && (blockIdx.y == 0); // For cuda-gdb
+
+// Save the first two of the line for the right side halo at the end
+if(threadIdx.x < 2) { pressRef[threadIdx.x] = pressRef[threadIdx.x+2] = P[I0 + threadIdx.x]; }
+
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
-/*rho    q_i[0] = inputPointers[0][x];  Preload these out here 
-E    q_i[1] = inputPointers[1][x];  So we avoid multiple loops 
-px    q_i[2] = inputPointers[2][x];  over them inside the flux loop 
- py   q_i[3] = inputPointers[3][x];
-  pz  q_i[4] = inputPointers[4][x];*/
+/* rho q_i[0] = inputPointers[0][x];  Preload these out here 
+     E q_i[1] = inputPointers[1][x];  So we avoid multiple loops 
+    px q_i[2] = inputPointers[2][x];  over them inside the flux loop 
+    py q_i[3] = inputPointers[3][x];  
+    pz q_i[4] = inputPointers[4][x];  */
+
     q_i[0] = inputPointers[0][x];
     q_i[1] = inputPointers[2][x];
     q_i[2] = inputPointers[1][x];
-    locPsq   = P[x];
+
+    // If xtrack > 0 (i.e. this can't possibly be the first block
+    // of cells processed) and we're thread 0 or 1 (i.e. lhs halo),
+    // then load from the pressure reference the RHS stored for us at
+    // the beginning of the previous block
+    if((Xtrack > 0) && (threadIdx.x < 2)) {
+      locPsq = pressRef[threadIdx.x+2]; 
+      } else {
+      locPsq   = P[x];
+      }
+
+    __syncthreads();
+
+    // Take care of RHS indexing
+    if(Xtrack >= nx) { locPsq = pressRef[Xtrack-nx]; }
+
+    // If we're one of the two handling the right halo, store our values
+    if(threadIdx.x >= BLOCKLENP2) pressRef[threadIdx.x-BLOCKLEN] = locPsq;
 
     velocity = q_i[1] / q_i[0];
 
@@ -346,6 +371,7 @@ px    q_i[2] = inputPointers[2][x];  over them inside the flux loop
     w_i = (velocity*q_i[1] + locPsq); /* px flux = v*px + P */
     FLUXB_DECOUPLE(1)
     __syncthreads();
+
     if(doIflux && (Xindex < nx)) {
         locE = q_i[2] - FLUXA_DELTA; /* Calculate Ehalf */
         velocity_half = locPsq = q_i[1] - FLUXB_DELTA; /* Calculate Pxhalf */

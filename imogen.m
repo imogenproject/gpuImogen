@@ -9,7 +9,7 @@ function imogen(input, resumeinfo)
 %>> IC.magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
 %>> IC.ini         Listing of properties and settings for the run.             struct
 %>> IC.statics     Static arrays with lookup to static values.                 struct
-    if isa(input, 'file')
+    if isstruct(input) == 0
         load(input);
         if mpi_amirank0(); disp('Resuming from file'); end
     else

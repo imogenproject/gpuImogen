@@ -33,7 +33,7 @@ for n = set
 
 
   outname = sprintf('%s_%0*i.png', prefix, padding, n);
-  imwrite(mergedH', outname, 'png');
+  imwrite(mergedH', jet(256), outname, 'png');
 
   nprocessed = nprocessed + 1;
 

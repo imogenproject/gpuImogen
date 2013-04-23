@@ -5,7 +5,8 @@ include ../Make.config
 # Don't mess with any of this. Modify the above config file instead
 GEN_OPTS = 
 
-NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
+#NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
+NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -O2
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS)

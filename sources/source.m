@@ -70,5 +70,11 @@ GIS = GlobalIndexSemantics();
             cudaHaloExchange(S{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));
         end; end
     end
+
+mass.applyStatics();
+ener.applyStatics();
+mom(1).applyStatics();
+mom(2).applyStatics();
+mom(3).applyStatics();
     
 end

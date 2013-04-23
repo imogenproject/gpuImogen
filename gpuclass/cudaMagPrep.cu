@@ -157,7 +157,7 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel)
 {
 int addr = threadIdx.x + 512*blockIdx.x;
-short int q;
+//short int q;
 
 if(addr > numel) return;
 
