@@ -281,7 +281,7 @@ classdef CorrugationShockInitializer < Initializer
             end
         
             if obj.useGPU == true
-                statics = StaticsInitializer(obj.grid); 
+                statics = StaticsInitializer(); 
 
                 %statics.setFluid_allConstantBC(mass, ener, mom, 1);
                 %statics.setMag_allConstantBC(mag, 1);

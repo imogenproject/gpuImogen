@@ -121,7 +121,7 @@ momy = zeros(obj.grid);
 momz = zeros(obj.grid);
 
             %--- Static Values ---%
-            statics = StaticsInitializer(obj.grid);
+            statics = StaticsInitializer();
 
             [X Y Z] = ndgrid(1:obj.grid(1), 1:obj.grid(2), 1:obj.grid(3));
             Ledge = (X < 8); % Left edge - we establish plane flow here

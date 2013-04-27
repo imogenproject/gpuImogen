@@ -78,7 +78,7 @@ classdef AdvectionInitializer < Initializer
         methods (Access = protected) %                                                              P R O T E C T E D    [M]
         
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-            statics  = StaticsInitializer(obj.grid);
+            statics  = StaticsInitializer();
             potentialField = [];
             selfGravity = [];
 

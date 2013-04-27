@@ -224,7 +224,7 @@ classdef Initializer < handle
                 mom     = obj.pFileData.mom;
                 ener    = obj.pFileData.ener;
                 mag     = obj.pFileData.mag;
-                statics = StaticsInitializer(obj.grid);
+                statics = StaticsInitializer();
 
                 ini  = load([path filesep 'ini_settings.mat']);
                 obj.populateValues(ini.ini);

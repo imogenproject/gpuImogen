@@ -242,8 +242,8 @@ classdef StaticsInitializer < handle
 
             for dim = 1:3;
                 if isempty(S{dim}); s0 = (1:obj.GIS.pMySize(dim)); else; s0 = S{dim} - obj.GIS.pMyOffset(dim); end
-                s0 = s0( (s0 > obj.GIS.pMyOffset(dim)) & (s0 <= (obj.GIS.pMyOffset(dim) + obj.GIS.pMySize(dim))) );
-                S{dim} = s0;
+                s0 = s0( (s0 > 0) & (s0 <= obj.GIS.pMySize(dim)) );
+                S{dim} = s0;	
             end
                 
 	    % Build the grid and compute linear offset indices for it IN GPU ADDRESSES (0-indexed)
