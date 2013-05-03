@@ -109,7 +109,7 @@ function imogen(input, resumeinfo)
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
-   
+
     mpi_barrier();
     if ~RESTARTING
         run.save.logPrint('Running initial save...\n');
@@ -124,6 +124,12 @@ function imogen(input, resumeinfo)
     clockA = clock;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
+    % This is a purely artificial term that applies a fictitious braking force
+    % when the fluid's grid speed passes Mach 25. Lost kinetic energy turns
+    % into heat (E is not changed, thus lost T is re-interperted as epsilon,
+    % so the fluid heats), further reducing Mach.
+    cudaSourceAntimach(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.time.dTime, run.DGRID{1});
+
         run.time.update(mass, mom, ener, mag, i);
         for i=1:2 % Two timesteps per iteration, forward & backward
             flux(run, mass, mom, ener, mag, direction(i));
@@ -139,6 +145,7 @@ function imogen(input, resumeinfo)
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
 
+% This is a bit hackish but it works
 if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
   starpath = sprintf('%s/starpath.mat',run.paths.save);
   stardata = run.selfGravity.compactObjects{1}.history;
@@ -146,6 +153,8 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
 end
 
     % Delete GPU arrays to make Matlab happy
+    % Though I think mexlocking the master file to keep it from losing its context
+    % solved the actual problem...
     mass.cleanup(); ener.cleanup();
     for i = 1:3; mom(i).cleanup(); end
     if run.pureHydro == 0;

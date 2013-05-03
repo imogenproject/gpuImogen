@@ -6,10 +6,11 @@ include ../Make.config
 GEN_OPTS = 
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
+#NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -g -G
 NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -O2
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
-MEX_OPTS  = -DUNIX $(GEN_OPTS)
+MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
 MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
@@ -31,7 +32,7 @@ base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
-lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
+lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceAntimach
 	echo "Done building source/sink term kernels"
   
 parallel: cudaHaloExchange
@@ -41,8 +42,8 @@ kerncommon:
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaCommon.cu -o cudaCommon.cpp
 
 cuda% GPU% directionalMax% freezeAnd%:: kerncommon
-	nvcc $(NVCC_OPTS) $(NVCC_INCL) -g -cuda $@.cu -o $@.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp -g cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda $@.cu -o $@.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $@.cpp cudaCommon.cpp -o $@ $(MEX_LDIR) $(MEX_LIBS)
 #	rm -f $@.cpp
 
 cudaHaloExchange: kerncommon

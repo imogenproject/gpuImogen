@@ -14,12 +14,10 @@ function relaxingFluid(run, mass, mom, ener, mag, X)
 
     fluxFactor = .5*run.time.dTime ./ run.DGRID{X};
     v          = [mass, mom(1), mom(2), mom(3), ener];
-
-    YYY = 1;
     L = [X 2 3]; L(X)=1;
    
 %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-%%                   Half-Timestep predictor step (first-order upwind,not TVD)
+%%                   Half-Timestep predictor step (first-order upwind, not TVD)
 %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 % Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root)
@@ -37,32 +35,17 @@ mpi_dimreduce(hostarray,X-1,GIS.topology);
 GPU_free(freezea);
 freezea = GPU_cudamemcpy(hostarray);
 
-% W flux enforces minimum mass density (if using new version, then must pass run.fluid.MINMASS as 13th argument)
-[v(1).store.array v(5).store.array v(L(1)+1).store.array v(L(2)+1).store.array v(L(3)+1).store.array] = cudaFluidW(mass.gputag, ener.gputag, ...
+% 
+[v(1).store.array v(5).store.array v(L(1)+1).store.array v(L(2)+1).store.array v(L(3)+1).store.array pressb] = cudaFluidW(mass.gputag, ener.gputag, ...
                    mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
                    mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
                    pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS]);
 
-%testCF = GPU_cudamemcpy(freezea);
-%testP  = GPU_cudamemcpy(pressa);
+GPU_free(pressa);
 
-%GPU_free(pressa);
-%GPU_free(freezea);
-%cudaArrayAtomic(mass.store.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN);
-
-%+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-%%                   Full-Timestep corrector step (second-order relaxed TVD)
-%+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-%[pressa freezea] = freezeAndPtot(mass.store.gputag, ener.store.gputag, ...
-%                                mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...
-%                                mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
-%                                run.GAMMA, run.pureHydro, cs0);
-
-%testCF2 = GPU_cudamemcpy(freezea) - testCF;
-%testP2  = GPU_cudamemcpy(pressa)  - testP;
-
-%fprintf('max dcf: %g; min dcf: %g; max dp: %g; min dp: %g\n', max(testCF2(:)), min(testCF2(:)), max(testP2(:)), min(testP2(:)) );
+%--------------------------------------------------------------------------------------------------
+%                  Full-Timestep corrector (second order, TVD)
+%--------------------------------------------------------------------------------------------------
 
 GIS = GlobalIndexSemantics();
 hostarray = GPU_cudamemcpy(freezea);
@@ -73,7 +56,7 @@ freezea = GPU_cudamemcpy(hostarray);
 cudaFluidTVD(mass.store.gputag, ener.store.gputag, ...
             mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...
             mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
-            pressa, ...
+            pressb, ...
             mass.gputag, ener.gputag, mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
             freezea, fluxFactor, run.pureHydro, [run.fluid.MINMASS, run.GAMMA]);
 
@@ -84,9 +67,8 @@ mom(1).applyStatics();
 mom(2).applyStatics();
 mom(3).applyStatics();
 
-GPU_free(pressa);
+GPU_free(pressb);
 GPU_free(freezea);
-cudaArrayAtomic(mass.gputag, run.fluid.MINMASS, ENUM.CUATOMIC_SETMIN); % this is handled by the fluid calls now
 
 for t = 1:5; v(t).cleanup(); end % Delete upwind storage arrays
 

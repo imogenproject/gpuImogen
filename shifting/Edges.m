@@ -80,6 +80,9 @@ classdef Edges < handle
 			if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
 			if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
 
+%ne = size(indset, 1);
+%fprintf('Rank %i: boundary in %i dir, side %i has %i elements\n', mpi_myrank(), i, n, ne);
+
 			obj.boundaryStatics(i).index = [obj.boundaryStatics(i).index; indset];
 			obj.boundaryStatics(i).coeff = [obj.boundaryStatics(i).coeff; ones([size(indset,1) 1]) ];
 			obj.boundaryStatics(i).value = [obj.boundaryStatics(i).value; array.array(indset(:,1)+1)];

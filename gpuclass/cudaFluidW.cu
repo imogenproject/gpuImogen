@@ -29,7 +29,7 @@ __global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double la
 #define BLOCKLENP4 96
 
 __constant__ __device__ double *inputPointers[8];
-__constant__ __device__ double *outputPointers[5];
+__constant__ __device__ double *outputPointers[6];
 __constant__ __device__ double fluidQtys[7];
 #define FLUID_GAMMA   fluidQtys[0]
 #define FLUID_GM1     fluidQtys[1]
@@ -41,13 +41,13 @@ __constant__ __device__ double fluidQtys[7];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
-  if ((nrhs!=13) || (nlhs != 5)) mexErrMsgTxt("Wrong number of arguments: need [5] = cudaWflux(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
+  if ((nrhs!=13) || (nlhs != 6)) mexErrMsgTxt("Wrong number of arguments: need [5] = cudaWflux(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
 
   cudaCheckError("entering cudaFluidW");
 
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);
-  double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]),  plhs, 5);
+  double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]),  plhs, 6);
 
   // Establish launch dimensions & a few other parameters
   int fluxDirection = 1;
@@ -105,11 +105,11 @@ hydroOnly = (int)*mxGetPr(prhs[11]);
   
 if(hydroOnly == 1) {
   cudaMemcpyToSymbol(inputPointers,  srcs, 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
-  cudaMemcpyToSymbol(outputPointers, dest, 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
+  cudaMemcpyToSymbol(outputPointers, dest, 6*sizeof(double *), 0, cudaMemcpyHostToDevice);
   cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[8], srcs[9], .25*lambda, arraySize.x);
   } else {
   cudaMemcpyToSymbol(inputPointers,  srcs, 8*sizeof(double *), 0, cudaMemcpyHostToDevice);
-  cudaMemcpyToSymbol(outputPointers, dest, 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
+  cudaMemcpyToSymbol(outputPointers, dest, 6*sizeof(double *), 0, cudaMemcpyHostToDevice);
   cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[8], srcs[9], lambda/4.0, arraySize.x);
 }
 
@@ -215,6 +215,7 @@ while(Xtrack < nx+2) {
         outputPointers[2][x] = q_i[1]; // WROTE PX_HALF
 // q; P psq pdb le vhf = [pzhalf pxhalf E; P (momhalf^2) (<p|b>) 1/rho rhohalf]
         }
+    __syncthreads();
 
     w_i = velocity*(q_i[2]+locP) - b_i[0]*momdotB*invrho0; /* E flux = v*(E+P) - bx(p dot B)/rho */
     FLUXA_DECOUPLE(2)
@@ -254,7 +255,7 @@ while(Xtrack < nx+2) {
 
 // q; P psq pdb le vhf = [rhohalf pxhalf bsq/2; (eps+bsq/2) Thalf (<p|b>) Ehalf rhohalf]
 
-        P[x] = FLUID_GM1*locP + FLUID_TWOMG*q_i[2]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
+        outputPointers[5][x] = FLUID_GM1*locP + FLUID_TWOMG*q_i[2]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
         outputPointers[1][x] = q_i[1]; /* store total energy: We need to correct this for negativity shortly */
 
         /* calculate local freezing speed = |v_x| + sqrt( g(g-1)*Pgas/rho + B^2/rho) = sqrt(c_thermal^2 + c_alfven^2)*/
@@ -312,8 +313,6 @@ __shared__ double fluxArray[4*(BLOCKLENP4)];
 __shared__ double freezeSpeed[BLOCKLENP4];
 freezeSpeed[threadIdx.x] = 0;
 
-__shared__ double pressRef[4];
-
 /* Step 0 - obligatory annoying setup stuff (ASS) */
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
 int Xindex = (threadIdx.x-2);
@@ -330,9 +329,6 @@ double locE;
 
 // int stopme = (blockIdx.x == 0) && (blockIdx.y == 0); // For cuda-gdb
 
-// Save the first two of the line for the right side halo at the end
-if(threadIdx.x < 2) { pressRef[threadIdx.x] = pressRef[threadIdx.x+2] = P[I0 + threadIdx.x]; }
-
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
@@ -345,24 +341,7 @@ while(Xtrack < nx+2) {
     q_i[0] = inputPointers[0][x];
     q_i[1] = inputPointers[2][x];
     q_i[2] = inputPointers[1][x];
-
-    // If xtrack > 0 (i.e. this can't possibly be the first block
-    // of cells processed) and we're thread 0 or 1 (i.e. lhs halo),
-    // then load from the pressure reference the RHS stored for us at
-    // the beginning of the previous block
-    if((Xtrack > 0) && (threadIdx.x < 2)) {
-      locPsq = pressRef[threadIdx.x+2]; 
-      } else {
-      locPsq   = P[x];
-      }
-
-    __syncthreads();
-
-    // Take care of RHS indexing
-    if(Xtrack >= nx) { locPsq = pressRef[Xtrack-nx]; }
-
-    // If we're one of the two handling the right halo, store our values
-    if(threadIdx.x >= BLOCKLENP2) pressRef[threadIdx.x-BLOCKLEN] = locPsq;
+    locPsq   = P[x];
 
     velocity = q_i[1] / q_i[0];
 
@@ -427,7 +406,7 @@ while(Xtrack < nx+2) {
           locPsq = q_i[0]*FLUID_MINEINT; // store minimum epsilon.
           } /* Assert minimum temperature */
 
-        P[x] = FLUID_GM1*locPsq; /* Calculate P = (gamma-1) epsilon */
+        outputPointers[5][x] = FLUID_GM1*locPsq; /* Calculate P = (gamma-1) epsilon */
         outputPointers[1][x] = locE; /* store total energy: We need to correct this for negativity shortly */
 
         /* calculate local freezing speed */

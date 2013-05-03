@@ -133,7 +133,7 @@ while(x < nx) {
   ptot[x] = gm1*PRESSURE + twomg*bsqhf;
 
   // We calculate the freezing speed in the X direction: max of |v|+c_fast
-  Cs = (gg1*(PRESSURE) + (2.0 - gg1)*bsqhf)*rhoinv;
+  Cs = (gg1*(PRESSURE) + (8.0 - gg1)*bsqhf)*rhoinv;
   Cs = sqrt(Cs) + abs(px[x]*rhoinv);
 
 // THIS IS THE ORIGINAL CODE
