@@ -131,7 +131,7 @@ classdef CorrugationShockInitializer < Initializer
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
         potentialField = [];
         selfGravity = [];        
-
+        GIS = GlobalIndexSemantics();
 
         %--- Attempt to load data from file ---%
             result = [];
@@ -176,43 +176,57 @@ classdef CorrugationShockInitializer < Initializer
 
             %--- Initialization ---%
             statics                 = []; % No statics used in this problem
-            obj.dGrid.value         = 0.01/min(obj.grid(2:3));
-            if obj.grid(3) == 1; obj.dGrid.value = .01/obj.grid(2); end
+            obj.dGrid.value         = 1/min(obj.grid(2:3));
+            if obj.grid(3) == 1; obj.dGrid.value = 1/obj.grid(2); end
             obj.dGrid = obj.dGrid.value * ones(1,3);
             %obj.appendInfo('Grid cell spacing set to %g.',obj.dGrid.value);
             
+            [vecX vecY vecZ] = GIS.ndgridVecs();
+
             half        = ceil(obj.grid/2);
+            preX = (vecX < half(1));
+            postX = (vecX >= half(1));
+
             preIndeces  = { 1:(half(1)-1), 1:obj.grid(2), 1:obj.grid(3) };
             postIndeces = { half(1):obj.grid(1), 1:obj.grid(2), 1:obj.grid(3) };
             
             %--- Create and populate data arrays ---%
-            mass                 = zeros(obj.grid);
-            mass(preIndeces{:})  = obj.mass(1);
-            mass(postIndeces{:}) = obj.mass(2);
+            mass                 = zeros(GIS.pMySize);
+            mass(preX,:,:)  = obj.mass(1);
+            mass(postX,:,:) = obj.mass(2);
             
-            mom                  = zeros([3 obj.grid]);
-            mag                  = zeros([3 obj.grid]);
+            mom                  = zeros([3 GIS.pMySize]);
+            mag                  = zeros([3 GIS.pMySize]);
             for i=1:3
-                mom(i,preIndeces{:})  = obj.velocity(i,1);
-                mom(i,postIndeces{:}) = obj.velocity(i,2);
-                mom(i,:,:,:)          = mass .* squeeze(mom(i,:,:,:));
+                mom(i,preX,  :, :) = obj.velocity(i,1);
+                mom(i,postX, :, :) = obj.velocity(i,2);
+                mom(i,:,:,:)       = mass .* squeeze(mom(i,:,:,:));
                 
                 % It is assumed that the equations used to solve for the magnetic field already
                 % include the transformation B = B/sqrt(4*pi) as verified by no 4*pi factors
                 % existing in the original equations.
-                mag(i,preIndeces{:})  = obj.magnet(i,1);
-                mag(i,postIndeces{:}) = obj.magnet(i,2);
+                mag(i,preX,  :, :) = obj.magnet(i,1);
+                mag(i,postX, :, :) = obj.magnet(i,2);
             end
-            
-            ener                 = zeros(obj.grid);
-            ener(preIndeces{:})  = obj.pressure(1)/(obj.gamma - 1);     % internal energy (pre)
-            ener(postIndeces{:}) = obj.pressure(2)/(obj.gamma - 1);     % internal energy (post)
-            ener                 = ener ...
-                                 + 0.5*squeeze( sum(mom.*mom,1) )./mass ...      % kinetic energy
-                                 + 0.5*squeeze( sum(mag.*mag,1) );               % magnetic energy
 
-            if ~isempty(relaxed)
-                x0 = round(obj.grid(1)/2) - 16;
+            % Calculate the kinetic + magnetic contributions to energy density pre and postshock
+            TMpre  = .5*obj.mass(1)*norm(obj.velocity(:,1))^2 + .5*norm(obj.magnet(:,1))^2;
+            TMpost = .5*obj.mass(2)*norm(obj.velocity(:,2))^2 + .5*norm(obj.magnet(:,2))^2;
+
+            % Calculate total energy (internal + kinetic + magnetic) 
+            ener              = zeros(obj.grid);
+            ener(preX,  :, :) = obj.pressure(1)/(obj.gamma - 1) + TMpre; 
+            ener(postX, :, :) = obj.pressure(2)/(obj.gamma - 1) + TMpost;
+
+            % Find the 32 cells near the shock, in local coordinates
+            x0 = (round(obj.grid(1)/2) - 16 - GIS.pMyOffset(1) ) + (1:32);
+            % Find the set which are actually on my part of the grid
+            mine = find((x0 >= 1) & (x0 < GIS.pMySize(1)) );
+            
+            if ~isempty(relaxed) & any(mine)
+                x0 = x0(mine);
+                ai = 1:32; ai=ai(mine);
+
                 relaxed.rho = eval(relaxed.rho);
                 relaxed.px = eval(relaxed.px);
                 relaxed.py = eval(relaxed.py);
@@ -220,64 +234,73 @@ classdef CorrugationShockInitializer < Initializer
                 relaxed.by = eval(relaxed.by);
                 relaxed.E  = eval(relaxed.E);
 
-                for c = 1:32; 
-                    mass(x0+c,:,:)  = relaxed.rho(c);
-                    ener(x0+c,:,:)  = relaxed.E(c);
+                for c = 1:numel(ai)
+                    mass(x0(c),:,:)  = relaxed.rho(ai(c));
+                    ener(x0(c),:,:)  = relaxed.E(ai(c));
 
-                    mom(1,x0+c,:,:) = relaxed.px(c);
-                    mom(2,x0+c,:,:) = relaxed.py(c);
+                    mom(1,x0(c),:,:) = relaxed.px(ai(c));
+                    mom(2,x0(c),:,:) = relaxed.py(ai(c));
 
-                    mag(1,x0+c,:,:) = relaxed.bx(c);
-                    mag(2,x0+c,:,:) = relaxed.by(c);
+                    mag(1,x0(c),:,:) = relaxed.bx(ai(c));
+                    mag(2,x0(c),:,:) = relaxed.by(ai(c));
                 end
             end
  
             %--- Perturb mass density in pre-shock region ---%
             %       Mass density gets perturbed in the pre-shock region just before the shock front
             %       to seed the formation of the instability.
+
             delta       = ceil(0.12*obj.grid(1));
-            seedIndices = { (half(1)-20):(half(1)-11), 1:obj.grid(2), 1:obj.grid(3) };
-            
-            switch (obj.perturbationType)
-                
-                % RANDOM Seeds ____________________________________________________________________
-                case CorrugationShockInitializer.RANDOM
-                    phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
-                    amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
+            seedIndices = (1:10) + obj.grid(1)/2 - 20 - GIS.pMyOffset(1);
+            mine = find((seedIndices >= 1) & (seedIndices < GIS.pMySize(1)));
 
-                    amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
-                    amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
-                    amp(:,1,1) = 0; % no common-mode seed
+            if any(mine);
+                switch (obj.perturbationType)
+                    
+                    % RANDOM Seeds ____________________________________________________________________
+                    case CorrugationShockInitializer.RANDOM
+                        phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
+                        amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
 
-                    perturb = zeros(10, obj.grid(2), obj.grid(3));
-                    for xp = 1:size(perturb,1)
-                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
-                    end
+                        amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
+                        amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
+                        amp(:,1,1) = 0; % no common-mode seed
+
+                        perturb = zeros(10, obj.grid(2), obj.grid(3));
+                        for xp = 1:size(perturb,1)
+                            perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
+                        end
 
 
-                case CorrugationShockInitializer.COSINE
-                    [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
-                    perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
-                                    .*sin(pi*(X - 1)/(delta - 1));
-                % COSINE Seeds ____________________________________________________________________
-                case CorrugationShockInitializer.COSINE_2D 
-                    [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
-                    perturb = obj.seedAmplitude ...
-                                *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
-                                 + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...
-                                 .*sin(pi*(X - 1)/(delta - 1));
+                    case CorrugationShockInitializer.COSINE
+                        [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                        perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
+                                        .*sin(pi*(X - 1)/(delta - 1));
+                    % COSINE Seeds ____________________________________________________________________
+                    case CorrugationShockInitializer.COSINE_2D 
+                        [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                        perturb = obj.seedAmplitude ...
+                                    *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
+                                     + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...
+                                     .*sin(pi*(X - 1)/(delta - 1));
 
-                % Unknown Seeds ___________________________________________________________________
-                otherwise
-                    error('Imogen:CorrugationShockInitializer', ...
-                          'Uknown perturbation type. Aborted run.');
-            end
+                    % Unknown Seeds ___________________________________________________________________
+                    otherwise
+                        error('Imogen:CorrugationShockInitializer', ...
+                              'Uknown perturbation type. Aborted run.');
+                end
 
-            % By not perturbing energy density we assert that this is an entropy wave
-            mass(seedIndices{:}) = squeeze( mass(seedIndices{:}) ) + perturb; % Add seed to mass.
-            for i = 1:3; 
-                % Maintain zero velocity perturbation
-                mom(i,seedIndices{:}) = squeeze(mom(i,seedIndices{:})) + perturb * obj.velocity(i,1);
+                seeds = seedIndices(mine);
+
+                % By not perturbing energy density we assert that this is an entropy wave
+%seedIndices
+%size(perturb)
+                mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb; % Add seed to mass.
+                for i = 1:3; 
+                    % Maintain zero velocity perturbation
+                    mom(i,seedIndices,:,:) = squeeze(mom(i,seedIndices,:,:)) + perturb * obj.velocity(i,1);
+                end
+
             end
         
             if obj.useGPU == true
@@ -290,9 +313,10 @@ classdef CorrugationShockInitializer < Initializer
                 %statics.setMag_allConstantBC(mag, 2);
             end
 
-            if obj.endMass > 0
-                mass((end-10):end,:,:) = obj.endMass;
-            end
+
+%            if obj.endMass > 0
+%                mass((end-10):end,:,:) = obj.endMass;
+%            end
 
         end
 

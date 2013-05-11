@@ -70,10 +70,11 @@ __global__ void cukern_Soundspeed_mhd(double *rho, double *E, double *px, double
 int x = threadIdx.x + blockIdx.x * BLOCKDIM;
 int dx = blockDim.x * gridDim.x;
 double csq;
+double invrho = 1.0 / rho[x];
 
 while(x < n) {
 //  csq = ( (gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])/rho[x]) + (2.0 -.5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]))/rho[x] );
-    csq = (gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])) + (3 - .5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]))/rho[x] ;
+    csq = (gg1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])*invrho ) + (4 - .5*gg1)*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x])) * invrho ;
     if(csq < 0.0) csq = 0.0;
     dout[x] = sqrt(csq);
     x += dx;

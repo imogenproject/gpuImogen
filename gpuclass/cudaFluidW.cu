@@ -90,7 +90,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //             e > rho rho_min^(g-1)/(g-1)
   gamHost[4] = powl(rhomin, gamma-1.0)/(gamma-1.0);
   gamHost[5] = 2.0-gamma;
-  gamHost[6] = 2.0-(gamma*(gamma-1.0));
+  gamHost[6] = 8.0-(gamma*(gamma-1.0));
 // Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root)
 
   cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 7*sizeof(double), 0, cudaMemcpyHostToDevice);
@@ -133,10 +133,11 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 __global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double lambdaqtr, int nx)
 {
 double C_f, velocity;
-double q_i[3];
+double q_i[5];
 double b_i[3];
 double w_i;
 double velocity_half;
+double rho_half;
 __shared__ double fluxArray[4*(BLOCKLENP4)];
 __shared__ double freezeSpeed[BLOCKLENP4];
 freezeSpeed[threadIdx.x] = 0;
@@ -153,6 +154,7 @@ bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
 /* Step 1 - calculate W values */
 C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
 double locP, momhalfsq, momdotB, invrho0;
+double Ehalf;
 
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
@@ -161,85 +163,67 @@ while(Xtrack < nx+2) {
     b_i[1] = inputPointers[6][x];
     b_i[2] = inputPointers[7][x];
 
-    q_i[1] = inputPointers[2][x]; /* load the X momentum */
-    q_i[0] = inputPointers[0][x]; // load mass density
-    q_i[2] = inputPointers[3][x]; // load Y momentum
+    q_i[0] = inputPointers[0][x]; // Load mass density
+    q_i[1] = inputPointers[1][x]; /* load the energy denstiy */
+    q_i[2] = inputPointers[2][x]; // load x momentum density
+    q_i[3] = inputPointers[3][x]; // load y momentum density
+    q_i[4] = inputPointers[4][x]; // load z momentum density
 
     locP = P[x];
-    velocity = q_i[1] / q_i[0];
+    velocity = q_i[2] / q_i[0];
     invrho0 = 1.0 / q_i[0]; // for when we need rho_0 to compute <v|b> from <p|b>
-// q; P psq pdb le vhf = [rho px py; P X X 1/rho X]
 
-    w_i = q_i[1]; // rho flux = px
+    w_i = q_i[2]; // rho flux = px
     FLUXA_DECOUPLE(0)
-    w_i = q_i[2]*velocity - b_i[0]*b_i[1]; // py flux = py*v
-    FLUXB_DECOUPLE(2)
+    w_i = q_i[3]*velocity - b_i[0]*b_i[1]; // py flux = py*v - b by
+    FLUXB_DECOUPLE(3)
 
-    momdotB = b_i[0]*q_i[1] + b_i[1]*q_i[2]; // Get 2/3 of the <p|b> inner product
-
-// q; P psq pdb le vhf = [rho px py; P X (px bx+py by) 1/rho X]
+    momdotB = b_i[0]*q_i[2] + b_i[1]*q_i[3] + b_i[2]*q_i[4];
 
     __syncthreads();
     if(doIflux && (Xindex < nx)) {
-        velocity_half = q_i[0] - FLUXA_DELTA;
-        q_i[2] -= FLUXB_DELTA;
-        momhalfsq = q_i[2]*q_i[2]; // store py_half^2
-        outputPointers[3][x] = q_i[2]; // WROTE PY_HALF
+        rho_half = q_i[0] - FLUXA_DELTA;
+        q_i[3] -= FLUXB_DELTA;
+        momhalfsq = q_i[3]*q_i[3]; // store py_half^2
+        outputPointers[3][x] = q_i[3]; // WROTE PY_HALF
         }
     __syncthreads();
 
-// q; P psq pdb le vhf = [rho px pyhalf; P (pyhalf^2) (px bx+py by) 1/rho rhohalf]
-
-    q_i[0] = inputPointers[4][x]; // load Z momentum
-    q_i[2] = inputPointers[1][x]; // load E
-
-    momdotB += q_i[0]*b_i[2]; // Accumulate final <p|b> term for use in the energy flux.
-
-// q; P psq pdb le vhf = [pz px E; P (pyhalf^2) (<p|b>) 1/rho rhohalf]
-
-    w_i = velocity*q_i[0] - b_i[0]*b_i[2]; // p_z flux
-    FLUXA_DECOUPLE(0);
-    w_i = (velocity*q_i[1] + locP - b_i[0]*b_i[0]); /* px flux = v*px + P - bx^2*/
-    FLUXB_DECOUPLE(1);
+    w_i = velocity*q_i[4] - b_i[0]*b_i[2]; // p_z flux
+    FLUXA_DECOUPLE(4);
+    w_i = (velocity*q_i[2] + locP - b_i[0]*b_i[0]); /* px flux = v*px + P - bx^2*/
+    FLUXB_DECOUPLE(2);
     __syncthreads();
 
     if(doIflux && (Xindex < nx)) {
-        q_i[0] -= FLUXA_DELTA; // momz_half
-        momhalfsq += q_i[0]*q_i[0]; // now have (py^2 + pz^2)|_half
-        outputPointers[4][x] = q_i[0]; // WROTE PZ_HALF
+        q_i[4] -= FLUXA_DELTA; // momz_half
+        momhalfsq += q_i[4]*q_i[4]; // now have (py^2 + pz^2)|_half
+        outputPointers[4][x] = q_i[4]; // WROTE PZ_HALF
 
-// q; P psq pdb le vhf = [pzhalf px E; P (pyhalf^2+pzhalf^2) (<p|b>) 1/rho rhohalf]
-
-        q_i[1] -= FLUXB_DELTA;
-        momhalfsq += q_i[1]*q_i[1]; // now have complete p^2 at halfstep.
-        outputPointers[2][x] = q_i[1]; // WROTE PX_HALF
+        q_i[2] -= FLUXB_DELTA;
+        momhalfsq += q_i[2]*q_i[2]; // now have complete p^2 at halfstep.
+        outputPointers[2][x] = q_i[2]; // WROTE PX_HALF
 // q; P psq pdb le vhf = [pzhalf pxhalf E; P (momhalf^2) (<p|b>) 1/rho rhohalf]
         }
     __syncthreads();
 
-    w_i = velocity*(q_i[2]+locP) - b_i[0]*momdotB*invrho0; /* E flux = v*(E+P) - bx(p dot B)/rho */
-    FLUXA_DECOUPLE(2)
+    w_i = velocity*(q_i[1]+locP) - b_i[0]*momdotB*invrho0; /* E flux = v*(E+P) - bx(p dot B)/rho */
+    FLUXA_DECOUPLE(1)
     __syncthreads();
 
     if(doIflux && (Xindex < nx)) {
-        locP = q_i[2] - FLUXA_DELTA; /* Calculate Ehalf and store a copy in locP */
-// q; P psq pdb le vhf = [pzhalf pxhalf E; Ehalf (momhalf^2) (<p|b>) Ehalf rhohalf]
+        Ehalf = q_i[1] - FLUXA_DELTA; /* Calculate Ehalf and store a copy in locP */
 
-        outputPointers[0][x] = q_i[0] = (velocity_half > FLUID_MINMASS) ? velocity_half : FLUID_MINMASS; // enforce minimum mass density.
-// q; P psq pdb le vhf = [rhohalf pxhalf E; Ehalf (momhalf^2) (<p|b>) Ehalf rhohalf]
+        outputPointers[0][x] = q_i[0] = (rho_half > FLUID_MINMASS) ? rho_half : FLUID_MINMASS; // enforce minimum mass density.
 
         momhalfsq = .5*momhalfsq/q_i[0]; // calculate kinetic energy density at halfstep
-// q; P psq pdb le vhf = [rhohalf pxhalf E; Ehalf Thalf (<p|b>) Ehalf rhohalf]
 
-        q_i[2] = .5*(b_i[0]*b_i[0]+b_i[1]*b_i[1]+b_i[2]*b_i[2]); // calculate scalar part of magnetic pressure.
-// q; P psq pdb le vhf = [rhohalf pxhalf bsq/2; Ehalf Thalf (<p|b>) Ehalf rhohalf]
+        q_i[4] = .5*(b_i[0]*b_i[0]+b_i[1]*b_i[1]+b_i[2]*b_i[2]); // calculate scalar part of magnetic pressure.
 
-        velocity_half = q_i[1] / q_i[0]; // Calculate vx_half = px_half / rho_half 
-// q; P psq pdb le vhf = [rhohalf pxhalf bsq/2; Ehalf Thalf (<p|b>) Ehalf vx_half]
+        velocity_half = q_i[2] / q_i[0]; // Calculate vx_half = px_half / rho_half 
 
-        q_i[1] = locP; // set to energy
-        locP -= momhalfsq; // store total (thermal + scalar magnetic) energy in locP
-// q; P psq pdb le vhf = [rhohalf pxhalf bsq/2; (eps+bsq/2) Thalf (<p|b>) Ehalf vx_half]
+        q_i[1] = Ehalf; // set to energy
+        locP = Ehalf - momhalfsq; // magnetic + epsilon energy density
 
         // We must enforce a sane thermal energy density
         // Do this for the thermal sound speed even though the fluid is magnetized
@@ -247,19 +231,16 @@ while(Xtrack < nx+2) {
         //     g P / rho > g rho_min^(g-1) under polytropic EOS
         //g(g-1) e / rho > g rho_min^(g-1)
         //             e > rho rho_min^(g-1)/(g-1) = rho FLUID_MINEINT
-
-        if((locP - q_i[2]) < q_i[0]*FLUID_MINEINT) {
-          q_i[1] = momhalfsq + q_i[2] + q_i[0]*FLUID_MINEINT; // Assert minimum E = T + B^2/2 + epsilon_min
-          locP = q_i[2] + q_i[0]*FLUID_MINEINT;
+        if((locP - q_i[4]) < q_i[0]*FLUID_MINEINT) {
+          q_i[1] = momhalfsq + q_i[4] + q_i[0]*FLUID_MINEINT; // Assert minimum E = T + B^2/2 + epsilon_min
+          locP = q_i[4] + q_i[0]*FLUID_MINEINT;
           } /* Assert minimum temperature */
 
-// q; P psq pdb le vhf = [rhohalf pxhalf bsq/2; (eps+bsq/2) Thalf (<p|b>) Ehalf rhohalf]
-
-        outputPointers[5][x] = FLUID_GM1*locP + FLUID_TWOMG*q_i[2]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
+        outputPointers[5][x] = FLUID_GM1*locP + FLUID_TWOMG*q_i[4]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
         outputPointers[1][x] = q_i[1]; /* store total energy: We need to correct this for negativity shortly */
 
         /* calculate local freezing speed = |v_x| + sqrt( g(g-1)*Pgas/rho + B^2/rho) = sqrt(c_thermal^2 + c_alfven^2)*/
-        locP = abs(velocity_half) + sqrt( (FLUID_GG1*locP + FLUID_TWOMGG1*q_i[2])/q_i[0]);
+        locP = abs(velocity_half) + sqrt( (FLUID_GG1*locP + FLUID_TWOMGG1*q_i[4])/q_i[0]);
         if(locP > freezeSpeed[threadIdx.x]) {
           // Do not update C_f from the edgemost cells, they are wrong.
           if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locP;
@@ -274,9 +255,11 @@ while(Xtrack < nx+2) {
 
 /* We have a block of 64 threads. Fold this shit in */
 
-if(threadIdx.x > 32) return;
+if(threadIdx.x >= 32) return;
 
 if(freezeSpeed[threadIdx.x+32] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+32];
+if(freezeSpeed[threadIdx.x+64] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+64];
+
 __syncthreads();
 if(threadIdx.x > 16) return;
 

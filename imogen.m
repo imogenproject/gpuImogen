@@ -119,7 +119,7 @@ function imogen(input, resumeinfo)
         run.save.logPrint(sprintf('Simulation resuming at iteration %i.\n',run.time.iteration));
     end
     direction           = [1 -1];
-
+    
     run.save.logPrint('Beginning simulation loop...\n');
     clockA = clock;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
@@ -128,7 +128,7 @@ function imogen(input, resumeinfo)
     % when the fluid's grid speed passes Mach 25. Lost kinetic energy turns
     % into heat (E is not changed, thus lost T is re-interperted as epsilon,
     % so the fluid heats), further reducing Mach.
-    cudaSourceAntimach(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.time.dTime, run.DGRID{1});
+    %cudaSourceAntimach(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.time.dTime, run.DGRID{1});
 
         run.time.update(mass, mom, ener, mag, i);
         for i=1:2 % Two timesteps per iteration, forward & backward

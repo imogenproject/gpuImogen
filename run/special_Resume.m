@@ -7,10 +7,10 @@ starterRun();
 
 %--- EDIT ONLY THESE TWO LINES ---%
 
-ResumeDirectory = '~/Results/Jan13/KOJIMA_11815';
-ResumeInfo.itermax = 20;
-ResumeInfo.timemax = 100;
-ResumeInfo.frame = 8;
+ResumeDirectory = '~/Results/May13/OTVortex_5915';
+ResumeInfo.itermax = 100000;
+ResumeInfo.timemax = .48;
+ResumeInfo.frame = 4690;
 
 %--- Setup GIS and hand Imogen the path and frame number to resume from. ---%
 

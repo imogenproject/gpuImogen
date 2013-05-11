@@ -137,9 +137,7 @@ classdef BCManager < handle
             end
 
             arrayObj.edgeshifts  = cell(2,3);
-            for i=1:3
-                for n=1:2
-                    switch arrayObj.bcModes{n,i}
+            for i=1:3; for n=1:2; switch arrayObj.bcModes{n,i}
                         case ENUM.BCMODE_CIRCULAR,    arrayObj.edgeshifts{n,i} = @circ_shift;
                         case ENUM.BCMODE_CONST,       arrayObj.edgeshifts{n,i} = @constant_shift;
                         case ENUM.BCMODE_FADE,        arrayObj.edgeshifts{n,i} = @fade_shift;
@@ -152,9 +150,8 @@ classdef BCManager < handle
                         case ENUM.BCMODE_ZERO,        arrayObj.edgeshifts{n,i} = @zero_shift;
                         otherwise
                             error(['Imogen:UnknownType: Unknown BC mode ', arrayObj.bcModes{n,i}]);
-                    end
-                end
-            end
+            end; end; end
+
         end
         
 %___________________________________________________________________________________________________ BCManager

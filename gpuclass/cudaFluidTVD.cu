@@ -24,8 +24,8 @@ Requires predicted half-step values from a 1st order upwind scheme.
 */
 
 #define BLOCKLEN 92
-#define BLOCKLENP2 (BLOCKLEN+2)
-#define BLOCKLENP4 (BLOCKLEN+4)
+#define BLOCKLENP2 94
+#define BLOCKLENP4 96
 
 /*__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);*/
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halflambda, int nx);
@@ -110,47 +110,70 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 
 }
 
+#define LEFTMOST_FLAG 1
+#define RIGHTMOST_FLAG 2
+#define ENDINGRHS_FLAG 4
+#define IAM_MAIN_BLOCK 8
+
+#define IAMLEFTMOST (whoflags & LEFTMOST_FLAG)
+#define IAMRIGHTMOST (whoflags & RIGHTMOST_FLAG)
+#define IAMENDRHS   (whoflags & ENDINGRHS_FLAG)
+#define IAMMAIN     (whoflags & IAM_MAIN_BLOCK)
+
 /* blockidx.{xy} is our index in {yz}, and gridDim.{xy} gives the {yz} size */
 /* Expect invocation with n+4 threads */
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halfLambda, int nx)
 {
+// Declare a bunch of crap, much more than needed.
+// In NVCC -O2 and symbolic algebra transforms we trust
 double c_f, velocity;
 double q_i[5];
+double prop_i[5]; // proposed q_i values
 double b_i[3];
 double w_i;
 __shared__ double fluxLR[2][BLOCKLENP4];
 __shared__ double fluxDerivA[BLOCKLENP4+1];
 __shared__ double fluxDerivB[BLOCKLENP4+1];
 
-/* Step 0 - obligatory annoying setup stuff (ASS) */
+// Our arrays to prevent left/right edge overwriting
+//__shared__ double yourNextLHS[10];
+//__shared__ double finalRHS[10];
+
+// Precompute some information about "special" threads.
+int whoflags = 0;
+if(threadIdx.x < 2)           whoflags += LEFTMOST_FLAG; // Mark which threads form the left most of the block,
+if(threadIdx.x >= BLOCKLENP2) whoflags += RIGHTMOST_FLAG; // The rightmost, and the two which will form the final RHS
+if((threadIdx.x == ( (nx % BLOCKLEN) + 2)) || (threadIdx.x == ( (nx % BLOCKLEN) + 3)) ) whoflags += ENDINGRHS_FLAG;
+if((threadIdx.x > 1) && (threadIdx.x < BLOCKLENP2)) whoflags += IAM_MAIN_BLOCK;
+
+// Calculate the usual stupid indexing tricks
 int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
 int Xindex = (threadIdx.x-2);
 int Xtrack = Xindex;
 Xindex += nx*(threadIdx.x < 2);
-
-int x; /* = Xindex % nx; */
+int x;
 int i;
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
 
 unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
 
-/* Step 1 - calculate W values */
+// Load the freezing speed once
 c_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
-
-double prop_i[5];
 
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
 
-    q_i[0] = inputPointers[0][x];
-    q_i[1] = inputPointers[1][x];       /* So we avoid multiple loops */
-    q_i[2] = inputPointers[2][x];      /* over them inside the flux loop */
-    q_i[3] = inputPointers[3][x];
-    q_i[4] = inputPointers[4][x];
-    b_i[0] = inputPointers[5][x];
-    b_i[1] = inputPointers[6][x];
-    b_i[2] = inputPointers[7][x];
+    q_i[0] = inputPointers[0][x]; // rho
+    q_i[1] = inputPointers[1][x]; // Etot      /* So we avoid multiple loops */
+    q_i[2] = inputPointers[2][x]; // Px     /* over them inside the flux loop */
+    q_i[3] = inputPointers[3][x]; // Py
+    q_i[4] = inputPointers[4][x]; // Pz
+    b_i[0] = inputPointers[5][x]; // Bx
+    b_i[1] = inputPointers[6][x]; // By
+    b_i[2] = inputPointers[7][x]; // Bz
+
     velocity = q_i[2]/q_i[0];
+
+    __syncthreads();
 
     /* rho, E, px, py, pz going down */
     /* Iterate over variables to flux */
@@ -181,7 +204,7 @@ while(Xtrack < nx+2) {
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
-       if( doIflux && (Xindex < nx) ) {
+       if( IAMMAIN && (Xindex < nx) ) {
             prop_i[i] = outputPointers[i][x] - halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
                                                    fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
           }
@@ -189,7 +212,7 @@ while(Xtrack < nx+2) {
         __syncthreads();
         }
 
-    if( doIflux && (Xindex < nx) ) {
+    if( IAMMAIN && (Xindex < nx) ) {
       prop_i[0] = (prop_i[0] < RHOMIN) ? RHOMIN : prop_i[0]; // enforce min density
 
       w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0] + .5*(b_i[0]*b_i[0] + b_i[1]*b_i[1] + b_i[2]*b_i[2]);

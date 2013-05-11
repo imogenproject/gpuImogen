@@ -92,9 +92,6 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 #define gg1 gammafunc[2]
 #define twomg gammafunc[3]
 #define cs0sq gammafunc[4]
-// Alias this so it makes sense despite the optimizations
-#define PRESSURE Cs
-
 
 __global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx)
 {
@@ -103,7 +100,7 @@ int x = threadIdx.x + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 nx += nx*(blockIdx.x + gridDim.x*blockIdx.y);
 //int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
-double Cs;
+double pressvar;
 double T, bsqhf;
 double rhoinv;
 //double gg1 = gam*(gam-1.0);
@@ -124,17 +121,20 @@ while(x < nx) {
 
 // THIS IS THE NEW CODE
 //  Cs = gm1*(E[x] - T) + twomg*bsqhf;
-  // Calculate internal energy and enforce positivity.
-  Cs = E[x] - T - bsqhf;
-  if(gam*PRESSURE*rhoinv < cs0sq) {
-    E[x] = PRESSURE = T + bsqhf + cs0sq/(gam*rhoinv);
-    PRESSURE -= T; } else { PRESSURE += bsqhf; }
-//  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
-  ptot[x] = gm1*PRESSURE + twomg*bsqhf;
+  // Calculate pressvar as the internal plus magnetic energy density
+  pressvar = E[x] - T - bsqhf;
+  if(gam*pressvar*rhoinv < cs0sq) {
+    E[x] = T + bsqhf + cs0sq/(gam*rhoinv);
+    pressvar = bsqhf + cs0sq/(gam*rhoinv);
+    } else { pressvar += bsqhf; }
+
+  // P = gm1(epsilon + bsq/2) + (2 - (gamma-1))*(bsq/2)
+  ptot[x] = gm1*pressvar + twomg*bsqhf;
 
   // We calculate the freezing speed in the X direction: max of |v|+c_fast
-  Cs = (gg1*(PRESSURE) + (8.0 - gg1)*bsqhf)*rhoinv;
-  Cs = sqrt(Cs) + abs(px[x]*rhoinv);
+  // We double the Alfven contribution
+  pressvar = (gg1*pressvar + (8.0 - gg1)*bsqhf)*rhoinv;
+  pressvar = sqrt(pressvar) + abs(px[x]*rhoinv);
 
 // THIS IS THE ORIGINAL CODE
   // we calculate P* = Pgas + Pmag
@@ -150,7 +150,7 @@ while(x < nx) {
   Cs = sqrt(Cs) + abs(px[x]*rhoinv); */
 
 
-  if(Cs > locBloc[threadIdx.x]) locBloc[threadIdx.x] = Cs;
+  if(pressvar > locBloc[threadIdx.x]) locBloc[threadIdx.x] = pressvar;
 
   x += BLOCKDIM;
   }
@@ -196,6 +196,7 @@ for(x = 8; x < BLOCKDIM; x+= 8) {
 freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
 }
 
+#define PRESSURE Cs
 // cs0sq = gamma rho^(gamma-1))
 __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx)
 {
