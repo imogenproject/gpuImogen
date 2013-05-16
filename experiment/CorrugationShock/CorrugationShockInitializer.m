@@ -176,8 +176,8 @@ classdef CorrugationShockInitializer < Initializer
 
             %--- Initialization ---%
             statics                 = []; % No statics used in this problem
-            obj.dGrid.value         = 1/min(obj.grid(2:3));
-            if obj.grid(3) == 1; obj.dGrid.value = 1/obj.grid(2); end
+            obj.dGrid.value         = .01/min(obj.grid(2:3));
+            if obj.grid(3) == 1; obj.dGrid.value = .01/obj.grid(2); end
             obj.dGrid = obj.dGrid.value * ones(1,3);
             %obj.appendInfo('Grid cell spacing set to %g.',obj.dGrid.value);
             
@@ -214,7 +214,7 @@ classdef CorrugationShockInitializer < Initializer
             TMpost = .5*obj.mass(2)*norm(obj.velocity(:,2))^2 + .5*norm(obj.magnet(:,2))^2;
 
             % Calculate total energy (internal + kinetic + magnetic) 
-            ener              = zeros(obj.grid);
+            ener              = zeros(GIS.pMySize);
             ener(preX,  :, :) = obj.pressure(1)/(obj.gamma - 1) + TMpre; 
             ener(postX, :, :) = obj.pressure(2)/(obj.gamma - 1) + TMpost;
 
@@ -296,10 +296,10 @@ classdef CorrugationShockInitializer < Initializer
 %seedIndices
 %size(perturb)
                 mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb; % Add seed to mass.
-                for i = 1:3; 
+%                for i = 1:3; 
                     % Maintain zero velocity perturbation
-                    mom(i,seedIndices,:,:) = squeeze(mom(i,seedIndices,:,:)) + perturb * obj.velocity(i,1);
-                end
+%                    mom(i,seedIndices,:,:) = squeeze(mom(i,seedIndices,:,:)) + perturb * obj.velocity(i,1);
+%                end
 
             end
         

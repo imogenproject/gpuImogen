@@ -20,7 +20,7 @@ __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, dou
 #define BLOCKDIM 64
 #define MAXPOW   5
 
-__device__ __constant__ double gammafunc[5];
+__device__ __constant__ double gammafunc[6];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
@@ -61,14 +61,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double **freezea = makeGPUDestinationArrays(&fref[0], &plhs[1], 1); // freeze array
 
-  double hostgf[5];
-    hostgf[0] = *mxGetPr(prhs[8]);
-    hostgf[1] = hostgf[0] - 1.0;
-    hostgf[2] = hostgf[0]*hostgf[1];
-    hostgf[3] = 2.0 - hostgf[0];
+  double hostgf[6];
+  double gam = *mxGetPr(prhs[8]);
+    hostgf[0] = gam;
+    hostgf[1] = gam - 1.0;
+    hostgf[2] = gam*(gam-1.0);
+    hostgf[3] = (1.0 - .5*gam);
     hostgf[4] = (*mxGetPr(prhs[10]))*(*mxGetPr(prhs[10])); // min c_s squared ;
+    hostgf[5] = (ALFVEN_FACTOR - .5*gam*(gam-1.0));
   
-  cudaMemcpyToSymbol(gammafunc, &hostgf[0],     5*sizeof(double), 0, cudaMemcpyHostToDevice);
+  cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
 
 
   if(ispurehydro) {
@@ -90,8 +92,9 @@ if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd,
 #define gam gammafunc[0]
 #define gm1 gammafunc[1]
 #define gg1 gammafunc[2]
-#define twomg gammafunc[3]
+#define MHD_PRESS_B gammafunc[3]
 #define cs0sq gammafunc[4]
+#define MHD_CS_B gammafunc[5]
 
 __global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx)
 {
@@ -101,12 +104,8 @@ nx += nx*(blockIdx.x + gridDim.x*blockIdx.y);
 //int addrMax = nx + nx*(blockIdx.x + gridDim.x*blockIdx.y);
 
 double pressvar;
-double T, bsqhf;
+double T, bsquared;
 double rhoinv;
-//double gg1 = gam*(gam-1.0);
-//double gm1 = gam - 1.0;
-//double twomg = 2.0 - gam;
-
 __shared__ double locBloc[BLOCKDIM];
 
 //CsMax = 0.0;
@@ -117,38 +116,24 @@ if(x >= nx) return; // If we get a very low resolution
 while(x < nx) {
   rhoinv = 1.0/rho[x];
   T = .5*rhoinv*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]);
-  bsqhf = .5*(bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x]);
+  bsquared = bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x];
 
-// THIS IS THE NEW CODE
-//  Cs = gm1*(E[x] - T) + twomg*bsqhf;
-  // Calculate pressvar as the internal plus magnetic energy density
-  pressvar = E[x] - T - bsqhf;
-  if(gam*pressvar*rhoinv < cs0sq) {
+  // Calculate internal + magnetic energy
+  pressvar = E[x] - T;
+
+  // Assert minimum thermal soundspeed / temperature
+/*  if(gam*pressvar*rhoinv < cs0sq) {
     E[x] = T + bsqhf + cs0sq/(gam*rhoinv);
-    pressvar = bsqhf + cs0sq/(gam*rhoinv);
-    } else { pressvar += bsqhf; }
+    pressvar = cs0sq/(gam*rhoinv);
+    } */
 
-  // P = gm1(epsilon + bsq/2) + (2 - (gamma-1))*(bsq/2)
-  ptot[x] = gm1*pressvar + twomg*bsqhf;
-
-  // We calculate the freezing speed in the X direction: max of |v|+c_fast
-  // We double the Alfven contribution
-  pressvar = (gg1*pressvar + (8.0 - gg1)*bsqhf)*rhoinv;
-  pressvar = sqrt(pressvar) + abs(px[x]*rhoinv);
-
-// THIS IS THE ORIGINAL CODE
-  // we calculate P* = Pgas + Pmag
-/*
-  Cs = gm1*(E[x] - T) + twomg*bsqhf;
-  if(gam*PRESSURE*rhoinv < cs0sq) PRESSURE = cs0sq/(gam*rhoinv);
-//  if(Cs > 0.0) { ptot[x] = Cs; } else { ptot[x] = 0.0; } // Enforce positive semi-definiteness
-  ptot[x] = PRESSURE;
+  // Calculate gas + magnetic pressure
+  ptot[x] = gm1*pressvar + MHD_PRESS_B*bsquared;
 
   // We calculate the freezing speed in the X direction: max of |v|+c_fast
-  Cs = gg1*(E[x] - T) + (2.0 - gg1)*bsqhf*rhoinv;
-  if(Cs < 0.0) Cs = 0.0;
-  Cs = sqrt(Cs) + abs(px[x]*rhoinv); */
-
+  // MHD_CS_B includes an "alfven factor" to stabilize the code in low-beta situations
+  pressvar = (gg1*pressvar + MHD_CS_B*bsquared)*rhoinv;
+  pressvar = sqrt(abs(pressvar)) + abs(px[x]*rhoinv);
 
   if(pressvar > locBloc[threadIdx.x]) locBloc[threadIdx.x] = pressvar;
 

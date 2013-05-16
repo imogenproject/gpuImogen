@@ -76,7 +76,9 @@ classdef MagneticShockTubeInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, run] = calculateInitialConditions(obj)
+        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+            potentialField = [];
+            selfGravity = [];
         
             %--- Initialization ---%
             statics = StaticsInitializer();

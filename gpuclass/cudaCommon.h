@@ -1,3 +1,5 @@
+#define ALFVEN_FACTOR 2
+
 typedef struct {
         double *fluidIn[5];
         double *fluidOut[5];

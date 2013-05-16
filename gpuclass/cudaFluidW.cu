@@ -36,8 +36,9 @@ __constant__ __device__ double fluidQtys[7];
 #define FLUID_GG1     fluidQtys[2]
 #define FLUID_MINMASS fluidQtys[3]
 #define FLUID_MINEINT fluidQtys[4]
-#define FLUID_TWOMG   fluidQtys[5]
-#define FLUID_TWOMGG1 fluidQtys[6]
+
+#define MHD_PRESS_B   fluidQtys[5]
+#define MHD_CS_B      fluidQtys[6]
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
@@ -89,8 +90,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 // (g-1) e / rho > rho_min^(g-1)
 //             e > rho rho_min^(g-1)/(g-1)
   gamHost[4] = powl(rhomin, gamma-1.0)/(gamma-1.0);
-  gamHost[5] = 2.0-gamma;
-  gamHost[6] = 8.0-(gamma*(gamma-1.0));
+  gamHost[5] = 1.0 - .5*gamma;
+  gamHost[6] = ALFVEN_FACTOR - .5*(gamma-1.0)*gamma;
 // Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root)
 
   cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 7*sizeof(double), 0, cudaMemcpyHostToDevice);
@@ -218,7 +219,7 @@ while(Xtrack < nx+2) {
 
         momhalfsq = .5*momhalfsq/q_i[0]; // calculate kinetic energy density at halfstep
 
-        q_i[4] = .5*(b_i[0]*b_i[0]+b_i[1]*b_i[1]+b_i[2]*b_i[2]); // calculate scalar part of magnetic pressure.
+        q_i[4] = b_i[0]*b_i[0]+b_i[1]*b_i[1]+b_i[2]*b_i[2]; // calculate scalar part of magnetic pressure.
 
         velocity_half = q_i[2] / q_i[0]; // Calculate vx_half = px_half / rho_half 
 
@@ -231,16 +232,17 @@ while(Xtrack < nx+2) {
         //     g P / rho > g rho_min^(g-1) under polytropic EOS
         //g(g-1) e / rho > g rho_min^(g-1)
         //             e > rho rho_min^(g-1)/(g-1) = rho FLUID_MINEINT
-        if((locP - q_i[4]) < q_i[0]*FLUID_MINEINT) {
+/*        if((locP - q_i[4]) < q_i[0]*FLUID_MINEINT) {
           q_i[1] = momhalfsq + q_i[4] + q_i[0]*FLUID_MINEINT; // Assert minimum E = T + B^2/2 + epsilon_min
           locP = q_i[4] + q_i[0]*FLUID_MINEINT;
-          } /* Assert minimum temperature */
+          } */
+ /* Assert minimum temperature */
 
-        outputPointers[5][x] = FLUID_GM1*locP + FLUID_TWOMG*q_i[4]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
+        outputPointers[5][x] = FLUID_GM1*locP + MHD_PRESS_B*q_i[4]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
         outputPointers[1][x] = q_i[1]; /* store total energy: We need to correct this for negativity shortly */
 
         /* calculate local freezing speed = |v_x| + sqrt( g(g-1)*Pgas/rho + B^2/rho) = sqrt(c_thermal^2 + c_alfven^2)*/
-        locP = abs(velocity_half) + sqrt( (FLUID_GG1*locP + FLUID_TWOMGG1*q_i[4])/q_i[0]);
+        locP = abs(velocity_half) + sqrt( abs(FLUID_GG1*locP + MHD_CS_B * q_i[4])/q_i[0]);
         if(locP > freezeSpeed[threadIdx.x]) {
           // Do not update C_f from the edgemost cells, they are wrong.
           if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locP;

@@ -135,10 +135,6 @@ __shared__ double fluxLR[2][BLOCKLENP4];
 __shared__ double fluxDerivA[BLOCKLENP4+1];
 __shared__ double fluxDerivB[BLOCKLENP4+1];
 
-// Our arrays to prevent left/right edge overwriting
-//__shared__ double yourNextLHS[10];
-//__shared__ double finalRHS[10];
-
 // Precompute some information about "special" threads.
 int whoflags = 0;
 if(threadIdx.x < 2)           whoflags += LEFTMOST_FLAG; // Mark which threads form the left most of the block,
@@ -215,11 +211,11 @@ while(Xtrack < nx+2) {
     if( IAMMAIN && (Xindex < nx) ) {
       prop_i[0] = (prop_i[0] < RHOMIN) ? RHOMIN : prop_i[0]; // enforce min density
 
-      w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0] + .5*(b_i[0]*b_i[0] + b_i[1]*b_i[1] + b_i[2]*b_i[2]);
+    /*  w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0] + .5*(b_i[0]*b_i[0] + b_i[1]*b_i[1] + b_i[2]*b_i[2]);
 
       if((prop_i[1] - w_i) < prop_i[0]*MIN_ETHERM) {
         prop_i[1] = prop_i[0]*MIN_ETHERM + w_i;
-        }
+        } */
 
       outputPointers[0][x] = prop_i[0];
       outputPointers[1][x] = prop_i[1];

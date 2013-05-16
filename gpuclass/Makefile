@@ -34,7 +34,10 @@ fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatic
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceAntimach
 	echo "Done building source/sink term kernels"
-  
+
+thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidW cudaFluidTVD
+	echo "Rebuilt pressure/thermo related routines"
+
 parallel: cudaHaloExchange
 	echo "Done building parallel support."
 

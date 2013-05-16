@@ -102,7 +102,7 @@ classdef TimeManager < handle
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
             %           accounting for maximum simulation time.
             obj.dTime = obj.CFL*obj.parent.MINDGRID(gridIndex)/cmax;
-            newTime   = obj.time + obj.dTime;
+            newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
                 obj.dTime = (obj.TIMEMAX - obj.time);
                 newTime   = obj.TIMEMAX;
