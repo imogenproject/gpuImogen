@@ -29,8 +29,10 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
 
     end
 
-    mag(I).updateCellCentered();
-    mag(X).updateCellCentered();
+    for n = 1:3
+        mag(n).updateCellCentered();
+ %       mag(X).updateCellCentered();
+    end
 
 %    cudaHaloExchange(mag(X).cellMag.gputag, [1 2 3], I, GIS.topology, GIS.edgeInterior(:,I));
 %    cudaHaloExchange(mag(X).cellMag.gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));

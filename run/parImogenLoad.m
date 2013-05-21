@@ -48,17 +48,17 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);
-    %try
+    try
         eval(runFile);
-    %catch ME
-    %    ME
-    %    ME.cause
-    %    for n = 1:numel(ME.stack); fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line); end
+    catch ME
+        ME
+        ME.cause
+        for n = 1:numel(ME.stack); fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line); end
 
-    %   fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
+       fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
     %   GPU_ctrl('exit'); mpi_barrier(); mpi_finalize(); % Evacuate the premises with all due haste
     %   rethrow(ME);
-    %end
+    end
 
     GPU_ctrl('exit');
     mpi_barrier();

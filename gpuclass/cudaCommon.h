@@ -1,4 +1,12 @@
-#define ALFVEN_FACTOR 2
+#define ALFVEN_FACTOR 1
+
+// These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
+
+#define PRESS_HD(E, T, gm1fact) ( (gm1fact)*((E)-(T)) )
+#define PRESS_MHD(E, T, bsq, gm1fact, alfact) (  (gm1fact)*((E)-(T)) + (alfact)*(bsq)  )
+#define CSQ_HD(E, T, rho, gg1fact) ( (gg1fact)*((E) - (T)) / (rho) )
+#define CSQ_MHD(E, T, bsq, rhogg1fact, alfact) (  ( (gg1fact)*((E)-(T)) + (alfact)*(bsq) )/(rho)  )
+
 
 typedef struct {
         double *fluidIn[5];

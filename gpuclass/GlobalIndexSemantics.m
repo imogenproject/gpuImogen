@@ -135,7 +135,7 @@ classdef GlobalIndexSemantics < handle
             for j = 1:ndim;
                 q = 1:obj.pMySize(j);
                 % This line degerates to the identity operation if nproc(j) = 1
-                q = q + obj.pMyOffset(j) - 3*(obj.topology.nproc(j) > 1) - 1;
+                q = q + obj.pMyOffset(j) - 3*(obj.topology.nproc(j) > 1);
 
                 % If the edges are periodic, wrap coordinates around
                 if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
