@@ -97,11 +97,7 @@ classdef ImogenArray < handle
         end
 
         function result = get.gputag(obj)
-%            if isa(obj.pArray,'GPU_Type');
                 result = obj.pArray.GPU_MemPtr;
- %           else
-  %              result = [];
-   %         end
         end
 
         function initialArray(obj, array)
@@ -115,16 +111,13 @@ classdef ImogenArray < handle
             end
 
 %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.boundaryData.compIndex) > 0;    obj.applyStatics();     end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end % Enforce static values.
 
         end
 
         function set.array(obj,value)
-        % Sets the data array to the new value and cleans up faded and static cells.
             obj.pArray.array = value;
-
-%            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.boundaryData.compIndex) > 0;    obj.applyStatics();     end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end % Enforce static values.
         end
         
 %___________________________________________________________________________________________________ GS: gridSize

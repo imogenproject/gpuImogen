@@ -383,17 +383,17 @@ classdef Initializer < handle
         function cleanup(obj)
             
             %--- Populate activeSlices structure if nothing was supplied. ---%
-            if all(cell2mat(struct2cell(obj.activeSlices)))
-                slLabels = SaveManager.SLICEFIELDS;
-                [maxVal, maxInd] = max(obj.grid);
-                obj.activeSlices.(slLabels{maxInd}) = true;
-                [minVal, minInd] = min(obj.grid); 
-                midInd = find((1:3 ~= maxInd(1)) & (1:3 ~= minInd(1)));
-                if obj.grid(midInd) > 3
-                    obj.activeSlices.(slLabels{midInd+3}) = true;
-                end
-                if ~isempty(obj.customSave);    obj.activeSlices.cust = true; end
-            end 
+%            if all(cell2mat(struct2cell(obj.activeSlices)))
+%                slLabels = SaveManager.SLICEFIELDS;
+%                [maxVal, maxInd] = max(obj.grid);
+%                obj.activeSlices.(slLabels{maxInd}) = true;
+%               [minVal, minInd] = min(obj.grid); 
+%               midInd = find((1:3 ~= maxInd(1)) & (1:3 ~= minInd(1)));
+%                if obj.grid(midInd) > 3
+%                    obj.activeSlices.(slLabels{midInd+3}) = true;
+%                end
+%                if ~isempty(obj.customSave);    obj.activeSlices.cust = true; end
+%            end 
             
         end
         

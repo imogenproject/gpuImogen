@@ -37,7 +37,6 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
     cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
 
-
     mag(I).applyStatics();
     % This returns the flux array, pre-shifted forward one in the X direction to avoid the shift originally present below
     

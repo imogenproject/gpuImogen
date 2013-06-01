@@ -5,7 +5,9 @@ starterRun();
 
 
 %--- Initialize test ---%
-run               = MagneticShockTubeInitializer([1024 16 1]);
+grid = [1024 16 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+run               = MagneticShockTubeInitializer(grid);
 
 run.alias         = '';
 run.info          = 'Magnetic shock tube test';
@@ -13,6 +15,8 @@ run.notes         = '';
 run.iterMax = 1000;
 
 run.bcMode.x = 'const';
+run.bcMode.y = 'circ';
+run.bcMode.z = 'circ';
 
 %--- Run tests ---%
 if (true) % Primary test
@@ -21,18 +25,20 @@ if (true) % Primary test
     run.yField = true;
     run.zField = false;
     run.direction = MagneticShockTubeInitializer.X;
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
+    IC = run.saveInitialCondsToStructure();
 
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
-    imogen(icfile);
+%    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
+%    IC.mass = mass;
+%    IC.mom = mom;
+%    IC.ener = ener;
+%    IC.magnet = magnet;
+%    IC.statics = statics;
+%    IC.ini = ini;
+%    icfile = [tempname '.mat'];
+
+%    save(icfile, 'IC');
+%    clear IC mass mom ener magnet statics ini run;
+    imogen(IC);
 end
 
 if (false) % Secondary test
@@ -41,18 +47,19 @@ if (false) % Secondary test
     run.yField = false;
     run.zField = true;
     run.direction = MagneticShockTubeInitializer.X;
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
+%    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
+%    IC.mass = mass;
+%    IC.mom = mom;
+%    IC.ener = ener;
+%    IC.magnet = magnet;
+%    IC.statics = statics;
+%    IC.ini = ini;
+%    icfile = [tempname '.mat'];
 
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
-    imogen(icfile);
+%    save(icfile, 'IC');
+%    clear IC mass mom ener magnet statics ini run;
+    IC = run.saveInitialCondsToStructure();
+    imogen(IC);
 end
 
 enderRun();
