@@ -11,6 +11,8 @@ function initializeResultPaths(run, serializedPaths)
     end
    
     mpi_barrier(); % force all units to evaluate to the same paths
+    run.paths.indexPadding = length(num2str(run.time.ITERMAX));
+
     if mpi_amirank0() && (nargin == 1)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
@@ -95,23 +97,20 @@ function initializeResultPaths(run, serializedPaths)
         end
         fprintf('-----------------------------------------------------------------------------------\n');
     end
-    end
-    
-    run.paths.indexPadding = length(num2str(run.time.ITERMAX));        
 
     % Wait until save directory is globally visible
     secspaused = 0;
     while true
-        ready = mpi_allgather(exist(run.paths.save,'dir'));
+        ready = exist(run.paths.save,'dir');
 
-        if ~any(ready ~= 7); break; end
+        if ready == 7; break; end
         pause(1);
         secspaused = secspaused+1;
-    end 
-
+    end
+    mpi_barrier();
     if mpi_amirank0(); fprintf('Waited %is for global results directory visibility\n',secspaused); end
 
-    mpi_barrier();
+    end
 
 end
 
