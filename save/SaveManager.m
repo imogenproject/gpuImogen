@@ -207,22 +207,22 @@ classdef SaveManager < handle
     end
                     
 %__________________________________________________________________________________ updateOverrides
-            function updateOverrides(obj,iteration)
+    function updateOverrides(obj,iteration)
         special = (obj.done || obj.firstSave);
         i       = iteration;
         
-                    if (~isempty(obj.specialSaves1D) && any(~any(obj.specialSaves1D - i, 1)) || special)        
-                            obj.save1DData = true; 
-                    end
+        if (~isempty(obj.specialSaves1D) && any(~any(obj.specialSaves1D - i, 1)) || special)        
+            obj.save1DData = true; 
+        end
                     
-                    if (~isempty(obj.specialSaves2D) && any(~any(obj.specialSaves2D - i, 1)) || special) 
-                            obj.save2DData = true; 
-                    end
+        if (~isempty(obj.specialSaves2D) && any(~any(obj.specialSaves2D - i, 1)) || special) 
+            obj.save2DData = true; 
+        end
                     
-                    if (~isempty(obj.specialSaves3D) && any(~any(obj.specialSaves3D - i, 1)) || special)
-                            obj.save3DData = true; 
-                    end
-            end
+        if (~isempty(obj.specialSaves3D) && any(~any(obj.specialSaves3D - i, 1)) || special)
+            obj.save3DData = true; 
+        end
+    end
                             
 %_____________________________________________________________________________________ getSaveSlice
 % This function returns the sliced data from the input array. If the array is codistributed, the 

@@ -104,7 +104,7 @@ classdef TimeManager < handle
             obj.dTime = obj.CFL*obj.parent.MINDGRID(gridIndex)/cmax;
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
-                obj.dTime = (obj.TIMEMAX - obj.time);
+                obj.dTime = .5*(obj.TIMEMAX - obj.time);
                 newTime   = obj.TIMEMAX;
             end
             obj.time        = newTime;
@@ -288,7 +288,7 @@ classdef TimeManager < handle
                                 obj.history = [obj.history; zeros(obj.ITERMAX-length(obj.history),1)];
             end
             if obj.iteration > 0
-                obj.history(obj.iteration) = obj.dTime;
+                obj.history(obj.iteration) = 2*obj.dTime;
             end
                 end
 

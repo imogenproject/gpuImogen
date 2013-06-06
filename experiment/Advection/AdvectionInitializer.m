@@ -109,7 +109,7 @@ classdef AdvectionInitializer < Initializer
 
             % omega = c_wave k
             % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
-            K     = 2*pi*obj.waveK ./ obj.grid
+            K     = 2*pi*obj.waveK ./ obj.grid;
             B0    = obj.backgroundB;
             phase = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
             
@@ -191,7 +191,7 @@ classdef AdvectionInitializer < Initializer
 
             % forward speed = background speed + wave speed. Time = length / speed
             if abs(wavespeed) < .05*c_s; wavespeed = c_s; end
-            obj.timeMax  = obj.numWavePeriods / abs(wavespeed);
+            obj.timeMax  = obj.numWavePeriods / (abs(wavespeed)*norm(obj.waveK));
 
             if max(abs(obj.backgroundB)) > 0; obj.mode.magnet = true; obj.cfl = .4; obj.pureHydro = 0; else; obj.pureHydro = 1; end
 

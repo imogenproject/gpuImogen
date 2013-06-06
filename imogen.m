@@ -1,5 +1,5 @@
 %function imogen(massDen, momDen, enerDen, magnet, ini, statics)
-function imogen(input, resumeinfo)
+function outdirectory = imogen(input, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
 %
@@ -9,6 +9,7 @@ function imogen(input, resumeinfo)
 %>> IC.magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
 %>> IC.ini         Listing of properties and settings for the run.             struct
 %>> IC.statics     Static arrays with lookup to static values.                 struct
+%<< outdirectory   Path to directory containing results                        string
     if isstruct(input) == 0
         load(input);
         if mpi_amirank0(); disp('Resuming from file'); end
@@ -39,6 +40,7 @@ function imogen(input, resumeinfo)
         initializeResultPaths(run);
     end
 
+    outdirectory = run.paths.save;
     run.save.saveIniSettings(ini);
     run.preliminary();
 
@@ -52,7 +54,7 @@ function imogen(input, resumeinfo)
         % (1) save paths [above]
         % (2) Q(x,t0) from saved files
         origpath=pwd(); cd(run.paths.save);
-        dframe = util_LoadFrameSegment('3D_XYZ',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
+        dframe = util_LoadFrameSegment('2D_XY',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
 
@@ -119,7 +121,7 @@ function imogen(input, resumeinfo)
         run.save.logPrint(sprintf('Simulation resuming at iteration %i.\n',run.time.iteration));
     end
     direction           = [1 -1];
-    
+
     run.save.logPrint('Beginning simulation loop...\n');
     clockA = clock;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
