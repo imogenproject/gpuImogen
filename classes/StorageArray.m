@@ -53,7 +53,7 @@ classdef StorageArray < InitializedArray
         
 %___________________________________________________________________________________________________ cleanup
         function cleanup(obj)
-            obj.pArray.array = [];
+            obj.pArray.clearArray();
         end
         
     end %PUBLIC

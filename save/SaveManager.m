@@ -83,6 +83,8 @@ classdef SaveManager < handle
 % Handles preliminary initialization of the SaveManager after all of the initialization settings 
 % have been set. This function is meant to be called by the ImogenManager only.
     function preliminary(obj)
+
+        obj.firstSave = true;
     
         % Skip if saving is inactive.
         if ~obj.FSAVE 
@@ -115,7 +117,6 @@ classdef SaveManager < handle
             obj.ACTIVE(7) = true;
         end
 
-        obj.firstSave = true;
     end
 
 %_____________________________________________________________________________________ postliminary

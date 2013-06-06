@@ -232,7 +232,7 @@ classdef ImogenArray < handle
             l = [toex 2 3]; l(toex) = 1;
             obj.indexGriddim = obj.indexGriddim(l);
             obj.indexPermute = obj.indexPermute(l);
-            if type == 1; obj.array = cudaArrayRotate(obj.gputag, toex); end
+            if type == 1; cudaArrayRotate2(obj.gputag, toex); obj.pArray.flushTag(); end
         end
 
 %___________________________________________________________________________________________________ applyStatics
@@ -240,7 +240,7 @@ classdef ImogenArray < handle
 % array assignment (set.array).
         function applyStatics(obj)
             if numel(obj.boundaryData.compIndex) > 0
-                cudaStatics(obj.gputag, obj.boundaryData.compIndex.GPU_MemPtr, ...
+                cudaStatics(obj.pArray.GPU_MemPtr, obj.boundaryData.compIndex.GPU_MemPtr, ...
                                         obj.boundaryData.compValue.GPU_MemPtr, ...
                                         obj.boundaryData.compCoeff.GPU_MemPtr, 8, obj.indexPermute, obj.boundaryData.compOffset);
             end

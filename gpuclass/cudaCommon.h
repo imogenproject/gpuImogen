@@ -27,6 +27,7 @@ typedef struct {
 
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
 double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany);
+double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
 
 void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim);
 

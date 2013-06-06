@@ -61,6 +61,7 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.massRatio        = 8;
             obj.mach             = 0.25;
             obj.perturb          = true;
+            obj.pureHydro        = true;
             
             obj.operateOnInput(input);
         end

@@ -81,6 +81,30 @@ return rvals;
 
 }
 
+// Takes the array at prhs[target] and overwrites its gputag with one matching newdims
+// and returns the pointer to the new array
+// You must have previously fetched the original memory pointer or it will be lost
+double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims)
+{
+mxClassID dtype = mxGetClassID(prhs[target]);
+if(dtype != mxINT64_CLASS) mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag.");
+
+
+double *ret;
+cudaError_t fail = cudaMalloc((void **)&ret, newdims[0]*newdims[1]*newdims[2]*sizeof(double));
+if(fail != cudaSuccess) {
+  printf("On array replace: %s\n", cudaGetErrorString(fail));
+  cudaCheckError("In replaceGPUArray: malloc failed and I am sad.");
+  }
+
+int64_t *tag = (int64_t *)mxGetData(prhs[target]);
+tag[0] = (int64_t)ret;
+if(newdims[2] > 1) { tag[1] = 3; } else { if(newdims[1] > 1) { tag[1] = 2; } else { tag[1] = 1; } }
+tag[2] = newdims[0]; tag[3] = newdims[1]; tag[4] = newdims[2];
+
+return ret;
+}
+
 void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim)
 {
 

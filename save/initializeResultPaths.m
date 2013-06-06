@@ -17,8 +17,6 @@ function initializeResultPaths(run, serializedPaths)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
-
-    if (run.save.FSAVE)
         fprintf('\n-----------------------------------------------------------------------------------\n');
             
         %--- RESULTS Directory ---%
@@ -98,19 +96,17 @@ function initializeResultPaths(run, serializedPaths)
         fprintf('-----------------------------------------------------------------------------------\n');
     end
 
-    % Wait until save directory is globally visible
-    secspaused = 0;
-    while true
-        ready = exist(run.paths.save,'dir');
+        % Wait until save directory is globally visible
+        secspaused = 0;
+        while true
+            ready = exist(run.paths.save,'dir');
 
-        if ready == 7; break; end
-        pause(1);
-        secspaused = secspaused+1;
-    end
-    mpi_barrier();
-    if mpi_amirank0(); fprintf('Waited %is for global results directory visibility\n',secspaused); end
-
-    end
+            if ready == 7; break; end
+            pause(1);
+            secspaused = secspaused+1;
+        end
+        mpi_barrier();
+        if mpi_amirank0(); fprintf('Waited %is for global results directory visibility\n',secspaused); end
 
 end
 

@@ -63,6 +63,14 @@ classdef GPU_Type < handle
             result = GPU_Type(obj);
         end
 
+        % Updates matlab-facing properties in event of a replace-in-place function
+        % This hopefully avoids the slowness of the set.array function
+        function flushTag(obj)
+            q = double(obj.GPU_MemPtr);
+            obj.numdims = q(2);
+            obj.asize = q(3:5)';    
+        end
+
         function result = size(obj, dimno)
             if nargin == 1
                 if obj.numdims == 2; result = obj.asize(1:2); else; result = obj.asize; end
@@ -165,7 +173,7 @@ classdef GPU_Type < handle
         function y = Ztranspose(a); y = GPU_Type(cudaArrayRotate(a.GPU_MemPtr,3)); return; end
 
         function clearArray(obj)
-            if obj.allocated== true; GPU_free(obj.GPU_MemPtr); end
+            if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
             obj.GPU_MemPtr = int64([0 0 0 0 0 0]);
             obj.asize = [0 0 0];

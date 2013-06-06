@@ -7,7 +7,7 @@ GEN_OPTS =
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 #NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -g -G
-NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -O2
+NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -O2 -g -G
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -29,7 +29,7 @@ all: base fluids parallel lambda
 base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotate cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceAntimach

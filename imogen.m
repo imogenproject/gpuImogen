@@ -106,7 +106,7 @@ function outdirectory = imogen(input, resumeinfo)
     IC.originalPathStruct = run.paths.serialize();
 
     GIS = GlobalIndexSemantics();
-    save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC');
+    if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
 
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
