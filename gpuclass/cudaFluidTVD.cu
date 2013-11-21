@@ -19,8 +19,24 @@ This is the Cuda Fluid TVD function; It takes a single forward-time step, CFD or
 conserved-transport part of the fluid equations using a total variation diminishing scheme to
 perform a non-oscillatory update.
 
-Requires predicted half-step values from a 1st order upwind scheme.
+The 1D segment of the fluid equations solved is 
+     | rho |         | px                       |
+     | px  |         | vx px + P - bx^2         |
+d/dt | py  | = -d/dx | vx py     - bx by        |
+     | pz  |         | vx pz     - bx bz        |
+     | E   |         | vx (E+P)  - bx (B dot v) |
 
+with auxiliary equations
+  vx = px / rho
+  P  = (gamma-1)e + .5*B^2 = thermal pressure + magnetic pressure
+  e  = E - .5*(p^2)/rho - .5*(B^2)
+(The relation between internal energy e and thermal pressure is theoretically allowed to be far
+more complex than the ideal gas law being used)
+
+The hydro functions solve the same equations with B set to <0,0,0>.
+
+This requires predicted half-step values from a 1st order scheme in order to evaluate fluxes
+and derivatives at t+dt/2.
 */
 
 #define BLOCKLEN 92
@@ -33,7 +49,10 @@ __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double ha
 __global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double halfLambda, int nx);
 
 __device__ void cukern_FluxLimiter_VanLeer(double deriv[2][BLOCKLENP4], double flux[2][BLOCKLENP4], int who);
-__device__ __inline__ double fluxLimiter_Vanleer(double derivL, double derivR);
+
+#define LIMFUNCTION fluxLimiter_minmod
+__device__ __inline__ double fluxLimiter_VanLeer(double derivL, double derivR);
+__device__ __inline__ double fluxLimiter_minmod(double derivL, double derivR);
 
 __constant__ __device__ double *inputPointers[8];
 __constant__ __device__ double *outputPointers[5];
@@ -195,8 +214,8 @@ while(Xtrack < nx+2) {
         __syncthreads();
 
             /* right flux */
-        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
-        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
+        fluxLR[0][threadIdx.x] += LIMFUNCTION(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
+        fluxLR[1][threadIdx.x] += LIMFUNCTION(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
@@ -290,8 +309,8 @@ while(Xtrack < nx+2) {
         __syncthreads();
         
             /* right flux */
-        fluxLR[0][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
-        fluxLR[1][threadIdx.x] += fluxLimiter_Vanleer(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
+        fluxLR[0][threadIdx.x] += LIMFUNCTION(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
+        fluxLR[1][threadIdx.x] += LIMFUNCTION(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]);
         __syncthreads();
 
         /* Step 4 - Perform flux and write to output array */
@@ -327,7 +346,7 @@ while(Xtrack < nx+2) {
 }
 
 
-__device__ double fluxLimiter_Vanleer(double derivL, double derivR)
+__device__ __inline__ double fluxLimiter_VanLeer(double derivL, double derivR)
 {
 double r;
 
@@ -340,4 +359,9 @@ if (isnan(r)) { r = 0.0; }
 return r;
 }
 
+__device__ __inline__ double fluxLimiter_minmod(double derivL, double derivR)
+{
+if(derivL * derivR < 0) return 0.0;
 
+if(fabs(derivL) > fabs(derivR)) { return derivR/2.0; } else { return derivL/2.0; }
+}

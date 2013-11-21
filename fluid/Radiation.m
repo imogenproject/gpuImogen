@@ -14,8 +14,8 @@ classdef Radiation < handle
         coolLength;     % Alternative cooling rate parameter
         initialMaximum; % Initial maximum radiation value used to calculate the     double
                         %   strength coefficient paramter.                          
-        strengthMethod; 
-
+        strengthMethod;
+        setStrength;
         solve;          % Handle to raditaion function for simulation.              @func
     end%PUBLIC
     
@@ -68,6 +68,9 @@ classdef Radiation < handle
                 return
             end
                        
+            if strcmp(obj.strengthMethod, 'preset')
+                obj.strength = obj.setStrength;
+            end
 
             if strcmp(obj.strengthMethod, 'inimax')         
                 unscaledRadiation = GPU_Type(cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, 1));
@@ -103,7 +106,7 @@ fprintf('Radiation strength: %f\n', obj.strength);
 %___________________________________________________________________________________________________ opticallyThinSolver
 % Solver for free radiation.
         function result = opticallyThinSolver(obj, run, mass, mom, ener, mag)
-            cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, obj.strength * run.time.dTime);
+            cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, obj.strength * run.time.dTime*2.0);
         end
         
     end%PUBLIC

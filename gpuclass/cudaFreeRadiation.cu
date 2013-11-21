@@ -38,7 +38,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if(nrhs == 8) { mode = 0; } else if(nrhs == 11) { mode = 1; }
 
   if (( mode < 0 ) || (nlhs > 1))
-     mexErrMsgTxt("Wrong number of arguments. Expected form: rate = cudaFreeGasRadiation(rho, px, py, pz, E, gamma, exponent, strength) or rate = cudaFreeGasRadiation(rho, px, py, pz, E, bx, by , bz, gamma, exponent, strength) or cudaFreeGasRadiation(rho, px, py, pz, E, [B], gamma, exp, strength) to subtract from E directly");
+     mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, gamma, exponent, strength) or rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, gamma, exponent, strength) or cudaFreeGasRadiation(rho, px, py, pz, E, [B], gamma, exp, strength) to subtract from E directly");
 
   // Get GPU array pointers
   double gam       = *mxGetPr(prhs[5+3*mode]);

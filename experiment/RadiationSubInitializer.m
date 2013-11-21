@@ -12,6 +12,7 @@ classdef RadiationSubInitializer < handle
         initialMaximum; % Maximum percentage radiation loss compared to         double (%)
                         %   internal energy for initial conditions. 
         coolLength;
+        setStrength;    % If strength method is 'preset' this simply defines the beta.
         strengthMethod;
     end %PUBLIC
 

@@ -371,6 +371,7 @@ try
    run.fluid.radiation.initialMaximum            = ini.radiation.initialMaximum;
    run.fluid.radiation.coolLength                = ini.radiation.coolLength;
    run.fluid.radiation.strengthMethod            = ini.radiation.strengthMethod;
+   run.fluid.radiation.setStrength               = ini.radiation.setStrength;
     
 catch MERR, loc_initializationError('radiation', MERR);
 end

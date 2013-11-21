@@ -71,7 +71,7 @@ function outdirectory = imogen(input, resumeinfo)
         for i = 1:3;
             mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, getfield(dframe, fieldnames{i}), run, statics);
             if run.pureHydro == 0
-                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(dframe,fieldnames{i}), run, statics);
+                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(dframe,fieldnames{i+3}), run, statics);
             else
                 mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
             end
@@ -100,8 +100,8 @@ function outdirectory = imogen(input, resumeinfo)
     run.potentialField.initialize(IC.potentialField);
 
     %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%
-    IC.mass = []; IC.ener = [];
-    IC.mom = [];  IC.mag  = [];
+    IC.mass = []; IC.ener   = [];
+    IC.mom = [];  IC.magnet = [];
     IC.amResuming = 1;
     IC.originalPathStruct = run.paths.serialize();
 

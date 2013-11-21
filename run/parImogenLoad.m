@@ -36,7 +36,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         mygpu = idx(dump == mpiInfo(2)) - 1;
         [sysStatus sysOutput] = system('hostname');
         fprintf('Rank %i/%i (on host %s) activating GPU number %i\n', context.rank, context.size, sysOutput(1:(end-1)), mygpu);
-%mygpu=mygpu*2;
+mygpu=mygpu*2;
         GPU_ctrl(mygpu);
     else
         fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
@@ -48,20 +48,19 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);
-    try
+%    try
         eval(runFile);
-    catch ME
-        ME
-        ME.cause
-        for n = 1:numel(ME.stack); fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line); end
-
-       fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
+%    catch ME
+%        ME
+%        ME.cause
+%        for n = 1:numel(ME.stack); fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line); end
+%       fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
     %   GPU_ctrl('exit'); mpi_barrier(); mpi_finalize(); % Evacuate the premises with all due haste
     %   rethrow(ME);
-    end
+%    end
 
     GPU_ctrl('exit');
     mpi_barrier();
-    mpi_finalize();
-    exit;
+%    mpi_finalize();
+%    exit;
 end

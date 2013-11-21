@@ -5,12 +5,12 @@
 %--- Initialize Imogen directory ---%
 starterRun();
 
-%--- EDIT ONLY THESE TWO LINES ---%
+%--- EDIT ONLY THESE LINES ---%
 
-ResumeDirectory = '~/Results/May13/OTVortex_5915';
+ResumeDirectory = '~/Results/Nov13/RADHD_B1316_RHD_ms4_ang0_minmod'
 ResumeInfo.itermax = 100000;
-ResumeInfo.timemax = .48;
-ResumeInfo.frame = 4690;
+ResumeInfo.timemax = 999999;
+ResumeInfo.frame = 20000;
 
 %--- Setup GIS and hand Imogen the path and frame number to resume from. ---%
 

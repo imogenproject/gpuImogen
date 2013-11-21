@@ -26,7 +26,7 @@ __constant__ __device__ double devLambda[2];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // At least 2 arguments expected
     // Input and result
-    if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, dt, dx)\n");
+    if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, gamma, m_max)\n");
 
 
     cudaCheckError("entering cudaSourceRotatingFrame");
@@ -35,8 +35,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 4);
 
-    double tau   = *mxGetPr(prhs[5]); // get dt and dx to obey CFL such that .5 a tau^2 << h
-    double gridh = *mxGetPr(prhs[6]);
+    double maxmach = *mxGetPr(prhs[6]); // get dt and dx to obey CFL such that .5 a tau^2 << h
+    double polygamma = *mxGetPr(prhs[5]);
 
     dim3 gridsize, blocksize;
     int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
@@ -46,9 +46,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gridsize.y = arraysize.z;
     gridsize.z = 1;
 
-    double lambda[4];
-    lambda[0] = .1*gridh/(tau);
-    lambda[1] = 10.0/9.0;
+    double lambda[2];
+    lambda[0] = maxmach;
+    lambda[1] = polygamma*(polygamma-1.0);
 
     cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
     cukern_AntiMach<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], arraysize);
@@ -59,11 +59,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 }
 
 /* rho, E, Px, Py, Pz: arraysize-sized arrays */
-
-#define ACCELDT devLambda[0]
+#define M_0sq devLambda[0]
 #define GG1 devLambda[1]
-
-#define M_0 40
 
 __global__ void  cukern_AntiMach(double *rho, double *E, double *px, double *py, double *pz, int3 arraysize)
 {
@@ -86,7 +83,9 @@ double mach;
 
 double dmomentum;
 
+#ifdef DEBUGME
 int stopme = (myz == 40) && (blockIdx.x == 12);
+#endif
 
 for(; myy < ny; myy += BLOCKDIMY) {
 
@@ -96,14 +95,15 @@ for(; myy < ny; myy += BLOCKDIMY) {
   locMom[2] = pz[globaddr];
   locEner   = E[globaddr];
  
-  // calculate mach = |v| / c_s = (sqrt(px^2+py^2+pz^2)/rho) / sqrt(gamma(gamma-1)(E-T)/rho)
+  // calculate local momentum density
   momsq = locMom[0]*locMom[0]+locMom[1]*locMom[1]+locMom[2]*locMom[2];
 
-  // mach squared
+  // mach squared = v^2 / c_s^2 = p^2 / [rho (gg1 (E - .5 p^2 / rho) ) ]
+  //                            = p^2 / [ gg1 ( rho E - .5 p^2) ]
   mach = momsq/(GG1*(locRho*locEner-.5*momsq));
 
-  if(mach > M_0*M_0) { 
-    mach = sqrt(mach/(M_0*M_0)) - 1; // Calculate mach-hat - 1
+  if(mach > M_0sq) { 
+    mach = sqrt(mach/M_0sq) - 1; // Calculate mach-hat - 1 as our braking parameter
     // calculate rho * accel * dt (= dmomentum) * [ vector(momentum) * (ms/m0-1)^2 / |momentum| ]
     dmomentum = 1.0/(1.0 + mach*mach);
 

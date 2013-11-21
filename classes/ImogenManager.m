@@ -119,7 +119,6 @@ classdef ImogenManager < handle
 %___________________________________________________________________________________________________ preliminary
 % Function to be called after initialization is complete but before the run has begun.
         function preliminary(obj)
-            
             %--- Preliminary setup for children managers ---%
             obj.save.preliminary();
             obj.image.preliminary();

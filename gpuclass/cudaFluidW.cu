@@ -16,8 +16,24 @@
 
 /* THIS FUNCTION
 
-This function calculates a single half-step of the conserved transport part of the fluid equations
-(CFD or MHD) which is used as the predictor input to the matching TVD function.
+This function calculates a first order accurate half-step of the conserved transport part of the 
+fluid equations (CFD or MHD) which is used as the predictor input to the matching TVD function.
+
+The 1D segment of the fluid equations solved is 
+     | rho |         | px                       |
+     | px  |         | vx px + P - bx^2         |
+d/dt | py  | = -d/dx | vx py     - bx by        |
+     | pz  |         | vx pz     - bx bz        |
+     | E   |         | vx (E+P)  - bx (B dot v) |
+
+with auxiliary equations
+  vx = px / rho
+  P  = (gamma-1)e + .5*B^2 = thermal pressure + magnetic pressure
+  e  = E - .5*(p^2)/rho - .5*(B^2)
+(The relation between internal energy e and thermal pressure is theoretically allowed to be far
+more complex than the ideal gas law being used)
+
+The hydro functions solve the same equations with B set to <0,0,0>.
 
 */
 
