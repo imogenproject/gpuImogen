@@ -45,7 +45,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
 
-  int64_t *oldref = (int64_t *)mxGetData(prhs[0]);
+  int64_t oldref[5];
+  arrayMetadataToTag(&amd, &oldref[0]);
   int64_t newref[5];
 
   int indExchange = (int)*mxGetPr(prhs[1]);

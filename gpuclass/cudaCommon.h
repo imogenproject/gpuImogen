@@ -25,8 +25,11 @@ typedef struct {
     int numel;
     } ArrayMetadata;
 
+void arrayMetadataToTag(ArrayMetadata *meta, int64_t *tag); 
+void getTagFromGPUType(const mxArray *gputype, int64_t *tag);
+
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
-double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany);
+double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany);
 double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
 
 void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim);
@@ -38,6 +41,25 @@ const char *errorName(cudaError_t E);
 void printdim3(char *name, dim3 dim);
 void printgputag(char *name, int64_t *tag);
 
+__device__ __inline__ double fluxLimiter_VanLeer(double derivL, double derivR)
+{
+double r;
+
+r = 1.0 * derivL * derivR;
+if(r < 0.0) { r = 0.0; }
+
+r = r / ( derivL + derivR);
+if (isnan(r)) { r = 0.0; }
+
+return r;
+}
+
+__device__ __inline__ double fluxLimiter_minmod(double derivL, double derivR)
+{
+if(derivL * derivR < 0) return 0.0;
+
+if(fabs(derivL) > fabs(derivR)) { return derivR/2.0; } else { return derivL/2.0; }
+}
 
 #define FINITEDIFFX_PREAMBLE \
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\

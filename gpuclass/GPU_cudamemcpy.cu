@@ -53,16 +53,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     // Copy an input gpu array back to cpu if D2D is not specified by a second argument.
     if(arg1isml == 0) {
-      int64_t *gputag = (int64_t *)mxGetData(prhs[0]);
+      ArrayMetadata amd;
+      double **gpuarray = getGPUSourcePointers(prhs, &amd, 0, 0); 
       mwSize odims[3];
       int j;
-      for(j = 0; j < gputag[1]; j++) { odims[j] = (mwSize)gputag[j+2]; }
-      plhs[0] = mxCreateNumericArray((int)gputag[1], odims, mxDOUBLE_CLASS, mxREAL);
+      for(j = 0; j < amd.ndims; j++) { odims[j] = amd.dim[j]; }
+      plhs[0] = mxCreateNumericArray(amd.ndims, odims, mxDOUBLE_CLASS, mxREAL);
       
-      double *src = (double *)gputag[0];
+      double *src = gpuarray[0];
       double *dst = mxGetPr(plhs[0]);
 
-      cudaError_t fail = cudaMemcpy(dst, src, gputag[2]*gputag[3]*gputag[4]*sizeof(double), cudaMemcpyDeviceToHost);
+      cudaError_t fail = cudaMemcpy(dst, src, amd.numel*sizeof(double), cudaMemcpyDeviceToHost);
       if(fail != cudaSuccess) mexErrMsgTxt("GPU_cudamemcpy: D2H, Copy to host failed.");
   
       return;
@@ -71,8 +72,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if(arg1isml == 0) {
       mwSize dout[2]; dout[0] = 5; dout[1] = 1;
       plhs[0] = mxCreateNumericArray(2, dout, mxINT64_CLASS, mxREAL);
-      int64_t *srctag = (int64_t *)mxGetData(prhs[0]);
-      int64_t *dsttag = (int64_t *)mxGetData(plhs[0]);
+      int64_t srctag[5]; getTagFromGPUType(prhs[0], &srctag[0]);
+      int64_t dsttag[5]; getTagFromGPUType(plhs[0], &srctag[0]);
 
       int j;
       for(j = 1; j < 5; j++) { dsttag[j] = srctag[j]; }

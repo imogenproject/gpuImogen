@@ -53,7 +53,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 //printf("%i %i %i %i %i %i\n", blocksize.x, blocksize.y, blocksize.z, gridsize.x, gridsize.y, gridsize.z);
     switch(operation) {
       case OP_SOUNDSPEED:       cukern_Soundspeed<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], gam, amd.numel); break;
@@ -68,7 +68,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 
     cukern_MagneticPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], destPtr[0], amd.numel);
     free(destPtr); free(srcs);
@@ -80,7 +80,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 
     cukern_TotalAndSound<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], destPtr[1], gam, amd.numel);
     free(destPtr); free(srcs);
@@ -91,7 +91,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 5);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 5);
 
     cukern_CalcWArrays<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], destPtr[0], destPtr[1], destPtr[2], destPtr[3], destPtr[4], dir, amd.numel);
     free(destPtr); free(srcs);
@@ -102,7 +102,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 
     cukern_PerformFlux<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], destPtr[0], lambda, amd.numel);
     free(destPtr); free(srcs);
@@ -112,7 +112,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 2);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 2);
 
     cukern_SeperateLRFlux<<<gridsize, blocksize>>>(srcs[0], srcs[1], destPtr[0], destPtr[1], amd.numel);
     free(destPtr); free(srcs);

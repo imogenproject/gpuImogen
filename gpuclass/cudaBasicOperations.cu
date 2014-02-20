@@ -85,11 +85,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   dim3 blocksize; blocksize.x = BLEN; blocksize.y = blocksize.z = 1;
   dim3 gridsize;
   ArrayMetadata amd;
+  int64_t *tagref;
 
   if((nlhs == 1) && (nrhs == 2)) {
     // a = f(b) operators
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-    double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
+    double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
 
     gridsize = setLaunchParams(&amd.dim[0]);
 
@@ -129,20 +130,20 @@ cudaCheckError("Entering cudaBasicOperations");
     if((mxGetClassID(prhs[0]) == mxINT64_CLASS) && (mxGetClassID(prhs[1]) == mxDOUBLE_CLASS)) {
       n = *mxGetPr(prhs[1]);
       srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-      dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
+      dest = makeGPUDestinationArrays(&amd, plhs, 1);
       optype = 1;
       }
 
     if((mxGetClassID(prhs[0]) == mxDOUBLE_CLASS) && (mxGetClassID(prhs[1]) == mxINT64_CLASS)) {
       n = *mxGetPr(prhs[0]);
       srcs = getGPUSourcePointers(prhs, &amd, 1,1);
-      dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+      dest = makeGPUDestinationArrays(&amd, plhs, 1);
       optype = 2;
       }
 
     if((mxGetClassID(prhs[0]) == mxINT64_CLASS) && (mxGetClassID(prhs[1]) == mxINT64_CLASS)) {
       srcs = getGPUSourcePointers(prhs, &amd, 0, 1);
-      dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
+      dest = makeGPUDestinationArrays(&amd, plhs, 1);
       optype = 3;
       }
 

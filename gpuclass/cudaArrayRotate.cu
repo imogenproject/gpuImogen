@@ -45,7 +45,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
 
-  int64_t *oldref = (int64_t *)mxGetData(prhs[0]);
+  int64_t oldref[5];
+  arrayMetadataToTag(&amd, &oldref[0]);
   int64_t newref[5];
 
   int indExchange = (int)*mxGetPr(prhs[1]);
@@ -58,10 +59,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        newref[0] = 0; newref[1] = oldref[1];
-        newref[2] = oldref[3]; newref[3] = oldref[2]; newref[4] = oldref[4];
+        ArrayMetadata newAMD = amd;
+        newAMD.dim[1] = amd.dim[0];
+        newAMD.dim[0] = amd.dim[1];
+        double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
 
-        double **destPtr = makeGPUDestinationArrays(newref, plhs, 1);
         cukern_ArrayExchangeY<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], amd.dim[2]);
         }
       if(indExchange == 3) {
@@ -70,10 +72,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        newref[0] = 0; newref[1] = oldref[1];
-        newref[2] = oldref[4]; newref[3] = oldref[3]; newref[4] = oldref[2];
+        ArrayMetadata newAMD = amd;
+        newAMD.dim[0] = amd.dim[2];
+        newAMD.dim[2] = amd.dim[0];
+        double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
 
-        double **destPtr = makeGPUDestinationArrays(newref, plhs, 1);
         cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], amd.dim[2]);
         }
       break;
@@ -83,10 +86,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
       blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-      newref[0] = 0; newref[1] = oldref[1];
-      newref[2] = oldref[3]; newref[3] = oldref[2]; newref[4] = oldref[4];
-
-      double **destPtr = makeGPUDestinationArrays(newref, plhs, 1);
+      ArrayMetadata newAMD = amd;
+      newAMD.dim[0] = amd.dim[1];
+      newAMD.dim[1] = amd.dim[0];
+      double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
 
       cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1]);
 

@@ -49,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     gridsize.x = BLOCKDIM;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
     double gg1 = gam*(gam-1);
 
     double hostP[6];

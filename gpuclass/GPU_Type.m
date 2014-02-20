@@ -42,13 +42,13 @@ classdef GPU_Type < handle
         end % Constructor
 
         function delete(obj)
-            if(obj.allocated == true) GPU_free(obj.GPU_MemPtr); end
+            if(obj.allocated == true) GPU_free(obj); end
         end % Destructor
 
         function set.array(obj, arrin)
             % Goofus doesn't care if he leaks memory
             % Gallant always cleans up after himself
-            if obj.allocated == true; GPU_free(obj.GPU_MemPtr); obj.allocated = false; end
+            if obj.allocated == true; GPU_free(obj); obj.allocated = false; end
             obj.handleDatain(arrin);
 
         end

@@ -14,6 +14,57 @@
 
 #include "cudaCommon.h"
 
+/* Helper function;
+   If it's passed a 5x1 mxINT64 it passes through,
+   If it's passed a class with classname GPU_Type it returns the GPU_MemPtr property's array */
+void getTagFromGPUType(const mxArray *gputype, int64_t *rettag)
+{
+mxClassID dtype = mxGetClassID(gputype);
+
+/* Handle gpu tags straight off */
+if(dtype == mxINT64_CLASS) {
+  int64_t *x = (int64_t *)mxGetData(gputype);
+  int j;
+  for(j = 0; j < 5; j++) rettag[j] = x[j];
+  return;
+  }
+
+mxArray *tag;
+
+const char *cname = mxGetClassName(gputype);
+
+if(strcmp(cname, "GPU_Type") == 0) {
+  tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
+  } else {
+  tag = mxGetProperty(gputype, 0, "gputag");
+  }
+
+if(tag == NULL) {
+  mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag, GPU_Type class, or Imogen array");
+  }
+
+int64_t *t = (int64_t *)mxGetData(tag);
+int j; for(j = 0; j < 5; j++) rettag[j] = t[j]; 
+
+}
+
+void arrayMetadataToTag(ArrayMetadata *meta, int64_t *tag)
+{
+if(meta == NULL) {
+  mexErrMsgTxt("arrayMetadataToTag: Fatal: meta was null");
+  }
+if(tag == NULL) {
+  mexErrMsgTxt("arrayMetadataToTag: Fatal: tag was null");
+  }
+
+/* tag[0] = ...; */
+tag[1] = meta->ndims;
+tag[2] = meta->dim[0];
+tag[3] = meta->dim[1];
+tag[4] = meta->dim[2];
+
+return;
+}
 
 /* Given the RHS, an array to return array size, and the set of array indexes to take *s from */
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg)
@@ -22,53 +73,46 @@ double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, 
   double **gpuPointers = (double **)malloc((1+toarg-fromarg) * sizeof(double *));
   int iter;
 
-  mxClassID dtype;
+  int64_t tag[5]; getTagFromGPUType(prhs[fromarg], &tag[0]);
+/*  printf("tag: %li %li %li %li %li\n", tag[0], tag[1], tag[2], tag[3], tag[4]);*/
 
-  dtype = mxGetClassID(prhs[fromarg]);
-  if(dtype != mxINT64_CLASS) mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag.");
-
-  int64_t *dims = (int64_t *)mxGetData(prhs[fromarg]);
-  for(iter = 0; iter < 3; iter++) { metaReturn->dim[iter] = (int)dims[2+iter]; } // copy metadata out of first gpu*
+  for(iter = 0; iter < 3; iter++) { metaReturn->dim[iter] = (int)tag[2+iter]; } // copy metadata out of first gpu*
   metaReturn->numel = metaReturn->dim[0]*metaReturn->dim[1]*metaReturn->dim[2];
-  metaReturn->ndims = dims[1];
+  metaReturn->ndims = tag[1];
 
   for(iter = fromarg; iter <= toarg; iter++) {
-     dtype = mxGetClassID(prhs[iter]);
-    if(dtype != mxINT64_CLASS) {
-      printf("For argument %i\n",iter);
-      mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag.");
-      }
-
-    dims = (int64_t *)mxGetData(prhs[iter]);
-    gpuPointers[iter-fromarg] = (double *)dims[0];
+    getTagFromGPUType(prhs[iter], &tag[0]);
+    gpuPointers[iter-fromarg] = (double *)tag[0];
   }
 
 return gpuPointers;
 }
 
 /* Creates destination array that the kernels write to; Returns the GPU memory pointer, and assigns the LHS it's passed */
-double **makeGPUDestinationArrays(int64_t *reference, mxArray *retArray[], int howmany)
+double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany)
 {
 
 double **rvals = (double **)malloc(howmany*sizeof(double *));
+
 int i;
 mwSize dims[2]; dims[0] = 5; dims[1] = 1;
 
 int64_t *rv; size_t numel;
 
-numel = reference[2]*reference[3]*reference[4];
-
 for(i = 0; i < howmany; i++) {
   retArray[i] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
   rv = (int64_t *)mxGetData(retArray[i]);
 
-  cudaError_t fail = cudaMalloc((void **)&rv[0], numel*sizeof(double));
+  cudaError_t fail = cudaMalloc((void **)&rv[0], amdRef->numel*sizeof(double));
   if(fail != cudaSuccess) {
     printf("On array %i/%i: %s\n", i+1, howmany, cudaGetErrorString(fail));
     cudaCheckError("In makeGPUDestinationArrays: malloc failed and I am sad.");
     }
 
-  int q; for(q = 1; q < 5; q++) rv[q] = reference[q];
+  rv[1] = amdRef->ndims;
+  rv[2] = amdRef->dim[0];
+  rv[3] = amdRef->dim[1];
+  rv[4] = amdRef->dim[2];
   rvals[i] = (double *)rv[0];
   }
 
@@ -221,3 +265,4 @@ NOM(cudaErrorStartupFailure)
 // ... NOM, ASSHOLE!
 return NULL;
 }
+

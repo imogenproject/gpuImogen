@@ -64,7 +64,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);
-  double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]),  plhs, 6);
+  double **dest = makeGPUDestinationArrays(&amd,  plhs, 6);
 
   // Establish launch dimensions & a few other parameters
   int fluxDirection = 1;

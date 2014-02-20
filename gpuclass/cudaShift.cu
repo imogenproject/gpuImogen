@@ -58,7 +58,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gridsize.z = 1;
     arrsize.x = amd.dim[0]; arrsize.y = amd.dim[1]; arrsize.z = amd.dim[2];
 
-    destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
     switch(shiftType) {
         case CUDA_CIRC: cukern_circshift3D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], arrsize, shift); break;
         case CUDA_CONST: cukern_constshift3D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], arrsize, shift); break;
@@ -71,7 +71,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gridsize.y = amd.dim[1] / BLOCKDIMENSION_2D; if(gridsize.y * BLOCKDIMENSION_2D < amd.dim[1]) gridsize.y++;
     gridsize.z = 1; blocksize.z = 1;
 
-    destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
     switch(shiftType) {
         case CUDA_CIRC: cukern_circshift2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], shift.x, shift.y); break;
         case CUDA_CONST: cukern_circshift2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], shift.x, shift.y); break;
@@ -84,7 +84,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     gridsize.y = 1; blocksize.y = 1;
     gridsize.z = 1; blocksize.z = 1;
 
-    destPtr = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[1]), plhs, 1);
+    destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
     switch(shiftType) {
         case CUDA_CIRC: cukern_circshift1D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], shift.x); break;
         case CUDA_CONST: cukern_constshift1D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], shift.x); break;

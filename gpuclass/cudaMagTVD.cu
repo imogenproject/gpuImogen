@@ -25,6 +25,8 @@ __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, doubl
 #define BLOCKLEN 128
 #define BLOCKLENP4 132
 
+#define LIMITERFUNC fluxLimiter_VanLeer
+
 __device__ void cukern_FluxLimiter_VanLeer_x(double deriv[2][BLOCKLENP4], double flux[BLOCKLENP4]);
 __device__ void cukern_FluxLimiter_VanLeer_yz(double deriv[2][BLOCKDIMB][BLOCKDIMA], double flux[BLOCKDIMB][BLOCKDIMA]);
 
@@ -38,7 +40,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Get source array info and create destination arrays
     ArrayMetadata amd;
     double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
-    double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
+    double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
 
     // Establish launch dimensions & a few other parameters
     int fluxDirection = (int)*mxGetPr(prhs[5]);
@@ -141,7 +143,7 @@ addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
-double derivRatio, locFlux;
+double locFlux;
 int locVF;
 
 /* We step through the array, one XY plane at a time */
@@ -166,14 +168,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     // We're finished with velocityFlow, reuse to store the flux which we're about to limit
     __syncthreads();
 
-    // Use the van Leer limiter
-    derivRatio = derivL[tileAddr] * derivR[tileAddr];
-    if(derivRatio < 0) derivRatio = 0;
-
-    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
-    if(isnan(derivRatio)) derivRatio = 0.0;
-
-    flux[tileAddr] = locFlux + derivRatio;
+    flux[tileAddr] = locFlux + LIMITERFUNC(derivL[tileAddr]/2.0,derivR[tileAddr]/2.0);
 
     __syncthreads();
 
@@ -251,7 +246,7 @@ FINITEDIFFY_PREAMBLE
 //int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
-double derivRatio, locFlux;
+double locFlux;
 int locVF;
 
 /* We step through the array, one XY plane at a time */
@@ -276,14 +271,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     // We're finished with velocityFlow, reuse to store the flux which we're about to limit
     __syncthreads();
 
-    // Use the van Leer limiter
-    derivRatio = derivL[tileAddr] * derivR[tileAddr];
-    if(derivRatio < 0) derivRatio = 0;
-
-    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
-    if(isnan(derivRatio)) derivRatio = 0.0;
-
-    flux[tileAddr] = locFlux + derivRatio;
+    flux[tileAddr] = locFlux + LIMITERFUNC(derivL[tileAddr]/2.0,derivR[tileAddr]/2.0);
 
     __syncthreads();
 
@@ -359,7 +347,7 @@ addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
-double derivRatio, locFlux;
+double locFlux;
 int locVF;
 
 /* We step through the array, one XY plane at a time */
@@ -384,14 +372,7 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     // We're finished with velocityFlow, reuse to store the flux which we're about to limit
     __syncthreads();
 
-    // Use the van Leer limiter
-    derivRatio = derivL[tileAddr] * derivR[tileAddr];
-    if(derivRatio < 0) derivRatio = 0;
-
-    derivRatio /= (derivL[tileAddr] + derivR[tileAddr]);
-    if(isnan(derivRatio)) derivRatio = 0.0;
-
-    flux[tileAddr] = locFlux + derivRatio;
+    flux[tileAddr] = locFlux + LIMITERFUNC(derivL[tileAddr]/2.0,derivR[tileAddr]/2.0);
 
     __syncthreads();
 

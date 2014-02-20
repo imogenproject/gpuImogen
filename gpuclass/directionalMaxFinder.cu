@@ -41,7 +41,7 @@ switch(nrhs) {
   case 3: {
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);
 
-  double **dest = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1);
+  double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
 
   dim3 blocksize, gridsize, dims;
 

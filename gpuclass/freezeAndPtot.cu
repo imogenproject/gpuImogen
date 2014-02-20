@@ -49,17 +49,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   gridsize.x = arraySize.y;
   gridsize.y = arraySize.z;
 
-  double **ptot = makeGPUDestinationArrays((int64_t *)mxGetData(prhs[0]), plhs, 1); // ptotal array
+  int64_t oldref[5];
+  arrayMetadataToTag(&amd, &oldref[0]);
+  double **ptot = makeGPUDestinationArrays(&amd, plhs, 1); // ptotal array
 
-  int64_t *oldref = (int64_t *)mxGetData(prhs[0]); 
-  int64_t fref[5];
-  fref[0] = 0;
-  fref[1] = oldref[1] - 1;
-  fref[2] = arraySize.y;
-  fref[3] = arraySize.z;
-  fref[4] = 1;
+  ArrayMetadata cfmeta = amd;
+  cfmeta.ndims--;
+  cfmeta.dim[0] = arraySize.y;
+  cfmeta.dim[1] = arraySize.z;
+  cfmeta.dim[2] = 1;
 
-  double **freezea = makeGPUDestinationArrays(&fref[0], &plhs[1], 1); // freeze array
+  double **freezea = makeGPUDestinationArrays(&cfmeta, &plhs[1], 1); // freeze array
 
   double hostgf[6];
   double gam = *mxGetPr(prhs[8]);

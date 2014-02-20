@@ -16,17 +16,18 @@
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // wrapper for cudaFree().
-  if((nlhs != 0) || (nrhs != 1)) mexErrMsgTxt("GPU_free: syntax is GPU_free(GPU_MemPtr object)");
+  if((nlhs != 0) || (nrhs != 1)) mexErrMsgTxt("GPU_free: syntax is GPU_free(GPU_Type or gpu tag)");
 
-  if(mxGetClassID(prhs[0]) != mxINT64_CLASS) mexErrMsgTxt("GPU_free: pass a not-gpupointer");
+//  if(mxGetClassID(prhs[0]) != mxINT64_CLASS) mexErrMsgTxt("GPU_free: passed a not-gpupointer");
 
-  int64_t *t = (int64_t *)mxGetData(prhs[0]);
-
-  double *d = (double *)t[0];
+  ArrayMetadata amd;
+  double **a = getGPUSourcePointers(prhs, &amd, 0, 0);
 
   cudaCheckError("Before GPU_free()");
-  cudaError_t result = cudaFree(d);
+  cudaError_t result = cudaFree(a[0]);
   cudaCheckError("After GPU_free()");
+
+  free(a);
 
   return;
 }
