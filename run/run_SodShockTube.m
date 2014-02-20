@@ -3,18 +3,21 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
+grid = [1024 16 1];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
+
 %--- Initialize test ---%
-run             = SodShockTubeInitializer([512 16 1]);
+run             = SodShockTubeInitializer(grid);
 run.direction   = SodShockTubeInitializer.X;
 run.shockAngle  = 0;
-run.iterMax     = 1000;
+run.iterMax     = 5000;
 run.timeMax     = 0.15;
 
 run.alias       = '';
 run.info        = 'Sod shock tube test.';
 run.notes       = 'Simple axis aligned shock tube test';
 
-run.ppSave.dim2 = 1;
+run.ppSave.dim2 = 5;
 
 %--- Run tests ---%
 if (true)

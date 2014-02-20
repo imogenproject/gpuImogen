@@ -11,8 +11,6 @@ run.alias   = '';
 run.info    = 'Sedov-Taylor blast wave test.';
 run.notes   = 'Just a test...';
 
-
-
 %--- Run tests ---%
 if (true)
     icfile = run.saveInitialCondsToFile();
