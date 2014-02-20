@@ -17,8 +17,8 @@ function result = sodShock_timeEvolvedDataComparison(tubeLength)
         time                = item.time.time;
         sorting(index, :)   = [index, time];
         s                   = SodShockSolution(length(item.mass), time);
-        mass(:, index)      = abs(s.mass' - item.mass)./s.mass';
-        velocity(:, index)  = abs(abs(s.velocity' - item.momX./item.mass)./s.velocity');
+        mass(:, index)      = abs(s.mass' - item.mass(:,1))./s.mass';
+        velocity(:, index)  = abs(abs(s.velocity' - item.momX(:,1)./item.mass(:,1))./s.velocity');
     end
 
     result.mass     = zeros(size(mass));

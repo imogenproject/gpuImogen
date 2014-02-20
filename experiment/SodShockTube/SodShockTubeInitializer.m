@@ -55,10 +55,12 @@ classdef SodShockTubeInitializer < Initializer
             obj.direction        = 'X';
             
             obj.bcMode.x         = ENUM.BCMODE_CONST;
-            obj.bcMode.y         = ENUM.BCMODE_CONST;
-            obj.bcMode.z         = ENUM.BCMODE_CONST;
+            obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             
             obj.operateOnInput(input, [1024, 4, 4]);
+
+            obj.pureHydro = 1;
         end
         
         
