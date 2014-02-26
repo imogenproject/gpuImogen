@@ -24,7 +24,7 @@ __constant__ __device__ double radparam[5];
 #define STRENGTH radparam[1]
 #define EXPONENT radparam[2]
 #define TWO_MEXPONENT radparam[3]
-#define PFLOOR radparam[4]
+#define TFLOOR radparam[4]
 
 
 #define BLOCKDIM 256
@@ -32,12 +32,13 @@ __constant__ __device__ double radparam[5];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if ((nrhs != 9) || (nlhs > 1))
-     mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta 0 isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt isPureHydro]\n");
+     mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 
   double gam       = (mxGetPr(prhs[8]))[0];
   double exponent  = (mxGetPr(prhs[8]))[1];
   double strength  = (mxGetPr(prhs[8]))[2];
-  int isHydro   = ((int)(mxGetPr(prhs[8]))[3]) != 0;
+  double minTemp   = (mxGetPr(prhs[8]))[3];
+  int isHydro= ((int)(mxGetPr(prhs[8]))[4]) != 0;
 
   ArrayMetadata amd;
   double **arrays = getGPUSourcePointers(prhs, &amd, 0, 4);
@@ -53,7 +54,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   hostRP[1] = strength;
   hostRP[2] = exponent;
   hostRP[3] = 2.0 - exponent;
-  hostRP[4] = 1.0; // pressure floor = 1.0
+  hostRP[4] = minTemp;
   cudaMemcpyToSymbol(radparam, hostRP, 5*sizeof(double), 0, cudaMemcpyHostToDevice);
 
   switch(isHydro + 2*nlhs) {
@@ -82,12 +83,15 @@ __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, d
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P; double dE;
+double P; double dE; double den;
 
 while(x < numel) {
-  P = GAMMA_M1*(E[x] - (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/(2*rho[x])); // gas pressure
-  dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
-  if(P - (GAMMA_M1*dE) < PFLOOR) { E[x] -= (P-PFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
+  den = rho[x];
+  P = GAMMA_M1*(E[x] - (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/(2*den)); // gas pressure
+  dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
+
+  // Clamp to minimum temperature
+  if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
 
   x += BLOCKDIM*GRIDDIM;
   }
@@ -98,13 +102,14 @@ __global__ void cukern_FreeMHDRadiation(double *rho, double *px, double *py, dou
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P;
-double dE;
+double P, dE, den;
+
 while(x < numel) {
-  P = GAMMA_M1*(E[x] - (  (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/rho[x] +\
+  den = rho[x];
+  P = GAMMA_M1*(E[x] - (  (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/den +\
                            (bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]))/2.0); // gas pressure
   dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
-  if(P - (GAMMA_M1 * dE) < PFLOOR) { E[x] -= (P-PFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
+  if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
 
   x += BLOCKDIM*GRIDDIM;
   }

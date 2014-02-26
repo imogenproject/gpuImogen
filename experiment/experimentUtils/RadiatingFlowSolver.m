@@ -17,6 +17,7 @@ classdef RadiatingFlowSolver < handle
         px; % Conserved quantity, = rho0 vx0
         fx; % Conserved quantity, = rho0 vx0^2 + P0
         fy; % Conserved quantity, = rho0 vy0 (~vy0 constant)
+        vxTerminal; %velocity at which integration ends
 
         isHydro;
         ABHistory; % Previous values of vx' used by the AB integrator
@@ -25,16 +26,17 @@ classdef RadiatingFlowSolver < handle
     properties (SetAccess = private, GetAccess = public)
         integErrorFlag;
         flowSolution;
+        Tcutoff;
     end
 
     methods (Access = public)
         % Class constructor
-        function self = RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta)
+        function self = RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta, Tmin)
 % RadiatingFlowSolver class
 % RFS(rho, vx, vy, bx, by, P, gamma, beta, theta) sets up to solve a radiating flow's equilibrium 
 % with the given initial conditions.
-            if(nargin < 9)
-               disp('Require:  RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta)');
+            if(nargin < 10)
+               disp('Require:  RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta, Tcutoff)');
             end
             self.rho0 = rho;
             self.vx0 = vx;
@@ -49,20 +51,22 @@ classdef RadiatingFlowSolver < handle
             self.gamma = gamma;
             self.beta = beta;
             self.theta = theta; 
+            self.Tcutoff = Tmin;
+            self.vxTerminal = 0;
 
             self.px = self.vx0 * self.rho0;
-            self.fx = self.px*self.vx0 + self.Pgas0 - bx*bx/2;
+            self.fx = self.px*self.vx0 + self.Pgas0 +(by^2-bx^2)/2;
             self.fy = rho*vx*vy-bx*by;
 
-            self.numericalSetup(1,1)
+            self.numericalSetup(1,1);
             self.integErrorFlag = 0;
         end
 
         % Solvers for primitives based on conserved quantities
         function x = rho(self, vx);    x = self.px ./ vx;        return; end
-        function x = by(self, vx);     x = (self.bx0 * self.fy)/(-self.bx0^2 + self.px * vx); return; end
-        function x = vy(self, vx);     x = (self.fy * vx)/(-self.bx0^2 + self.px * vx); return; end
-        function x = Ptherm(self, vx); x = self.fx - self.px * vx + self.bx0^2 *(1/2 - self.fy^2/(2* (self.bx0^2 - self.px * vx)^2)); return; end
+        function x = by(self, vx);     x = (self.bx0 * self.fy)./(-self.bx0^2 + self.px * vx); return; end
+        function x = vy(self, vx);     x = (self.fy * vx)./(-self.bx0^2 + self.px * vx); return; end
+        function x = Ptherm(self, vx); x = self.fx - self.px * vx + .5*self.bx0^2 *(1 - self.fy^2./(self.bx0^2 - self.px * vx).^2); return; end
         function x = Pmag(self, vx);   x = (self.bx0^2 + self.by(vx)^2)/2; return; end
 
         function numericalSetup(self, N, M)
@@ -70,23 +74,100 @@ classdef RadiatingFlowSolver < handle
             self.Mt = M;
         end
 
+        function help(self)
+fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta, Tcutoff).\n  R.calculateFlowtable(vx0) solves the differential equation starting at vx0.\n  R.coolingLength(vx) gives the instantaneous cooling length evaluated at vx.\n  R.coolingTime(vx) gives the instantaneous characterisic cooling time evaluated at vx.\n  R.magCutoffV(), if the flow is magnetized, returns the magnetic asymptotic velocity.\n  R.thermalCutoffV(T) returns the velocity when P/rho drops to T.\n  R.temperature(vx) returns the temperature when the flow has velocity vx.\n  R.solutionTable returns an Nx7 matrix with rows [x rho vx vy bx by Pgas].\n');
+        end
+
+        function s = solutionTable(self)
+            s = zeros(size(self.flowSolution,1),7);
+            v = self.flowSolution(:,2);
+
+            s(:,1) = self.flowSolution(:,1);
+            s(:,2) = self.rho(v);
+            s(:,3) = v;
+            s(:,4) = self.vy(v);
+            s(:,5) = self.bx0;
+            s(:,6) = self.by(v);
+            s(:,7) = self.Ptherm(v);
+        end
+
         function lx = coolingLength(self, v)
+        % Returns the instantaneous cooling length given vx=v
             if nargin == 1; % vx not given
                 v = self.vx0;
             end
 
-            einternal = self.Pthermtherm(v) / (self.gamma-1.0);
+            einternal = self.Ptherm(v) / (self.gamma-1.0);
             radrate   = self.beta * self.rho(v)^(2.0-self.theta) * self.Ptherm(v)^self.theta;
 
             lx = v * einternal / radrate;
         end
         
         function tcool = coolingTime(self, v)
+        % Returns the instantaneous cooling time given vx=v
             einternal = self.Ptherm(v) / (self.gamma-1.0);
             radrate   = self.beta * self.rho(v)^(2.0-self.theta) * self.Ptherm(v)^self.theta;
             
             tcool = einternal/radrate;
         end
+
+
+        function T = temperature(self, v)
+        % Returns the temperature at vx=v via the ideal gas relation T = P mu / rho R
+        % Assuming mu = R = 1.
+            T = self.Ptherm(v) ./ self.rho(v);
+        end
+
+        function vb = magCutoffV(self)
+        % Returns the velocity to which a magnetized flow will asymptote
+        % These are the coefficients such that thermal pressure = 0.
+            a = -2*self.px^3;
+            b = 5*self.bx0^2*self.px^2 + 2*self.fx*self.px^2;
+            c = -4*self.bx0^4*self.px - 4*self.bx0^2*self.fx*self.px;
+            d = (self.bx0^6 + 2*self.bx0^4*self.fx-self.bx0^2*self.fy^2);
+
+            vb = sort(roots([a b c d]));
+            % Require that the flow actually be going slower...
+            vb = vb(vb < self.vx0);
+            % Then by the intermediate value theorem...
+            vb = max(vb);
+        end
+
+        function vt = thermalCutoffV(self, T)
+        % Returns the velocity at which temperature == P/rho will drop to T.
+            if self.isHydro
+                vt(1) = (self.fx + sqrt(self.fx^2 - 4*self.px^2*T))/(2*self.px);
+                vt(2) = (self.fx - sqrt(self.fx^2 - 4*self.px^2*T))/(2*self.px);
+           else
+                a = -2*self.px^3;
+                b = 5*self.bx0^2*self.px^2 + 2*self.fx*self.px^2;
+                c = -4*self.bx0^4*self.px - 4*self.bx0^2*self.fx*self.px - 2*self.px^3*T;
+                d = self.bx0^2*(self.bx0^4 + 2*self.bx0^2*self.fx - self.fy^2 + 4*self.px^2*T);
+                e = -2*self.bx0^4*self.px*T;
+                vt = solveQuartic(a, b, c, d, e);
+            end
+
+            vt = sort(real(vt));
+            vt = vt(vt < self.vx0);
+            vt = max(vt);
+
+        end
+
+        function setCutoff(self, type, value)
+        %depending on type, set vxCutoff to thermalCutoff or magneticCutoff
+            if strcmp(type,'none')
+                self.vxTerminal = 0;
+            end
+            if strcmp(type,'magnetic')
+                self.vxTerminal = value*self.magCutoffV();
+            end
+            if strcmp(type,'thermal')
+                self.vxTerminal = self.thermalCutoffV(value);
+            end
+
+            fprintf('Terminal velocity set by %s to %.10g.\n',type,self.vxTerminal);
+        end
+
 
         function vp = calculateVprime(self, vx)
 
@@ -172,7 +253,7 @@ classdef RadiatingFlowSolver < handle
 
         % Calculates the flow state (rho, vx, P) on an interval of width X using
         % an initial step of dx
-        function dsingularity = CalculateFlowTable(self, vx, h, Lmax)
+        function dsingularity = calculateFlowTable(self, vx, h, Lmax)
             nRestarts = 0;
             self.flowSolution = [0 vx];
             
@@ -201,6 +282,23 @@ classdef RadiatingFlowSolver < handle
                     end
                 end
 
+                if newv < self.vxTerminal
+                    % Clip off all too-small velocities
+		    j = size(self.flowSolution,1);
+                    while self.flowSolution(j,2) < self.vxTerminal; j=j-1; end
+                    self.flowSolution = self.flowSolution(1:j,:);
+
+		    % Take one more step that should be 'about right' then quit
+                    vcur = self.flowSolution(end,2);
+
+                    % The flow is always decelerating so this is always too short
+                    hprime = abs((vcur-self.vxTerminal)/self.calculateVprime(vcur));
+                    vprime = self.takeTaylorStep(vcur,hprime);
+                    self.flowSolution(end+1,:) = [self.flowSolution(end,1)+hprime, vprime];
+                    break;
+                end
+
+
                 % The above timestep strategy will succeed because we know the characteristic
                 % behavior of our flows, either the solution's curvature becomes singular in 
                 % finite distance or it asymptotes to zero slope
@@ -208,10 +306,7 @@ classdef RadiatingFlowSolver < handle
                 if mod(numel(self.flowSolution),20000) == 0
                     fprintf('Took %i steps without reaching singularity or terminating; x=%.15f; vx=%.15f\n', numel(self.flowSolution)/2, self.flowSolution(end,1), self.flowSolution(end,2));
                 end
-%                if abs(self.ABHistory(5)) < .00001*dvdx_first;
-%                    fprintf('Ended with v'' < .00001v''0');
-%                    break;
-%                end
+
             end
 
             dsingularity = self.flowSolution(end,1);

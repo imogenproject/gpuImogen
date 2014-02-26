@@ -8,7 +8,7 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 %--- Initialize test ---%
 run         = RadiatingShockInitializer(grid);
 
-run.iterMax     = 2;
+run.iterMax     = 2000;
 run.theta       = 0;
 run.sonicMach   = 4;
 
@@ -17,7 +17,7 @@ run.radTheta = 1;
 
 run.bcMode.x = ENUM.BCMODE_CONST;
 
-run.ppSave.dim2 = .4;
+run.ppSave.dim2 = 5;
 run.ppSave.dim3 = 100;
 run.seedAmplitude = 1e-2;
 

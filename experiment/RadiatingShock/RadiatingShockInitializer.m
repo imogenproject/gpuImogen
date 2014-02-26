@@ -22,20 +22,21 @@ classdef RadiatingShockInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        perturbationType;   % Enumerated type of perturbation used to seed.             str
-        seedAmplitude;      % Maximum amplitude of the seed noise values.               double
-        cos2DFrequency;     % Resolution independent frequency for the cosine 2D        double
-                            %   perturbations in both y and z.
+        perturbationType; % Enumerated type of perturbation used to seed.             str
+        seedAmplitude;    % Maximum amplitude of the seed noise values.               double
+        cos2DFrequency;   % Resolution independent frequency for the cosine 2D        double
+                          %   perturbations in both y and z.
         randomSeed_spectrumLimit; % Max ky/kz mode# seeded by a random perturbation
 
         theta;
         sonicMach;
 
-        radBeta;            % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
+        radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
         radTheta; 
 
-        fractionPreshock;   % The fraction of the grid to give to preshock cells; [0, 1)
-        fractionTillSingularity; % The fraction of the distance to the singularity the postshock grid is to cover; [0, 1)
+        fractionPreshock; % The fraction of the grid to give to preshock cells; [0, 1)
+        fractionCold;     % The fraction of the grid to give to the cold gas layer; [0, 1)
+        Tcutoff; % Forces radiation to stop at this temperature; Normalized by preshock gas temp.
                             % Thus we have [nx*f = preshock | nx*(1-f) = postshock] with hx = len_singularity * f_t / (nx*(1-f));
     end %PUBLIC
 
@@ -57,13 +58,16 @@ classdef RadiatingShockInitializer < Initializer
 % Creates an Iiitializer for corrugation shock simulations. Takes a single input argument that is
 % either the size of the grid, e.g. [300, 6, 6], or the full path to an existing results data file
 % to use in loading
-        function obj = HydroShockInitializer(input)
+        function obj = RadiatingShockInitializer(input)
             obj                  = obj@Initializer();
             obj.gamma            = 5/3;
             obj.runCode          = 'RADHD';
             obj.info             = 'Radiating HD shock';
             obj.fractionPreshock = .25;
-            obj.fractionTillSingularity = .95;
+            obj.fractionCold     = .1;
+            obj.Tcutoff          = 1;
+            % This is actually P2/rho2 == Tcutoff*(P1/rho1)
+
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
@@ -83,7 +87,7 @@ classdef RadiatingShockInitializer < Initializer
 
 %            obj.dGrid.x.points   = [0, 5;    33.3, 1;    66.6, 1;    100, 5];
             
-            obj.perturbationType = HydroShockInitializer.RANDOM;
+            obj.perturbationType = RadiatingShockInitializer.RANDOM;
             obj.randomSeed_spectrumLimit = 64; % 
             obj.seedAmplitude    = 5e-4;
             
@@ -133,40 +137,50 @@ classdef RadiatingShockInitializer < Initializer
         % Gets the jump solution, i.e. preshock and adiabatic postshock solutions
         jump = HDJumpSolver(obj.sonicMach, obj.theta, obj.gamma);
         radflow = RadiatingFlowSolver(jump.rho(2), jump.v(1,2), jump.v(2,2), 0, 0, jump.P(2), ...
-                                      obj.gamma, obj.radBeta, obj.radTheta);
+                                      obj.gamma, obj.radBeta, obj.radTheta, 0);
         radflow.numericalSetup(2, 2);
 
         L_c = radflow.coolingLength(jump.v(1,2));
         T_c = radflow.coolingTime(jump.v(1,2));
-        [flowState, dSingularity] = radflow.CalculateFlowTable(jump.v(1,2), L_c / 1000, 2*L_c);
 
-        fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, dSingularity);
+	radflow.setCutoff('thermal',1);
 
-        obj.dGrid = ones(1,3) * obj.fractionTillSingularity * dSingularity ...
-                          / ((1-obj.fractionPreshock)*obj.grid(1));
+        flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
+        flowValues   = radflow.solutionTable();
+
+        fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
+
+        fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
+
+        obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
 
         [vecX vecY vecZ] = GIS.ndgridVecs();
 
         preshock =  (vecX < obj.grid(1)*obj.fractionPreshock);
         postshock = (vecX >= obj.grid(1)*obj.fractionPreshock);
-        numPre = obj.grid(1)*obj.fractionPreshock;
+        postshock = postshock & (vecX < obj.grid(1)*(1-obj.fractionCold));
+        coldlayer = (vecX >= obj.grid(1)*(1-obj.fractionCold));
 
+        numPre = obj.grid(1)*obj.fractionPreshock;
+        Xshock = obj.dGrid(1)*numPre;
+
+        % Generate blank slates
         mass = zeros(GIS.pMySize);
         ener = zeros(GIS.pMySize);
         mom  = zeros([3 GIS.pMySize]);
         mag  = zeros([3 GIS.pMySize]);
 
+        % Fill in adiabatic preshock values
         mass(preshock,:,:) = jump.rho(1);
-        ener(preshock,:,:) = .5*jump.rho(1)*(jump.v(1,1)^2+jump.v(2,1)^2) ...
-                             + jump.P(1)/(obj.gamma-1);
+        ener(preshock,:,:) = jump.Etot(1);
         mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
         mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
         mom(3,preshock,:,:) = 0;
 
-        % Get interpolated rho values
-        minterp = interp1(flowState(:,1)+numPre*obj.dGrid(1), flowState(:,3), vecX*obj.dGrid(1),'cubic');
-        vinterp = interp1(flowState(:,1)+numPre*obj.dGrid(1), flowState(:,2), vecX*obj.dGrid(1),'cubic');
-        Pinterp = interp1(flowState(:,1)+numPre*obj.dGrid(1), flowState(:,4), vecX*obj.dGrid(1),'cubic');
+        % Get interpolated values for the flow
+        minterp = interp1(flowValues(:,1)+Xshock, flowValues(:,2), vecX*obj.dGrid(1),'cubic');
+        vinterp = interp1(flowValues(:,1)+Xshock, flowValues(:,3), vecX*obj.dGrid(1),'cubic');
+        Pinterp = interp1(flowValues(:,1)+Xshock, flowValues(:,7), vecX*obj.dGrid(1),'cubic');
 
         for xp = find(postshock)
             mass(xp,:,:) = minterp(xp);
@@ -174,6 +188,16 @@ classdef RadiatingShockInitializer < Initializer
             ener(xp,:,:) = .5*minterp(xp)*(vinterp(xp)^2+jump.v(2,2)^2) + Pinterp(xp)/(obj.gamma-1);
         end
  
+        % Fill in cold gas layer adiabatic values again
+        finstate = flowValues(end,:);
+
+        mass(coldlayer,:,:) = finstate(2);
+        ener(coldlayer,:,:) = .5*finstate(2)*(finstate(3)^2+finstate(4)^2) + ...
+                              finstate(7)/(obj.gamma-1);
+        mom(1,:,:,:) = finstate(2)*finstate(3);
+        mom(2,coldlayer,:,:) = finstate(2)*finstate(4);
+        mom(3,coldlayer,:,:) = 0;
+
         %--- Perturb mass density in pre-shock region ---%
         %       Mass density gets perturbed in the pre-shock region just before the shock front
         %       to seed the formation of any instabilities
@@ -185,7 +209,7 @@ classdef RadiatingShockInitializer < Initializer
         if any(mine);
             switch (obj.perturbationType)
                 % RANDOM Seeds ____________________________________________________________________
-                case HydroShockInitializer.RANDOM
+                case RadiatingShockInitializer.RANDOM
                     phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
                     amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
 
@@ -198,12 +222,12 @@ classdef RadiatingShockInitializer < Initializer
                         perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
                     end
 
-                case HydroShockInitializer.COSINE
+                case RadiatingShockInitializer.COSINE
                     [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
                                     .*sin(pi*(X - 1)/(delta - 1));
                 % COSINE Seeds ____________________________________________________________________
-                case HydroShockInitializer.COSINE_2D 
+                case RadiatingShockInitializer.COSINE_2D 
                     [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude ...
                                 *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...

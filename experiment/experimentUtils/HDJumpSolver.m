@@ -43,6 +43,7 @@ T1 = rho1 * (vx1^2 + vy1^2) / 2;
   result.rho = [rho1 rho2];
   result.v = [vx1 vx2; vy1 vy2];
   result.P = [P1 P2];
+  result.Etot = [P1/(gamma-1) + T1, P2/(gamma-1) + T2];
   result.error = [rho2*vx2 - rho1*vx1, (rho1*vx1^2 + P1 - (rho2*vx2^2+P2)), vx1*(T1+gamma*P1/gm1) - vx2*(T2+gamma*P2/gm1)];
 
 end
