@@ -14,15 +14,21 @@ massiveFrame.momX = zeros(globalRes, precise);
 massiveFrame.momY = zeros(globalRes, precise);
 massiveFrame.momZ = zeros(globalRes, precise);
 massiveFrame.ener = zeros(globalRes, precise);
-if numel(f0.magX) > 0
+if numel(f0.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
     massiveFrame.magX = zeros(globalRes, precise);
     massiveFrame.magY = zeros(globalRes, precise);
     massiveFrame.magZ = zeros(globalRes, precise);
+else
+    massiveFrame.magX = 0;
+    massiveFrame.magY = 0;
+    massiveFrame.magZ = 0;
 end
 
 ranks = f0.parallel.geometry;
 fieldset = {'mass','momX','momY','momZ','ener'};
 bset     = {'magX','magY','magZ'};
+
+if numel(ranks) == 1; return; end;
 
 for u = 1:numel(ranks)
 

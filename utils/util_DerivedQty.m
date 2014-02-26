@@ -3,9 +3,9 @@ function result = util_DerivedQty(f, thing)
 if nargin < 2; disp('Usage: load frame (util_LoadWholeFrame), then util_DerivedQty(frame, quantity) where quantity can be: pressure (total if B is not null), gaspressure, vx, vy, vz, speed, vorticity, compression, and if B is not null magpressure, plasmabeta or current'); end
 
 if strcmpi(thing, 'pressure')
-    result = f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass;
+    result = (f.gamma-1)*(f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass) + (2-f.gamma)*util_DerivedQty(f,'magpressure');
 elseif strcmpi(thing, 'gaspressure')
-    result = f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass - .5*(f.magX.^2+f.magY.^2+f.magZ.^2);
+    result = (f.gamma-1)*(f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass - .5*(f.magX.^2+f.magY.^2+f.magZ.^2));
 elseif strcmpi(thing, 'vx')
     result = f.momX ./ f.mass;
 elseif strcmpi(thing, 'vy')
@@ -29,7 +29,7 @@ elseif strcmpi(thing, 'compression') % = del . V
 elseif strcmpi(thing, 'magpressure') % = B^2 / 2
     result = .5*(f.magX.^2+f.magY.^2+f.magZ.^2);
 elseif strcmpi(thing, 'plasmabeta') % = pgas / pmag
-    result = util_DerivedQty(f,'pressure') ./ util_DerivedQty(f,'magpressure');
+    result = util_DerivedQty(f,'gaspressure') ./ util_DerivedQty(f,'magpressure');
 elseif strcmpi(thing, 'current') % = curl(B) as we neglect displacement current
     result.X = d_di(f.magZ, 2, f.dGrid{2}) - d_di(f.magY, 3, f.dGrid{3});
     result.Y =-d_di(f.magZ, 1, f.dGrid{1}) + d_di(f.magX, 3, f.dGrid{3});

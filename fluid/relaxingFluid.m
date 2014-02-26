@@ -13,33 +13,30 @@ function relaxingFluid(run, mass, mom, ener, mag, X)
     %--- Initialize ---%
 
     fluxFactor = run.time.dTime ./ run.DGRID{X};
-    v          = [mass, mom(1), mom(2), mom(3), ener];
-    L = [X 2 3]; L(X)=1;
+    L          = [X 2 3]; L(X)=1;
+    v          = [mass, mom(L(1)), mom(L(2)), mom(L(3)), ener];
    
 %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 %%                   Half-Timestep predictor step (first-order upwind, not TVD)
 %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-% Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root)
+% Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatically
+% compressed fluid
 cs0 = sqrt(run.GAMMA*(run.fluid.MINMASS^(run.GAMMA-1)) );
 
 % freezeAndPtot enforces a minimum pressure
-[pressa freezea] = freezeAndPtot(mass.gputag, ener.gputag, ...
-                                 mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
-                                 mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
-                                 run.GAMMA, run.pureHydro, cs0);
+[pressa freezea] = freezeAndPtot(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), ...
+    mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, run.GAMMA, run.pureHydro, cs0);
 
 GIS = GlobalIndexSemantics();
 hostarray = GPU_cudamemcpy(freezea);
 mpi_dimreduce(hostarray,X-1,GIS.topology);
 GPU_free(freezea);
 freezea = GPU_cudamemcpy(hostarray);
-
 % 
-[v(1).store.array v(5).store.array v(L(1)+1).store.array v(L(2)+1).store.array v(L(3)+1).store.array pressb] = cudaFluidW(mass.gputag, ener.gputag, ...
-                   mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
-                   mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
-                   pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS]);
+[v(1).store.array v(5).store.array v(2).store.array v(3).store.array v(4).store.array pressb] = ...
+    cudaFluidW(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), mag(1).cellMag, mag(2).cellMag, ...
+    mag(3).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS]);
 
 GPU_free(pressa);
 
@@ -53,23 +50,15 @@ mpi_dimreduce(hostarray,X-1,GIS.topology);
 GPU_free(freezea);
 freezea = GPU_cudamemcpy(hostarray);
 
-cudaFluidTVD(mass.store.gputag, ener.store.gputag, ...
-            mom(L(1)).store.gputag, mom(L(2)).store.gputag, mom(L(3)).store.gputag, ...
-            mag(L(1)).cellMag.gputag, mag(L(2)).cellMag.gputag, mag(L(3)).cellMag.gputag, ...
-            pressb, ...
-            mass.gputag, ener.gputag, mom(L(1)).gputag, mom(L(2)).gputag, mom(L(3)).gputag, ...
-            freezea, fluxFactor, run.pureHydro, [run.fluid.MINMASS, run.GAMMA]);
-
-% The CUDA routines directly overwrite the array so we must apply statics manually
-mass.applyStatics();
-ener.applyStatics();
-mom(1).applyStatics();
-mom(2).applyStatics();
-mom(3).applyStatics();
+cudaFluidTVD(mass.store, ener.store, mom(L(1)).store, mom(L(2)).store, mom(L(3)).store, ...
+   mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, pressb, mass, ener, mom(L(1)), mom(L(2)), ...
+   mom(L(3)), freezea, fluxFactor, run.pureHydro, [run.fluid.MINMASS, run.GAMMA]);
 
 GPU_free(pressb);
 GPU_free(freezea);
 
-for t = 1:5; v(t).cleanup(); end % Delete upwind storage arrays
+% Must call applyStatics because the cudaFluidTVD call overwrites the array directly.
+for t = 1:5; v(t).applyBoundaryConditions(1); v(t).cleanup(); end % Delete upwind storage arrays
 
 end
+

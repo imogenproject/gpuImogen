@@ -21,7 +21,7 @@ GIS = GlobalIndexSemantics();
         [xg yg] = GIS.ndgridVecs;
         xg = GPU_Type(run.DGRID{1}*(xg-run.frameRotateCenter(1)));
         yg = GPU_Type(run.DGRID{2}*(yg-run.frameRotateCenter(2)));
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -31,11 +31,11 @@ GIS = GlobalIndexSemantics();
         % position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
         % Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
         lowleft = GIS.cornerIndices();
-        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, run.time.dTime, GIS.topology.nproc) );
+        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, 2*run.time.dTime, GIS.topology.nproc) );
     end
 
     if run.frameRotateOmega ~= 0
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, .5*run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
         clear xg
         clear yg;
     end
@@ -71,10 +71,10 @@ GIS = GlobalIndexSemantics();
         end; end
     end
 
-mass.applyStatics();
-ener.applyStatics();
-mom(1).applyStatics();
-mom(2).applyStatics();
-mom(3).applyStatics();
+mass.applyBoundaryConditions(0);
+ener.applyBoundaryConditions(0);
+mom(1).applyBoundaryConditions(0);
+mom(2).applyBoundaryConditions(0);
+mom(3).applyBoundaryConditions(0);
     
 end

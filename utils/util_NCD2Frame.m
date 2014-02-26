@@ -44,7 +44,7 @@ frame.ener = ncread(nfile,'ener');
 magstat = ncread(nfile,'magstatus');
 
 if magstat == 0
-    frame.magX = []; frame.magY = []; frame.magZ = [];
+    frame.magX = 0; frame.magY = 0; frame.magZ = 0;
 else
     frame.magX = ncread(nfile,'magX');
     frame.magY = ncread(nfile,'magY');

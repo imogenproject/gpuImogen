@@ -20,7 +20,7 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
     [mag(I).store(X).array velocityFlow] = cudaMagW(mag(I).gputag, velGrid.gputag, fluxFactor, X);
 
-    velocityFlow = GPU_Type(velocityFlow);
+%    velocityFlow = GPU_Type(velocityFlow);
 
 %saveDEBUG(mag(I).store(X).array,sprintf('magI w after w upwind'));
 
@@ -31,13 +31,14 @@ function relaxingMagnet(run, mag, velGrid, X, I)
 
     % FIXME: fix this braindead hack
 %    ec = double([strcmp(mag(I).bcModes{1,X},'circ'); strcmp(mag(I).bcModes{2,X},'circ')]);
-    [mag(I).flux(X).array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow.GPU_MemPtr, fluxFactor, X);
+    magflux = mag(I).flux(X);
+    [magflux.array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow, fluxFactor, X);
 
 %    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
     cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
-    cudaHaloExchange(mag(I).flux(X).gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+    cudaHaloExchange(magflux.gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
 
-    mag(I).applyStatics();
+    mag(I).applyBoundaryConditions(X);
     % This returns the flux array, pre-shifted forward one in the X direction to avoid the shift originally present below
     
     %-----------------------------------------------------------------------------------
@@ -45,8 +46,9 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     %------------------------------------------------
     fluxFactor = run.time.dTime ./ run.DGRID{I};
 
-    cudaFwdDifference(mag(X).gputag, mag(I).flux(X).gputag, I, fluxFactor);
-    mag(X).applyStatics();
+    cudaFwdDifference(mag(X).gputag, magflux.gputag, I, fluxFactor);
+    mag(X).applyBoundaryConditions(I);
+    GPU_free(velocityFlow);
 
     % FIXME: fix this braindead hack
 %    ec = double([strcmp(mag(X).bcModes{1,I},'circ'); strcmp(mag(X).bcModes{2,I},'circ')]);

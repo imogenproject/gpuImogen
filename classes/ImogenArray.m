@@ -111,13 +111,13 @@ classdef ImogenArray < handle
             end
 
 %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(0); end % Enforce static values.
 
         end
 
         function set.array(obj,value)
             obj.pArray.array = value;
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(0); end % Enforce static values.
         end
         
 %___________________________________________________________________________________________________ GS: gridSize
@@ -160,9 +160,7 @@ classdef ImogenArray < handle
 
         function delete(obj)
             if isfield(obj, 'boundaryData')
-                obj.boundaryData.compIndex.clearArray();
-                obj.boundaryData.compValue.clearArray();
-                obj.boundaryData.compCoeff.clearArray();
+                obj.boundaryData.staticsData.clearArray();
             end
             obj.pArray.clearArray();
         end
@@ -182,7 +180,7 @@ classdef ImogenArray < handle
                 result = obj.pArray;
             end
             
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyStatics(); end
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end
         end
         
 %___________________________________________________________________________________________________ transparentEdge
@@ -235,14 +233,12 @@ classdef ImogenArray < handle
             if type == 1; cudaArrayRotate2(obj.gputag, toex); obj.pArray.flushTag(); end
         end
 
-%___________________________________________________________________________________________________ applyStatics
+%___________________________________________________________________________________________________ applyBoundaryConditions
 % Applies the static conditions for the ImogenArray to the data array. This method is called during
 % array assignment (set.array).
-        function applyStatics(obj)
-            if numel(obj.boundaryData.compIndex) > 0
-                cudaStatics(obj.pArray.GPU_MemPtr, obj.boundaryData.compIndex.GPU_MemPtr, ...
-                                        obj.boundaryData.compValue.GPU_MemPtr, ...
-                                        obj.boundaryData.compCoeff.GPU_MemPtr, 8, obj.indexPermute, obj.boundaryData.compOffset);
+        function applyBoundaryConditions(obj, direction)
+            if numel(obj.boundaryData.staticsData) > 0
+                cudaStatics(obj, 8, direction);
             end
         end
 
@@ -263,12 +259,14 @@ classdef ImogenArray < handle
 
             % Merge these lists together with the "other" statics,
             % And compile the whole thing into one triplet of 1D arrays, plus indexing offsets
-            [obj.boundaryData.compIndex, obj.boundaryData.compValue,  obj.boundaryData.compCoeff obj.boundaryData.compOffset] = ...
+            [compIndex, compValue, compCoeff, obj.boundaryData.compOffset] = ...
                 staticsAssemble(SI, SV, SC, boundaryConds.boundaryStatics);
 
-            obj.boundaryData.compIndex = GPU_Type(obj.boundaryData.compIndex);
-            obj.boundaryData.compValue = GPU_Type(obj.boundaryData.compValue);
-            obj.boundaryData.compCoeff = GPU_Type(obj.boundaryData.compCoeff);
+            obj.boundaryData.staticsData = GPU_Type([compIndex compValue compCoeff]);
+            obj.boundaryData.bcModes = obj.bcModes;
+%            obj.boundaryData.compIndex = GPU_Type(obj.boundaryData.compIndex);
+%            obj.boundaryData.compValue = GPU_Type(obj.boundaryData.compValue);
+%            obj.boundaryData.compCoeff = GPU_Type(obj.boundaryData.compCoeff);
 
            obj.pBCUninitialized = false;
         end

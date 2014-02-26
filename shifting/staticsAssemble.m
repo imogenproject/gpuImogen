@@ -38,7 +38,6 @@ for i = 1:6
     % sequences start with XXYYZZ
     if mod(i,2) == 1; bdyIdx = bdyIdx + 1; end
 
-
     % Append statics created by our boundary conditions
     if(numel(boundaries(bdyIdx).index) > 0)
         vals   = [vals;   boundaries(bdyIdx).value(:,i)];
