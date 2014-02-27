@@ -61,6 +61,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     case 0: {
       double **B = getGPUSourcePointers(prhs, &amd, 5, 7);
       cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], B[0], B[1], B[2], amd.numel);
+      free(B);
       break; }
     case 1: {
       cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], amd.numel);
@@ -68,11 +69,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     case 2: {
       double **B = getGPUSourcePointers(prhs, &amd, 5, 7);
       cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], B[0], B[1], B[2], dest[0], amd.numel);
+      free(B);
       break; }
     case 3: {
       cukern_FreeHydroRadiationRate<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], dest[0], amd.numel);
       break; }
     }
+
+free(arrays);
 
 cudaError_t epicFail = cudaGetLastError();
 if(epicFail != cudaSuccess) cudaLaunchError(epicFail, BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");

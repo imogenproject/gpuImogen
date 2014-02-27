@@ -35,8 +35,8 @@ GPU_free(freezea);
 freezea = GPU_cudamemcpy(hostarray);
 % 
 [v(1).store.array v(5).store.array v(2).store.array v(3).store.array v(4).store.array pressb] = ...
-    cudaFluidW(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), mag(1).cellMag, mag(2).cellMag, ...
-    mag(3).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS]);
+    cudaFluidW(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), mag(L(1)).cellMag, mag(L(2)).cellMag, ...
+    mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS]);
 
 GPU_free(pressa);
 
@@ -51,7 +51,7 @@ GPU_free(freezea);
 freezea = GPU_cudamemcpy(hostarray);
 
 cudaFluidTVD(mass.store, ener.store, mom(L(1)).store, mom(L(2)).store, mom(L(3)).store, ...
-   mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, pressb, mass, ener, mom(L(1)), mom(L(2)), ...
+   mag(L(1)).cellMag, mag(L(2)).cellMag, mag(L(3)).cellMag, pressb, mass, ener, mom(L(1)), mom(L(2)), ...
    mom(L(3)), freezea, fluxFactor, run.pureHydro, [run.fluid.MINMASS, run.GAMMA]);
 
 GPU_free(pressb);

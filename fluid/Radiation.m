@@ -101,7 +101,7 @@ fprintf('Radiation strength: %f\n', obj.strength);
 %___________________________________________________________________________________________________ opticallyThinSolver
 % Solver for free radiation.
         function result = opticallyThinSolver(obj, run, mass, mom, ener, mag)
-            cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, [run.GAMMA obj.exponent obj.strength * run.time.dTime*2.0 1 run.pureHydro]);
+            cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.GAMMA obj.exponent obj.strength * run.time.dTime*2.0 1 run.pureHydro]);
         end
         
     end%PUBLIC
