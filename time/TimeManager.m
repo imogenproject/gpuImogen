@@ -69,13 +69,13 @@ classdef TimeManager < handle
             %--- Find max velocity ---%
             %           Find the maximum fluid velocity in the grid and its vector direction.
             if obj.parent.pureHydro == 1
-                soundSpeed = cudaSoundspeed(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, obj.parent.GAMMA);
+                soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), obj.parent.GAMMA);
             else
-                soundSpeed = cudaSoundspeed(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ...
-                                        mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, obj.parent.GAMMA);
+                soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), ...
+                             mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, obj.parent.GAMMA);
             end
 
-            [cmax gridIndex] = directionalMaxFinder(mass.gputag, soundSpeed, mom(1).gputag, mom(2).gputag, mom(3).gputag);
+            [cmax gridIndex] = directionalMaxFinder(mass, soundSpeed, mom(1), mom(2), mom(3));
             GPU_free(soundSpeed);
             % Communicate the maximum cfl-determining limit to our comrades in arms
             % FIXME: Make this use mpi_reduce (and implement an interface to it in /mpi)
@@ -154,36 +154,38 @@ classdef TimeManager < handle
             %--- Clock first loops ---%
             %           Clocks the first loop of execution and uses that to determine an estimated
             %           time to complete that is displayed in the UI and log files.
-            if obj.iteration < 4
+            if obj.iteration < 5
                 switch obj.iteration 
                     
                     case 1;        %Activate clock timer for the first loop        
-                        tic; 
+                        tic;
                         
-                    case 3;        %Stop clock timer and use the elapsed time to predict total run time
-                        elapsedMins = toc/60;
-                        save.logPrint('\nFirst two loops averaged %0.5g seconds.', 60*elapsedMins/2);
+                    case 4;        %Stop clock timer and use the elapsed time to predict total run time
+                        elapsedSecs = toc;
+                        save.logPrint('\nFirst three timesteps averaged %0.5g secs.', elapsedSecs/3);
 
                         if (obj.iterPercent > obj.timePercent)
-                            timeRemaining = elapsedMins*obj.ITERMAX;
+                            timeRemaining = elapsedSecs*obj.ITERMAX;
                         else
-                            timeRemaining = elapsedMins*ceil(obj.TIMEMAX/obj.time);
+                            timeRemaining = elapsedSecs*ceil(obj.TIMEMAX/obj.time);
                         end
 
-                        dTimeNum    = timeRemaining / 1440.0;
+                        dTimeNum    = timeRemaining / 86400.0;
                         finTime     = now + dTimeNum;
-                        expComplete = datestr( finTime , 'HH:MM PM');
+                        expComplete = datestr( finTime , 'HH:MM:SS PM');
 
                         if ( floor(finTime) - floor(now) >= 1.0 )
                             expComplete = [expComplete ' on ' datestr( finTime, 'mmm-dd')];
                         end
-                        save.logPrint('\n\tExpected completion time: %s\n', expComplete);
+                        save.logPrint('\n\tExpect completion at: %s\n', expComplete);
 
-                        dDays       = floor(timeRemaining/1440);
-                        dHours      = floor( (timeRemaining - dDays*1440)/60 );
-                        dMinutes    = ceil( (timeRemaining - dDays*1440 - dHours*60) );
-                        save.logPrint('\tWith run time: [%g days | %g hours | %g minutes]\n', ...
-                                      dDays, dHours, dMinutes);
+                        dDays       = floor(timeRemaining/86400);
+                        dHours      = floor( (timeRemaining - dDays*86400)/3600 );
+                        dMinutes    = floor( (timeRemaining - dDays*86400 - dHours*3600)/60 );
+                        dSecs       = ceil(timeRemaining - 60*(dMinutes+60*(dHours+24*dDays)));
+
+                        save.logPrint('\tProjected wallclock time: [%g days | %g hr | %g mins | %g sec ]\n', ...
+                                      dDays, dHours, dMinutes, dSecs);
                 end
             end
 
@@ -204,7 +206,7 @@ classdef TimeManager < handle
                 
                 %--- Prepare and display the UI update string ---%
                 cTime   = now;
-                curTime = strcat(datestr(cTime , 'HH:MM PM'),' on', datestr(cTime, ' mm-dd-yy'));
+                curTime = strcat(datestr(cTime , 'HH:MM:SS PM'),' on', datestr(cTime, ' mm-dd-yy'));
                 save.logPrint('[[ %0.3g%% | %s |  %s ]]\n', compPer, infoStr, curTime);
             end
 
