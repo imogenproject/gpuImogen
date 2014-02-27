@@ -49,22 +49,25 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   /* Grabs the whole boundaryData struct from the ImogenArray class */
   mxArray *boundaryData = mxGetProperty(prhs[0], 0, "boundaryData");
+  if(boundaryData == NULL) mexErrMsgTxt("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray?\n");
 
   /* The statics describe "solid" structures which we force the grid to have */
   mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
+  if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics weren't compiled?\n");
   double **statics = getGPUSourcePointers((const mxArray **)(&gpuStatics), &amf, 0, 0);
 
   /* The indexPermute property tells us how the array's indices are currently oriented. */
   mxArray *permArray =  mxGetProperty(prhs[0], 0, "indexPermute");
+  if(permArray == NULL) mexErrMsgTxt("FATAL: field 'indexPermute' D.N.E. in class. Not an ImogenArray?\n");
   double *perm = mxGetPr(permArray);
   int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
 
   /* The offset array describes the index offsets for the data in the gpuStatics array */
   mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
+  if(offsets == NULL) mexErrMsgTxt("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
   double *offsetcount = mxGetPr(offsets);
   long int staticsOffset = (long int)offsetcount[2*offsetidx];
   int staticsNumel  = (int)offsetcount[2*offsetidx+1];
-
 
   /* Parameter describes what block size to launch with... */
   int blockdim = (int)*mxGetPr(prhs[1]);
@@ -83,15 +86,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   /* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
   int vectorComponent = (int)(*mxGetPr(mxGetProperty(prhs[0], 0, "component")) );
+  
 
   /* BEGIN DETERMINATION OF ANALYTIC BOUNDARY CONDITIONS */
   int numDirections = mxGetNumberOfElements(prhs[2]);
   if(numDirections > 3) {
-    mexErrMsgTxt("More than 3 directions specified to apply boundary conditions to. Exactly how many space dimensions do you think Imogen runs in?");
+    mexErrMsgTxt("More than 3 directions specified to apply boundary conditions to. We only have 3...?\n");
     }
   double *directionToSet = mxGetPr(prhs[2]);
 
   mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
+  if(bcModes == NULL) mexErrMsgTxt("FATAL: bcModes structure not present. defective class detected.\n");
 
   int j;
   for(j = 0; j < numDirections; j++) {
