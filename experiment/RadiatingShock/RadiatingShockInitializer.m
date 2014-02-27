@@ -30,6 +30,7 @@ classdef RadiatingShockInitializer < Initializer
 
         theta;
         sonicMach;
+        alfvenMach; % Set to -1 for hydrodynamic
 
         radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
         radTheta; 
@@ -93,6 +94,7 @@ classdef RadiatingShockInitializer < Initializer
             
             obj.theta            = 0;
             obj.sonicMach        = 3;
+            obj.alfvenMach       = -1;
 
             obj.radTheta = .5;
             obj.radBeta = 1;
@@ -135,17 +137,26 @@ classdef RadiatingShockInitializer < Initializer
         statics = []; % We'll set this eventually...
 
         % Gets the jump solution, i.e. preshock and adiabatic postshock solutions
-        jump = HDJumpSolver(obj.sonicMach, obj.theta, obj.gamma);
-        radflow = RadiatingFlowSolver(jump.rho(2), jump.v(1,2), jump.v(2,2), 0, 0, jump.P(2), ...
-                                      obj.gamma, obj.radBeta, obj.radTheta, 0);
+        if obj.alfvenMach < 0
+            jump = HDJumpSolver (obj.sonicMach, obj.theta, obj.gamma);
+            obj.pureHydro = 1;
+        else
+            jump = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
+            obj.pureHydro = 0;
+            obj.mode.magnet = true;
+        end
+        radflow = RadiatingFlowSolver(jump.mass(2), jump.velocity(1,2), ...
+           jump.velocity(2,2), jump.magnet(1,2), jump.magnet(2,2), ...
+           jump.pressure(2), obj.gamma, obj.radBeta, obj.radTheta, 0);
+
         radflow.numericalSetup(2, 2);
 
-        L_c = radflow.coolingLength(jump.v(1,2));
-        T_c = radflow.coolingTime(jump.v(1,2));
+        L_c = radflow.coolingLength(jump.velocity(1,2));
+        T_c = radflow.coolingTime(jump.velocity(1,2));
 
 	radflow.setCutoff('thermal',1);
 
-        flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
+        flowEndpoint = radflow.calculateFlowTable(jump.velocity(1,2), L_c / 1000, 5*L_c);
         flowValues   = radflow.solutionTable();
 
         fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
@@ -156,6 +167,7 @@ classdef RadiatingShockInitializer < Initializer
 
         [vecX vecY vecZ] = GIS.ndgridVecs();
 
+        % Identify the preshock, radiating and cold gas layers.
         preshock =  (vecX < obj.grid(1)*obj.fractionPreshock);
         postshock = (vecX >= obj.grid(1)*obj.fractionPreshock);
         postshock = postshock & (vecX < obj.grid(1)*(1-obj.fractionCold));
@@ -170,33 +182,42 @@ classdef RadiatingShockInitializer < Initializer
         mom  = zeros([3 GIS.pMySize]);
         mag  = zeros([3 GIS.pMySize]);
 
-        % Fill in adiabatic preshock values
-        mass(preshock,:,:) = jump.rho(1);
-        ener(preshock,:,:) = jump.Etot(1);
-        mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
-        mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
-        mom(3,preshock,:,:) = 0;
+        % Fill in preshock values
+        mass(preshock,:,:) = jump.mass(1);
+        ener(preshock,:,:) = jump.pressure(1);
+        mom(1,:,:,:) = jump.mass(1)*jump.velocity(1,1);
+        mom(2,preshock,:,:) = jump.mass(1)*jump.velocity(2,1);
+        mag(1,:,:,:) = jump.magnet(1,1);
+        mag(2,preshock,:,:) = jump.magnet(2,1);
 
         % Get interpolated values for the flow
-        minterp = interp1(flowValues(:,1)+Xshock, flowValues(:,2), vecX*obj.dGrid(1),'cubic');
-        vinterp = interp1(flowValues(:,1)+Xshock, flowValues(:,3), vecX*obj.dGrid(1),'cubic');
-        Pinterp = interp1(flowValues(:,1)+Xshock, flowValues(:,7), vecX*obj.dGrid(1),'cubic');
+        flowValues(:,1) = flowValues(:,1) + Xshock;
+        xinterps = vecX*obj.dGrid(1);
+        minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
+            % px is constant
+        pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
+            % bx is constant
+        byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps,'cubic');
+        Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps,'cubic');
 
         for xp = find(postshock)
             mass(xp,:,:) = minterp(xp);
-            mom(2,xp,:,:) = minterp(xp)*jump.v(2,2);
-            ener(xp,:,:) = .5*minterp(xp)*(vinterp(xp)^2+jump.v(2,2)^2) + Pinterp(xp)/(obj.gamma-1);
+            % momx is constant
+            mom(2,xp,:,:) = pyinterp(xp);
+            % bx is constant
+            mag(2,xp,:,:) = byinterp(xp);
+            ener(xp,:,:)  = Pinterp(xp);
         end
  
         % Fill in cold gas layer adiabatic values again
         finstate = flowValues(end,:);
 
         mass(coldlayer,:,:) = finstate(2);
-        ener(coldlayer,:,:) = .5*finstate(2)*(finstate(3)^2+finstate(4)^2) + ...
-                              finstate(7)/(obj.gamma-1);
-        mom(1,:,:,:) = finstate(2)*finstate(3);
+        % px is constant
         mom(2,coldlayer,:,:) = finstate(2)*finstate(4);
-        mom(3,coldlayer,:,:) = 0;
+        % bx is constant 
+        mag(2,coldlayer,:,:) = finstate(6);
+        ener(coldlayer,:,:) = finstate(7);
 
         %--- Perturb mass density in pre-shock region ---%
         %       Mass density gets perturbed in the pre-shock region just before the shock front
@@ -246,22 +267,22 @@ classdef RadiatingShockInitializer < Initializer
             % Add seed to mass while maintaining self-consistent momentum/energy
             % This will otherwise take a dump on e.g. a theta=0 shock with
             % a large density fluctuation resulting in negative internal energy
-            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
-            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
-
-            ener(seedIndices,:,:) = .5*squeeze(mass(seedIndices,:,:))*(jump.v(1,1).^2+jump.v(2,1).^2) + jump.P(1)/(obj.gamma-1);
-
+            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.velocity(1,1);
+            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.velocity(2,1);
         end
         
-            if obj.useGPU == true
-                statics = StaticsInitializer(); 
+        ener = ener/(obj.gamma-1) + ...
+               .5*squeeze(sum(mom.^2,1))./mass + .5*squeeze(sum(mag.^2,1));
 
-                %statics.setFluid_allConstantBC(mass, ener, mom, 1);
-                %statics.setMag_allConstantBC(mag, 1);
+        if obj.useGPU == true
+            statics = StaticsInitializer(); 
 
-                %statics.setFluid_allConstantBC(mass, ener, mom, 2);
-                %statics.setMag_allConstantBC(mag, 2);
-            end
+            %statics.setFluid_allConstantBC(mass, ener, mom, 1);
+            %statics.setMag_allConstantBC(mag, 1);
+
+            %statics.setFluid_allConstantBC(mass, ener, mom, 2);
+            %statics.setMag_allConstantBC(mag, 2);
+        end
 
         end
 
