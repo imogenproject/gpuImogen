@@ -45,9 +45,7 @@ function [result, aux] = pressure(mode, run, mass, momvel, ener, mag)
     % Prepare the cell-centered magnet squared array
     magSquared = 0;
     for i=1:3
-        if ~mag(i).isZero
             magSquared = magSquared + mag(i).cellMag.array .* mag(i).cellMag.array;
-        end
     end
 
     %Calculate the fluid pressure

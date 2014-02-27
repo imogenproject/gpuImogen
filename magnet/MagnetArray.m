@@ -37,7 +37,7 @@ classdef MagnetArray < ImogenArray
             if size(obj.pArray,obj.component) > 1
                 obj.cellMag.array = cudaFwdAverage(obj.pArray.GPU_MemPtr, obj.component);
             else
-                obj.cellMag.array = obj.pArray; % without extent in the dimension, what is there to average or interpolate?
+                obj.cellMag.array = obj.array; % without extent in the dimension, what is there to average or interpolate?
             end
         end
 
@@ -49,7 +49,6 @@ classdef MagnetArray < ImogenArray
 
             if numel(array) > 0; obj.initialArray(squeeze(array)); end
 
-            obj.isZero  = (sumND(obj.array) == 0) && ~run.magnet.ACTIVE;
 %            obj.initializeShiftingStates();
 %            obj.initializeBoundingEdges();
 

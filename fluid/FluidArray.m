@@ -47,7 +47,6 @@ classdef FluidArray < ImogenArray
 
             if numel(array) > 0; obj.initialArray(squeeze(array)); end
 
-            obj.isZero          = false;
 %            obj.pUninitialized  = false;
 %            obj.initializeShiftingStates(); % FIXME: can we get rid of this?
 %            obj.initializeBoundingEdges();
