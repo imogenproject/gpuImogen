@@ -2,10 +2,10 @@ function massiveFrame = frame_loadWholeFrame(basename, padding, framenum, precis
 
 if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single'; end
 
-f0 = util_LoadFrameSegment(basename, padding, 0, framenum); % We need one for reference
+frame = util_LoadFrameSegment(basename, padding, 0, framenum); % We need one for reference
 
-massiveFrame = f0;
-globalRes = f0.parallel.globalDims;
+massiveFrame = frame;
+globalRes = frame.parallel.globalDims;
 
 massiveFrame.myOffset = [0 0 0];
 
@@ -14,7 +14,7 @@ massiveFrame.momX = zeros(globalRes, precise);
 massiveFrame.momY = zeros(globalRes, precise);
 massiveFrame.momZ = zeros(globalRes, precise);
 massiveFrame.ener = zeros(globalRes, precise);
-if numel(f0.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
+if numel(frame.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
     massiveFrame.magX = zeros(globalRes, precise);
     massiveFrame.magY = zeros(globalRes, precise);
     massiveFrame.magZ = zeros(globalRes, precise);
@@ -24,15 +24,13 @@ else
     massiveFrame.magZ = 0;
 end
 
-ranks = f0.parallel.geometry;
+ranks = frame.parallel.geometry;
 fieldset = {'mass','momX','momY','momZ','ener'};
 bset     = {'magX','magY','magZ'};
 
-if numel(ranks) == 1; return; end;
+u = 1;
 
-for u = 1:numel(ranks)
-
-    frame = util_LoadFrameSegment(basename, padding, ranks(u), framenum);
+while u <= numel(ranks)
     fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
     rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
     frmsize = fs - 6*(rs > 1);
@@ -47,11 +45,15 @@ for u = 1:numel(ranks)
     massiveFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, ranks);
     massiveFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, ranks);
     massiveFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, ranks);
-    if numel(f0.magX) > 0
+    if numel(frame.magX) > 0
         massiveFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, ranks);
         massiveFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, ranks);
         massiveFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, ranks);
     end
+    
+    if u == numel(ranks); break; end
+    u=u+1;
+    frame = util_LoadFrameSegment(basename, padding, ranks(u), framenum);
 end
 
 end % function
