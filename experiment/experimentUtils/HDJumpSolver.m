@@ -42,7 +42,7 @@ T1 = rho1 * (vx1^2 + vy1^2) / 2;
 
   result.mass = [rho1 rho2];
   result.velocity = [vx1 vx2; vy1 vy2];
-  result.magne = [0 0; 0 0; 0 0]; % For compatibility w/MHDJumpSolver output
+  result.magnet = [0 0; 0 0; 0 0]; % For compatibility w/MHDJumpSolver output
   result.pressure = [P1 P2];
   result.Etot = [P1/(gamma-1) + T1, P2/(gamma-1) + T2];
   result.theta = theta;

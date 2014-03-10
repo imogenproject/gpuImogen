@@ -154,7 +154,7 @@ classdef RadiatingShockInitializer < Initializer
         L_c = radflow.coolingLength(jump.velocity(1,2));
         T_c = radflow.coolingTime(jump.velocity(1,2));
 
-	radflow.setCutoff('thermal',1);
+        radflow.setCutoff('thermal',1);
 
         flowEndpoint = radflow.calculateFlowTable(jump.velocity(1,2), L_c / 1000, 5*L_c);
         flowValues   = radflow.solutionTable();
@@ -224,7 +224,7 @@ classdef RadiatingShockInitializer < Initializer
         %       to seed the formation of any instabilities
 
 %{        delta       = ceil(0.12*obj.grid(1));
-        seedIndices = (1:10) + obj.grid(1)*obj.fractionPreshock - 20 - GIS.pMyOffset(1);
+        seedIndices = (1:10) + round(obj.grid(1)*obj.fractionPreshock) - 20 - GIS.pMyOffset(1);
         mine = find((seedIndices >= 1) & (seedIndices < GIS.pMySize(1)));
 
         if any(mine);
