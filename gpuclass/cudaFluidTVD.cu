@@ -43,12 +43,10 @@ and derivatives at t+dt/2.
 #define BLOCKLENP2 94
 #define BLOCKLENP4 96
 
-/*__global__ void cukern_TVDStep_mhd_uniform(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambda, int nx);*/
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halflambda, int nx);
-/*__global__ void cukern_TVDStep_hydro_uniform(double *rho, double *E, double *px, double *py, double *pz, double *P, double *Cfreeze, double *rhoW, double *enerW, double *pxW, double *pyW, double *pzW, double lambdahf, int nx);*/
 __global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double halfLambda, int nx);
 
-#define LIMITERFUNC fluxLimiter_VanLeer
+#define LIMITERFUNC fluxLimiter_Osher
 
 __constant__ __device__ double *inputPointers[8];
 __constant__ __device__ double *outputPointers[5];
@@ -189,7 +187,7 @@ while(Xtrack < nx+2) {
     /* rho, E, px, py, pz going down */
     /* Iterate over variables to flux */
     for(i = 0; i < 5; i++) {
-        /* Step 1 - Calculate raw fluxes */
+        /* Calculate raw fluxes */
         switch(i) {
             case 0: w_i = q_i[2]; break;
             case 1: w_i = (velocity * (q_i[1] + P[x]) - b_i[0]*(q_i[2]*b_i[0]+q_i[3]*b_i[1]+q_i[4]*b_i[2])/q_i[0] ); break;
@@ -198,26 +196,25 @@ while(Xtrack < nx+2) {
             case 4: w_i = (velocity*q_i[4]        - b_i[0]*b_i[2]); break;
             }
 
-        /* Step 2 - Decouple to L/R flux. */
+        /* Decouple to L/R flux. */
         fluxLR[0][threadIdx.x] = (q_i[i]*c_f - w_i); /* Left  going flux */
         fluxLR[1][threadIdx.x] = (q_i[i]*c_f + w_i); /* Right going flux */
         __syncthreads();
 
-        /* Step 3 - Differentiate fluxes & call limiter */
-            /* Derivative of left flux, then right flux */
+        /* Derivative of left flux, then right flux */
         fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x])/2.0; 
         fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL])/2.0;
         __syncthreads();
 
-            /* right flux */
+        /* Apply limiter function to 2nd order corrections */
         fluxLR[0][threadIdx.x] += LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
         fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x], fluxDerivB[threadIdx.x+1]);
         __syncthreads();
 
-        /* Step 4 - Perform flux and propose output value */
+        /* Perform flux and propose output value */
        if( IAMMAIN && (Xindex < nx) ) {
             prop_i[i] = outputPointers[i][x] - halfLambda * ( -fluxLR[0][threadIdx.x+1] + fluxLR[0][threadIdx.x] + \
-                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
+                                                              fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
           }
 
         __syncthreads();
@@ -283,7 +280,7 @@ while(Xtrack < nx+2) {
     /* rho, E, px, py, pz going down */
     /* Iterate over variables to flux */
     for(i = 0; i < 5; i++) {
-        /* Step 1 - Calculate raw fluxes */
+        /* Calculate raw fluxes */
         switch(i) {
             case 0: w_i = q_i[2]; break;
             case 1: w_i = (velocity * (q_i[1] + P[x]) ) ; break;
@@ -292,29 +289,25 @@ while(Xtrack < nx+2) {
             case 4: w_i = (velocity * q_i[4]); break;
             }
 
-        /* Step 2 - Decouple to L/R flux */
+        /* Decouple to L/R flux */
         fluxLR[0][threadIdx.x] = (C_f*q_i[i] - w_i); /* Left  going flux */
         fluxLR[1][threadIdx.x] = (C_f*q_i[i] + w_i); /* Right going flux */
         __syncthreads();
 
-        /* Step 3 - Differentiate fluxes & call limiter */
-            /* left flux */
+        /* Calculate proposed flux corrections */
         fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x]) / 2.0;
         fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]) / 2.0;
         __syncthreads();
         
-            /* right flux */
+        /* Impose TVD limiter */
         fluxLR[0][threadIdx.x] += LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
         fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x], fluxDerivB[threadIdx.x+1]);
         __syncthreads();
 
-        /* Step 4 - Perform flux and write to output array */
+        /* Perform flux and write to output array */
        if( doIflux && (Xindex < nx) ) {
-            prop_i[i] = outputPointers[i][x] - halfLambda * ( -fluxLR[0][threadIdx.x+1] + fluxLR[0][threadIdx.x] + \
-                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  ); 
-/*            prop_i[i] = outputPointers[i][x] - halfLambda * ( fluxLR[0][threadIdx.x] - fluxLR[0][threadIdx.x+1] + \
-                                                   fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  );*/
-
+            prop_i[i] = outputPointers[i][x] - halfLambda * ( fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL] + 
+                                                              -fluxLR[0][threadIdx.x+1] + fluxLR[0][threadIdx.x]);//
             }
 
         __syncthreads();
