@@ -21,6 +21,7 @@ classdef RadiatingFlowSolver < handle
 
         isHydro;
         ABHistory; % Previous values of vx' used by the AB integrator
+        step;
     end
 
     properties (SetAccess = private, GetAccess = public)
@@ -60,6 +61,7 @@ classdef RadiatingFlowSolver < handle
 
             self.numericalSetup(1,1);
             self.integErrorFlag = 0;
+            self.solver('AB5');
         end
 
         % Solvers for primitives based on conserved quantities
@@ -72,6 +74,12 @@ classdef RadiatingFlowSolver < handle
         function numericalSetup(self, N, M)
             self.Nt = N;
             self.Mt = M;
+        end
+
+        function solver(self, id)
+            if strcmp(id, 'taylor') == 1; self.step = @self.takeTaylorStep; end
+            if strcmp(id, 'AB5') == 1; self.step = @self.takeAB5Step; end
+            if strcmp(id, 'AM5') == 1; self.step = @self.takeAM5Step; end
         end
 
         function help(self)
@@ -240,7 +248,7 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
 
         end
 
-        % Evolves the solution using the 5th order Adams-Moulton integrator
+        % Evolves the solution using the 5th order Adams-Bashforth integrator
         function vnew = takeAB5Step(self, vx, dx)
             vnew = vx + dx*(self.ABHistory*[251 -1274 2616 -2774 1901]')/720;
             
@@ -249,6 +257,29 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             self.ABHistory = [self.ABHistory(2:5) v1];
 
             if ((v1*vx > 0) || (vnew < 0)); self.integErrorFlag = 1; end
+        end
+
+        % Evolves the solution using the 6th order Adams-Moulton integrator
+        function vnew = takeAM5Step(self, vx, dx)
+            vb = vx + dx*(self.ABHistory*[251 -1274 2616 -2774 1901]')/720; % Prediction
+            va = vx;
+            G = vx + dx*(self.ABHistory(2:5)*[-19; 102; -264; 646])/720;
+
+            % AM5 method is:
+            % v1 = v0 + h/720(251 f(v1) + 646 f(v0) - 264 f(v-1) + 106 f(v-2) - 19 f(v-3))
+            % Collect the not-v1 terms as G, then
+            % v0 -> v0 + delta,
+            % delta = -2*eps*(F(v0) - G)/(F(v0+eps)-F(v0-eps))
+            fnc = @(x) x - 251*dx*self.calculateVprime(x)/720 - G;
+            
+            for N = 1:3
+                [vb va]
+                vc = vb - fnc(vb) * 2e-8/(fnc(vb + 1e-8)-fnc(vb - 1e-8));
+                va = vb; vb = vc;
+            end
+
+            vnew = vb;
+            
         end
 
         % Calculates the flow state (rho, vx, P) on an interval of width X using
@@ -262,7 +293,8 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             self.restartAdamsBashforth(vx, h);
 
             while (self.flowSolution(end,1) < Lmax) && (nRestarts < 7)
-                newv = self.takeAB5Step(self.flowSolution(end,2), h);
+                newv = self.step(self.flowSolution(end,2), h);
+%                newv = self.takeAB5Step(self.flowSolution(end,2), h);
 
                 % Adaptively monitor stepsize for problems:
                 % Rapidly decrease in event of error
