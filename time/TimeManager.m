@@ -161,17 +161,16 @@ classdef TimeManager < handle
                         tic;
                         
                     case 4;        %Stop clock timer and use the elapsed time to predict total run time
-                        elapsedSecs = toc;
-                        save.logPrint('\nFirst three timesteps averaged %0.5g secs.', elapsedSecs/3);
+                        tPerStep = toc/3;
+                        save.logPrint('\nFirst three timesteps averaged %0.5g secs.', tPerStep);
 
                         if (obj.iterPercent > obj.timePercent)
-                            timeRemaining = elapsedSecs*obj.ITERMAX;
+                            secsRemaining = tPerStep*(obj.ITERMAX-3);
                         else
-                            timeRemaining = elapsedSecs*ceil(obj.TIMEMAX/obj.time);
+                            secsRemaining = tPerStep*ceil(obj.TIMEMAX/obj.time);
                         end
 
-                        dTimeNum    = timeRemaining / 86400.0;
-                        finTime     = now + dTimeNum;
+                        finTime     = now + secRemaining/86400;
                         expComplete = datestr( finTime , 'HH:MM:SS PM');
 
                         if ( floor(finTime) - floor(now) >= 1.0 )
@@ -179,11 +178,10 @@ classdef TimeManager < handle
                         end
                         save.logPrint('\n\tExpect completion at: %s\n', expComplete);
 
-                        dDays       = floor(timeRemaining/86400);
-                        dHours      = floor( (timeRemaining - dDays*86400)/3600 );
-                        dMinutes    = floor( (timeRemaining - dDays*86400 - dHours*3600)/60 );
-                        dSecs       = ceil(timeRemaining - 60*(dMinutes+60*(dHours+24*dDays)));
-
+                        dDays       = floor(secsRemaining/86400); rem = secsRemaining - 86400*dDays;
+                        dHours      = floor( rem / 3600 );        rem = rem - 3600*dHours;
+                        dMinutes    = floor( rem / 60 );          rem = rem - 60*dMinutes;
+                        dSecs       = ceil(rem);
                         save.logPrint('\tProjected wallclock time: [%g days | %g hr | %g mins | %g sec ]\n', ...
                                       dDays, dHours, dMinutes, dSecs);
                 end
