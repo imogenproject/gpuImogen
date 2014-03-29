@@ -170,7 +170,7 @@ classdef TimeManager < handle
                             secsRemaining = tPerStep*ceil(obj.TIMEMAX/obj.time);
                         end
 
-                        finTime     = now + secRemaining/86400;
+                        finTime     = now + secsRemaining/86400;
                         expComplete = datestr( finTime , 'HH:MM:SS PM');
 
                         if ( floor(finTime) - floor(now) >= 1.0 )
