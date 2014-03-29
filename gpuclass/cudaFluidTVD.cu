@@ -17,10 +17,10 @@
 
 This is the Cuda Fluid TVD function; It takes a single forward-time step, CFD or MHD, of the
 conserved-transport part of the fluid equations using a total variation diminishing scheme to
-perform a non-oscillatory update.
+perform a non-oscillatory update. (Trac, Pen 2003; Xin & Jin, 1995)
 
 The 1D segment of the fluid equations solved is 
-     | rho |         | px                       |
+     | rho |         | (vx rho == px)           |
      | px  |         | vx px + P - bx^2         |
 d/dt | py  | = -d/dx | vx py     - bx by        |
      | pz  |         | vx pz     - bx bz        |
@@ -30,13 +30,19 @@ with auxiliary equations
   vx = px / rho
   P  = (gamma-1)e + .5*B^2 = thermal pressure + magnetic pressure
   e  = E - .5*(p^2)/rho - .5*(B^2)
-(The relation between internal energy e and thermal pressure is theoretically allowed to be far
-more complex than the ideal gas law being used)
 
-The hydro functions solve the same equations with B set to <0,0,0>.
+In general thermal pressure is an arbitrary positive function of e, however the ideal gas
+law is built into Imogen in multiple locations and significant re-checking would be needed
+if it were to be generalized.
 
-This requires predicted half-step values from a 1st order scheme in order to evaluate fluxes
-and derivatives at t+dt/2.
+The hydrodynamic functions solve the same equations under the assumption B = <0,0,0> which
+simplifies and considerably speeds up the process
+
+Normally second time order accuracy is acheived using the standard half-step/full-step
+Runge-Kutta method, with the half-step supplied by a first-order upwind method. It is possible
+to acheive higher accuracy (particularly at CFL > 0.5) by using the TVD function for both
+the half- and full-step, but the increase in computation is lardefge
+
 */
 
 #define BLOCKLEN 92
@@ -60,7 +66,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ((nrhs!=18) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: call cudaTVDStep(rho, E, px, py, pz, bx, by, bz, P, rho_out, E_out, px_out, py_out, pz_out, C_freeze, lambda, purehydro?)\n");
 
-  cudaCheckError("entering FluidTVD");
+  CHECK_CUDA_ERROR("entering FluidTVD");
 
   // Get source array info and create destination arrays
   ArrayMetadata amd;
@@ -118,8 +124,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
   }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, isPureHydro, "fluid TVD");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, isPureHydro, "fluid TVD");
 
 }
 
@@ -202,13 +207,13 @@ while(Xtrack < nx+2) {
         __syncthreads();
 
         /* Derivative of left flux, then right flux */
-        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x])/2.0; 
+        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIdx.x] - fluxLR[0][threadIndexL])/2.0; 
         fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL])/2.0;
         __syncthreads();
 
         /* Apply limiter function to 2nd order corrections */
-        fluxLR[0][threadIdx.x] += LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
-        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x], fluxDerivB[threadIdx.x+1]);
+        fluxLR[0][threadIdx.x] -= LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]); // A=bkwd(x), B=fwd(x)
+        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]); // A=fwd(x), B=bkwd(x)
         __syncthreads();
 
         /* Perform flux and propose output value */
@@ -295,13 +300,13 @@ while(Xtrack < nx+2) {
         __syncthreads();
 
         /* Calculate proposed flux corrections */
-        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x]) / 2.0;
-        fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]) / 2.0;
+        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x]) / 2.0; /* Deriv of leftgoing flux */
+        fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]) / 2.0; /* Deriv of rightgoing flux */
         __syncthreads();
         
         /* Impose TVD limiter */
         fluxLR[0][threadIdx.x] += LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
-        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x], fluxDerivB[threadIdx.x+1]);
+        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]); // A=fwd(x), B=bkwd(x)
         __syncthreads();
 
         /* Perform flux and write to output array */

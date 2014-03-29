@@ -13,6 +13,22 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+
+/* THIS FUNCTION
+
+   Calculates the advection of magnetic field 'Bw' by velocity 'velGrid' and stores the result in 'mag',
+
+   This update is calculated using the second-order TVD method for linear advection, and also outputs
+   the flux used in the calculation to 'fluxout'. In order to preserve the divergence of the magnetic
+   field to machine precision, this flux is used to update the mirror component of the magnetic field
+   (i.e. if this function updates bx due to vy, the flux is used to update by).
+
+   */
+
+__global__ void cukern_advectFreezeSpeedX(double *v, double *cf, int3 dims);
+__global__ void cukern_advectFreezeSpeedY(double *v, double *cf, int3 dims);
+__global__ void cukern_advectFreezeSpeedZ(double *v, double *cf, int3 dims);
+
 __global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *Cf, double *mag, double *fluxout, double lambda, int3 dims);
 //__global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims);
 __global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims);
@@ -25,6 +41,8 @@ __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, doubl
 #define BLOCKLEN 128
 #define BLOCKLENP4 132
 
+#define FREEZE_BLKDIM 256
+
 #define LIMITERFUNC fluxLimiter_VanLeer
 
 __device__ void cukern_FluxLimiter_VanLeer_x(double deriv[2][BLOCKLENP4], double flux[BLOCKLENP4]);
@@ -33,23 +51,19 @@ __device__ void cukern_FluxLimiter_VanLeer_yz(double deriv[2][BLOCKDIMB][BLOCKDI
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // At least 2 arguments expected
     // Input and result
-    if ((nrhs!=6) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need [flux] = cudaMagTVD(magW, mag, velgrid, C_freeze, lambda, dir)\n");
+    if ((nrhs != 5) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need [flux] = cudaMagTVD(magW, mag, velgrid, lambda, dir)\n");
 
-    cudaCheckError("entering cudaMagTVD");
+    CHECK_CUDA_ERROR("entering cudaMagTVD");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
-
-    // Get freezing speed array
-    ArrayMetadata cf_amd;
-    double **cfreeze = getGPUSourcePointers(prhs, &cf_amd, 3,3);
+    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 2);
 
     double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
 
     // Establish launch dimensions & a few other parameters
-    int fluxDirection = (int)*mxGetPr(prhs[5]);
-    double lambda     = *mxGetPr(prhs[4]);
+    double lambda     = *mxGetPr(prhs[3]);
+    int fluxDirection = (int)*mxGetPr(prhs[4]);
 
     int3 arraySize;
     arraySize.x = amd.dim[0];
@@ -57,41 +71,75 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     amd.ndims > 2 ? arraySize.z = amd.dim[2] : arraySize.z = 1;
 
     dim3 blocksize, gridsize;
-    switch(fluxDirection) {
-        case 1: // X direction flux. This is "priveleged" in that the shift and natural memory load directions align
-            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
+    gridsize.z = 1; blocksize.z = 1;
+    double *cf;
 
-            gridsize.x = arraySize.x / 18; gridsize.x += 1*(18*gridsize.x < arraySize.x);
-            gridsize.y = arraySize.y / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.y);
-            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], cfreeze[0], srcs[1], dest[0], lambda, arraySize);
-//            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+    switch(fluxDirection) {
+        case 1: // X direction
+            blocksize.x = 256; blocksize.y = 1; 
+            gridsize.x = arraySize.y; gridsize.y = arraySize.z;
+
+            cudaMalloc(&cf, arraySize.y*arraySize.z*sizeof(double));
+            CHECK_CUDA_ERROR("magnetic cfreeze allocate");
+  
+            cukern_advectFreezeSpeedX<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+
+            blocksize.x = 24; blocksize.y = 16;
+            gridsize.x = (int)ceil(arraySize.x / 18.0);
+            gridsize.y = (int)ceil((double)arraySize.y / (double)blocksize.y);
+
+            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD X step");
+
+            cudaFree(cf);
             break;
         case 2: // Y direction flux: u = y, v = x, w = z
-            blocksize.x = 16; blocksize.y = 24; blocksize.z = 1;
+            blocksize.x = blocksize.y = 16;
+            gridsize.x = (int)ceil(arraySize.x/16.0); gridsize.y = arraySize.z;
 
-            gridsize.x = arraySize.x / 16; gridsize.x += 1*(16*gridsize.x < arraySize.x);
-            gridsize.y = arraySize.y / 18; gridsize.y += 1*(18*gridsize.y < arraySize.y);
+            cudaMalloc(&cf, arraySize.x*arraySize.z*sizeof(double));
+            CHECK_CUDA_ERROR("magnetic cfreeze allocate.");
 
-            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+            cukern_advectFreezeSpeedY<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+
+            blocksize.x = 16; blocksize.y = 24;
+            gridsize.x = (int)ceil(arraySize.x / 16.0);
+            gridsize.y = (int)ceil(arraySize.y / 18.0);
+
+            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD Y step");
+
+            cudaFree(cf);
             break;
         case 3: // Z direction flux: u = z, v = x, w = y;
-            blocksize.x = 24; blocksize.y = 16; blocksize.z = 1;
+            blocksize.x = blocksize.y = 16;
+            gridsize.x = (int)ceil(arraySize.x/16.0);
+            gridsize.y = (int)ceil(arraySize.y/16.0);
 
-            gridsize.x = arraySize.z / 18; gridsize.x += 1*(18*gridsize.x < arraySize.z);
-            gridsize.y = arraySize.x / blocksize.y; gridsize.y += 1*(blocksize.y*gridsize.y < arraySize.x);
+            cudaMalloc(&cf, arraySize.x*arraySize.y*sizeof(double));
+            CHECK_CUDA_ERROR("magnetic cfreeze allocate");
 
-            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[2], srcs[3], srcs[1], dest[0], lambda, arraySize);
+            cukern_advectFreezeSpeedZ<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+
+            blocksize.x = 24; blocksize.y = 16;
+            gridsize.x = (int)ceil(arraySize.z / 18.0);
+            gridsize.y = (int)ceil((double)arraySize.x / (double)blocksize.y);
+
+            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD Y step");
+
+            cudaFree(cf);
             break;
-    }
-
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, fluxDirection, "magnetic TVD step");
+        }
 
 }
 
 
 /* Warp-synchronous reduction of data */
-/* Compute 2+ devices are only half-warp synchronous */
+/* Compute 2+ devices are only half-warp synchronous so use 16 threads */
 __device__ void warpReduction(volatile double *q, int tid)
 {
 q[tid] = (q[tid] > q[tid+16]) ? q[tid] : q[tid+16];
@@ -102,25 +150,25 @@ q[tid] = (q[tid] > q[tid+1]) ? q[tid] : q[tid+1];
 }
 /* Expects to be launched with block size [A 1 1] and grid size [Ny Nz]
  * Calculate max(v, x) */
-__global__ void cuda_advectFreezeSpeedX(double *v, double *cf, int3 dims)
+__global__ void cukern_advectFreezeSpeedX(double *v, double *cf, int3 dims)
 {
 
 v += dims.x*(blockIdx.x + dims.y*blockIdx.y);
 
 int tid = threadIdx.x;
-__shared__ double vmax[CF_BLKX];
+__shared__ double vmax[FREEZE_BLKDIM];
 double umax = 0.0;
 double t;
 vmax[tid] = 0.0;
 /* Calculate max per stride of blockDim.x */
 int x = threadIdx.x;
-for(x = tid; x < dims.x; x += CF_BLKX) {
+for(x = tid; x < dims.x; x += FREEZE_BLKDIM) {
   t = fabs(v[x]);
   umax = (t > umax) ? t : umax;
   }
 vmax[tid] = umax;
 
-if(tid > CF_BLKX/2) return;
+if(tid > FREEZE_BLKDIM/2) return;
 /* Begin reduction */
 __syncthreads();
 
@@ -135,7 +183,7 @@ if(tid == 0) cf[blockIdx.x + dims.y*blockIdx.y] = vmax[0];
 }
 
 /* Must be launched 16x16 with grid size [ceil(Nx/16) nz] */
-__global__ void cuda_advectFreezeSpeedY(double *v, double *cf, int3 dims)
+__global__ void cukern_advectFreezeSpeedY(double *v, double *cf, int3 dims)
 {
 __shared__ double tile[256];
 double q;
@@ -185,7 +233,7 @@ for(y = tiy; y < dims.y; y += 16) {
 
 /* Finds max in Z direction */
 /* Invoke with 16x16 threads */
-__global__ void cuda_advectFreezeSpeedZ(double *v, double *cf, int3 dims)
+__global__ void cukern_advectFreezeSpeedZ(double *v, double *cf, int3 dims)
 {
 
 int stride = (threadIdx.x + 16*blockIdx.x) + dims.x*(threadIdx.y + 16*blockIdx.y);
@@ -243,10 +291,8 @@ for(z = 0; z < dims.z; z++) {
 __global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, double *Cf, double *mag, double *fluxout, double lambda, int3 dims)
 {
 /* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double fluxR[TILEDIM_X * TILEDIM_Y + 2];
-__shared__ double fluxL[TILEDIM_X * TILEDIM_Y + 2];
-__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
-__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
 
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
 int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
@@ -271,32 +317,30 @@ addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
+double v0;
 
 /* We step through the array, one XY plane at a time */
 int z;
 for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    fluxR[tileAddr] = (C_f + velGrid[globAddr])*bW[globAddr]/2.0;
-    fluxL[tileAddr] = (C_f - velGrid[globAddr])*bW[globAddr]/2.0;
-
-    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
+    v0 = velGrid[globAddr];
+    flux[tileAddr] = v0 * bW[globAddr];
+    __syncthreads();
+    deriv[tileAddr] = (flux[tileAddr] - flux[tileAddr-1])/2.0;
+    __syncthreads();
+    flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     __syncthreads();
 
-    /* Leftgoing advection */
-    derivL[tileAddr] = (fluxL[tileAddr-1] - fluxL[tileAddr])/2.0;
-    /* Rightgoing advection */
-    derivR[tileAddr] = (fluxR[tileAddr] - fluxR[tileAddr-1])/2.0; /* bkw deriv */
-
-    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
-    __syncthreads();
-
-    fluxR[tileAddr] += LIMITERFUNC(derivR[tileAddr+1],derivR[tileAddr]);
-    fluxL[tileAddr] += LIMITERFUNC(derivL[tileAddr],derivL[tileAddr+1]);
-
+    // Pick the upwind one now
+    if(v0 > 0) {
+      deriv[tileAddr] = flux[tileAddr];
+    } else {
+      deriv[tileAddr] = flux[tileAddr+1];
+    }
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(fluxR[tileAddr] - fluxR[tileAddr-1] - fluxL[tileAddr+1] + fluxL[tileAddr]);
-        fluxout[globAddr] = fluxR[tileAddr-1] - fluxL[tileAddr];
+        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
+        fluxout[globAddr] = deriv[tileAddr-1];
         }
 
     __syncthreads();
@@ -336,12 +380,11 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
 #define OTHER_MEMSTEP 1
 #define ORTHOG_DIMENSION dims.z
 #define ORTHOG_MEMSTEP (dims.x * dims.y)
-__global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims)
+__global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, double *Cf, double *mag, double *fluxout, double lambda, int3 dims)
 {
 /* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
-__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
-__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
 
 FINITEDIFFY_PREAMBLE
 
@@ -368,38 +411,30 @@ FINITEDIFFY_PREAMBLE
 //int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
-double locFlux;
-int locVF;
+double v0;
 
 /* We step through the array, one XY plane at a time */
 int z;
 for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    locVF = (int)velFlow[globAddr];
-    flux[tileAddr] = bW[globAddr]*velGrid[globAddr];
-
-    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
+    v0 = velGrid[globAddr];
+    flux[tileAddr] = v0 * bW[globAddr];
+    __syncthreads();
+    deriv[tileAddr] = (flux[tileAddr] - flux[tileAddr-1])/2.0;
+    __syncthreads();
+    flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     __syncthreads();
 
-    locFlux = flux[tileAddr+locVF]; // This is the one we want to correct to 2nd order
-
-    if(locVF == 1) {
-        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr+1];
-        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr+2];
+    // Pick the upwind one now
+    if(v0 > 0) {
+      deriv[tileAddr] = flux[tileAddr];
     } else {
-        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr-1];
-        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr];
+      deriv[tileAddr] = flux[tileAddr+1];
     }
-
-    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
-    __syncthreads();
-
-    flux[tileAddr] = locFlux + .5*LIMITERFUNC(derivL[tileAddr],derivR[tileAddr]);
-
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
-        fluxout[globAddr] = flux[tileAddr-1];
+        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
+        fluxout[globAddr] = deriv[tileAddr-1];
         }
 
     __syncthreads();
@@ -439,12 +474,11 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
 #define OTHER_MEMSTEP 1
 #define ORTHOG_DIMENSION dims.y
 #define ORTHOG_MEMSTEP dims.x
-__global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, double *velFlow, double *mag, double *fluxout, double lambda, int3 dims)
+__global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, double *Cf, double *mag, double *fluxout, double lambda, int3 dims)
 {
 /* Declare any arrays to be used for storage/differentiation similarly. */
-__shared__ double flux[TILEDIM_X * TILEDIM_Y+2];
-__shared__ double derivL[TILEDIM_X * TILEDIM_Y + 2];
-__shared__ double derivR[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
 
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
 int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
@@ -469,38 +503,30 @@ addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */
 int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;
 
 /* Stick whatever local variables we care to futz with here */
-double locFlux;
-int locVF;
+double v0;
 
 /* We step through the array, one XY plane at a time */
 int z;
 for(z = 0; z < ORTHOG_DIMENSION; z++) {
-    locVF = (int)velFlow[globAddr];
-    flux[tileAddr] = bW[globAddr]*velGrid[globAddr];
-
-    // Keep in mind, ANY operation that refers to other than register variables or flux[tileAddr] MUST have a __syncthreads() after it or there will be sadness.
+    v0 = velGrid[globAddr];
+    flux[tileAddr] = v0 * bW[globAddr];
+    __syncthreads();
+    deriv[tileAddr] = (flux[tileAddr] - flux[tileAddr-1])/2.0;
+    __syncthreads();
+    flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     __syncthreads();
 
-    locFlux = flux[tileAddr+locVF]; // This is the one we want to correct to 2nd order
-
-    if(locVF == 1) {
-        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr+1];
-        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr+2];
+    // Pick the upwind one now
+    if(v0 > 0) {
+      deriv[tileAddr] = flux[tileAddr];
     } else {
-        derivL[tileAddr] = flux[tileAddr] - flux[tileAddr-1];
-        derivR[tileAddr] = flux[tileAddr+1] - flux[tileAddr];
+      deriv[tileAddr] = flux[tileAddr+1];
     }
-
-    // We're finished with velocityFlow, reuse to store the flux which we're about to limit
-    __syncthreads();
-
-    flux[tileAddr] = locFlux + .5*LIMITERFUNC(derivL[tileAddr], derivR[tileAddr]);
-
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(flux[tileAddr] - flux[tileAddr-1]);
-        fluxout[globAddr] = flux[tileAddr-1];
+        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
+        fluxout[globAddr] = deriv[tileAddr-1];
         }
 
     __syncthreads();

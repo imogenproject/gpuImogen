@@ -14,6 +14,13 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+   Given F(xi, yi, zi) and direction dir = { X = 1, Y = 2, Z = 3), this function calculates
+
+   F(xi, yi, zi) <- (F(xi, yi, zi) + F(xi + 1*(dir == 1), yi + 1*(dir == 2), zi + 1*(dir == 3) )/2
+
+   using circular boundary conditions on all 3 directions */
+
 __global__ void cukern_ForwardAverageX(double *in, double *out, int nx);
 __global__ void cukern_ForwardAverageY(double *in, double *out, int nx, int ny);
 __global__ void cukern_ForwardAverageZ(double *in, double *out, int nx, int nz);

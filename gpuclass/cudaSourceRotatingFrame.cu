@@ -17,6 +17,13 @@
 #define BLOCKDIMX 16
 #define BLOCKDIMY 16
 
+/* THIS FUNCTION
+   This function is used in source/source.m and introduces the fictitious forces which
+   result from a rotating coordinate frame. The rotation axis is fixed at +Z-hat to
+   reduce computational burden; The frame equations are given at the start of the
+   kernel itself.
+   */
+
 __global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *Rx, double *Ry, int3 arraysize);
 
 __constant__ __device__ double devLambda[2];

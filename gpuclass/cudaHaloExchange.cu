@@ -15,6 +15,10 @@
 #include "cudaCommon.h"
 #include "parallel_halo_arrays.h"
 
+/* THIS ROUTINE
+   This routine interfaces with the parallel gateway halo routines
+   */
+
 /* X halo routines */
 /* These are the suck; We have to grab 24-byte wide chunks en masse */
 /* Fork ny by nz threads to do the job */

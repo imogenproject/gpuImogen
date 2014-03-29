@@ -17,6 +17,17 @@
 #define BLOCKDIMX 16
 #define BLOCKDIMY 16
 
+/* THIS FUNCTION
+   cudaSourceAntimach is a hack used with simulations where grid-relative local Mach values become extremely large
+   such as in simulations of rotating disks, where density (and thus sound speed) vanish at the boundary but
+   velocity remains finite.
+
+   This function computes a horrible, horrible hack which simply converts a fraction of the kinetic energy
+   in excess of a given Mach value (typ. 25 or 100) into heat, thereby simultaneously reducing bulk speed and
+   increasing soundspeed.
+
+   */
+
 __global__ void  cukern_AntiMach(double *rho, double *E, double *px, double *py, double *pz, int3 arraysize);
 
 __constant__ __device__ double devLambda[2];

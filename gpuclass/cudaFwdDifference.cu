@@ -14,6 +14,19 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+   Calculates
+
+   array(R) += lambda*(flux(R + i) - flux(R))
+
+   where R = (xi, yi, zi) indexes any given cell, 
+   i = ( (direction == 1), (direction == 2), (direction == 3) ),
+   and lambda is a real scalar.
+
+   That is, it adds lambda * the flux gradient to array where the flux
+   gradient is calculated using the forward difference f' = f(x+1)-f(x)
+*/
+
 __global__ void cukern_ForwardDifferenceX(double *array, double *flux, int nx, double lambda);
 __global__ void cukern_ForwardDifferenceY(double *array, double *flux, int nx, int ny, double lambda);
 __global__ void cukern_ForwardDifferenceZ(double *array, double *flux, int nx, int nz, double lambda);

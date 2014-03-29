@@ -33,16 +33,19 @@ mxArray *tag;
 
 const char *cname = mxGetClassName(gputype);
 
+/* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
 if(strcmp(cname, "GPU_Type") == 0) {
   tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
-  } else {
+  } else { /* Assume it's an ImogenArray or descendent and retreive the gputag property */
   tag = mxGetProperty(gputype, 0, "gputag");
   }
 
+/* We made a fair effort. There is no dishonor in surrendering now. */
 if(tag == NULL) {
   mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag, GPU_Type class, or Imogen array");
   }
 
+/* Copy data out */
 int64_t *t = (int64_t *)mxGetData(tag);
 int j; for(j = 0; j < 5; j++) rettag[j] = t[j]; 
 

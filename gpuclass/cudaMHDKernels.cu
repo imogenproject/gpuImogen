@@ -14,6 +14,10 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+   We're trying to remove all these to proper functions and get rid of this routine.
+   */
+
 #define OP_SOUNDSPEED 1
 #define OP_GASPRESSURE 2
 #define OP_TOTALPRESSURE 3

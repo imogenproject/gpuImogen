@@ -15,17 +15,19 @@
 
 #include "cudaCommon.h"
 
-// File applies the effects of a star undergoing active accretion
-// This is presumably done at the center of a disk
-// Determines if any of the points we have access to out o the global grid currently have the
-// star within range to accrete.
-// If so, we examine all cells within a certain distance of the star in planes
-// Effects to look out for:
+/* THIS FUNCTION
+   Applies the effects of a star (or other compact body) undergoing active accretion. This
+   takes the form of (1) Matter being "vacuumed" off the grid and being accumulated onto the
+   object and (2) The compact object applying a central gravitational force to the grid.
 
-// 1. Mass accretion - remove mass from the grid and add it to the star instead; bring the "blanked" cells o a halt
-// 2. Angular momentum xfer - add the sum of angular momentum about the star of the removed mass to the star's L
-// 3. Accretion luminosity - At least track the accretion luminosity
+   The "compact" object is considered as having a radius (the point at which its local
+   gravity makes matters numerically problematic, more likely than a physical value). All
+   cells which evaluate as being inside this radius have their mass/energy/momentum added to the
+   object's values, while the cells' values are set to non-interacting "false vacuum" values
 
+   The accretion calculation is only invoked if the accretion radius of an object intersects this
+   MPI rank's grid section, while all ranks perform the gravitational calculation.
+   */
 void __global__ cudaStarAccretes(double *rho, double *px, double *py, double *pz, double *E, int3 gridLL, double h, int nx, int ny, int nz, double *stateOut, int ncellsvert);
 void __global__ cudaStarGravitation(double *rho, double *px, double *py, double *pz, double *E, int3 arraysize);
 

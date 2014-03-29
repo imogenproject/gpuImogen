@@ -16,10 +16,10 @@
 
 /* THIS FUNCTION
 
-This function calculates a first order accurate half-step of the conserved transport part of the 
-fluid equations (CFD or MHD) which is used as the predictor input to the matching TVD function.
+This function calculates a first order accurate upwind step of the conserved transport part of the 
+Euler equations (CFD or MHD) which is used as the half-step predictor in the Runge-Kutta timestep
 
-The 1D segment of the fluid equations solved is 
+The 1D fluid equations solved are the conserved transport equations,
      | rho |         | px                       |
      | px  |         | vx px + P - bx^2         |
 d/dt | py  | = -d/dx | vx py     - bx by        |
@@ -30,10 +30,13 @@ with auxiliary equations
   vx = px / rho
   P  = (gamma-1)e + .5*B^2 = thermal pressure + magnetic pressure
   e  = E - .5*(p^2)/rho - .5*(B^2)
-(The relation between internal energy e and thermal pressure is theoretically allowed to be far
-more complex than the ideal gas law being used)
 
-The hydro functions solve the same equations with B set to <0,0,0>.
+In general thermal pressure is an arbitrary positive function of e, however the ideal gas
+law is built into Imogen in multiple locations and significant re-checking would be needed
+if it were to be generalized.
+
+The hydro functions solve the same equations with B set to <0,0,0> which simplifies
+and considerably speeds up the process.
 
 */
 

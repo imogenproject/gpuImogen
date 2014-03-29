@@ -13,6 +13,23 @@
 #include "cublas.h"
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+   cudaFreeRadiation performs a purely local update to energy density of the form
+
+   E = E - dt * beta rho^(2-theta) Pgas^(theta),
+
+   i.e. a sink on the energy term of
+
+   Lambda = beta rho^(2-theta) Pgas^(theta)
+
+   where E is the total energy density, dt the time to pass, beta the radiation strength scale
+   factor, rho the mass density, Pgas the thermal pressure, and theta parameterizes the
+   radiation (nonrelativistic bremsstrahlung is theta = 0.5)
+
+   It implements a temperature floor (Lambda = 0 for T < T_critical) and checks for negative
+   energy density both before (safety) and after (time accuracy truncation) the physics.
+*/
+
 __global__ void cukern_FreeHydroRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *radrate, int numel);
 __global__ void cukern_FreeMHDRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, double *radrate, int numel);
 

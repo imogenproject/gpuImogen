@@ -14,6 +14,15 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION:
+   Calculates the maximum in the x direction of the freezing speed c_f, defined
+   as the fastest characteristic velocity in the x direction.
+
+   In the hydrodynamic case this is the adiabatic sounds speed, in the MHD case
+   this is the fast magnetosonic speed.
+
+   */
+
 __global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *freeze, double *ptot, int nx);
 __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, double *py, double *pz, double *freeze, double *ptot, int nx);
 

@@ -14,6 +14,17 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION:
+   cudaStatics is used in the imposition of several kinds of boundary conditions
+   upon arrays. Given a list of indices I, coefficients C and values V, it
+   writes out
+
+   phi[I] = (1-C)*phi[I] + C[i]*V[i],
+   causing phi[I] to fade to V[i] at an exponential rate.
+
+   It is also able to set mirror boundary conditions (FIXME: Not fully tested!)
+   */
+
 /* X DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS FOR MIRROR BCS */
 /* Assume a block size of [3 A B] */
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz);

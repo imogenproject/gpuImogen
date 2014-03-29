@@ -14,6 +14,12 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION
+   This function calculates the first-order accurate upwind advection of the magnetic field
+   'mag' by velocity 'velGrid' and stores the timestepped value in 'Bw'.
+
+   */
+
 __global__ void cukern_magnetWstep_uniformX(double *mag, double *velGrid, double *bW, double *velFlow, double lambda, int nx);
 __global__ void cukern_magnetWstep_uniformY(double *mag, double *velGrid, double *bW, double *velFlow, double lambda, int3 dims);
 __global__ void cukern_magnetWstep_uniformZ(double *mag, double *velGrid, double *bW, double *velFlow, double lambda, int3 dims);

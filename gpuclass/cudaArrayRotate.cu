@@ -14,6 +14,13 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION:
+   This function performs array index exchanges.
+   Given C's linear-to-n-dimensional mapping, index = x + Nx (y + ny (z + ...) ... ),
+   with the understanding that 'dir' means { x = 1, y = 2, z = 3 },
+   exchanges the given index with the x direction of the input array
+*/
+
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);
 __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, int nz);
 __global__ void cukern_ArrayExchangeZ(double *src, double *dst, int nx, int ny, int nz);

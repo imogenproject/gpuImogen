@@ -14,6 +14,25 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION:
+
+   When not passed a magnetic field, calculates the local adiabatic sound speed of the fluid at 
+   all points,
+
+   c_s^2 = gamma*P/rho
+
+   where c_s is the adiabatic sound speed, gamma is the adiabatic index (1 <= gamma <= 5/3), P
+   is the thermal pressure (gamma-1)*(Etotal - rho v^2/2) and rho is the matter density.
+
+   When passed a magnetic field, calculates the maximal fast Alfven velocity,
+   C_fast^2 = C_s^2 + C_a^2,
+
+   where C_s is the thermal sound speed above (Except subtracting magnetic energy density from
+   the total energy as well) and C_a is the Alfven speed,
+
+   C_a^2 = (B^2)/rho.
+*/
+
 __global__ void cukern_Soundspeed_mhd(double *rho, double *E, double *px, double *py, double *pz, double *bx, double *by, double *bz, double *dout, int n);
 __global__ void cukern_Soundspeed_hd(double *rho, double *E, double *px, double *py, double *pz, double *dout, int n);
 

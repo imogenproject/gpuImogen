@@ -15,6 +15,13 @@
 #include "cudaCommon.h"
 #include "cudaEnums.h"
 
+/* THIS FUNCTION
+   
+   This function translates the input array 'in' by an amount -shift, i.e.
+
+   in(R + shift) is stored in out(R) where R = [x, y, z]
+   */
+
 __global__ void cukern_circshift3D(double *in, double *out, int3 dimension, int3 shift);
 __global__ void cukern_circshift2D(double *in, double *out, int dimx, int dimy, int shiftx, int shifty);
 __global__ void cukern_circshift1D(double *in, double *out, int dimension, int shift);

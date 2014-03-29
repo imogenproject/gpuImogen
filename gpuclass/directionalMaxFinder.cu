@@ -14,6 +14,15 @@
 
 #include "cudaCommon.h"
 
+/* THIS FUNCTION:
+   directionalMaxFinder has three different behaviors depending on how it is called.
+   m = directionalMaxFinder(array) will calculate the global maximum of array
+   c = directionalMaxFinder(a1, a2, direct) will find the max of |a1(r)+a2(r)| in the
+      'direct' direction (1=X, 2=Y, 3=Z)
+   c = directionalMaxFinder(rho, c_s, px, py, pz) will specifically calculate the x direction
+       CFL limiting speed, max(|px/rho| + c_s)
+    */
+
 __global__ void cukern_DirectionalMax(double *d1, double *d2, double *out, int direct, int nx, int ny, int nz);
 __global__ void cukern_GlobalMax(double *din, int n, double *dout);
 __global__ void cukern_GlobalMax_forCFL(double *rho, double *cs, double *px, double *py, double *pz, int n, double *dout, int *dirOut);
