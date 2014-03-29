@@ -87,7 +87,9 @@ classdef CorrugationShockInitializer < Initializer
             obj.perturbationType = CorrugationShockInitializer.RANDOM;
             obj.randomSeed_spectrumLimit = 64; % 
             obj.seedAmplitude    = 5e-3;
-            
+
+            GIS = GlobalIndexSemantics(); GIS.makeDimNotCircular(1);            
+
             obj.theta            = 10;
             obj.sonicMach        = 10;
             obj.alfvenMach       = 0.125;

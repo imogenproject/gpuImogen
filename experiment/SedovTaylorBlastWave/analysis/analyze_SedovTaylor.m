@@ -3,14 +3,13 @@ function [resArray,sampledArray] = analyze_SedovTaylor(array,center,bounds,cutof
 % profiles and displaying them in an overlayed fashion to verify the Cartesian grid error for a
 % spherical representation.
 %
-%>> array			array to analyze											double	[nx ny nz]
-%>> center			grid point that represents the center of the blast wave		double	[x y z]
-%>> bounds			
-%>> cutoffDist
-%>> sampleRate
-%<< resArray		resulting array from the sampled space
-%<< sampledArray	
-
+%>> array          array to analyze     double        [nx ny nz]
+%>> center         grid point that represents the center of the blast wave                double        [x y z]
+%>> bounds
+%>> cutoffDist     
+%>> sampleRate     
+%<< resArray       resulting array from the sampled space
+%<< sampledArray        
 
     if (nargin < 1 || isempty(array)), error('Imogen:DataInputError','No array specified. Operation aborted.'); end
     nDim = ndims(array);

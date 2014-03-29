@@ -35,7 +35,7 @@ where A is computed using
  2*(p(i-1,x  )+p(i,x  ))/(m(i-1,x  )+m(i,x  ))
    (p(i-1,x-1)+p(i,x-1))/(m(i-1,x-1)+m(i,x-1)) ] / 4
 
-The alternative, averaging pointwise velocities, is experimentally seen to be numerically unstable.
+This presents the velocities interpolated at the corners of cells
 */
 
 __global__ void cukern_SimpleVelocity(double *v, double *p, double *m, int numel);
@@ -55,7 +55,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=3) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need velInterp = cudaMagPrep(mom, mass, [dirvel dirmag])\n");
 
-  cudaCheckError("entering cudaMagPrep");
+  CHECK_CUDA_ERROR("entering cudaMagPrep");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -113,8 +113,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cukern_SimpleVelocity<<<gridsize, blocksize>>>(tempVelocity, srcs[0], srcs[1], amd.numel);
         }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, velDirection, "mag prep velocity avg");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, velDirection, "mag prep velocity avg");
 
 cudaDeviceSynchronize();
 
@@ -147,8 +146,7 @@ cudaDeviceSynchronize();
 
 cudaDeviceSynchronize();
 
-epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, magDirection, "mag prep interpolation");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, magDirection, "mag prep interpolation");
 
     cudaFree(tempVelocity); // Because only YOU can prevent memory leaks!
                             // (and this one would be a whopper...)

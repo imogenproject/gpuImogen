@@ -1,5 +1,8 @@
 classdef GlobalIndexSemantics < handle
 % Global Index Semantics: Translates global index requests to local ones for lightweight global array support
+% x = GlobalIndexSemantics(context, topology): initialize
+% TF = GlobalIndexSemantics('dummy'): Check if previous init'd
+% x = GlobalIndexSemantics(): Retreive
 
     properties (Constant = true, Transient = true)
     end
@@ -25,6 +28,7 @@ classdef GlobalIndexSemantics < handle
 
     properties (SetAccess = private, GetAccess = private)
         localXvector; localYvector; localZvector; circularBCs;
+        
     end
 
     properties (Dependent = true)
@@ -33,6 +37,7 @@ classdef GlobalIndexSemantics < handle
     methods
         function obj = GlobalIndexSemantics(context, topology)
             persistent instance;
+
             if ~(isempty(instance) || ~isvalid(instance))
                 obj = instance; return;
             end

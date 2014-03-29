@@ -30,7 +30,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=4) || (nlhs != 2)) mexErrMsgTxt("Wrong number of arguments: need [magW,velFlow] = cudaMagWflux(mag, velgrid, lambda, dir)\n");
 
-  cudaCheckError("entering cudaMagW");
+  CHECK_CUDA_ERROR("entering cudaMagW");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -77,8 +77,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             break;
     }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, fluxDirection, "magnetic W step");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic W step");
 
 }
 
