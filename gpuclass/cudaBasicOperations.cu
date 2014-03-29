@@ -85,7 +85,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   dim3 blocksize; blocksize.x = BLEN; blocksize.y = blocksize.z = 1;
   dim3 gridsize;
   ArrayMetadata amd;
-  int64_t *tagref;
 
   if((nlhs == 1) && (nrhs == 2)) {
     // a = f(b) operators
@@ -96,7 +95,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 int op = (int)*mxGetPr(prhs[1]);
 
-cudaCheckError("Entering cudaBasicOperations");
+CHECK_CUDA_ERROR("Entering cudaBasicOperations");
 
     switch(op) {
       case 1: cukern_sqrt<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;

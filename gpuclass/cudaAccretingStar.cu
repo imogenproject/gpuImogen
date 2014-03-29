@@ -89,7 +89,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs != 10) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need newState = cudaAccretingStar(rho, px, py, pz, E, starState, lower left corner global index, grid size H, dt, topology_size);");
 
-    cudaCheckError("entering cudaAccretingStar");
+    CHECK_CUDA_ERROR("entering cudaAccretingStar");
 
     double lowleft[3], upright[3];
     double *i0 = mxGetPr(prhs[6]);
@@ -105,7 +105,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     for(j = 3; j < 14; j++) originalStarState[j] = hostStarState[j];
   
     cudaMemcpyToSymbol(starState, &originalStarState[0], 14*sizeof(double), 0, cudaMemcpyHostToDevice);
-    cudaCheckError("Copying star state to __constant__ memory");
+    CHECK_CUDA_ERROR("Copying star state to __constant__ memory");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -172,13 +172,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         cudaStarAccretes<<<acGrid, acBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], LL, H, amd.dim[0], amd.dim[1], amd.dim[2], stateOut, 2*starRadInCells+8);
 
         cudaDeviceSynchronize(); // Force accretion to finish.
-        cudaCheckError("running cudaStarAccretes()");
+        CHECK_CUDA_ERROR("running cudaStarAccretes()");
         fail = cudaMemcpy((void *)hostDeltas, (void *)stateOut, 8*sizeof(double)*nparts, cudaMemcpyDeviceToHost);
-        cudaCheckError("copying accretion results to host");
+        CHECK_CUDA_ERROR("copying accretion results to host");
         cudaDeviceSynchronize();
-cudaCheckError("sync after copy start");
+CHECK_CUDA_ERROR("sync after copy start");
         cudaFree(stateOut);
-cudaCheckError("free stateOut after copy & sync");
+CHECK_CUDA_ERROR("free stateOut after copy & sync");
         }
     
 
@@ -247,9 +247,9 @@ cudaCheckError("free stateOut after copy & sync");
 //  for(qq = 0; qq < 9; qq++) { printf("%lg ",gp[qq]); }
 //printf("\n");
 //  }
-    cudaCheckError("memcpy to symbol before gravitate");
+    CHECK_CUDA_ERROR("memcpy to symbol before gravitate");
     cudaMemcpyToSymbol(gravParams, &gp[0], 9*sizeof(double), 0, cudaMemcpyHostToDevice);
-    cudaCheckError("point gravity symbol copy");
+    CHECK_CUDA_ERROR("point gravity symbol copy");
     cudaDeviceSynchronize();
 
     dim3 gravBlock, gravGrid;
@@ -260,7 +260,7 @@ cudaCheckError("free stateOut after copy & sync");
     getLaunchForXYCoverage(dim, GRAVITY_NX, GRAVITY_NY, 0, &gravBlock, &gravGrid); 
 
     cudaStarGravitation<<<gravGrid, gravBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], arraysize);
-    cudaCheckError("Ran pointlike gravitation routine");
+    CHECK_CUDA_ERROR("Ran pointlike gravitation routine");
 
 }
 

@@ -23,7 +23,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mexErrMsgTxt("Arguments must be cudaFwdDifference(array, flux, direction, flux factor)\n");
         }
 
-  cudaCheckError("entering cudaFwdDifference");
+  CHECK_CUDA_ERROR("entering cudaFwdDifference");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -63,8 +63,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             break;
         }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, direction, "Backwards averaging");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, direction, "Backwards averaging");
 
 }
 

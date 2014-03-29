@@ -7,6 +7,10 @@
 #define CSQ_HD(E, T, rho, gg1fact) ( (gg1fact)*((E) - (T)) / (rho) )
 #define CSQ_MHD(E, T, bsq, rhogg1fact, alfact) (  ( (gg1fact)*((E)-(T)) + (alfact)*(bsq) )/(rho)  )
 
+#define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, amd_ptr, direction, string) \
+checkCudaLaunchError(cudaGetLastError(), bsize, gsize, amd_ptr, direction, string, __FILE__, __LINE__)
+
+#define CHECK_CUDA_ERROR(astring) checkCudaError(astring, __FILE__, __LINE__)
 
 typedef struct {
         double *fluidIn[5];
@@ -34,8 +38,8 @@ double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
 
 void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim);
 
-void cudaCheckError(char *where);
-void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname);
+void checkCudaError(char *where, char *fname, int lname);
+void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname, char *fname, int lname);
 const char *errorName(cudaError_t E);
 
 void printdim3(char *name, dim3 dim);

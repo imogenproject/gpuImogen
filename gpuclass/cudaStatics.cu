@@ -40,7 +40,7 @@ void setBoundarySAS(double *gpuarray, ArrayMetadata *amd, int side, int directio
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if( (nlhs != 0) || (nrhs != 3)) { mexErrMsgTxt("cudaStatics operator is cudaStatics(ImogenArray, blockdim, direction)"); }
 
-  cudaCheckError("entering cudaStatics");
+  CHECK_CUDA_ERROR("entering cudaStatics");
 
   ArrayMetadata ama, amf;
 
@@ -81,8 +81,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   /* Every call results in applying specials */
   cukern_applySpecial_fade<<<griddim, blockdim>>>(array[0], statics[0] + staticsOffset, staticsNumel, amf.dim[0]);
 
-  cudaError_t epicFail = cudaGetLastError();
-  if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blockdim, griddim, &ama, 0, "cuda statics application");
+  CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &ama, 0, "cuda statics application");
 
   /* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
   int vectorComponent = (int)(*mxGetPr(mxGetProperty(prhs[0], 0, "component")) );
@@ -187,8 +186,7 @@ switch(direction) {
 
 bckernel<<<griddim, blockdim>>>(gpuarray, amd->dim[0], amd->dim[1], amd->dim[2]);
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blockdim, griddim, amd, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
+CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, amd, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
 
 return;
 }

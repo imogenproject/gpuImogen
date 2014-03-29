@@ -28,7 +28,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if( (nlhs != 1) || ( (nrhs != 9) && (nrhs != 6) ))
     mexErrMsgTxt("calling form for cudaSoundspeed is c_s = cudaSoundspeed(mass, ener, momx, momy, momz, bx, by, bz, gamma);");
 
-  cudaCheckError("entering cudaSoundspeed");
+  CHECK_CUDA_ERROR("entering cudaSoundspeed");
 
   dim3 blocksize; blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
   ArrayMetadata amd;
@@ -64,8 +64,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       cukern_Soundspeed_mhd<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], amd.numel);
       }
 
-    cudaError_t epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "cuda sound speed");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "cuda sound speed");
 
 
     free(destPtr);

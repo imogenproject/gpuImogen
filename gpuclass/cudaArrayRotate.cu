@@ -40,14 +40,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   dim3 gridsize;
 
   if((nlhs != 1) || (nrhs != 2)) { mexErrMsgTxt("cudaArrayRotate operator is rotated = cudaArrayRotate(array, dir)\n"); }
-  cudaCheckError("entering cudaArrayRotate");
+  CHECK_CUDA_ERROR("entering cudaArrayRotate");
 
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
 
   int64_t oldref[5];
   arrayMetadataToTag(&amd, &oldref[0]);
-  int64_t newref[5];
 
   int indExchange = (int)*mxGetPr(prhs[1]);
 
@@ -97,7 +96,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
 
 cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, oldref[1], "array transposition");
+if(epicFail != cudaSuccess) CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, oldref[1], "array transposition");
 
 }
 

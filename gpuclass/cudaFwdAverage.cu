@@ -23,7 +23,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mexErrMsgTxt("Arguments must be result = cudaFwdAverage(array, direction)\n");
         }
 
-    cudaCheckError("entering cudaFwdAverage");
+    CHECK_CUDA_ERROR("entering cudaFwdAverage");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -75,8 +75,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             break;
         }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, direction, "Forward averaging");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, direction, "Forward averaging");
 
 }
 

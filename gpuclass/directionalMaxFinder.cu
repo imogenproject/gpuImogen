@@ -33,9 +33,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if((nlhs == 1) && ((nrhs != 3) && (nrhs != 1)))
      mexErrMsgTxt("Either 1 or 3 arguments for one rturn argument");
 
-  cudaCheckError("entering directionalMaxFinder");
+  CHECK_CUDA_ERROR("entering directionalMaxFinder");
 
-ArrayMetadata amd;
+  ArrayMetadata amd;
 
 switch(nrhs) {
   case 3: {
@@ -69,11 +69,7 @@ switch(nrhs) {
   
   //printf("%i %i %i %i %i %i\n", gridsize.x, gridsize.y, gridsize.z, blocksize.x, blocksize.y, blocksize.z);
   cukern_DirectionalMax<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], (int)*mxGetPr(prhs[2]), dims.x, dims.y, dims.z);
-
-
-  cudaError_t epicFail = cudaGetLastError();
-  if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "directional max finder");
-
+  CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "directional max finder");
 
   } break;
   case 1: {
@@ -104,8 +100,7 @@ switch(nrhs) {
 
     int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > d[0]) d[0] = maxes[i];  }
 
-    cudaError_t epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "cuda global max kern");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "cuda global max kern");
 
   } break;
   case 5: {
@@ -124,14 +119,11 @@ switch(nrhs) {
     cudaMalloc(&blkA, gridsize.x * sizeof(double));
     cudaMalloc(&blkB, gridsize.x * sizeof(int));
     // Searches (blockdim*griddim) at a time until getting to the end.
-    cudaError_t epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL malloc");
-
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL malloc");
 
     cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(arraysIn[0], arraysIn[1], arraysIn[2], arraysIn[3], arraysIn[4], amd.numel, blkA, blkB);
 
-    epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL max finder");
 
 
     // Copy the result back to the CPU for final analysis of the 64 potential maxima
@@ -139,8 +131,7 @@ switch(nrhs) {
     cudaMemcpy(&maxes[0], blkA, sizeof(double)*gridsize.x, cudaMemcpyDeviceToHost);
     cudaMemcpy(&maxIndices[0], blkB, sizeof(int)*gridsize.x, cudaMemcpyDeviceToHost);
 
-    epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, nrhs, "CFL max finder memcopy");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL max finder memcopy");
 
     cudaFree(blkA);
     cudaFree(blkB);

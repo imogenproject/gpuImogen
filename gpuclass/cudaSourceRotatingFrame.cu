@@ -28,7 +28,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Input and result
     if ((nrhs!=8) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, omega, dt, xvector, yvector)\n");
 
-  cudaCheckError("entering cudaSourceRotatingFrame");
+  CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
     // Get source array info and create destination arrays
     ArrayMetadata amd;
@@ -56,8 +56,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
     cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], xvec[0], yvec[0], arraysize);
 
-    cudaError_t epicFail = cudaGetLastError();
-    if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, -1, "applyScalarPotential");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -1, "applyScalarPotential");
 
 }
 

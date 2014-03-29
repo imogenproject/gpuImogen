@@ -97,7 +97,7 @@ double **rvals = (double **)malloc(howmany*sizeof(double *));
 int i;
 mwSize dims[2]; dims[0] = 5; dims[1] = 1;
 
-int64_t *rv; size_t numel;
+int64_t *rv;
 
 for(i = 0; i < howmany; i++) {
   retArray[i] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
@@ -105,8 +105,7 @@ for(i = 0; i < howmany; i++) {
 
   cudaError_t fail = cudaMalloc((void **)&rv[0], amdRef->numel*sizeof(double));
   if(fail != cudaSuccess) {
-    printf("On array %i/%i: %s\n", i+1, howmany, cudaGetErrorString(fail));
-    cudaCheckError("In makeGPUDestinationArrays: malloc failed and I am sad.");
+    CHECK_CUDA_ERROR("In makeGPUDestinationArrays: malloc failed and I am sad.");
     }
 
   rv[1] = amdRef->ndims;
@@ -138,7 +137,7 @@ double *ret;
 cudaError_t fail = cudaMalloc((void **)&ret, newdims[0]*newdims[1]*newdims[2]*sizeof(double));
 if(fail != cudaSuccess) {
   printf("On array replace: %s\n", cudaGetErrorString(fail));
-  cudaCheckError("In replaceGPUArray: malloc failed and I am sad.");
+  CHECK_CUDA_ERROR("In replaceGPUArray: malloc failed and I am sad.");
   }
 
 int64_t *tag = (int64_t *)mxGetData(prhs[target]);
@@ -161,35 +160,31 @@ griddim->y = dims[1] / (blkY-2*nhalo); griddim->y += (griddim->y * (blkY-2*nhalo
 griddim->z = 1;
 }
 
-void cudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname)
+void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname, char *fname, int lname)
 {
 if(E == cudaSuccess) return;
 
-printf("Severe CUDA failure in %s: %s -> %s\n", srcname, errorName(E), cudaGetErrorString(E));
-printf("Array info: dims=<%i %i %i>, numel=%i. I was passed the integer %i.\n", a->dim[0], a->dim[1], a->dim[2], a->numel, i);
-printf("Block and grid dimensions: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
-mexErrMsgTxt("Forcing program halt due to CUDA error");
-
+printf("CUDA error fired in at %s:%i: error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
+printf("Description passed: %s\n", srcname);
+printf("Array info: dims=<%i %i %i>; numel=%i. Received the integer %i.\n", a->dim[0], a->dim[1], a->dim[2], a->numel, i);
+printf("Block and grid dims: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
+mexErrMsgTxt("Forcing stop due to CUDA error");
 }
 
-void cudaCheckError(char *where)
+void checkCudaError(char *where, char *fname, int lname)
 {
 cudaError_t epicFail = cudaGetLastError();
 if(epicFail == cudaSuccess) return;
 
-printf("Encountered error at %s: %s -> %s\n", where, errorName(epicFail), cudaGetErrorString(epicFail));
-mexErrMsgTxt("Forcing program halt due to CUDA error");
+printf("cudaCheckError was non-success when polled at %s (%s:%i): %s -> %s\n", where, fname, lname, errorName(epicFail), cudaGetErrorString(epicFail));
+mexErrMsgTxt("Forcing stop due to CUDA error");
 }
 
 void printdim3(char *name, dim3 dim)
-{
-printf("dim3 %s is [%i %i %i]\n", name, dim.x, dim.y, dim.z);
-}
+{ printf("dim3 %s is [%i %i %i]\n", name, dim.x, dim.y, dim.z); }
 
 void printgputag(char *name, int64_t *tag)
-{
-printf("gputag %s is [*=%lu dims=%lu size=(%lu %lu %lu)]\n", name, tag[0], tag[1], tag[2], tag[3], tag[4]);
-}
+{ printf("gputag %s is [*=%lu dims=%lu size=(%lu %lu %lu)]\n", name, tag[0], tag[1], tag[2], tag[3], tag[4]); }
 
 #define NOM(x) if(E == x) { static const char err[]=#x; return err; }
 

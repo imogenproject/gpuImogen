@@ -40,7 +40,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   ArrayMetadata amd;
   double **atomArray = getGPUSourcePointers(prhs, &amd, 0, 0);
 
-cudaCheckError("Entering cudaArrayAtomic");
+CHECK_CUDA_ERROR("Entering cudaArrayAtomic");
 
   switch(operation) {
     case 1: cukern_ArraySetMin<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
@@ -48,8 +48,7 @@ cudaCheckError("Entering cudaArrayAtomic");
     case 3: cukern_ArrayFixNaN<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
   }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, 256, 128, &amd, operation, "array min/max/nan sweeping");
+CHECK_CUDA_LAUNCH_ERROR(256, 128, &amd, operation, "array min/max/nan sweeping");
 
 }
 

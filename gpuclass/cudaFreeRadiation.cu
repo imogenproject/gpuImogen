@@ -42,7 +42,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   ArrayMetadata amd;
   double **arrays = getGPUSourcePointers(prhs, &amd, 0, 4);
-  cudaCheckError("Entering cudaFreeRadiation");
+  CHECK_CUDA_ERROR("Entering cudaFreeRadiation");
 
   double **dest = NULL;
   if(nlhs == 1) {
@@ -78,8 +78,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 free(arrays);
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
+CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
 
 }
 

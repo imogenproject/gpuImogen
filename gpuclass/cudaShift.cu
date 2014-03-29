@@ -30,11 +30,11 @@ __global__ void cukern_constshift1D(double *in, double *out, int dimension, int 
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   dim3 blocksize; blocksize.z = 1;
-  int numel; dim3 gridsize;
+  dim3 gridsize;
 
   if( (nlhs != 1) || (nrhs != 3)) { mexErrMsgTxt("circshift operator is shifted = cudaShift([nx ny nz], orig, shift_type)"); }
 
-  cudaCheckError("entering cudaShift");
+  CHECK_CUDA_ERROR("entering cudaShift");
 
   double *shiftamt = mxGetPr(prhs[0]);
   ArrayMetadata amd;
@@ -93,8 +93,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     break;
   }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, amd.ndims, "cudaShift");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, amd.ndims, "cudaShift");
 
 
 }

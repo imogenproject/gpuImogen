@@ -60,7 +60,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if ((nrhs!=13) || (nlhs != 6)) mexErrMsgTxt("Wrong number of arguments: need [5] = cudaWflux(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
 
-  cudaCheckError("entering cudaFluidW");
+  CHECK_CUDA_ERROR("entering cudaFluidW");
 
   ArrayMetadata amd;
   double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);
@@ -130,8 +130,7 @@ if(hydroOnly == 1) {
   cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[8], srcs[9], lambda/4.0, arraySize.x);
 }
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, hydroOnly, "fluid W step");
+CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "fluid W step");
 
 }
 

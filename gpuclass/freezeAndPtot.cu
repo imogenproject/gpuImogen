@@ -29,7 +29,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if ( (nrhs!=11) && (nrhs!=2))
      mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, direct=1, csmin)");
 
-  cudaCheckError("entering freezeAndPtot");
+  CHECK_CUDA_ERROR("entering freezeAndPtot");
 
   int ispurehydro = (int)*mxGetPr(prhs[9]);
 
@@ -84,8 +84,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   free(args);
   free(freezea);
 
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) cudaLaunchError(epicFail, blocksize, gridsize, &amd, ispurehydro, "Getting freezing speed");
+  CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, ispurehydro, "Getting freezing speed");
 
 }
 
