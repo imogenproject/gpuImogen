@@ -17,10 +17,8 @@ function relaxingMagnet(run, mag, velGrid, X, I)
 
     %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     %Half-Timestep predictor step (first-order upwind,not TVD)
-    %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
-    [mag(I).store(X).array velocityFlow] = cudaMagW(mag(I).gputag, velGrid.gputag, fluxFactor, X);
-
-%    velocityFlow = GPU_Type(velocityFlow);
+    %+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    [mag(I).store(X).array velocityFlow] = cudaMagW(mag(I), velGrid, fluxFactor, X);
 
 %saveDEBUG(mag(I).store(X).array,sprintf('magI w after w upwind'));
 
@@ -30,29 +28,26 @@ function relaxingMagnet(run, mag, velGrid, X, I)
     fluxFactor = 2*fluxFactor; %Multiply to get full timestep
 
     % FIXME: fix this braindead hack
-%    ec = double([strcmp(mag(I).bcModes{1,X},'circ'); strcmp(mag(I).bcModes{2,X},'circ')]);
     magflux = mag(I).flux(X);
-    [magflux.array] = cudaMagTVD(mag(I).store(X).gputag, mag(I).gputag, velGrid.gputag, velocityFlow, fluxFactor, X);
-
-%    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
-    cudaHaloExchange(mag(I).gputag,         [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
-    cudaHaloExchange(magflux.gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+    [magflux.array] = cudaMagTVD(mag(I).store(X), mag(I), velGrid, fluxFactor, X);
+    % This returns the flux array, pre-shifted forward one in the X direction to avoid the shift originally present below
+    cudaHaloExchange(mag(I),  [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+    cudaHaloExchange(magflux, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
 
     mag(I).applyBoundaryConditions(X);
-    % This returns the flux array, pre-shifted forward one in the X direction to avoid the shift originally present below
     
     %-----------------------------------------------------------------------------------
     % Reuse advection flux for constraint step for CT
     %------------------------------------------------
     fluxFactor = run.time.dTime ./ run.DGRID{I};
 
-    cudaFwdDifference(mag(X).gputag, magflux.gputag, I, fluxFactor);
+    cudaFwdDifference(mag(X), magflux, I, fluxFactor);
     mag(X).applyBoundaryConditions(I);
     GPU_free(velocityFlow);
 
     % FIXME: fix this braindead hack
 %    ec = double([strcmp(mag(X).bcModes{1,I},'circ'); strcmp(mag(X).bcModes{2,I},'circ')]);
-    cudaHaloExchange(mag(X).gputag, [1 2 3], I, GIS.topology,mag(X).bcHaloShare);
+    cudaHaloExchange(mag(X), [1 2 3], I, GIS.topology,mag(X).bcHaloShare);
 
 
 end

@@ -17,11 +17,11 @@ function magnetFlux(run, mass, mom, mag, X, magneticIndices)
         I = magneticIndices(n); % Component of the b-field to flux.
 
         % Prepare arrays for magnetic flux step at cell corners (2nd order grid-aligned velocity)
-	mag(I).velGrid(X).array = cudaMagPrep(mom(X).gputag, mass.gputag, [I X]);
+	mag(I).velGrid(X).array = cudaMagPrep(mom(X), mass, [I X]);
 
 %cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, GIS.edgeInterior(:,X));
-        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
-        cudaHaloExchange(mag(I).velGrid(X).gputag, [1 2 3], I, GIS.topology, mag(I).bcHaloShare);
+        cudaHaloExchange(mag(I).velGrid(X), [1 2 3], X, GIS.topology, mag(I).bcHaloShare);
+        cudaHaloExchange(mag(I).velGrid(X), [1 2 3], I, GIS.topology, mag(I).bcHaloShare);
 
         % Flux Advection step
         relaxingMagnet(run, mag, mag(I).velGrid(X), X, I);
