@@ -53,7 +53,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     int nDevices;
     cudaGetDeviceCount(&nDevices);
-    cudaCheckError("GPU_ctrl(): initialization\n");
+    CHECK_CUDA_ERROR("GPU_ctrl(): initialization\n");
 
     mexLock(); // It would be Bad if this disappeared on us at any point.
     cudaSetDevice(0);
@@ -107,7 +107,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
       int nDevices;
       cudaGetDeviceCount(&nDevices);
-      cudaCheckError("GPU_ctrl(#): initializing chosen device");
+      CHECK_CUDA_ERROR("GPU_ctrl(#): initializing chosen device");
 
       int currentDev; cudaGetDevice(&currentDev);
       int requestDev = (int)*mxGetPr(prhs[0]);
