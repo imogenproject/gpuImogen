@@ -70,7 +70,7 @@ function flux(run, mass, mom, ener, mag, order)
     %===============================================================================================
         for n = [3 2 1]
             if (mass.gridSize(directVec(n)) < 3), continue; end
-                        
+
             if run.magnet.ACTIVE
                 magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[2 1]));
             end

@@ -13,7 +13,7 @@
 		the same modules as used to compile
 3) Compile the MPI bindings and CUDA kernels:
 	* from the imogen root: cd mpi; make; cd ../gpuclass; make
-	* These are both shitty about -j but there isn't much to build
+	* Both can be build with -jN
 	* Poke one of the mexa64 files in both /mpi and /gpuclass with ldd and see that
 		it can see all the required .so files, in particular libmpi_f90. If not then
 		something is probably unhappy with versioning; make sure the libs you reference
