@@ -25,7 +25,6 @@ classdef RadiatingFlowSolver < handle
     end
 
     properties (SetAccess = private, GetAccess = public)
-        integErrorFlag;
         flowSolution;
         Tcutoff;
     end
@@ -60,7 +59,6 @@ classdef RadiatingFlowSolver < handle
             self.fy = rho*vx*vy-bx*by;
 
             self.numericalSetup(1,1);
-            self.integErrorFlag = 0;
             self.solver('AB5');
         end
 
@@ -80,6 +78,7 @@ classdef RadiatingFlowSolver < handle
             if strcmp(id, 'taylor') == 1; self.step = @self.takeTaylorStep; end
             if strcmp(id, 'AB5') == 1; self.step = @self.takeAB5Step; end
             if strcmp(id, 'AM5') == 1; self.step = @self.takeAM5Step; end
+            if strcmp(id, 'AM6') == 1; self.step = @self.takeAM6Step; end
         end
 
         function help(self)
@@ -197,10 +196,8 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
         end
 
         % Takes steps using an explicit high-order taylor series to provide history points for the restart
-        function restartAdamsBashforth(self, vx, h)
-
+        function restartLMM(self, vx, h)
             self.ABHistory = [0 0 0 0 0];
-
             self.ABHistory(1) = self.calculateVprime(vx);
 
             for N = 2:5
@@ -239,94 +236,101 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
                 newv = pade([vx, v1, v2, v3, v4], self.Nt, self.Mt, h);
             end
 
-            vx = newv;
-
-            v1 = self.calculateVprime(vx);
-
-            % If this has the same sign as vx, signal OH CRAP before returning
-            if((v1*vx > 0) || (newv < 0)); self.integErrorFlag = 1; end;
-
         end
 
         % Evolves the solution using the 5th order Adams-Bashforth integrator
+        % Coefficients on f'_0 to f'_-4 are [1901 -2274 2616 1274 251]/720
         function vnew = takeAB5Step(self, vx, dx)
             vnew = vx + dx*(self.ABHistory*[251 -1274 2616 -2774 1901]')/720;
-            
-            v1 = self.calculateVprime(vnew);
-
-            self.ABHistory = [self.ABHistory(2:5) v1];
-
-            if ((v1*vx > 0) || (vnew < 0)); self.integErrorFlag = 1; end
+            self.ABHistory = [self.ABHistory(2:5) self.calculateVprime(vnew)];
         end
 
         % Evolves the solution using the 6th order Adams-Moulton integrator
+        % Both of these implicit solvers make the prediction using the AB5 method
+        % And refine with a few Newton-Raphson iterations
+        % Coefficients on f'_1 to f'_-3 are [646 -264 102 -19]/720
         function vnew = takeAM5Step(self, vx, dx)
-            vb = vx + dx*(self.ABHistory*[251 -1274 2616 -2774 1901]')/720; % Prediction
+            vb = vx + dx*(self.ABHistory*[251; -1274; 2616; -2774; 1901])/720; % Prediction
             va = vx;
-            G = vx + dx*(self.ABHistory(2:5)*[-19; 102; -264; 646])/720;
+            % y-independent part of y'=f(x, y)
+            G = vx + dx*(self.ABHistory(2:5)*[-19; 106; -264; 646])/720;
 
-            % AM5 method is:
-            % v1 = v0 + h/720(251 f(v1) + 646 f(v0) - 264 f(v-1) + 106 f(v-2) - 19 f(v-3))
-            % Collect the not-v1 terms as G, then
-            % v0 -> v0 + delta,
-            % delta = -2*eps*(F(v0) - G)/(F(v0+eps)-F(v0-eps))
             fnc = @(x) x - 251*dx*self.calculateVprime(x)/720 - G;
             
             for N = 1:3
-                [vb va]
-                vc = vb - fnc(vb) * 2e-8/(fnc(vb + 1e-8)-fnc(vb - 1e-8));
+                vc = vb - fnc(vb) *imag(1e-8*1i*vb)/imag(fnc(vb*(1+1i*1e-8)));
                 va = vb; vb = vc;
             end
 
             vnew = vb;
-            
+            self.ABHistory = [self.ABHistory(2:5) self.calculateVprime(vnew)];
         end
 
+        % Evolves the solution using the 7th order Adams-Moulton integrator
+        % Coefficients on f'_1 to f'_-4 are [1427 -798 482 -173 27]/1440
+        function vnew = takeAM6Step(self, vx, dx)
+            vb = vx + dx*(self.ABHistory*[251; -1274; 2616; -2774; 1901])/720; % AB5 Prediction
+            va = vx;
+            G = vx + dx*(self.ABHistory(1:5)*[27; -173; 482; -798; 1427])/1440;
+
+            fnc = @(x) x - 95*dx*self.calculateVprime(x)/288 - G;
+            
+            for N = 1:3
+                vc = vb - fnc(vb) *imag(1e-8*1i*vb)/imag(fnc(vb*(1+1i*1e-8)));
+                va = vb; vb = vc;
+            end
+
+            vnew = vb;
+            self.ABHistory = [self.ABHistory(2:5) self.calculateVprime(vnew)];
+        end
+        
         % Calculates the flow state (rho, vx, P) on an interval of width X using
         % an initial step of dx
         function dsingularity = calculateFlowTable(self, vx, h, Lmax)
             nRestarts = 0;
             self.flowSolution = [0 vx];
             
-            dvdx_first = abs(self.calculateVprime(vx));
-            
-            self.restartAdamsBashforth(vx, h);
+            self.restartLMM(vx, h);
 
-            while (self.flowSolution(end,1) < Lmax) && (nRestarts < 7)
-                newv = self.step(self.flowSolution(end,2), h);
-%                newv = self.takeAB5Step(self.flowSolution(end,2), h);
+            while (self.flowSolution(end,1) < Lmax) && (nRestarts < 15)
+                oldv = self.flowSolution(end,2);
+
+                newv = self.step(oldv, h);
+                vp   = self.calculateVprime(newv);
+                % Error conditions: New v has larger magnitude, new v' would accelerate,
+                % or new v has opposite sign
+                ohCrap = (abs(newv/oldv) > 1) || (vp * newv > 0) || (newv * oldv < 0) || ~isreal(newv);
 
                 % Adaptively monitor stepsize for problems:
-                % Rapidly decrease in event of error
-                if ( (self.integErrorFlag == 1) || (newv < 0) || (isreal(newv) == 0) )
-                    self.flowSolution = self.flowSolution(1:(end-5),:);
+                % Back up and decrease in event of error
+                if ohCrap
+                    self.flowSolution = self.flowSolution(1:(end-7),:);
 
-                    h=h/16;
-                    self.restartAdamsBashforth(self.flowSolution(end,2), h);
+                    h=h/8;
+                    self.restartLMM(self.flowSolution(end,2), h);
                     nRestarts = nRestarts + 1;
-                    self.integErrorFlag = 0;
+                    newv = self.flowSolution(end,2);
                 else
                     self.flowSolution = [self.flowSolution; [self.flowSolution(end,1)+h, newv]];
-                    % But conservative increase in event of boringness
+                    % But conservatively increase if solution becomes flat
                     if (self.flowSolution(end,2) > 1000*abs(self.ABHistory(end))*h)
                         h = 1.5*h;
-                        self.restartAdamsBashforth(self.flowSolution(end,2), h);
+                        self.restartLMM(self.flowSolution(end,2), h);
                     end
                 end
 
-                if newv < self.vxTerminal
-                    % Clip off all too-small velocities
-		    j = size(self.flowSolution,1);
+                if newv < self.vxTerminal % Clip off all too-small velocities
+                    j = size(self.flowSolution,1);
                     while self.flowSolution(j,2) < self.vxTerminal; j=j-1; end
                     self.flowSolution = self.flowSolution(1:j,:);
 
 		    % Take one more step that should be 'about right' then quit
                     vcur = self.flowSolution(end,2);
 
-                    % The flow is always decelerating so this is always too short
+                    % Predict how far until reaching terminal velocity
                     hprime = abs((vcur-self.vxTerminal)/self.calculateVprime(vcur));
                     vprime = self.takeTaylorStep(vcur,hprime);
-                    self.flowSolution(end+1,:) = [self.flowSolution(end,1)+hprime, vprime];
+                    self.flowSolution(end+1,:) = [self.flowSolution(end,1)+hprime, self.vxTerminal];
                     break;
                 end
 
