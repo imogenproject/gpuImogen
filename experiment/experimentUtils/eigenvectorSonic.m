@@ -1,4 +1,6 @@
-function ev = eigenvectorMA(rho, csq, v, b, k, wavetype)
+function ev = eigenvectorSonic(rho, csq, v, b, k, direct)
+
+
 % This function returns the fast MA eigenvector coefficients [1 dvx dvy dvz dbx dby dbz]
 % associated with the plane wave posessing the given real k.
 % wavetype = [-2: fast bkwd, -1: slow bkwd, 1: slow fwd, 2: fast fwd]
