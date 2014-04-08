@@ -7,7 +7,7 @@ GEN_OPTS =
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 #NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -g -G
-NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -O2 -g -G
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 

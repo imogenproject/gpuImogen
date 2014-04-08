@@ -14,6 +14,7 @@ PGW_DIR    = /home2/ekeever1/parallel-gateway/build
 
 # Depending on version of Teslas installed: either lib64/sm_20 or lib32/sm_13
 CUDA_LDIR = lib64
-CUDA_ARCH = sm_20
+NVARCH = compute_20
+NVCODE = sm_20
 
 
