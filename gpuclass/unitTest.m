@@ -22,35 +22,34 @@ end
 nFuncs = numel(funcList);
 
 D = [2*ones(n2d,1); 3*ones(n3d,1)];
-R = [max2d*ones(n2d,1); max3d*ones(n3d,1)];
+R = [ones(n2d,1)*max2d; ones(n3d,1)*max3d];
 
 t0 = tic;
-
 for F = 1:nFuncs;
     outcome = -1;
 
     targfunc = @noSuchThing; % Default to failure
     if strcmp(funcList{F}, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
     if strcmp(funcList{F}, 'cudaArrayRotate'); targfunc = @testCudaArrayRotate; end
-    if strcmp(funcList{F}, 'cudaArrayRotate2'); targFunc = @testCuda; end
-    if strcmp(funcList{F}, 'cudaFluidTVD'); targFunc = @testCudaFluidTVD; end
-    if strcmp(funcList{F}, 'cudaFluidW'); targFunc = @testCudaFluidW; end
-    if strcmp(funcList{F}, 'cudaFreeRadiation'); targFunc = @testCudaFreeRadiation; end
-    if strcmp(funcList{F}, 'cudaFwdAverage'); targFunc = @testCudaFwdAverage; end
-    if strcmp(funcList{F}, 'cudaFwdDifference'); targFunc = @testCudaFwdDifference; end
-    if strcmp(funcList{F}, 'cudaMHDKernels'); targFunc = @testCudaMHDKernels; end
-    if strcmp(funcList{F}, 'cudaMagPrep'); targFunc = @testCudaMagPrep; end
-    if strcmp(funcList{F}, 'cudaMagTVD'); targFunc = @testCudaMagTVD; end
-    if strcmp(funcList{F}, 'cudaMagW'); targFunc = @testCudaMagW; end
-    if strcmp(funcList{F}, 'cudaShift'); targFunc = @testCudaShift; end
-    if strcmp(funcList{F}, 'cudaSoundspeed'); targFunc = @testCudaSoundspeed; end
-    if strcmp(funcList{F}, 'cudaSourceAntimach'); targFunc = @testCudaSourceAntimach; end
-    if strcmp(funcList{F}, 'cudaSourceRotatingFrame'); targFunc = @testCudaSourceRotatingFrame; end
-    if strcmp(funcList{F}, 'cudaSourceScalarPotential'); targFunc = @testCudaSourceScalarPotential; end
-    if strcmp(funcList{F}, 'cudaStatics'); targFunc = @testCudaStatics; end
-    if strcmp(funcList{F}, 'directionalMaxFinder'); targFunc = @testDirectionalMaxFinder; end
-    if strcmp(funcList{F}, 'freezeAndPtot'); targFunc = @testFreezeAndPtot; end
-    
+    if strcmp(funcList{F}, 'cudaArrayRotate2'); targfunc = @testCuda; end
+    if strcmp(funcList{F}, 'cudaFluidTVD'); targfunc = @testCudaFluidTVD; end
+    if strcmp(funcList{F}, 'cudaFluidW'); targfunc = @testCudaFluidW; end
+    if strcmp(funcList{F}, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
+    if strcmp(funcList{F}, 'cudaFwdAverage'); targfunc = @testCudaFwdAverage; end
+    if strcmp(funcList{F}, 'cudaFwdDifference'); targfunc = @testCudaFwdDifference; end
+    if strcmp(funcList{F}, 'cudaMHDKernels'); targfunc = @testCudaMHDKernels; end
+    if strcmp(funcList{F}, 'cudaMagPrep'); targfunc = @testCudaMagPrep; end
+    if strcmp(funcList{F}, 'cudaMagTVD'); targfunc = @testCudaMagTVD; end
+    if strcmp(funcList{F}, 'cudaMagW'); targfunc = @testCudaMagW; end
+    if strcmp(funcList{F}, 'cudaShift'); targfunc = @testCudaShift; end
+    if strcmp(funcList{F}, 'cudaSoundspeed'); targfunc = @testCudaSoundspeed; end
+    if strcmp(funcList{F}, 'cudaSourceAntimach'); targfunc = @testCudaSourceAntimach; end
+    if strcmp(funcList{F}, 'cudaSourceRotatingFrame'); targfunc = @testCudaSourceRotatingFrame; end
+    if strcmp(funcList{F}, 'cudaSourceScalarPotential'); targfunc = @testCudaSourceScalarPotential; end
+    if strcmp(funcList{F}, 'cudaStatics'); targfunc = @testCudaStatics; end
+    if strcmp(funcList{F}, 'directionalMaxFinder'); targfunc = @testDirectionalMaxFinder; end
+    if strcmp(funcList{F}, 'freezeAndPtot'); targfunc = @testFreezeAndPtot; end
+
     outcome = iterateOnFunction(targfunc, D, R);
 
     switch outcome;
@@ -75,7 +74,7 @@ function outcome = iterateOnFunction(fname, D, R)
 end
 
 function R = randomResolution(dim, nmax)
-    R = round(nmax*rand(2,1));
+    R = round(nmax*rand(1,3));
     if dim < 3; R(3) = 1; end
 end
 
@@ -167,7 +166,50 @@ function fail = testCudaWStep(res)
 end
 
 function fail = testCudaFreeRadiation(res)
-fail = -1;
+    rho = 2 - 1.8*rand(res); rhod = GPU_Type(rho);
+    px = 2*rand(res); pxd = GPU_Type(px);
+    py = 3*rand(res); pyd = GPU_Type(py);
+    pz = 2*rand(res); pzd = GPU_Type(pz);
+    bx = rand(res);   bxd = GPU_Type(bx);
+    by = rand(res);   byd = GPU_Type(by);
+    bz = rand(res);   bzd = GPU_Type(bz); % The del.b constraint doesn't matter, this just calculates |B|^2 to subtract it
+
+    T = .5*(px.^2+py.^2+pz.^2) ./ rho;
+    B = .5*(bx.^2+by.^2+bz.^2) / 2;
+
+    Ehydro = T + .5+.25*rand(res); Ehydrod = GPU_Type(Ehydro);
+    Emhd = Ehydro + B;             Emhdd = GPU_Type(Emhd);
+
+    thtest = .5;
+
+    % Test HD case
+    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 .5 1 0 1]));
+    rtrue = (rho.^(2-thtest)) .* (Ehydro-T).^(thtest);
+
+    max(rtrue(:)-rtest.array(:))
+
+    tau = .01*.5/max(rtest.array(:));
+
+    cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 .1 tau .2 1]);
+    dE = tau*(rho.^(2-thtest)).*(Ehydro-T).^thtest;
+    dE( (Ehydro-T) < .2*rho ) = 0;
+    
+    max(Ehydro(:) - dE(:) - Ehydrod.array(:))
+
+    % Test MHD case
+    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 .5 1 0 0]));
+    rtrue = (rho.^(2-thtest)) .* (Emhd-T-B).^(thtest);
+
+    max(rtrue(:)-rtest.array(:))
+
+    tau = .01*.5/max(rtest.array(:));
+
+    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 .1 tau .2 0]);
+    dE = tau*(rho.^(2-thtest)).*(Emhd-T-B).^thtest;
+    dE( (Emhd-T-B) < .2*rho ) = 0;
+    
+    max(Emhd(:) - dE(:) - Emhdd.array(:))
+     %mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 end
 
 function fail = testCudaFwdAverage(res)
