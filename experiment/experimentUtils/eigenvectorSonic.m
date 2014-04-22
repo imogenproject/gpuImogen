@@ -1,41 +1,13 @@
-function ev = eigenvectorSonic(rho, csq, v, b, k, direct)
+function [ev omega] = eigenvectorSonic(rho, csq, v, b, k, direct)
+    % This function gives the sonic (hydrodynamic) eigenvector associated with the
+    % plane wave with vector k with dispersion relation w = +- c_s |k|
+    % direct == 1 choses +, -1 choses - 
 
+    lambda = -sign(direct)*sqrt(csq)*norm(k);
 
-% This function returns the fast MA eigenvector coefficients [1 dvx dvy dvz dbx dby dbz]
-% associated with the plane wave posessing the given real k.
-% wavetype = [-2: fast bkwd, -1: slow bkwd, 1: slow fwd, 2: fast fwd]
-% where forward == re[w] > 0 and backwards == re[w] < 0
-% for exp[i(k.r - wt)]
+    x = -csq/(lambda*rho);
 
-% Rotate into the plane such that vz/bz vanish
-
-% Solve the dispersion relation
-
-lambda = dot(k,v) - w;
-
-
-
-csq = flow.gamma*flow.P/flow.rho;
-
-lambda = kx*flow.vx + ky*flow.vy - w;
-kdb = kx*flow.bx + ky*flow.by;
-ksq = kx^2 + ky^2 + kz^2;
-bsq = flow.bx^2 + flow.by^2;
-rlsq = flow.rho*lambda^2;
-
-ev = zeros([7 1]);
-%ev = [0 0 0 0 0 0 0];
-
-% Coefficients of perturbed V[xyz]
-
-ev(1) = 1;
-
-ev(2) = (csq/(flow.rho*lambda))*(kx*rlsq - ksq*flow.bx*kdb)/(ksq*bsq - rlsq);
-ev(3) = (csq/(flow.rho*lambda))*(ky*rlsq - ksq*flow.by*kdb)/(ksq*bsq - rlsq);
-ev(4) = csq*kz*lambda/(ksq*bsq - rlsq);
-
-% Coefficient of perturbed B[xyz]
-ev(5) = csq*( kx*ky*flow.by - (ky^2+kz^2)*flow.bx)/(ksq*bsq - rlsq);
-ev(6) = -csq*(-kx*ky*flow.bx + (kx^2+kz^2)*flow.by)/(ksq*bsq - rlsq);
-ev(7) = csq*kz*kdb/(ksq*bsq - rlsq);
+    % eigenvector: [1, -csq {k} / lambda rho, {0}]
+    ev = [1; k(1)*x; k(2)*x; k(3)*x; 0; 0; 0];
+    omega = dot(k,v) - lambda;
 end
