@@ -16,7 +16,7 @@ if(nargin < 4)
 end
 
 if(nargin == 4)
-    funcList = { 'cudaArrayAtomic', 'cudaArrayRotate', 'freezeAndPtot' };
+    funcList = { 'cudaArrayAtomic', 'cudaArrayRotate', 'freezeAndPtot', 'cudaFwdAverage', 'cudaFwdDifference', 'freezeAndPtot'};
 end
 
 nFuncs = numel(funcList);
@@ -24,7 +24,7 @@ nFuncs = numel(funcList);
 D = [2*ones(n2d,1); 3*ones(n3d,1)];
 R = [ones(n2d,1)*max2d; ones(n3d,1)*max3d];
 
-t0 = tic;
+tic;
 for F = 1:nFuncs;
     outcome = -1;
 
@@ -52,38 +52,38 @@ for F = 1:nFuncs;
 
     outcome = iterateOnFunction(targfunc, D, R);
 
-    switch outcome;
-        case 1:  fprintf('Testing %s failed!\n', funcList{F});
-        case 0:  fprintf('Testing %s successful!\n', funcList{F});
-        case -1: fprintf('Test for function named %s not implemented\n', funcList{F});
+    switch outcome
+        case 1;  fprintf('Testing %s failed!\n', funcList{F});
+        case 0;  fprintf('Testing %s successful!\n', funcList{F});
+        case -1; fprintf('Test for function named %s not implemented\n', funcList{F});
 	case -2: fprintf('No function named %s...\n', funcList{F});
     end
 
 end
 
-fprintf('### Tested %i functions in %fsec ###\n', nFuncs, t0 - toc);
+fprintf('### Tested %i functions in %fsec ###\n', nFuncs, toc);
 end
 
 function outcome = iterateOnFunction(fname, D, R)
     outcome = 0;
     for n = 1:numel(D)
         res = randomResolution(D(n), R(n));
-        outcome = fname(res);
+        outcome = fname(res); fprintf('.');
         if outcome ~= 0; break; end
     end
 end
 
 function R = randomResolution(dim, nmax)
     R = round(nmax*rand(1,3));
+    R(R < 2) = 2;
     if dim < 3; R(3) = 1; end
 end
 
 % Provide a default 'return does-not-exist' target
-function failure = noSuchThing(res); failure = 1; end
+function failure = noSuchThing(res); failure = -1; end
 
 function outcome = testCudaArrayAtomic(res)
     fail = 0;
-    res = randomResolution(D(n), R(n));
     X = rand(res);
     Xg = GPU_Type(X);
 
@@ -100,9 +100,8 @@ function outcome = testCudaArrayAtomic(res)
     X(isnan(X)) = 0;
     cudaArrayAtomic(Xg, 0, 3);
     if any(Xg.array(:) ~= X(:) ); fprintf('  !!! Test failed: removing NaN, res=%ix%ix%in', res(1),res(2), res(3) ); fail = 1; end
-    fprintf('.');
 
-outcome = fail;
+    outcome = fail;
 end
 
 function fail = testCudaArrayRotate(res)
@@ -213,11 +212,71 @@ function fail = testCudaFreeRadiation(res)
 end
 
 function fail = testCudaFwdAverage(res)
-fail = -1;
+F = rand(res);
+
+xi = 1:1:res(1);
+yi = 1:1:res(2);
+zi = 1:1:res(3);
+    
+G1 = .5*F(xi, yi, zi) + .5*F(circshift(xi',[-1,0,0]), yi, zi);
+G2 = .5*F(xi, yi, zi) + .5*F(xi, circshift(yi',[-1,0,0]), zi);
+G3 = .5*F(xi, yi, zi) + .5*F(xi, yi, circshift(zi',[-1,0,0]));
+
+%GPU 
+
+FD = GPU_Type(F);
+G1D = GPU_Type(cudaFwdAverage(FD, 1));
+G2D = GPU_Type(cudaFwdAverage(FD, 2));
+G3D = GPU_Type(cudaFwdAverage(FD, 3));
+
+a = max(G1(:)-G1D.array(:));
+b = max(G2(:)-G2D.array(:));
+c = max(G3(:)-G3D.array(:));
+n = [a,b,c];
+
+if max(abs(n)) < 1e-15;
+    fail = 0;
+else fail = 1;
+end;
 end
 
 function fail = testCudaFwdDifference(res)
-fail = -1;
+lambda = 0.1; %could be any real number
+R = rand(res);
+F = rand(res);
+
+xi = 1:1:res(1);
+yi = 1:1:res(2);
+zi = 1:1:res(3);
+
+delta_x = F(xi, yi, zi) - F(circshift(xi',[-1,0,0]), yi, zi);
+delta_y = F(xi, yi, zi) - F(xi, circshift(yi',[-1,0,0]), zi);
+delta_z = F(xi, yi, zi) - F(xi, yi, circshift(zi',[-1,0,0]));
+
+Rx = R-lambda*(delta_x);
+Ry = R-lambda*(delta_y);
+Rz = R-lambda*(delta_z);
+
+%GPU
+
+RD = GPU_Type(R);
+FD = GPU_Type(F);
+
+cudaFwdDifference(RD,FD,1,lambda);
+a = max(Rx(:)-RD.array(:));
+RD.array = R;
+cudaFwdDifference(RD,FD,2,lambda);
+b = max(Ry(:)-RD.array(:));
+RD.array = R;
+cudaFwdDifference(RD,FD,3,lambda);
+c = max(Rz(:)-RD.array(:));
+
+n = [a,b,c];
+
+if max(abs(n)) < 1e-15;
+    fail = 0;
+else fail = 1;
+end;
 end
 
 function fail = testCudaMHDKernels(res)
@@ -295,11 +354,11 @@ function fail = testFreezeAndPtot(res)
     BxD = GPU_Type(Bx); ByD = GPU_Type(By); BzD = GPU_Type(Bz);
 
     % Call GPU routine
-    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1);
+    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01);
 
     pd = GPU_Type(pdev);
     cf = GPU_Type(cdev);
-    [ptot(1) pd.array(1) cf.array(1)]
+    fail = 0;
     if max(max(max(abs(pd.array - ptot)))) > 1e-10; disp('   !!! Test failed: P !!!'); fail = 1; end
     if max(max(abs(squeeze(cf.array) - squeeze(freeze)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; end
 
