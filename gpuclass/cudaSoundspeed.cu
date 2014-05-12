@@ -119,10 +119,11 @@ __global__ void cukern_Soundspeed_hd(double *rho, double *E, double *px, double 
 {
 int x = threadIdx.x + blockIdx.x * BLOCKDIM;
 int dx = blockDim.x * gridDim.x;
-double csq;
+double csq, rhoinv;
 
 while(x < n) {
-    csq = GG1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x]))/rho[x];
+	rhoinv = 1/rho[x];
+    csq = GG1*(E[x] - .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])*rhoinv)*rhoinv;
     // Imogen's energy flux is unfortunately not positivity preserving
     if(csq < 0.0) csq = 0.0;
     dout[x] = sqrt(csq);
