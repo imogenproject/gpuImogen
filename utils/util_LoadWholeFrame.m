@@ -1,6 +1,15 @@
-function massiveFrame = frame_loadWholeFrame(basename, padding, framenum, precise)
+function massiveFrame = util_loadWholeFrame(basename, padding, framenum, precise)
 
 if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single'; end
+
+if isa(basename,'double')
+    switch basename;
+        case 1; basename = '1D_X';
+        case 2; basename = '2D_XY';
+        case 3; basename = '3D_XYZ';
+        default: error('Numeric basename must be 1 for 1D_X, 2 for 2D_XY, 3 for 3D_XYZ');
+    end
+end
 
 frame = util_LoadFrameSegment(basename, padding, 0, framenum); % We need one for reference
 

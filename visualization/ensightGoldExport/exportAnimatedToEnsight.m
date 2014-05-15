@@ -1,4 +1,4 @@
-function exportAnimatedToEnsight(outBasename, inBasename, padlength, range, timeNormalization, autoparallel)
+function exportAnimatedToEnsight(outBasename, inBasename, padlength, range, timeNormalization)
 %>> outBasename:       Base filename for output Ensight files
 %>> inBasename:        Input filename for Imogen .mat savefiles
 %>> padlength:         Number of zeros in Imogen filenames
@@ -24,17 +24,25 @@ exportedFrameNumber = 0;
 if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 
-%range = removeNonexistantEntries(inBasename, padlength, range);
-maxFrameno = max(range);
+frmexists = util_checkFrameExistence(inBasename, padlength, range);
 
+fprintf('Found %i/%i frames to exist.\n',numel(find(frmexists)),numel(frmexists));
+
+if all(~frmexists);
+    fprintf('No frames match patten; Aborting.\n');
+    return
+end
+
+range      = range(frmexists == 1);
+maxFrameno = max(range);
 equilframe = [];
 
-% If running under automatic or not sure, ask about doing this in parallel
-% Note that trying this if MPI isn't started equals CRASH COREDUMP TIME
-if (nargin < 6) || (autoparallel == 0)
-  autoparallel = input('Attempt to run in parallel (1/0)? ');
+% Runs in parallel if MPI has been started
+if mpi_isinitialized() == 0
+  minf = [1 0];
+else
+  minf = mpi_basicinfo();
 end
-if autoparallel == 1; minf = mpi_basicinfo(); else; minf = [1 0]; end
 
 % Attempt to most evenly partition work among workers
 ntotal = numel(range); % number of frames to write
@@ -58,10 +66,6 @@ fprintf('Rank %i exporting frames %i to %i inclusive.\n', minf(2),localrange(1),
 
 %--- Loop over given frame range ---%
 for ITER = ninit+(1:nforme)
-    % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i', inBasename, padlength, range(ITER));
-    fprintf('Rank %i exporting %s as frame %i: %g; ', minf(2), fname, ITER, toc);
-
     dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
 
  %   if (ITER == 1) && (pertonly == 1)
@@ -71,11 +75,11 @@ for ITER = ninit+(1:nforme)
 %    if pertonly == 1
 %        dataframe = subtractEquil(dataframe, equilframe);
 %    end
-    fprintf('Rank %i load: %g; ', minf(2), toc);
     writeEnsightDatafiles(outBasename, ITER-1, dataframe);
     if range(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, range, dataframe, timeNormalization);
     end
+    fprintf('%i',minf(2));
 
 end
 
@@ -99,33 +103,3 @@ out.magZ = in.magZ - eq.magZ;
 
 end
 
-
-function newrange = removeNonexistantEntries(inBasename, padlength, range)
-
-existrange = [];
-
-for ITER = 1:numel(range)
-    % Take first guess; Always replace _START
-    fname = sprintf('%s_rank0_%0*i.mat', inBasename, padlength, range(ITER));
-    if range(ITER) == 0; fname = sprintf('%s_rank0_START.mat', inBasename); end
-
-    % Check existance; if fails, try _FINAL then give up
-    doesExist = exist(fname, 'file');
-    if (doesExist == 0) & (range(ITER) == max(range))
-        fname = sprintf('%s_rank0_FINAL.mat', inBasename);
-        doesExist = exist(fname, 'file');
-    end
-    
-    if doesExist ~= 0; existrange(end+1) = ITER; end
-end
-
-newrange = range(existrange);
-if numel(newrange) ~= numel(range);
-    fprintf('WARNING: Removed %i entries that could not be opened from list.\n', numel(range)-numel(newrange));
-end
-
-if numel(newrange) == 0;
-   error('UNRECOVERABLE: No files indicated existed. Perhaps remove trailing _ from base name?\n'); 
-end
-
-end

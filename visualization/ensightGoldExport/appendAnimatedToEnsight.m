@@ -12,26 +12,19 @@ exportedFrameNumber = numel(oldrange);
 if max(round(addrange) - addrange) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(addrange) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 
-addrange = removeNonexistantEntries(inBasename, padlength, addrange);
+frmexists = util_checkFrameExistence(inBasename, padlength, addrange);
+if all(~frmexists);
+  fprintf('No frames to be added exist; Returning.\n');
+  return
+end
+
+addrange = addrange(frmexists == 1);
 maxFrameno = max(addrange);
 
 if nargin == 4; timeNormalization = 1; end;
 
 %--- Loop over given frame range ---%
 parfor ITER = 1:numel(addrange)
-    % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, addrange(ITER));
-%    if addrange(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
-
-    % Check existance; if fails, try _FINAL then give up
-%    if exist(fname, 'file') == 0
-%        fname = sprintf('%s_FINAL.mat', inBasename);
-%        if exist(fname, 'file') == 0
-            % Weird shit is going on. Run away.
-%            error('UNRECOVERABLE: File previously checked out but now does not exist.\n');
-%        end
-%    end
-    
     fprintf('Exporting %s as frame %i... ', fname,  numel(oldrange)+ITER+1);
 
     dataframe = util_LoadWholeFrame(inBasename, padlength, addrange(ITER));

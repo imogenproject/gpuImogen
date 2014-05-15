@@ -33,7 +33,7 @@ fprintf(CASE, 'filename increment:    1\n');
 
 nwritten = fprintf(CASE, 'time values: ');
 for q = 1:numel(range)
-    nwritten = nwritten + fprintf(CASE,'%5.5g ', sum(frame.time.history(1:range(q)))/timeNormalization);
+    nwritten = nwritten + fprintf(CASE,'%5.5g ', sum(frame.time.history(1:min(range(q),numel(frame.time.history)) ))/timeNormalization);
     if nwritten > 72; fprintf(CASE, '\n'); nwritten = 0; end
 end
 fprintf(CASE, '\n');
