@@ -96,20 +96,21 @@ classdef CentrifugeInitializer < Initializer
  
             mom     = zeros([3 mygrid]);
             
+            % Normalizes the box to radius of 1 + a bit
             [Xv Yv] = GIS.ndgridSetXY();
             Xv = (Xv - obj.grid(1)/2 + .5)*obj.dGrid(1);
             Yv = (Yv - obj.grid(2)/2 + .5)*obj.dGrid(2);
 
-            % Normalizes the box to radius of 1 + a bit
+            rads   = [0:.0001:1.0002 1.5*(1+obj.edgeFraction)];
 
             % The analytic solution of 2d rotating-on-cylinders flow for isothermal conditions
             % for rotation curve w = w0 (1 - cos(2 pi r)). woa = omega0 / a^2
-            rhoAnalytic = @(r, woa) exp( -(-1 + 2*pi*pi*(1-r.^2) + cos(2*pi*r) + 2*pi*r.*sin(2*pi*r))*woa/(4*pi*pi));
-            % p_phi = rho r omega
-            momPhiAnalytic = @(r, w0, a) rhoAnalytic(r, w0*a^-2) .* r .* obj.omega0 .* (1 - cos(2*pi*r) - 1);
-            rads   = [0:.0001:1.0002 1.5*(1+obj.edgeFraction)];
-            rhos   = obj.rho0 * rhoAnalytic(rads, obj.omega0 *obj.a_isothermal^-2);
-            momphi = momPhiAnalytic(rads, obj.omega0, obj.a_isothermal);
+            RPhi = @(x, w0) (w0^2*(15 - 24*pi^2 + 24*pi^2*x.^2 - 16*cos(2*pi*x) + cos(4*pi*x) - 32*pi*x.*sin(2*pi*x) + 4*pi*x.*sin(4*pi*x)))/(32*pi^2);
+
+            % Isothermal density resulting from centrifugal potential
+            rhos = obj.rho0*exp(RPhi(rads,obj.omega0)/obj.a_isothermal^2);
+ 
+            momphi = rhos .* rads .* obj.omega0 .* (1 - cos(2*pi*rads) - 1);
 
             rhos(10001:end) = obj.rho0;
             momphi(10001:end) = -obj.rho0*rads(10001:end)*obj.omega0;
