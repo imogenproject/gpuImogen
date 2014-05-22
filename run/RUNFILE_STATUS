@@ -1,56 +1,30 @@
+Advection:    runs
 bonner_ebert: Pending gravity support
-bow_shock:    GOOD
+Bow Shock:    GOOD
+Centrifuge:   GOOD
 corrugation:  GOOD
+CPAW:         unknown
 dataFromFile: dead
 debug:        dead
+Dryrun:       RUNS
 fluidJet:     GOOD
+Fromfile:     unknown
+FullTestSuite:RUNS
 gravityToy:   pending gravity support
 gravJet:      pending gravity support
 hachisuDisk:  pending gravity support
 KH test:      GOOD
 KojimaDisk:   GOOD
 magJetTest:   unknown
+Brio-Wu:      unknown
 OTV test:     GOOD
-SedovTaylor:  unknown
-SodShockTube: unknown
+RHD shock:    Runs
+RT:           unknown (should run)
+SedovTaylor:  Runs (claimed github 2/27/14)
+SodShockTube: Runs
+Resumer:      Runs
 
 pending - ought to work but needs gravity
 GOOD    - confirmed working IRL
 dead    - definitely won't work now
 
-advect1.m
-advect2.m
-icgen.m
-imogen
-imogenEnsightExport
-imogenLoad.m
-parImogenLoad.m
-rad_Corr.m
-ref_hd_parallel.m
-ref_hd_rf.m
-ref_hd_serial.m
-ref_mhdtest.m
-run_Advection.m
-run_BonnerEbert.m
-run_BowShock.m
-run_CorrugationShock.m
-run_DataFromFile.m
-run_Debug.m
-RUNFILE_STATUS
-run_FluidJet.m
-run_FromFileData.m
-run_GravityToy.m
-run_GravJet.m
-run_HachisuDisk.m
-run_KelvinHelmholtz.m
-run_KojimaDisk.m
-run_MagJetTest.m
-run_MagShockTest.m
-run_OrszagTangVortex.m
-run_RayleighTaylor.m
-run_SedovTaylorBlast.m
-run_SodShockTube.m
-special_Resume.m
-starterRun.m
-testKoji.m
-test_rf.m

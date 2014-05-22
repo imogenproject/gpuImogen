@@ -1,8 +1,10 @@
-function result = fim(x, func)
-% Used a corrected Fourier method to calculate the integral of func(x) at all points x
-% with F(1) = 0
+function result = fim(x, y)
+% > x: Set of points, uniformly spaced
+% > y: @(x) function(x) to integrate
+% Use endpoint-corrected Fourier method to calculate
+% the integral F(x) with F(1)=0
 
-f = func(x);
+f = y(x);
 
 h = x(2)-x(1);
 w=numel(x)*h;
@@ -12,14 +14,15 @@ xst  = x(1);
 
 x = x - x(1); % Make a convenient transform to simplify the polies
 
-% Evaluate f, f', f'' at the endpoints
-fE  = func(xend);
- fpS = imag(func(xst+1i*eps))/eps;
- fpE = imag(func(xend+1i*eps))/eps;
+% Evaluate f, f' @ ends to machine precision, f'' to ~1e-10
+% http://www.sciencedirect.com/science/article/pii/S0377042707004086
+fE  = y(xend);
+ fpS = imag(y(xst+1i*eps))/eps;
+ fpE = imag(y(xend+1i*eps))/eps;
   hvec = sqrt(1i)*[-1 -.5 .5 1]/32768;
-  fcmp = func(xst + hvec);
+  fcmp = y(xst + hvec);
   fppS = 1073741824*imag(64*(fcmp(3)+fcmp(2))-fcmp(1)-fcmp(4))/15;
-  fcmp = func(xend+ hvec);
+  fcmp = y(xend+ hvec);
   fppE = 1073741824*imag(64*(fcmp(3)+fcmp(2))-fcmp(1)-fcmp(4))/15;
 
 % Order of continuity we wish to have
@@ -35,29 +38,28 @@ switch 3;
           c3 = (fppE - fppS)./(6*w);
 end
 
+% Create aux polynomial and subtract
 g = x.*(c1 + x.*(c2 + c3*x));
-
 f = f - g;
 
 N = numel(f);
 ftilde = fft(f);
 
+% Write out spectral integral transform in kspace
 if floor(N/2) == N/2
     coefs = 1i*[[1 1:N/2] -[(N/2-1):-1:1]];
 else
     coefs = 1i*[[1 1:(floor(N/2))] -[(floor(N/2)):-1:1]];
 end
 
-% Peel off 0th Fourier mode which is not integrable this way
+% Peel off 0th Fourier mode 
 c0 = ftilde(1)/N;
 ftilde(1) = 0;
 
+% Transform integral back to realspace and add int. of aux poly
 F = real(w*ifft(ftilde./coefs)/(2*pi));
-
 result = x.*(c0 + x.*(c1/2 + x.*(c2/3+x*c3/4))) + F;
 
-% Return the promised value
 result = result - result(1);
-
 
 end
