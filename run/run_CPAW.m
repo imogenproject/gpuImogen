@@ -2,27 +2,25 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-grid = [512 128 1];
+grid = [256 128 128];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
-run         = RadiatingShockInitializer(grid);
+run         = CPAlfvenWave(grid);
 
-run.iterMax     = 2000;
-run.theta       = 0;
-run.sonicMach   = 4;
+%run.iterMax     = 2000;
+%run.theta       = 0;
+%run.sonicMach   = 5;
+%run.alfvenMach  = .5;
 
-run.radBeta = 1;
-run.radTheta = 1;
+%run.bcMode.x = ENUM.BCMODE_CONST;
 
-run.bcMode.x = ENUM.BCMODE_CONST;
+%run.ppSave.dim2 = 5;
+%run.ppSave.dim3 = 100;
+%run.seedAmplitude = 100e-6;
 
-run.ppSave.dim2 = 5;
-run.ppSave.dim3 = 100;
-run.seedAmplitude = 1e-3;
-
-run.image.interval = 20;
-run.image.mass = true;
+%run.image.interval = 1;
+%run.image.mass = true;
 %run.image.magY = true;
 %run.image.pGas = true;
 
@@ -32,9 +30,10 @@ run.image.mass = true;
 %run.radiation.coolLength = .10;
 %run.radiation.strengthMethod = 'coollen';
 
-run.alias       = sprintf('RHD_ms%i_ang%i', run.sonicMach, run.theta);
-run.info        = sprintf('Radiating hydrodynamic shock test [Th=%g, Ms=%g] with grid [%g, %g, %g]', ...
-                          run.theta, run.sonicMach, run.grid(1), run.grid(2), run.grid(3));
+run.alias = '';
+%run.alias       = sprintfs%i_ma0pt%2i_ang%i', run.sonicMach, round(100*run.alfvenMach), run.theta);
+%run.info        = sprintf('Corrugation instability test [Th=%g, Ms=%g, Ma=%g] with grid [%g, %g, %g]', ...
+%                          run.theta, run.sonicMach, run.alfvenMach, run.grid(1), run.grid(2), run.grid(3));
 %run.notes       = 'Experimenting with fade BC - ref run with const';
 
 %--- Run tests ---%
@@ -43,3 +42,4 @@ if (true) %Primary test
     imogen(IC);
 end
 
+enderRun();

@@ -8,7 +8,7 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run                 = JetInitializer(grid);
-run.iterMax         = 1000;
+run.iterMax         = 100;
 run.injectorSize    = 15;
 run.offset          = [20 256 0];
 run.bcMode.x        = 'const';

@@ -134,19 +134,19 @@ momz = zeros(obj.grid);
             ball = (norm <= 1.0);
 
             % Set minimum mass; Solve the hydro jump for the incoming blast
-            obj.minMass = min(obj.preshockRho, obj.ballRho) / 100;
-            shockSoln = HDJumpSolver(obj.blastMach, 0, obj.gamma);
+            obj.minMass = min(obj.preshockRho, obj.ballRho) / 1000;
+            blast = HDJumpSolver(obj.blastMach, 0, obj.gamma);
 
             xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
             postshockX = 1:xedge;
             preshockX = (xedge+1):obj.grid(1);
 
             % Density distribution of background fluid
-            mass(postshockX,:,:) = obj.preshockRho*shockSoln.rho(2);
+            mass(postshockX,:,:) = obj.preshockRho*blast.rho(2);
             mass(preshockX,:,:)  = obj.preshockRho;
 
             % Set the momentum of the incoming blast, if applicable
-            momx(postshockX,:,:) = obj.preshockRho*shockSoln.rho(2)*(shockSoln.v(1,1) - shockSoln.v(1,2));
+            momx(postshockX,:,:) = obj.preshockRho*blast.rho(2)*(blast.v(1,1) - blast.v(1,2));
 
             % Calculate the ball flow parameters
             ballRadii = (.9:.01:1.5) * obj.ballXRadius;
@@ -168,8 +168,8 @@ momz = zeros(obj.grid);
             mom(3,:,:,:) = momz;
             
             % Calculate Etotal = P/(gamma-1) + T for all points
-            ener(postshockX,:,:) = obj.preshockP * shockSoln.P(2) /(obj.gamma-1);
-            ener(preshockX,:,:) = obj.preshockP / (obj.gamma-1);
+            ener(postshockX,:,:) = obj.preshockP * blast.Pgas(2) /(obj.gamma-1);
+            ener(preshockX,:,:)  = obj.preshockP / (obj.gamma-1);
             ener = interpScalarRadialToGrid(ballRadii, ballFlow.press / (obj.gamma-1), [0 1.5*obj.ballXRadius], X,Y,Z,ener);
             ener = ener + .5*squeeze(sum(mom.^2,1))./mass;
 

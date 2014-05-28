@@ -2,6 +2,8 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
+grid = [65 65 65];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run         = SedovTaylorBlastWaveInitializer([65 65 65]);

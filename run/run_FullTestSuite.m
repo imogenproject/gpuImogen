@@ -27,27 +27,27 @@ doSodTubeTests        = 1;
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doFullBroadside
-    TestResults.advection.Xalign_mach0 = testAdvection('sonic',[1024 8 1], [8 0 0], 0);
+    TestResults.advection.Xalign_mach0 = tsAdvection('sonic',[1024 8 1], [8 0 0], 0);
 end
 
 %--- Test advection of a sound wave with the background translating at half the speed of sound ---%
 if doSonicAdvectMovingBG || doFullBroadside
-    TestResult.advection.Xalign_mach0p5 = testAdvection('sonic',[1024 8 1], [8 0 0], .526172);
+    TestResult.advection.Xalign_mach0p5 = tsAdvection('sonic',[1024 8 1], [8 0 0], .526172);
 end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doFullBroadside
-    TestResult.advection.XY = testAdvection('sonic',[1024 1024 1], [7 5 0], .4387);
+    TestResult.advection.XY = tsAdvection('sonic',[1024 1024 1], [7 5 0], .4387);
 end
 
 %--- Test that an entropy wave just passively coasts along as it ought ---% 
 if doEntropyAdvect || doFullBroadside
-    TestResult.advection.HDentropy = testAdvection('entropy',[1024 1024 1], [9 5 0], [0 0 0], 2.1948);
+    TestResult.advection.HDentropy = tsAdvection('entropy',[1024 1024 1], [9 5 0], [0 0 0], 2.1948);
 end
 
 %--- Test the Sod shock tube for basic shock-capturingness ---%
 if doSodTubeTests || doFullBroadside
-    TestResult.sod.X = testSod(512,'X');
+    TestResult.sod.X = tsSod(512,'X');
 end
 
 

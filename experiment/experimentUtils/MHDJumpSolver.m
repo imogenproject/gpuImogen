@@ -62,10 +62,10 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     bsqpost = bx^2+bypost^2;
 
     % Now package it up into a nice result struct
-    result.mass       = [1; rhopost];
-    result.velocity   = [vxpre vxpost; vypre vypost; 0 0;];
-    result.magnet     = [bx bx; bypre bypost; 0 0];
-    result.pressure   = [1; Ppost];
+    result.rho        = [1; rhopost];
+    result.v          = [vxpre vxpost; vypre vypost; 0 0;];
+    result.B          = [bx bx; bypre bypost; 0 0];
+    result.Pgas       = [1; Ppost];
     result.Etot       = [Ppre/(g-1) + tpre + .5*bsqpre, Ppost/(g-1) + tpost + .5*bsqpost];
     result.theta      = theta;
     result.sonicMach  = ms;

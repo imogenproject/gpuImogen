@@ -40,10 +40,10 @@ T1 = rho1 * (vx1^2 + vy1^2) / 2;
   T2 = rho2*(vx2^2 + vy2^2)/2;
   P2 = (2*rho1*vx1^2 - gm1*P1)/(gp1);
 
-  result.mass = [rho1 rho2];
-  result.velocity = [vx1 vx2; vy1 vy2];
-  result.magnet = [0 0; 0 0; 0 0]; % For compatibility w/MHDJumpSolver output
-  result.pressure = [P1 P2];
+  result.rho = [rho1 rho2];
+  result.v = [vx1 vx2; vy1 vy2];
+  result.B = [0 0; 0 0; 0 0]; % For compatibility w/MHDJumpSolver output
+  result.Pgas = [P1 P2];
   result.Etot = [P1/(gamma-1) + T1, P2/(gamma-1) + T2];
   result.theta = theta;
   result.sonicMach = ms;
