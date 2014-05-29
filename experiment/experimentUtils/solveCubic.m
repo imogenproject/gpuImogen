@@ -1,18 +1,17 @@
 function x = solveCubic(a, b, c, d)
 
-p = (3*a*c-b*b)/(3*a^2);
-q = (2*b^3-9*a*b*c+27*a^2*d)/(27*a^3);
+p = -b/(3*a);
+q = p^3 + (b*c-3*a*d)/(6*a^2);
+r = c/(3*a);
 
-% Now have t^3 + p t + q = 0
+L = q + sqrt(q^2 + (r-p^2)^3);
+M = q - sqrt(q^2 + (r-p^2)^3);
 
-w3 = (-q + sqrt(q^2 + 4*p^3/27))/2;
+al = angle(L)/3;
+am = angle(M)/3;
 
-modw = abs(w3)^(1/3);
+x = abs(L)^(1/3) * exp(1i*(al+[0 2 4]*pi/3)) + abs(M)^(1/3) * exp(1i*(am+[0 2 4]*pi/3)) + p;
 
-w = [1 (1+sqrt(-3))/2 (1-sqrt(-3))/2] * modw;
-
-t = w - p ./ (3*w);
-
-x = t - b/(3*a)
-
+% For great justice, finish off with one round of newton-raphson
+x = x - (d + x.*(c + x.*(b + a*x)))./(c + x.*(2*b + 3*a*x));
 end
