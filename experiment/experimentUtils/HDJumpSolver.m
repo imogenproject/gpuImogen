@@ -30,7 +30,7 @@ if ms <= 1
     return;
 end
 
-% Preshock kinetic energy density
+% Otherwise the shock solution
 T1 = rho1 * (vx1^2 + vy1^2) / 2;
 
   vx2 = vx1*gm1/gp1 + 2*gamma*P1/(vx1*rho1*gp1);

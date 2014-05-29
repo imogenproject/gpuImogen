@@ -20,59 +20,57 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     %           post: RHO, VX, VY, P, BY 
 
     % Solve the preshock flow in terms of the 3 free quantities
-    vxpre = ms * sqrt(GAMMA);
-    vypre = vxpre * tand(theta);
+    vx1 = ms * sqrt(GAMMA);
+    vy1 = vx1 * tand(theta);
     
-    bx = vxpre / ma;
-    bypre = bx * tand(theta);
+    bx = vx1 / ma;
+    by1 = bx * tand(theta);
     
-    rhopre = 1;
-    Ppre = 1;
+    rho1 = 1;
+    P1 = 1;
     g = GAMMA;
   
-    pxpre = rhopre*vxpre;
-    txpre = rhopre*vxpre^2;
+    px1 = rho1*vx1;
+    tx1 = rho1*vx1^2;
 
-    % The following equations could be rewritten in terms of the 3 free quantities only (since they
-    % completely determine the flow) but writing in terms of physical quantities gives some idea where
-    % the terms come from. And I don't care to rewrite them, there's that too.
+    % This is the quartic polynomial resulting from the RH conditions divided by the
+    % known (vxpost - vx1) no-shock solution
+    q = g/(g-1);
+    a0 = bx^2*(by1^2*vx1^2*rho1 + bx^2*(2*P1*q + vx1^2*rho1));
+    a1 = -(vx1*rho1*(bx^4*(-1 + 2*q) - by1^2*(-2 + q)*vx1^2*rho1 + bx^2*(4*P1*q + by1^2*(-1 + 2*q) + 2*vx1^2*rho1)));
+    a2 = vx1^2*rho1^2*(by1^2*q + 2*P1*q + bx^2*(-2 + 4*q) + vx1^2*rho1);
+    a3 = (1 - 2*q)*vx1^3*rho1^3;
 
-    % These define a quartic equation sum(vxpost^n a_n) = 0 for vpost
-    a4 = (1+g)*pxpre^3;
-    a3 = -pxpre^2*(2*bx^2*(g+1) + g*(bypre^2 + 2*Ppre + 2*txpre));
-    a2 = pxpre*(bx^4*(g+1) + txpre*(2*bypre^2*(g-1) + 2*g*Ppre +(g-1)*txpre) + bx^2*(bypre^2*(g+1) + 4*g*(Ppre+txpre)));
-    a1 = -bypre^2*(g-2)*txpre^2 - 2*bx^4*g*(Ppre+txpre) - 2*bx^2*txpre*(bypre^2*g + 2*g*Ppre +(g-1)*txpre);
-    a0 = bx^2*vxpre*(bypre^2*(g-1)*txpre + bx^2*(2*g*Ppre +(g-1)*txpre));
-    vpost = solveQuartic(a4, a3, a2, a1, a0);
+    vpost = solveCubic(a3, a2, a1, a0);
 
     % This prevents a confirmed to exist a numerical instability in the solver wherein the 
     % real-valued solutions acquire an O(epsilon) imaginary part due to truncation error and
     % also ejects the nonphysical complex conjugate solutions that arise.
-    vpost = real(vpost(abs(imag(vpost)) < 1e-11)); 
+    vpost = real(vpost(abs(imag(vpost)) < 1e-12)); 
 
     vxpost = min(vpost); % The lesser is the one containing a discontinuity
-    bypost = (-bx^2*bypre + bypre*rhopre*vxpre^2)/(rhopre*vxpost*vxpre - bx^2);
-    vypost = (bx*bypost - bx*bypre + rhopre*vxpre*vypre) / (rhopre*vxpre);
-    Ppost = .5*(-bypost^2 + bypre^2 + 2*Ppre - 2*rhopre*vxpost*vxpre + 2*rhopre*vxpre^2);
-    rhopost = rhopre *vxpre / vxpost;
+    bypost = (-bx^2*by1 + by1*rho1*vx1^2)/(rho1*vxpost*vx1 - bx^2);
+    vypost = (bx*bypost - bx*by1 + rho1*vx1*vy1) / (rho1*vx1);
+    Ppost = .5*(-bypost^2 + by1^2 + 2*P1 - 2*rho1*vxpost*vx1 + 2*rho1*vx1^2);
+    rhopost = rho1 *vx1 / vxpost;
 
-    tpre  = rhopre*(vxpre^2+vypre^2)/2;
+    t1  = rho1*(vx1^2+vy1^2)/2;
     tpost = rhopost*(vxpost^2+vypost^2)/2;
-    bsqpre = bx^2+bypre^2;
+    bsq1 = bx^2+by1^2;
     bsqpost = bx^2+bypost^2;
 
     % Now package it up into a nice result struct
     result.rho        = [1; rhopost];
-    result.v          = [vxpre vxpost; vypre vypost; 0 0;];
-    result.B          = [bx bx; bypre bypost; 0 0];
+    result.v          = [vx1 vxpost; vy1 vypost; 0 0;];
+    result.B          = [bx bx; by1 bypost; 0 0];
     result.Pgas       = [1; Ppost];
-    result.Etot       = [Ppre/(g-1) + tpre + .5*bsqpre, Ppost/(g-1) + tpost + .5*bsqpost];
+    result.Etot       = [P1/(g-1) + t1 + .5*bsq1, Ppost/(g-1) + tpost + .5*bsqpost];
     result.theta      = theta;
     result.sonicMach  = ms;
     result.alfvenMach = ma;
 
     % Of course we should test that this is actually obeying the RH conditions!
-    err = evalRankineHugoniotConditions(rhopre, vxpre, vypre, bx, bypre, Ppre, rhopost, vxpost, vypost, bypost, Ppost, GAMMA);
+    err = evalRankineHugoniotConditions(rho1, vx1, vy1, bx, by1, P1, rhopost, vxpost, vypost, bypost, Ppost, GAMMA);
     if norm(err) > 1e-8; fprintf('WARNIN: Norm for obediance of Rankine-Hugoniot equations (lower=better) %g > 1e-8.\n', norm(err)); end
 
 end
