@@ -99,6 +99,10 @@ CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
 
 }
 
+
+#define PSQUARED px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]
+#define BSQUARED bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]
+
 __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, double *pz, double *E, int numel)
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
@@ -107,10 +111,8 @@ double P; double dE; double den;
 
 while(x < numel) {
   den = rho[x];
-  P = GAMMA_M1*(E[x] - (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/(2*den)); // gas pressure
+  P = GAMMA_M1*(E[x] - (PSQUARED)/(2*den)); // gas pressure
   dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
-
-  // Clamp to minimum temperature
   if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
 
   x += BLOCKDIM*GRIDDIM;
@@ -126,8 +128,7 @@ double P, dE, den;
 
 while(x < numel) {
   den = rho[x];
-  P = GAMMA_M1*(E[x] - (  (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/den +\
-                           (bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]))/2.0); // gas pressure
+  P = GAMMA_M1*(E[x] - (  (PSQUARED)/den + (BSQUARED))/2.0); // gas pressure
   dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
   if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
 
@@ -142,7 +143,7 @@ int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
 double P;
 while(x < numel) {
-  P = GAMMA_M1*(E[x] - (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/(2*rho[x])); // gas pressure
+  P = GAMMA_M1*(E[x] - (PSQUARED)/(2*rho[x])); // gas pressure
   radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
 
   x += BLOCKDIM*GRIDDIM;
@@ -156,16 +157,11 @@ int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
 double P;
 while(x < numel) {
-  P = GAMMA_M1*(E[x] - (  (px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x])/rho[x] +\
-                           (bx[x]*bx[x]+by[x]+by[x]+bz[x]+bz[x]))/2.0); // gas pressure
+  P = GAMMA_M1*(E[x] - (  (PSQUARED)/rho[x] + (BSQUARED))/2.0); // gas pressure
   radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
 
   x += BLOCKDIM*GRIDDIM;
   }
 
 }
-
-
-//            gasPressure = pressure(ENUM.PRESSURE_GAS, run, mass, mom, ener, mag);
-//            result      = obj.strength*mass.array.^(2 - obj.exponent) .* gasPressure.^obj.exponent;
 

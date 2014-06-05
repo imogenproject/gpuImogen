@@ -16,7 +16,7 @@
 
 /* Helper function;
    If it's passed a 5x1 mxINT64 it passes through,
-   If it's passed a class with classname GPU_Type it returns the GPU_MemPtr property's array */
+   If it's passed a class with classname "GPU_Type" it returns the GPU_MemPtr property's array */
 void getTagFromGPUType(const mxArray *gputype, int64_t *rettag)
 {
 mxClassID dtype = mxGetClassID(gputype);
@@ -60,7 +60,7 @@ if(tag == NULL) {
   mexErrMsgTxt("arrayMetadataToTag: Fatal: tag was null");
   }
 
-/* tag[0] = ...; */
+/* tag[0] = original pointer; */
 tag[1] = meta->ndims;
 tag[2] = meta->dim[0];
 tag[3] = meta->dim[1];
@@ -151,16 +151,89 @@ tag[2] = newdims[0]; tag[3] = newdims[1]; tag[4] = newdims[2];
 return ret;
 }
 
-void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim)
+// Just grab in.fieldA.fieldB
+// Or in.fieldA if fieldB is blank
+mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 {
+	if(fieldA == NULL) mexErrMsgTxt("In derefAdotBdotC: fieldA null!");
 
-blockdim->x = blkX;
-blockdim->y = blkY;
-blockdim->z = 1;
+	mxArray *A; mxArray *B;
+	mxClassID t0 = mxGetClassID(in);
 
-griddim->x = dims[0] / (blkX-2*nhalo); griddim->x += (griddim->x * (blkX-2*nhalo) < dims[0]);
-griddim->y = dims[1] / (blkY-2*nhalo); griddim->y += (griddim->y * (blkY-2*nhalo) < dims[1]);
-griddim->z = 1;
+	int snum = strlen("Failed to read field fieldA in X.A.B") + strlen(fieldA) + strlen(fieldB) + 10;
+	char *estring = (char *)calloc(snum, sizeof(char));
+
+	if(t0 == mxSTRUCT_CLASS) { // Get structure field from A
+		A = mxGetField(in, 0, fieldA);
+
+		if(A == NULL) {
+			sprintf(estring,"Failed to get X.%s", fieldA);
+			mexErrMsgTxt(estring);
+		}
+	} else { // Get field struct A and fail if it doesn't work
+		A = mxGetProperty(in, 0, fieldA);
+
+		if(A == NULL) {
+			sprintf(estring,"Failed to get X.%s", fieldA);
+			mexErrMsgTxt(estring);
+		}
+	}
+
+	if(fieldB != NULL) {
+		t0 = mxGetClassID(A);
+		if(t0 == mxSTRUCT_CLASS) {
+			B = mxGetField(A, 0, fieldB);
+		} else {
+			B = mxGetProperty(A, 0, fieldB);
+		}
+	
+		sprintf(estring,"Failed to get X.%s.%s", fieldA, fieldB);
+		if(B == NULL) mexErrMsgTxt(estring);
+	
+		return B;
+	} else {
+		return A;
+	}
+}
+
+// Two utility extensions of the deref above, to grab either the
+// first element of a presumed double array or the first N elements
+double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
+{
+mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
+
+if(u != NULL) return *mxGetPr(u);
+
+return NAN;
+}
+
+void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N)
+{
+mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
+
+int Nmax = mxGetNumberOfElements(u);
+N = (N > Nmax) ? Nmax : N;
+
+double *d = mxGetPr(u);
+int i;
+
+if(d != NULL) {
+	for(i = 0; i < N; i++) { x[i] = d[i]; } // Give it the d.
+} else {
+	for(i = 0; i < N; i++) { x[i] = NAN; }
+}
+
+}
+
+void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim)
+{
+	blockdim->x = tileDim->x + halo->x;
+	blockdim->y = tileDim->y + halo->y;
+	blockdim->z = tileDim->z + halo->z;
+
+	griddim->x = dims[0] / tileDim->x; griddim->x += ((griddim->x * tileDim->x) < dims[0]);
+	griddim->y = dims[1] / tileDim->y; griddim->y += ((griddim->y * tileDim->y) < dims[1]);
+	griddim->z = dims[2] / tileDim->z; griddim->z += ((griddim->z * tileDim->z) < dims[2]);
 }
 
 void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname, char *fname, int lname)

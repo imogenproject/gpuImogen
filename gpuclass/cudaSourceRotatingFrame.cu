@@ -22,48 +22,51 @@
    result from a rotating coordinate frame. The rotation axis is fixed at +Z-hat to
    reduce computational burden; The frame equations are given at the start of the
    kernel itself.
-   */
+ */
 
-__global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *Rx, double *Ry, int3 arraysize);
+__global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *xyvector);
+//__global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *Rx, double *Ry, int3 arraysize);
 
 __constant__ __device__ double devLambda[2];
+__constant__ __device__ int devIntParams[3];
 
 /*mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, 1, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr*/
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-    // At least 2 arguments expected
-    // Input and result
-    if ((nrhs!=8) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, omega, dt, xvector, yvector)\n");
+	// At least 2 arguments expected
+	// Input and result
+	if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, omega, dt, [xvector yvector])\n");
 
-  CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
+	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
-    // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
+	// Get source array info and create destination arrays
+	ArrayMetadata amd;
+	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
 
-    ArrayMetadata xmd;
-    double **xvec = getGPUSourcePointers(prhs, &xmd, 6, 6);
-    ArrayMetadata ymd;
-    double **yvec = getGPUSourcePointers(prhs, &ymd, 7, 7);
+	ArrayMetadata xmd;
+	double **xyvec = getGPUSourcePointers(prhs, &xmd, 6, 6);
 
-    dim3 gridsize, blocksize;
-    int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+	dim3 gridsize, blocksize;
+	int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
 
-    blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
-    gridsize.x = arraysize.x / (blocksize.x); gridsize.x += ((blocksize.x) * gridsize.x < amd.dim[0]);
-    gridsize.y = arraysize.z;
-    gridsize.z = 1;
+	blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
+	gridsize.x = arraysize.x / (blocksize.x); gridsize.x += ((blocksize.x) * gridsize.x < amd.dim[0]);
+	gridsize.y = arraysize.z;
+	gridsize.z = 1;
 
-    double omega = *mxGetPr(prhs[4]);
-    double dt    = *mxGetPr(prhs[5]);    
-    double lambda[4];
-    lambda[0] = omega;
-    lambda[1] = dt;
+	double omega = *mxGetPr(prhs[4]);
+	double dt    = *mxGetPr(prhs[5]);
+	double lambda[4];
+	lambda[0] = omega;
+	lambda[1] = dt;
 
-    cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
-    cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], xvec[0], yvec[0], arraysize);
+	int hostIntParams[3] = {amd.dim[0], amd.dim[1], amd.dim[2]};
 
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -1, "applyScalarPotential");
+	cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(devIntParams, &hostIntParams[0], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
+	cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], xyvec[0]);
+
+	CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -1, "applyScalarPotential");
 
 }
 
@@ -91,48 +94,70 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
    omega: scalar
    Rx: [nx 1 1] sized array
    Ry: [ny 1 1] sized array */
+
+#define NTH (BLOCKDIMX*BLOCKDIMY)
+
 #define OMEGA devLambda[0]
 #define DT devLambda[1]
-__global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *Rx, double *Ry, int3 arraysize)
+__global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, double *py, double *Rvector)
 {
-/* strategy: XY files, fill in X direction, step in Y direction; griddim.y = Nz */
-int myx = threadIdx.x + BLOCKDIMX*blockIdx.x;
-int myy = threadIdx.y;
-int myz = blockIdx.y;
-int nx = arraysize.x; int ny = arraysize.y;
+	__shared__ double shar[4*BLOCKDIMX*BLOCKDIMY];
+	//__shared__ double pxhf[BLOCKDIMX*BLOCKDIMY], pyhf[BLOCKDIMX*BLOCKDIMY];
+	//__shared__ double px0[BLOCKDIMX*BLOCKDIMY], py0[BLOCKDIMX*BLOCKDIMY];
 
-if(myx >= arraysize.x) return; 
+	/* strategy: XY files, fill in X direction, step in Y direction; griddim.y = Nz */
+	int myx = threadIdx.x + BLOCKDIMX*blockIdx.x;
+	int myy = threadIdx.y;
+	int myz = blockIdx.y;
+	int nx = devIntParams[0]; int ny = devIntParams[1];
 
-int globaddr = myx + nx*(myy + ny*myz);
+	if(myx >= devIntParams[0]) return;
 
-double locX = Rx[myx];
-double locY;
-double locRho;
-double dmom; double dener;
-double locMom[2];
-/*double inv_rsqr, xy;*/
+//	int globaddr = myx + nx*(myy + ny*myz);
+	int tileaddr = myx + nx*(myy + ny*myz);
+	rho += tileaddr; E += tileaddr; px += tileaddr; py += tileaddr;
+	tileaddr = threadIdx.x + BLOCKDIMX*threadIdx.y;
 
-for(; myy < ny; myy += BLOCKDIMY) {
-  locY = Ry[myy];
+	double locX = Rvector[myx]; Rvector += nx; // Advances this to the Y array for below
+	double locY;
+	double locRho;
+	double dmom; double dener;
+	double locMom[2];
 
-/*  inv_rsqr = 2.0/(locX*locX+locY*locY);
-  xy = locX*locY;*/
+	for(; myy < ny; myy += BLOCKDIMY) {
+		locY = Rvector[myy];
 
-  locRho = rho[globaddr];
-  locMom[0] = px[globaddr];
-  locMom[1] = py[globaddr];
- 
-/*  dmom = DT*OMEGA*(2*(x y px + x x py)/r^2 - rho w x); dpx */
-  dmom         = DT*OMEGA*(2*locMom[1] + OMEGA*locX*locRho);
-  px[globaddr] = locMom[0] + dmom;
-  dener        = dmom*locMom[0] / locRho;
+		// Load original values to register
+		//locRho = rho[globaddr];
+		//locMom[0] = px[globaddr];
+		//locMom[1] = py[globaddr];
+		locRho = *rho;
+		shar[tileaddr] = *px;
+		shar[tileaddr+NTH] = *py;
 
-/*  dmom = DT*OMEGA*(-2*(x x px + x y py)/r^2 - rho w y); dpy */
-  dmom         = DT*OMEGA*(-2*locMom[0] + OMEGA*locY*locRho);
-  py[globaddr] = locMom[1] + dmom;
-  E[globaddr] += dener + dmom*locMom[1] / locRho;
+		// Predict momenta at half-timestep using 1st order method
+		dmom         = DT*OMEGA*(shar[tileaddr+NTH] + OMEGA*locX*locRho/2.0);
+		shar[tileaddr+2*NTH] = shar[tileaddr] + dmom;
+		dmom         = DT*OMEGA*(-shar[tileaddr] + OMEGA*locY*locRho/2.0);
+		shar[tileaddr+3*NTH] = shar[tileaddr+NTH] + dmom;
 
-  globaddr += nx*BLOCKDIMY;
-  }
+		// Now make full timestep update: Evalute f' using f(t_half)
+		dmom         = DT*OMEGA*(2*shar[tileaddr+3*NTH] + OMEGA*locX*locRho);
+		dener = (shar[tileaddr]+dmom/2)*dmom/locRho;
+		*px = shar[tileaddr] + dmom;
+
+		dmom         = DT*OMEGA*(-2*shar[tileaddr+2*NTH] + OMEGA*locY*locRho);
+		dener += (shar[tileaddr+NTH]+dmom/2)*dmom/locRho;
+		*py = shar[tileaddr+NTH] + dmom;
+
+		// Change in energy is exactly the work done by force
+		// Is exactly (p^2 / 2 rho) after minus before
+		*E += dener;
+
+		rho += nx*BLOCKDIMY;
+		E += nx*BLOCKDIMY;
+		px += nx*BLOCKDIMY;
+		py += nx*BLOCKDIMY;
+	}
 }
 

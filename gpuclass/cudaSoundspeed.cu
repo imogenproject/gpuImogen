@@ -45,7 +45,7 @@ __constant__ double pressParams[6];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Determine appropriate number of arguments for RHS
   if( (nlhs != 1) || ( (nrhs != 9) && (nrhs != 6) ))
-    mexErrMsgTxt("calling form for cudaSoundspeed is c_s = cudaSoundspeed(mass, ener, momx, momy, momz, bx, by, bz, gamma);");
+    mexErrMsgTxt("calling form for cudaSoundspeed is c_s = cudaSoundspeed(mass, ener, momx, momy, momz, [bx, by, bz,] gamma);");
 
   CHECK_CUDA_ERROR("entering cudaSoundspeed");
 
@@ -85,10 +85,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "cuda sound speed");
 
-
     free(destPtr);
-
-
 }
 
 // THIS KERNEL CALCULATES SOUNDSPEED IN THE MHD CASE, TAKEN AS THE FAST MA SPEED
@@ -106,6 +103,8 @@ while(x < n) {
     T = .5*(px[x]*px[x] + py[x]*py[x] + pz[x]*pz[x])*invrho;
     Bsq = bx[x]*bx[x] + by[x]*by[x] + bz[x]*bz[x];
 
+    // MHD_CS_B is (alfven constant A) - .5(gamma)(gamma-1), where A is physically 1
+    // but may be increased beyond 1 to stabilize simulations where low-beta conditions occur
     csq = (GG1*(E[x] - T) + MHD_CS_B * Bsq ) * invrho ;
     if(csq < 0.0) csq = 0.0;
     dout[x] = sqrt(csq);
