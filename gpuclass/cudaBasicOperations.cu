@@ -114,7 +114,7 @@ CHECK_CUDA_ERROR("Entering cudaBasicOperations");
       case 14: cukern_acosh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
       case 15: cukern_atanh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
 
-      default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a) operation code invalid");
+      default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a) operation code invalid"); break;
       }
      return;
   }
@@ -174,7 +174,7 @@ CHECK_CUDA_ERROR("Entering cudaBasicOperations");
         case 5: cukern_min<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
         case 6: cukern_max<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
         case 7: cukern_harmonicmean<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid");
+        default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid"); break;
         } break;
       }
 
