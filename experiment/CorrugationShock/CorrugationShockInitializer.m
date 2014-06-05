@@ -159,10 +159,10 @@ classdef CorrugationShockInitializer < Initializer
                 
              if isempty(result)
                  result = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
-                 obj.mass       = result.mass;
-                 obj.pressure   = result.pressure;
-                 obj.velocity   = result.velocity;
-                 obj.magnet     = result.magnet;
+                 obj.mass       = result.rho;
+                 obj.pressure   = result.Pgas;
+                 obj.velocity   = result.v;
+                 obj.magnet     = result.B;
                  obj.theta      = result.theta;
                  obj.sonicMach  = result.sonicMach;
                  obj.alfvenMach = result.alfvenMach;

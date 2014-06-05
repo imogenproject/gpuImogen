@@ -145,18 +145,18 @@ classdef RadiatingShockInitializer < Initializer
             obj.pureHydro = 0;
             obj.mode.magnet = true;
         end
-        radflow = RadiatingFlowSolver(jump.mass(2), jump.velocity(1,2), ...
-           jump.velocity(2,2), jump.magnet(1,2), jump.magnet(2,2), ...
-           jump.pressure(2), obj.gamma, obj.radBeta, obj.radTheta, 0);
+        radflow = RadiatingFlowSolver(jump.rho(2), jump.v(1,2), ...
+           jump.v(2,2), jump.B(1,2), jump.B(2,2), ...
+           jump.Pgas(2), obj.gamma, obj.radBeta, obj.radTheta, 0);
 
         radflow.numericalSetup(2, 2);
 
-        L_c = radflow.coolingLength(jump.velocity(1,2));
-        T_c = radflow.coolingTime(jump.velocity(1,2));
+        L_c = radflow.coolingLength(jump.v(1,2));
+        T_c = radflow.coolingTime(jump.v(1,2));
 
         radflow.setCutoff('thermal',1);
 
-        flowEndpoint = radflow.calculateFlowTable(jump.velocity(1,2), L_c / 1000, 5*L_c);
+        flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
         flowValues   = radflow.solutionTable();
 
         fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
@@ -183,12 +183,12 @@ classdef RadiatingShockInitializer < Initializer
         mag  = zeros([3 GIS.pMySize]);
 
         % Fill in preshock values
-        mass(preshock,:,:) = jump.mass(1);
-        ener(preshock,:,:) = jump.pressure(1);
-        mom(1,:,:,:) = jump.mass(1)*jump.velocity(1,1);
-        mom(2,preshock,:,:) = jump.mass(1)*jump.velocity(2,1);
-        mag(1,:,:,:) = jump.magnet(1,1);
-        mag(2,preshock,:,:) = jump.magnet(2,1);
+        mass(preshock,:,:) = jump.rho(1);
+        ener(preshock,:,:) = jump.Pgas(1);
+        mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
+        mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
+        mag(1,:,:,:) = jump.B(1,1);
+        mag(2,preshock,:,:) = jump.B(2,1);
 
         % Get interpolated values for the flow
         flowValues(:,1) = flowValues(:,1) + Xshock;
@@ -267,8 +267,8 @@ classdef RadiatingShockInitializer < Initializer
             % Add seed to mass while maintaining self-consistent momentum/energy
             % This will otherwise take a dump on e.g. a theta=0 shock with
             % a large density fluctuation resulting in negative internal energy
-            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.velocity(1,1);
-            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.velocity(2,1);
+            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
+            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
         end
         
         ener = ener/(obj.gamma-1) + ...

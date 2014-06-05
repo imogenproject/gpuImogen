@@ -41,12 +41,20 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     a2 = vx1^2*rho1^2*(by1^2*q + 2*P1*q + bx^2*(-2 + 4*q) + vx1^2*rho1);
     a3 = (1 - 2*q)*vx1^3*rho1^3;
 
-    vpost = solveCubic(a3, a2, a1, a0);
+    vpost = roots([a3 a2 a1 a0])
 
     % This prevents a confirmed to exist a numerical instability in the solver wherein the 
     % real-valued solutions acquire an O(epsilon) imaginary part due to truncation error and
     % also ejects the nonphysical complex conjugate solutions that arise.
     vpost = real(vpost(abs(imag(vpost)) < 1e-12)); 
+
+    % Admit only nonexpansive shocks as per the entropy condition
+    if vpost > vx1;
+        vpost = vx1;
+        result.isShock = 0;
+    else
+        result.isShock = 1;
+    end
 
     vxpost = min(vpost); % The lesser is the one containing a discontinuity
     bypost = (-bx^2*by1 + by1*rho1*vx1^2)/(rho1*vxpost*vx1 - bx^2);
