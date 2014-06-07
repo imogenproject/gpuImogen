@@ -12,7 +12,7 @@ grid = [1024 8 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Override: Run ALL the tests! ---%
-doFullBroadside = 0;
+doFullBroadside = 1;
 
 %--- Individual selects ---%
 doSonicAdvectStaticBG = 0;
@@ -27,17 +27,17 @@ doSodTubeTests        = 1;
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doFullBroadside
-    TestResults.advection.Xalign_mach0 = tsAdvection('sonic',[1024 8 1], [8 0 0], 0);
+    TestResults.advection.Xalign_mach0 = tsAdvection('sonic',[1024 8 1], [8 0 0], [0 0 0], 0);
 end
 
 %--- Test advection of a sound wave with the background translating at half the speed of sound ---%
 if doSonicAdvectMovingBG || doFullBroadside
-    TestResult.advection.Xalign_mach0p5 = tsAdvection('sonic',[1024 8 1], [8 0 0], .526172);
+    TestResult.advection.Xalign_mach0p5 = tsAdvection('sonic',[1024 8 1], [8 0 0], [0 0 0], .526172);
 end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doFullBroadside
-    TestResult.advection.XY = tsAdvection('sonic',[1024 1024 1], [7 5 0], .4387);
+    TestResult.advection.XY = tsAdvection('sonic',[1024 1024 1], [7 5 0], [0 0 0], .4387);
 end
 
 %--- Test that an entropy wave just passively coasts along as it ought ---% 
@@ -84,4 +84,5 @@ end
 
 % Try to run an accretion analysis?
 
+save('~/FullTestSuiteResults.mat','TestResult');
 

@@ -28,7 +28,8 @@ X = SodShockSolution(N, T);
 
 sodME(1) = mean(u.mass(:,1)-X.mass');
 
-run.grid = [2*n 16 1];
+run.grid = [2*N 16 1];
+GIS.setup(run.grid);
 icfile = run.saveInitialCondsToFile();
 outpath = imogen(icfile);
 
@@ -41,7 +42,8 @@ X = SodShockSolution(2*N, T);
 
 sodME(2) = mean(u.mass(:,1)-X.mass');
 
-run.grid = [3*n 16 1];
+run.grid = [3*N 16 1];
+GIS.setup(run.grid);
 icfile = run.saveInitialCondsToFile();
 outpath = imogen(icfile);
 
@@ -54,10 +56,6 @@ X = SodShockSolution(3*N, T);
 
 sodME(3) = mean(u.mass(:,1)-X.mass');
 
-result.meanError = sodME;
-
-
-
-
+result.meanError = sodME
 
 end
