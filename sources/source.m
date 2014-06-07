@@ -11,17 +11,17 @@ function source(run, mass, mom, ener, mag)
 
 GIS = GlobalIndexSemantics();
 
-    %--- External scalar potential (e.g. non self gravitating component) ---%
-%    if run.potentialField.ACTIVE
-%        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
-%    end
+% We observe that { radiation, self-gravity, other pure-mechanical forces } commute:
+% radiation acts only on internal energy,
+% while purely mechanical forces act only on kinetic energy + momentum
+% and self-gravity force is a function only of density
 
-    % TESTING: uncomment to enable rotating frame.
+    % FIXME: This could be improved by calculating this affine transform once and storing it
     if run.frameRotateOmega ~= 0
         [xg yg] = GIS.ndgridVecs;
-        xg = GPU_Type(run.DGRID{1}*(xg-run.frameRotateCenter(1)));
-        yg = GPU_Type(run.DGRID{2}*(yg-run.frameRotateCenter(2)));
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
+        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ]); 
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, 2*run.time.dTime, xyvector);
+        clear xyvector;
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -34,12 +34,13 @@ GIS = GlobalIndexSemantics();
         run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, 2*run.time.dTime, GIS.topology.nproc) );
     end
 
-    if run.frameRotateOmega ~= 0
-        cudaSourceRotatingFrame(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, run.frameRotateOmega, run.time.dTime, xg.GPU_MemPtr, yg.GPU_MemPtr);
-        clear xg
-        clear yg;
-    end
 
+    %--- External scalar potential (e.g. non self gravitating component) ---%
+%    if run.potentialField.ACTIVE
+%        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+%    end
+
+    % FIXME: This sequence is only first order accurate in the energy equation
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.
@@ -55,8 +56,7 @@ GIS = GlobalIndexSemantics();
     end
     
     %--- Radiation Sourcing ---%
-    %       If radiation is active, the radiation terms are subtracted, as a sink, from the energy
-    %       equation.
+    %       If radiation is active, subtract from internal energy
     if strcmp(run.fluid.radiation.type, ENUM.RADIATION_NONE) == false
         run.fluid.radiation.solve(run, mass, mom, ener, mag);
     end
@@ -76,5 +76,5 @@ ener.applyBoundaryConditions(0);
 mom(1).applyBoundaryConditions(0);
 mom(2).applyBoundaryConditions(0);
 mom(3).applyBoundaryConditions(0);
-    
+
 end

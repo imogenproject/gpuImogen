@@ -136,9 +136,12 @@ __global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, 
 		shar[tileaddr+NTH] = *py;
 
 		// Predict momenta at half-timestep using 1st order method
-		dmom         = DT*OMEGA*(shar[tileaddr+NTH] + OMEGA*locX*locRho/2.0);
-		shar[tileaddr+2*NTH] = shar[tileaddr] + dmom;
-		dmom         = DT*OMEGA*(-shar[tileaddr] + OMEGA*locY*locRho/2.0);
+		dmom         = DT*OMEGA*(shar[tileaddr+NTH] + OMEGA*locX*locRho/2.0); // dmom = delta px
+		dener = (shar[tileaddr]+dmom/2)*dmom/locRho;
+		shar[tileaddr+2*NTH] = shar[tileaddr]
+
+		dmom         = DT*OMEGA*(-shar[tileaddr] + OMEGA*locY*locRho/2.0); // dmom = delta py
+		dener += (shar[tileaddr]+dmom/2)*dmom/locRho;
 		shar[tileaddr+3*NTH] = shar[tileaddr+NTH] + dmom;
 
 		// Now make full timestep update: Evalute f' using f(t_half)
