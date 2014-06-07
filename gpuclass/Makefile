@@ -7,7 +7,7 @@ GEN_OPTS =
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 #NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -g -G
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v" # Emit resource utilization info on compile
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -26,7 +26,7 @@ all: base fluids parallel lambda
 base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotate cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceAntimach
@@ -131,6 +131,13 @@ cudaFluidTVD.o: cudaFluidTVD.cu
 cudaFluidTVD: cudaCommon.o cudaFluidTVD.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
+cudaFluidStep.o: cudaFluidStep.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaFluidStep.cpp
+cudaFluidStep: cudaCommon.o cudaFluidStep.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+
 cudaMHDKernels.o: cudaMHDKernels.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaMHDKernels.cu -o cudaMHDKernels.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaMHDKernels.cpp
@@ -174,6 +181,18 @@ cudaSoundspeed: cudaCommon.o cudaSoundspeed.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 # SOURCE/SINK ROUTINES
+cudaNonconservativeTerms.o: cudaNonconservativeTerms.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaNonconservativeTerms.cu -o cudaNonconservativeTerms.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaNonconservativeTerms.cpp
+cudaNonconservativeTerms: cudaCommon.o cudaNonconservativeTerms.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+cudaSourceConstantG.o: cudaSourceConstantG.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaSourceConstantG.cu -o cudaSourceConstantG.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceConstantG.cpp
+cudaSourceConstantG: cudaCommon.o cudaSourceConstantG.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
 cudaSourceScalarPotential.o: cudaSourceScalarPotential.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaSourceScalarPotential.cu -o cudaSourceScalarPotential.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceScalarPotential.cpp
@@ -206,7 +225,6 @@ cudaSourceAntimach: cudaCommon.o cudaSourceAntimach.o
 
 
 
-
 # PARALLEL OPERATION ROUTINES **********
 cudaHaloExchange.o: cudaHaloExchange.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda cudaHaloExchange.cu -o cudaHaloExchange.cpp
@@ -218,3 +236,5 @@ cudaHaloExchange: cudaCommon.o cudaHaloExchange.o
 clean:
 	rm -f *mexa64 *cpp *o
 
+tidy:
+	rm -f *cpp *o
