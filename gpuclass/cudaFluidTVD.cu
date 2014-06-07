@@ -52,7 +52,8 @@ the half- and full-step, but the increase in computation is lardefge
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double halflambda, int nx);
 __global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double halfLambda, int nx);
 
-#define LIMITERFUNC fluxLimiter_Osher
+//#define LIMITERFUNC fluxLimiter_Osher
+#define LIMITERFUNC fluxLimiter_minmod
 
 __constant__ __device__ double *inputPointers[8];
 __constant__ __device__ double *outputPointers[5];

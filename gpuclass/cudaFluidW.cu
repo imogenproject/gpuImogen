@@ -40,6 +40,8 @@ and considerably speeds up the process.
 
 */
 
+__device__ void __syncthreads(void);
+
 __global__ void cukern_Wstep_mhd_uniform  (double *P, double *Cfreeze, double lambdaqtr, int nx);
 __global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double lambdaqtr, int nx);
 
@@ -177,6 +179,7 @@ double Ehalf;
 
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
+    doIflux &= (Xindex < nx);
 
     b_i[0] = inputPointers[5][x]; /* Load the magnetic field */
     b_i[1] = inputPointers[6][x];
@@ -200,7 +203,7 @@ while(Xtrack < nx+2) {
     momdotB = b_i[0]*q_i[2] + b_i[1]*q_i[3] + b_i[2]*q_i[4];
 
     __syncthreads();
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         rho_half = q_i[0] - FLUXA_DELTA;
         q_i[3] -= FLUXB_DELTA;
         momhalfsq = q_i[3]*q_i[3]; // store py_half^2
@@ -214,7 +217,7 @@ while(Xtrack < nx+2) {
     FLUXB_DECOUPLE(2);
     __syncthreads();
 
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         q_i[4] -= FLUXA_DELTA; // momz_half
         momhalfsq += q_i[4]*q_i[4]; // now have (py^2 + pz^2)|_half
         outputPointers[4][x] = q_i[4]; // WROTE PZ_HALF
@@ -230,7 +233,7 @@ while(Xtrack < nx+2) {
     FLUXA_DECOUPLE(1)
     __syncthreads();
 
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         Ehalf = q_i[1] - FLUXA_DELTA; /* Calculate Ehalf and store a copy in locP */
 
         outputPointers[0][x] = q_i[0] = (rho_half > FLUID_MINMASS) ? rho_half : FLUID_MINMASS; // enforce minimum mass density.
@@ -334,6 +337,7 @@ double locE;
 
 while(Xtrack < nx+2) {
     x = I0 + (Xindex % nx);
+    doIflux &= (Xindex < nx);
 
 /* rho q_i[0] = inputPointers[0][x];  Preload these out here 
      E q_i[1] = inputPointers[1][x];  So we avoid multiple loops 
@@ -354,7 +358,7 @@ while(Xtrack < nx+2) {
     FLUXB_DECOUPLE(1)
     __syncthreads();
 
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         locE = q_i[2] - FLUXA_DELTA; /* Calculate Ehalf */
         velocity_half = locPsq = q_i[1] - FLUXB_DELTA; /* Calculate Pxhalf */
         outputPointers[2][x] = locPsq; /* store pxhalf */
@@ -370,7 +374,7 @@ while(Xtrack < nx+2) {
     w_i = velocity*q_i[2]; /* pz flux = v pz */
     FLUXB_DECOUPLE(2)
     __syncthreads();
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         q_i[0] -= FLUXA_DELTA;
         locPsq += q_i[0]*q_i[0];
         outputPointers[3][x] = q_i[0];
@@ -384,7 +388,7 @@ while(Xtrack < nx+2) {
     w_i = q_i[1]; /* rho flux = px */
     FLUXA_DECOUPLE(0)
     __syncthreads();
-    if(doIflux && (Xindex < nx)) {
+    if(doIflux) {
         q_i[0] -= FLUXA_DELTA; /* Calculate rho_half */
 //      outputPointers[0][x] = q_i[0];
         q_i[0] = (q_i[0] < FLUID_MINMASS) ? FLUID_MINMASS : q_i[0]; /* Enforce minimum mass density */

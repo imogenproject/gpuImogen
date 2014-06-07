@@ -22,7 +22,6 @@ typedef struct {
         double *cFreeze;
         } fluidVarPtrs;
 
-
 typedef struct {
     int ndims;
     int dim[3];
@@ -36,7 +35,11 @@ double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, 
 double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany);
 double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
 
-void getLaunchForXYCoverage(int *dims, int blkX, int blkY, int nhalo, dim3 *blockdim, dim3 *griddim);
+mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB);
+double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB);
+void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N);
+
+void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim);
 
 void checkCudaError(char *where, char *fname, int lname);
 void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname, char *fname, int lname);
@@ -60,7 +63,7 @@ __device__ __inline__ double fluxLimiter_Osher(double A, double B)
 double r = A*B;
 if(r <= 0.0) return 0.0;
 
-return r*(A+B)/(A*A+r+B*B);
+return 1.5*r*(A+B)/(A*A+r+B*B);
 
 }
 
