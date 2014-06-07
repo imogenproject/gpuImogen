@@ -14,7 +14,7 @@ function run = initialize(ini)
             'FluidManager', 'MagnetManager', 'ParallelManager', 'BCManager', 'TreadmillManager');
     
     fclose all; % Prevent any lingering saves from disrupting run.
-    
+
     run             = ImogenManager.getInstance();
     run.gridSize    = ini.grid;
     [run.version, run.detailedVersion]                        = versionInfo();

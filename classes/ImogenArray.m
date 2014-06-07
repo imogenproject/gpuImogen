@@ -111,13 +111,13 @@ classdef ImogenArray < handle
             end
 
 %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(0); end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end % Enforce static values.
 
         end
 
         function set.array(obj,value)
             obj.pArray.array = value;
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(0); end % Enforce static values.
+            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end % Enforce static values.
         end
         
 %___________________________________________________________________________________________________ GS: gridSize
