@@ -27,7 +27,7 @@
 
    The accretion calculation is only invoked if the accretion radius of an object intersects this
    MPI rank's grid section, while all ranks perform the gravitational calculation.
-   */
+ */
 void __global__ cudaStarAccretes(double *rho, double *px, double *py, double *pz, double *E, int3 gridLL, double h, int nx, int ny, int nz, double *stateOut, int ncellsvert);
 void __global__ cudaStarGravitation(double *rho, double *px, double *py, double *pz, double *E, int3 arraysize);
 
@@ -87,182 +87,194 @@ __constant__ __device__ double gravParams[9];
 #define G2 gravParams[8]
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-    // At least 2 arguments expected
-    // Input and result
-    if ((nrhs != 10) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need newState = cudaAccretingStar(rho, px, py, pz, E, starState, lower left corner global index, grid size H, dt, topology_size);");
+	if ((nrhs != 10) || (nlhs != 1)) mexErrMsgTxt("Wrong number of arguments: need newState = cudaAccretingStar(rho, px, py, pz, E, starState, lower left corner global index, grid size H, dt, topology_size);");
 
-    CHECK_CUDA_ERROR("entering cudaAccretingStar");
+	CHECK_CUDA_ERROR("entering cudaAccretingStar");
 
-    double lowleft[3], upright[3];
-    double *i0 = mxGetPr(prhs[6]);
-    double H   = *mxGetPr(prhs[7]);
-    double dtime = *mxGetPr(prhs[8]);
-    double *topologySize = mxGetPr(prhs[9]);
+	double lowleft[3], upright[3];
 
-    double *hostStarState = mxGetPr(prhs[5]);
-    // Position transform the star into rank-local coordinates by subtracting off our offset coordinate scaled by h.
-    double originalStarState[14];
-    int j;
-    for(j = 0; j < 3; j++) originalStarState[j] = hostStarState[j] - H*i0[3+j];
-    for(j = 3; j < 14; j++) originalStarState[j] = hostStarState[j];
-  
-    cudaMemcpyToSymbol(starState, &originalStarState[0], 14*sizeof(double), 0, cudaMemcpyHostToDevice);
-    CHECK_CUDA_ERROR("Copying star state to __constant__ memory");
+	double *i0 = mxGetPr(prhs[6]); // Global lower left index
+	double H   = *mxGetPr(prhs[7]); // grid space H
+	double dtime = *mxGetPr(prhs[8]); // timestep
+	double *topologySize = mxGetPr(prhs[9]); // size of topology (FIXME: Get this from MPI...)
 
-    // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 4);
+	double *hostStarState = mxGetPr(prhs[5]);
+	// Position transform the star into rank-local coordinates by subtracting off our offset coordinate scaled by h.
+	double originalStarState[14];
+	int j;
+	for(j = 0; j < 3; j++) originalStarState[j] = hostStarState[j] - H*i0[3+j];
+	for(j = 3; j < 14; j++) originalStarState[j] = hostStarState[j];
 
-    // Check if any part of the stellar accretion region is on our grid.
-    int mustAccrete = 1;
-    for(j = 0; j < 3; j++) {
-        lowleft[j] = (i0[j]-1+3*(topologySize[j] > 1) )*H; // Use topologySize to avoid accreting from halo region, which would get doublecounted
-        upright[j] = (i0[j]-1+amd.dim[j]-3*(topologySize[j] > 1))*H;
+	cudaMemcpyToSymbol(starState, &originalStarState[0], 14*sizeof(double), 0, cudaMemcpyHostToDevice);
+	CHECK_CUDA_ERROR("Copying star state to __constant__ memory");
 
-        if(lowleft[j] > originalStarState[STAR_X+j] + originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our left  > R_star from the star, no accretion
-        if(upright[j] < originalStarState[STAR_X+j] - originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
-        }
+	// Get source array info and create destination arrays
+	ArrayMetadata amd;
+	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 4);
 
-    int bee;
-    MPI_Comm_rank(MPI_COMM_WORLD, &bee);
-    //printf("rank %i: LL=[%g %g %g] *=[%g %g %g] UR=[%g %g %g] mustAccrete=%i", bee, lowleft[0], lowleft[1], lowleft[2], originalStarState[STAR_X+0], originalStarState[STAR_X+1], originalStarState[STAR_X+2], upright[0], upright[1], upright[2], mustAccrete); fflush(stdout);
+	int is3D = (amd.dim[2] > 1);
 
-    // Each rank stores its final accumulated sum here
-    double localFinalDelta[7];
-    for(j = 0; j < 7; j++) localFinalDelta[j] = 0;
-    int nparts = 0;
-    double *hostDeltas;
+	// FIXME: Implement (or steal from a CSG code) SphereInsideBox()
+	// Check if any part of the stellar accretion region is on our grid.
+	int mustAccrete = 1;
+	for(j = 0; j < 3; j++) {
+		lowleft[j] = (i0[j]-1+3*(topologySize[j] > 1) )*H; // Use topologySize to avoid accreting from halo region, which would get doublecounted
+		upright[j] = (i0[j]-1+amd.dim[j]-3*(topologySize[j] > 1))*H;
 
-    if(mustAccrete) {
-//        printf("rank %i accreting...\n",bee);
-        int starRadInCells = originalStarState[STAR_RADIUS] / H + 2;
-        // Determine the target region
-        dim3 acBlock, acGrid;
-        acBlock.x = ACCRETE_NX; acBlock.y = ACCRETE_NY; acBlock.z = 1;
-        acGrid.x = 2*starRadInCells/ACCRETE_NX; acGrid.x += (ACCRETE_NX*acGrid.x < 2*starRadInCells);
-        acGrid.y = 2*starRadInCells/ACCRETE_NY; acGrid.y += (ACCRETE_NY*acGrid.y < 2*starRadInCells);
-        acGrid.z = 1;
-        double *stateOut;
-        nparts = acGrid.x*ACCRETE_NX*acGrid.y*ACCRETE_NY;
-        hostDeltas = (double *)malloc(sizeof(double)*nparts*8);
+		if(lowleft[j] > originalStarState[STAR_X+j] + originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our left  > R_star from the star, no accretion
+		if(upright[j] < originalStarState[STAR_X+j] - originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
+	}
 
-        cudaError_t fail = cudaMalloc((void **)&stateOut, sizeof(double)*nparts*8);
+	int bee;
+	MPI_Comm_rank(MPI_COMM_WORLD, &bee);
+	//printf("rank %i: LL=[%g %g %g] *=[%g %g %g] UR=[%g %g %g] mustAccrete=%i", bee, lowleft[0], lowleft[1], lowleft[2], originalStarState[STAR_X+0], originalStarState[STAR_X+1], originalStarState[STAR_X+2], upright[0], upright[1], upright[2], mustAccrete); fflush(stdout);
 
-        // Makes sure that we don't accrete from the halo zone
-        int3 LL;
-        LL.x = (int)((originalStarState[0] - originalStarState[3])/H) - 2;
-	LL.y = (int)((originalStarState[1] - originalStarState[3])/H) - 2;
-	LL.z = (int)((originalStarState[2] - originalStarState[3])/H) - 2;
-//printf("Orig  LL: %i %i %i\n", LL.x, LL.y, LL.z);
-        // Force the block to not begin further left than the left part of our fluid domain
-        if(LL.x < 3*(topologySize[0] > 1)) LL.x = 3*(topologySize[0] > 1);
-        if(LL.y < 3*(topologySize[1] > 1)) LL.y = 3*(topologySize[1] > 1);
-        if(LL.z < 3*(topologySize[2] > 1)) LL.z = 3*(topologySize[2] > 1);
-        // Also force it to not begin further right
-        // We presume that the domain & radius are compatible with the left and right edge conditions not being simultaneously met
-        // As might be implied by the phrase "COMPACT object".
-        if( (LL.x + acGrid.x*ACCRETE_NX) > (amd.dim[0]-3*(topologySize[0] > 1)) ) LL.x = amd.dim[0] - 3*(topologySize[0] > 1) - acGrid.x*ACCRETE_NX;
-        if( (LL.y + acGrid.y*ACCRETE_NY) > (amd.dim[1]-3*(topologySize[1] > 1)) ) LL.y = amd.dim[1] - 3*(topologySize[1] > 1) - acGrid.y*ACCRETE_NY;
-        int nvertical = 2*starRadInCells + 8;
-        if( (LL.z + nvertical) > (amd.dim[2]-3*(topologySize[2] > 1)) ) LL.z = amd.dim[2] - 3*(topologySize[2] > 1) - nvertical;
-        
-//printf("check LL: %i %i %i\n", LL.x, LL.y, LL.z);
-//printf("check gs: %i %i %i\n", acGrid.x, acGrid.y, acGrid.z);
-//printf("check bs: %i %i %i\n", acBlock.x,acBlock.y,acBlock.z);
+	// Each rank stores its final accumulated sum here
+	double localFinalDelta[7];
+	for(j = 0; j < 7; j++) localFinalDelta[j] = 0;
+	int nparts = 0;
+	double *hostDeltas;
 
-        // call accretion kernel: transfers bits of changed state to outputState
-        cudaStarAccretes<<<acGrid, acBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], LL, H, amd.dim[0], amd.dim[1], amd.dim[2], stateOut, 2*starRadInCells+8);
+	// If we've determined that star intersects our grid
+	if(mustAccrete) {
+		int starRadInCells = originalStarState[STAR_RADIUS] / H + 2;
 
-        cudaDeviceSynchronize(); // Force accretion to finish.
-        CHECK_CUDA_ERROR("running cudaStarAccretes()");
-        fail = cudaMemcpy((void *)hostDeltas, (void *)stateOut, 8*sizeof(double)*nparts, cudaMemcpyDeviceToHost);
-        CHECK_CUDA_ERROR("copying accretion results to host");
-        cudaDeviceSynchronize();
-CHECK_CUDA_ERROR("sync after copy start");
-        cudaFree(stateOut);
-CHECK_CUDA_ERROR("free stateOut after copy & sync");
-        }
-    
+		dim3 acBlock, acGrid;
+		acBlock.x = ACCRETE_NX; acBlock.y = ACCRETE_NY; acBlock.z = 1;
+		acGrid.x = 2*starRadInCells/ACCRETE_NX; acGrid.x += (ACCRETE_NX*acGrid.x < 2*starRadInCells);
+		acGrid.y = 2*starRadInCells/ACCRETE_NY; acGrid.y += (ACCRETE_NY*acGrid.y < 2*starRadInCells);
+		acGrid.z = 1;
 
-    // Produce a single accumulated delta for all ranks,
-    // FIXME: We'll give a crap about absorbed angular momentum once we're actually in a position to /do/ something about it.
-    if(mustAccrete) {
-        int k;
-        for(j = 0; j < nparts; j++) {
-            for(k = 0; k < 5; k++) { localFinalDelta[k] += hostDeltas[8*j+k]; }
-            // localFinalDelta[0 1 2 3 4] = absorbed [mass px py pz E] / dV        
-        }
+		nparts = acGrid.x*ACCRETE_NX*acGrid.y*ACCRETE_NY;
+		hostDeltas = (double *)malloc(sizeof(double)*nparts*8);
 
-        free(hostDeltas);
-    }
+		double *stateOut;
+		cudaError_t fail = cudaMalloc((void **)&stateOut, sizeof(double)*nparts*8);
 
-    // Add up all the changes
-    double finalDelta[7];
-    int mpi_error = MPI_Allreduce((void *)&localFinalDelta[0], (void *)&finalDelta[0], 5, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+		// Determine the target region:
+		// Makes sure that we don't accrete from the halo zone
+		int3 LL;
+		LL.x = (int)((originalStarState[0] - originalStarState[3])/H) - 2;
+		LL.y = (int)((originalStarState[1] - originalStarState[3])/H) - 2;
+		if(is3D) {
+			LL.z = (int)((originalStarState[2] - originalStarState[3])/H) - 2;
+		} else {
+			LL.z = 0;
+		}
 
-    // Produce the change we send back for the
-    // [X Y Z R Px Py Pz Lx Ly Lz M rhoV, EV]
-    mwSize outputdim[2]; outputdim[0] = 1; outputdim[1] =14;
-    plhs[0] = mxCreateNumericArray(2, (const mwSize *)&outputdim, mxDOUBLE_CLASS, mxREAL);
-    double *outputDelta = mxGetPr(plhs[0]);
+		//printf("Orig  LL: %i %i %i\n", LL.x, LL.y, LL.z);
+		// Force the block to not begin further left than the left part of our fluid domain
+		if(LL.x < 3*(topologySize[0] > 1)) LL.x = 3*(topologySize[0] > 1);
+		if(LL.y < 3*(topologySize[1] > 1)) LL.y = 3*(topologySize[1] > 1);
+		if( (LL.z < 3*(topologySize[2] > 1)) && is3D) LL.z = 3*(topologySize[2] > 1);
+		// Also force it to not begin further right
+		// We presume that the domain & radius are compatible with the left and right edge conditions not being simultaneously met
+		// As might be implied by the phrase "COMPACT object".
+		if( (LL.x + acGrid.x*ACCRETE_NX) > (amd.dim[0]-3*(topologySize[0] > 1)) ) LL.x = amd.dim[0] - 3*(topologySize[0] > 1) - acGrid.x*ACCRETE_NX;
+		if( (LL.y + acGrid.y*ACCRETE_NY) > (amd.dim[1]-3*(topologySize[1] > 1)) ) LL.y = amd.dim[1] - 3*(topologySize[1] > 1) - acGrid.y*ACCRETE_NY;
+		int nvertical = 2*starRadInCells + 8;
+		if(( (LL.z + nvertical) > (amd.dim[2]-3*(topologySize[2] > 1)) ) && is3D) LL.z = amd.dim[2] - 3*(topologySize[2] > 1) - nvertical;
 
-    double dv = H*H*H;
+		//printf("check LL: %i %i %i\n", LL.x, LL.y, LL.z);
+		//printf("check gs: %i %i %i\n", acGrid.x, acGrid.y, acGrid.z);
+		//printf("check bs: %i %i %i\n", acBlock.x,acBlock.y,acBlock.z);
 
-    // First we need to calculate the output delta we'll hand back given a full timestep.
-//    <calculate accretion rate here>
-//    [fluid flux]   ^^^  [half accrete] [half star drift] [source grav.pot.] [.5 drift] [.5 accrete] [fluid flux]
-// originalStarState
-// Bear in mind, originalStarState is transformed re:position such that our grid's <0 0 0> index is the coordinate origin.
+		// call accretion kernel: transfers bits of changed state to outputState
+		cudaStarAccretes<<<acGrid, acBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], LL, H, amd.dim[0], amd.dim[1], amd.dim[2], stateOut, is3D ? 2*starRadInCells+8 : 1);
 
-    // deltaX: evaluate with dt*[P + Pdot*dt/2]/[M + Mdot*dt/2]
-    outputDelta[0] = dtime * (originalStarState[STAR_PX] + finalDelta[1]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
-    outputDelta[1] = dtime * (originalStarState[STAR_PY] + finalDelta[2]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
-    outputDelta[2] = dtime * (originalStarState[STAR_PZ] + finalDelta[3]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
-    // delta in radius: 0 pending construction of a more sophisticated model
-    outputDelta[3] = 0; 
-    // delta in momentum
-    outputDelta[4] = finalDelta[1]*dv;
-    outputDelta[5] = finalDelta[2]*dv;
-    outputDelta[6] = finalDelta[3]*dv;
-    // delta in angular momentum: don't care
-    outputDelta[7] = outputDelta[8] = outputDelta[9] = 0;
-    // delta in mass
-    outputDelta[10] = finalDelta[0]*dv;
-    // delta in "vacuum" density/energy density
-    outputDelta[11] = outputDelta[12] = outputDelta[13] = 0;
-    // Now we need to calculate the position & mass at halftime so we can go ahead and calculate gravitation on the fluid
-    // store parameters in constant memory: G*M*dt, [Xstar Ystar Zstar], H
-    double gp[9];
-    gp[0] = dtime*(originalStarState[STAR_MASS] + .5*outputDelta[STAR_MASS]);
-    gp[1] = originalStarState[STAR_X] + .5*outputDelta[STAR_X];
-    gp[2] = originalStarState[STAR_Y] + .5*outputDelta[STAR_Y];
-    gp[3] = originalStarState[STAR_Z] + .5*outputDelta[STAR_Z];
-    gp[4] = H;
-    gp[5] = originalStarState[VACUUM_RHO];
-    gp[6] = originalStarState[VACUUM_RHOG];
-    gp[7] = 1.0/(originalStarState[VACUUM_RHOG] - originalStarState[VACUUM_RHO]);
-    gp[8] = originalStarState[VACUUM_RHO] *gp[7];
+		cudaDeviceSynchronize(); // Force accretion to finish.
+		CHECK_CUDA_ERROR("just ran cudaStarAccretes()");
+		fail = cudaMemcpy((void *)hostDeltas, (void *)stateOut, 8*sizeof(double)*nparts, cudaMemcpyDeviceToHost);
+		CHECK_CUDA_ERROR("copying accretion results to host");
+		cudaDeviceSynchronize();
+		CHECK_CUDA_ERROR("sync after copy start");
+		cudaFree(stateOut);
+		CHECK_CUDA_ERROR("free stateOut after copy & sync");
+	}
 
-//if(mustAccrete) {
-//  int qq;
-//  printf("copied to gravParams: ");
-//  for(qq = 0; qq < 9; qq++) { printf("%lg ",gp[qq]); }
-//printf("\n");
-//  }
-    CHECK_CUDA_ERROR("memcpy to symbol before gravitate");
-    cudaMemcpyToSymbol(gravParams, &gp[0], 9*sizeof(double), 0, cudaMemcpyHostToDevice);
-    CHECK_CUDA_ERROR("point gravity symbol copy");
-    cudaDeviceSynchronize();
 
-    dim3 gravBlock, gravGrid;
+	// Produce a single accumulated delta for all ranks,
+	// FIXME: We'll give a crap about absorbed angular momentum once we're actually in a position to /do/ something about it.
+	if(mustAccrete) {
+		int k;
+		for(j = 0; j < nparts; j++) {
+			for(k = 0; k < 5; k++) { localFinalDelta[k] += hostDeltas[8*j+k]; }
+			// localFinalDelta[0 1 2 3 4] = absorbed [mass px py pz E] / dV
+		}
 
-    int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+		free(hostDeltas);
+	}
 
-    int *dim = &amd.dim[0];
-    getLaunchForXYCoverage(dim, GRAVITY_NX, GRAVITY_NY, 0, &gravBlock, &gravGrid); 
+	// Add up all the changes
+	double finalDelta[7];
+	int mpi_error = MPI_Allreduce((void *)&localFinalDelta[0], (void *)&finalDelta[0], 5, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
-    cudaStarGravitation<<<gravGrid, gravBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], arraysize);
-    CHECK_CUDA_ERROR("Ran pointlike gravitation routine");
+	// Produce the change we send back for the
+	// [X Y Z R Px Py Pz Lx Ly Lz M rhoV, EV]
+	mwSize outputdim[2]; outputdim[0] = 1; outputdim[1] =14;
+	plhs[0] = mxCreateNumericArray(2, (const mwSize *)&outputdim, mxDOUBLE_CLASS, mxREAL);
+	double *outputDelta = mxGetPr(plhs[0]);
+
+	double dv = H*H*H;
+
+	// First we need to calculate the output delta we'll hand back given a full timestep.
+	//    <calculate accretion rate here>
+	//    [fluid flux]   ^^^  [half accrete] [half star drift] [source grav.pot.] [.5 drift] [.5 accrete] [fluid flux]
+	// originalStarState
+	// Bear in mind, originalStarState is transformed re:position such that our grid's <0 0 0> index is the coordinate origin.
+
+	// deltaX: evaluate with dt*[P + Pdot*dt/2]/[M + Mdot*dt/2]
+	outputDelta[0] = dtime * (originalStarState[STAR_PX] + finalDelta[1]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
+	outputDelta[1] = dtime * (originalStarState[STAR_PY] + finalDelta[2]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
+	outputDelta[2] = dtime * (originalStarState[STAR_PZ] + finalDelta[3]*dv)/(originalStarState[STAR_MASS] + finalDelta[0]*dv);
+	// delta in radius: 0 pending construction of a more sophisticated model
+	outputDelta[3] = 0;
+	// delta in momentum
+	outputDelta[4] = finalDelta[1]*dv;
+	outputDelta[5] = finalDelta[2]*dv;
+	outputDelta[6] = finalDelta[3]*dv;
+	// delta in angular momentum: don't care
+	outputDelta[7] = outputDelta[8] = outputDelta[9] = 0;
+	// delta in mass
+	outputDelta[10] = finalDelta[0]*dv;
+	// delta in "vacuum" density/energy density
+	outputDelta[11] = outputDelta[12] = outputDelta[13] = 0;
+	// Now we need to calculate the position & mass at halftime so we can go ahead and calculate gravitation on the fluid
+	// store parameters in constant memory: G*M*dt, [Xstar Ystar Zstar], H
+	double gp[9];
+	gp[0] = dtime*(originalStarState[STAR_MASS] + .5*outputDelta[STAR_MASS]);
+	gp[1] = originalStarState[STAR_X] + .5*outputDelta[STAR_X];
+	gp[2] = originalStarState[STAR_Y] + .5*outputDelta[STAR_Y];
+	gp[3] = originalStarState[STAR_Z] + .5*outputDelta[STAR_Z];
+	gp[4] = H;
+	gp[5] = originalStarState[VACUUM_RHO];
+	gp[6] = originalStarState[VACUUM_RHOG];
+	gp[7] = 1.0/(originalStarState[VACUUM_RHOG] - originalStarState[VACUUM_RHO]);
+	gp[8] = originalStarState[VACUUM_RHO] *gp[7];
+
+	//if(mustAccrete) {
+		//  int qq;
+	//  printf("copied to gravParams: ");
+	//  for(qq = 0; qq < 9; qq++) { printf("%lg ",gp[qq]); }
+	//printf("\n");
+	//  }
+	CHECK_CUDA_ERROR("memcpy to symbol before gravitate");
+	cudaMemcpyToSymbol(gravParams, &gp[0], 9*sizeof(double), 0, cudaMemcpyHostToDevice);
+	CHECK_CUDA_ERROR("point gravity symbol copy");
+	cudaDeviceSynchronize();
+
+	dim3 gravBlock, gravGrid;
+
+	int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+
+	int *dim = &amd.dim[0];
+	dim3 tileDimension(GRAVITY_NX, GRAVITY_NY, 1);
+	dim3 gravHalo(0,0,0);
+        getTiledLaunchDims(dim, &tileDimension, &gravHalo, &gravBlock, &gravGrid);
+	gravGrid.z = 1;
+
+	cudaStarGravitation<<<gravGrid, gravBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], arraysize);
+	CHECK_CUDA_ERROR("Ran pointlike gravitation routine");
 
 }
 
@@ -282,72 +294,72 @@ CHECK_CUDA_ERROR("free stateOut after copy & sync");
 // 
 void __global__ cudaStarAccretes(double *rho, double *px, double *py, double *pz, double *E, int3 gridLL, double h, int nx, int ny, int nz, double *stateOut, int ncellsvert)
 {
-int myx = threadIdx.x + ACCRETE_NX * blockIdx.x + gridLL.x;
-int myy = threadIdx.y + ACCRETE_NY * blockIdx.y + gridLL.y;
-int myz = gridLL.z;
-int z;
+	int myx = threadIdx.x + ACCRETE_NX * blockIdx.x + gridLL.x;
+	int myy = threadIdx.y + ACCRETE_NY * blockIdx.y + gridLL.y;
+	int myz = gridLL.z;
+	int z;
 
-// Zero my contribution to delta-state
-double dstate[7];
-for(z = 0; z < 7; z++) dstate[z] = 0.0;
+	// Zero my contribution to delta-state
+	double dstate[7];
+	for(z = 0; z < 7; z++) dstate[z] = 0.0;
 
-if((myx >= nx) || (myy >= ny)) return;
-int globAddr = myx + nx*(myy + ny*myz);
+	if((myx >= nx) || (myy >= ny)) return;
+	int globAddr = myx + nx*(myy + ny*myz);
 
-// Load stellar state vector
-double starX = starState[STAR_X];
-double starY = starState[STAR_Y];
-double starZ = starState[STAR_Z];
-double starR = starState[STAR_RADIUS];
- 
-double accFactor = 1.0; // If we're at a face/edge/corner then multiple ranks will accrete so reduce appropriately.
+	// Load stellar state vector
+	double starX = starState[STAR_X];
+	double starY = starState[STAR_Y];
+	double starZ = starState[STAR_Z];
+	double starR = starState[STAR_RADIUS];
 
-if( (myx < 3) || (myx > (nx-4))) accFactor = .5;
-if( (myy < 3) || (myy > (ny-4))) accFactor *= .5;
-// FIXME: This needs to account for steppign through z. Unroll Z loops and add only half if at edge.
-//if( (myz < 3) || (myz > (nz-4))) accFactor *= .5;
+	double accFactor = 1.0; // If we're at a face/edge/corner then multiple ranks will accrete so reduce appropriately.
 
-// We step up columns in the Z direction so the "axial" radius is fixed
-double dXYsqr = (h*myx-starX)*(h*myx-starX) + (h*myy-starY)*(h*myy-starY);
-double dz = h*myz - starZ;
-double q;
+	if( (myx < 3) || (myx > (nx-4))) accFactor = .5;
+	if( (myy < 3) || (myy > (ny-4))) accFactor *= .5;
+	// FIXME: This needs to account for steppign through z. Unroll Z loops and add only half if at edge.
+	//if( (myz < 3) || (myz > (nz-4))) accFactor *= .5;
 
-for(z = 0; z < ncellsvert; z++) {
-  // Calculate my grid position
-//  if(dz > starR) break; // Quit once we're beyond the accretion sphere
-  double rsqr = dXYsqr + dz*dz;
+	// We step up columns in the Z direction so the "axial" radius is fixed
+	double dXYsqr = (h*myx-starX)*(h*myx-starX) + (h*myy-starY)*(h*myy-starY);
+	double dz = h*myz - starZ;
+	double q;
 
-// Calculate how far it is from the given X of the star
-  if(rsqr < starR*starR) {
-    //If within, add stuff to local state vector:
-    // We'll rescale by h^3 after on the cpu, once.
+	for(z = 0; z < ncellsvert; z++) {
+		// Calculate my grid position
+		//  if(dz > starR) break; // Quit once we're beyond the accretion sphere
+		double rsqr = dXYsqr + dz*dz;
 
-    // Move the mass to our dmass, set the density back to minimum
-    q = rho[globAddr];
-    dstate[0] += (q-starState[VACUUM_RHO]);
-    rho[globAddr] = starState[VACUUM_RHO];
-        
-    // Add dv*mom to Pstar, write zero to mom
-    q = px[globAddr]; dstate[1] += q; px[globAddr] = 0;
-    q = py[globAddr]; dstate[2] += q; py[globAddr] = 0;
-    q = pz[globAddr]; dstate[3] += q; pz[globAddr] = 0;
+		// Calculate how far it is from the given X of the star
+		if(rsqr < starR*starR) {
+			//If within, add stuff to local state vector:
+			// We'll rescale by h^3 after on the cpu, once.
 
-    // Move dv*(E - vaccuum_E) to star, write vacuum_E to ener
-    q = E[globAddr]; dstate[4] += q; E[globAddr] = starState[VACUUM_E];
+			// Move the mass to our dmass, set the density back to minimum
+			q = rho[globAddr];
+			dstate[0] += (q-starState[VACUUM_RHO]);
+			rho[globAddr] = starState[VACUUM_RHO];
 
-    }
+			// Add dv*mom to Pstar, write zero to mom
+			q = px[globAddr]; dstate[1] += q; px[globAddr] = 0;
+			q = py[globAddr]; dstate[2] += q; py[globAddr] = 0;
+			q = pz[globAddr]; dstate[3] += q; pz[globAddr] = 0;
 
-  globAddr += nx*ny;
-  dz += h;
-  }
+			// Move dv*(E - vaccuum_E) to star, write vacuum_E to ener
+			q = E[globAddr]; dstate[4] += q; E[globAddr] = starState[VACUUM_E];
 
-__syncthreads();
+		}
 
-myx -= gridLL.x;
-myy -= gridLL.y;
-int i0 = (myx + ACCRETE_NX*gridDim.x*myy)*8;
+		globAddr += nx*ny;
+		dz += h;
+	}
 
-for(z = 0; z < 7; z++) { stateOut[i0+z] = accFactor * dstate[z]; }
+	__syncthreads();
+
+	myx -= gridLL.x;
+	myy -= gridLL.y;
+	int i0 = (myx + ACCRETE_NX*gridDim.x*myy)*8;
+
+	for(z = 0; z < 7; z++) { stateOut[i0+z] = accFactor * dstate[z]; }
 
 }
 
@@ -368,58 +380,58 @@ for(z = 0; z < 7; z++) { stateOut[i0+z] = accFactor * dstate[z]; }
 
 void __global__ cudaStarGravitation(double *rho, double *px, double *py, double *pz, double *E, int3 arraysize)
 {
-int myx = threadIdx.x + GRAVITY_NX*blockIdx.x;
-int myy = threadIdx.y + GRAVITY_NY*blockIdx.y;
+	int myx = threadIdx.x + GRAVITY_NX*blockIdx.x;
+	int myy = threadIdx.y + GRAVITY_NY*blockIdx.y;
 
-int globAddr = myx + arraysize.x*myy;
+	int globAddr = myx + arraysize.x*myy;
 
-if((myx >= arraysize.x) || (myy >= arraysize.y)) return;
-double H = gravParams[GRAVP_H];
+	if((myx >= arraysize.x) || (myy >= arraysize.y)) return;
+	double H = gravParams[GRAVP_H];
 
-double dx = myx*H - gravParams[GRAVP_X0];
-double dy = myy*H - gravParams[GRAVP_Y0];
-double dz = -gravParams[GRAVP_Z0];
-double rXYsqr = dx*dx + dy*dy; // This is constant.
-double radius;
+	double dx = myx*H - gravParams[GRAVP_X0];
+	double dy = myy*H - gravParams[GRAVP_Y0];
+	double dz = -gravParams[GRAVP_Z0];
+	double rXYsqr = dx*dx + dy*dy; // This is constant.
+	double radius;
 
-__shared__ double locRho[GRAVITY_NX][GRAVITY_NY];
-__shared__ double locE  [GRAVITY_NX][GRAVITY_NY];
-__shared__ double locMom[GRAVITY_NX][GRAVITY_NY];
+	__shared__ double locRho[GRAVITY_NX][GRAVITY_NY];
+	__shared__ double locE  [GRAVITY_NX][GRAVITY_NY];
+	__shared__ double locMom[GRAVITY_NX][GRAVITY_NY];
 
-double dQ;
+	double dQ;
 
-//int Amax = arraysize.x*arraysize.y*arraysize.z;
-int dAddr = arraysize.x * arraysize.y;
-int z;
-for(z = 0; z < arraysize.z; z++) {
-//; globAddr < Amax; globAddr += arraysize.x*arraysize.y) {
-  locRho[threadIdx.x][threadIdx.y] = rho[globAddr];
-  locE  [threadIdx.x][threadIdx.y] = E[globAddr];
+	//int Amax = arraysize.x*arraysize.y*arraysize.z;
+	int dAddr = arraysize.x * arraysize.y;
+	int z;
+	for(z = 0; z < arraysize.z; z++) {
+		//; globAddr < Amax; globAddr += arraysize.x*arraysize.y) {
+		locRho[threadIdx.x][threadIdx.y] = rho[globAddr];
+		locE  [threadIdx.x][threadIdx.y] = E[globAddr];
 
-  if(locRho[threadIdx.x][threadIdx.y] > RHOGRAV) {
-    radius = sqrt(rXYsqr + dz*dz);
+		if(locRho[threadIdx.x][threadIdx.y] > RHOGRAV) {
+			radius = sqrt(rXYsqr + dz*dz);
 
-    dQ = gravParams[GRAVP_GMDT] / (radius*radius*radius);
-    // We have dQ = -G*M*dt*rhat / r^3
-    // Then change in momentum = dP = F dt = rho d[x y z] dQ
-    // And change in energy    = dE = F dot V dt = rho * V * d[x y z] dQ = P * d[x y z] * dQ;
-    locMom[threadIdx.x][threadIdx.y] = px[globAddr];
-    locE  [threadIdx.x][threadIdx.y] = -dQ*dx*locMom[threadIdx.x][threadIdx.y];
-    px[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dx;
+			dQ = gravParams[GRAVP_GMDT] / (radius*radius*radius);
+			// We have dQ = -G*M*dt*rhat / r^3
+			// Then change in momentum = dP = F dt = rho d[x y z] dQ
+			// And change in energy    = dE = F dot V dt = rho * V * d[x y z] dQ = P * d[x y z] * dQ;
+			locMom[threadIdx.x][threadIdx.y] = px[globAddr];
+			locE  [threadIdx.x][threadIdx.y] = -dQ*dx*locMom[threadIdx.x][threadIdx.y];
+			px[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dx;
 
-    locMom[threadIdx.x][threadIdx.y] = py[globAddr];
-    locE  [threadIdx.x][threadIdx.y] -= dQ*dy*locMom[threadIdx.x][threadIdx.y];
-    py[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dy;
+			locMom[threadIdx.x][threadIdx.y] = py[globAddr];
+			locE  [threadIdx.x][threadIdx.y] -= dQ*dy*locMom[threadIdx.x][threadIdx.y];
+			py[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dy;
 
-    locMom[threadIdx.x][threadIdx.y] = pz[globAddr];
-    locE  [threadIdx.x][threadIdx.y] -= dQ*dz*locMom[threadIdx.x][threadIdx.y];
-    pz[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dz;
+			locMom[threadIdx.x][threadIdx.y] = pz[globAddr];
+			locE  [threadIdx.x][threadIdx.y] -= dQ*dz*locMom[threadIdx.x][threadIdx.y];
+			pz[globAddr] = locMom[threadIdx.x][threadIdx.y] - dQ*locRho[threadIdx.x][threadIdx.y]*dz;
 
-    E[globAddr] += locE[threadIdx.x][threadIdx.y];
-    }
+			E[globAddr] += locE[threadIdx.x][threadIdx.y];
+		}
 
-    dz += H;
-    globAddr += dAddr;
-  }
+		dz += H;
+		globAddr += dAddr;
+	}
 
 }
