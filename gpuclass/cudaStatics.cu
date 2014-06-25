@@ -44,6 +44,13 @@ __global__ void cukern_zminusAntisymmetrize(double *Phi, int nx, int ny, int nz)
 __global__ void cukern_zplusSymmetrize(double *Phi, int nx, int ny, int nz);
 __global__ void cukern_zplusAntisymmetrize(double *Phi, int nx, int ny, int nz);
 
+/* X direction extrapolated boundary conditions */
+/* Launch size [3 A B] */
+__global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyXMinus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int nz);
+
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
 void setBoundarySAS(double *gpuarray, ArrayMetadata *amd, int side, int direction, int sas);
@@ -58,13 +65,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   /* This will force an error exit if invalid */
   double **array = getGPUSourcePointers(prhs, &ama, 0, 0);
 
-  /* Grabs the whole boundaryData struct from the ImogenArray class */
+ /* Grabs the whole boundaryData struct from the ImogenArray class */
   mxArray *boundaryData = mxGetProperty(prhs[0], 0, "boundaryData");
-  if(boundaryData == NULL) mexErrMsgTxt("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray?\n");
+  if(boundaryData == NULL) mexErrMsgTxt("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not a FluidArray/MagnetArray/InitializedArray?\n");
 
   /* The statics describe "solid" structures which we force the grid to have */
   mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
-  if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics weren't compiled?\n");
+  if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
   double **statics = getGPUSourcePointers((const mxArray **)(&gpuStatics), &amf, 0, 0);
 
   /* The indexPermute property tells us how the array's indices are currently oriented. */
@@ -106,14 +113,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   double *directionToSet = mxGetPr(prhs[2]);
 
   mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
-  if(bcModes == NULL) mexErrMsgTxt("FATAL: bcModes structure not present. defective class detected.\n");
+  if(bcModes == NULL) mexErrMsgTxt("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
 
   int j;
   for(j = 0; j < numDirections; j++) {
     if((int)directionToSet[j] == 0) continue; /* Skips edge BCs if desired. */
     int trueDirect = (int)perm[(int)directionToSet[j]-1];
 
-    /* So this is kinda dain-bramaged, but the boundary condition modes are stored in the form
+    /* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
          'type plus  x', 'type plus y',  'type plus z'};
        Yes, strings in a cell array. But hey, you can totally read that off by eye if you're
@@ -126,14 +133,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
       mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
 
+      // Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
       if(strcmp(bs, "mirror") == 0)
         setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], vectorComponent == trueDirect);
        
+      // Extrapolates f(b+x) = f(b)
       if(strcmp(bs, "const") == 0) {
-//      ...
+    	  setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], 2);
       }
+
+      // Extrapolates f(b+x) = f(b) + x f'(b)
       if(strcmp(bs, "linear") == 0) {
-//      ...
+    	  setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], 3);
       }
       
     }
@@ -147,7 +158,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 /* Sets the given array+AMD's boundary in the following manner:
    side      -> 0 = negative edge  1 = positive edge
    direction -> 1 = X              2 = Y               3 = Z*
-   sas       -> 0 = symmetric      1 => antisymmetric
+   sas       -> 0 = symmetrize      1 => antisymmetrize
+             -> 2 = extrap constant 3-> extrap linear
 
    *: As passed, assuming ImogenArray's indexPermute has been handled for us.
    */
@@ -156,20 +168,41 @@ void setBoundarySAS(double *gpuarray, ArrayMetadata *amd, int side, int directio
 {
 dim3 blockdim, griddim;
 
-void *kerntable[12] = {(void *)&cukern_xminusSymmetrize, \
+void *PLACEHOLDER = NULL;
+
+void *kerntable[24] = {(void *)&cukern_xminusSymmetrize, \
                        (void *)&cukern_xminusAntisymmetrize, \
-		       (void *)&cukern_xplusSymmetrize, \
-		       (void *)&cukern_xplusAntisymmetrize,
+                       (void *)&cukern_extrapolateConstBdyXMinus, \
+                       (void *)&cukern_extrapolateLinearBdyXMinus, \
+
+                       (void *)&cukern_xplusSymmetrize, \
+                       (void *)&cukern_xplusAntisymmetrize,
+                       (void *)&cukern_extrapolateConstBdyXPlus, \
+                       (void *)&cukern_extrapolateLinearBdyXPlus, \
+
                        (void *)&cukern_yminusSymmetrize, \
                        (void *)&cukern_yminusAntisymmetrize, \
+                       PLACEHOLDER, \
+                       PLACEHOLDER, \
+
                        (void *)&cukern_yplusSymmetrize, \
                        (void *)&cukern_yplusAntisymmetrize,
+                       PLACEHOLDER, \
+                       PLACEHOLDER, \
+
                        (void *)&cukern_zminusSymmetrize, \
                        (void *)&cukern_zminusAntisymmetrize, \
-                       (void *)&cukern_zplusSymmetrize, \
-                       (void *)&cukern_zplusAntisymmetrize };
+                       PLACEHOLDER, \
+                       PLACEHOLDER, \
 
-void (* bckernel)(double *, int, int, int) = (void (*)(double *, int, int, int))kerntable[sas + 2*side + 4*(direction-1)];
+                       (void *)&cukern_zplusSymmetrize, \
+                       (void *)&cukern_zplusAntisymmetrize, \
+                       PLACEHOLDER, \
+                       PLACEHOLDER };
+
+void (* bckernel)(double *, int, int, int) = (void (*)(double *, int, int, int))kerntable[sas + 4*side + 8*(direction-1)];
+
+if((void *)bckernel == PLACEHOLDER) mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet.");
 
 switch(direction) {
   case 1: {
@@ -224,7 +257,7 @@ int yidx = threadIdx.y + blockIdx.x*blockDim.y; \
 int zidx = threadIdx.z + blockIdx.y*blockDim.z; \
 if(yidx >= ny) return; if(zidx >= nz) return;
 
-
+/* These are combined with vector/scalar type information to implement mirror BCs */
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 XSASKERN_PREAMBLE
@@ -256,6 +289,43 @@ XSASKERN_PREAMBLE
 phi += stridey*yidx + stridez*zidx + nx - 7;
 phi[4+threadIdx.x] = -phi[2-threadIdx.x];
 }
+
+
+/* These are called when a BC is set to 'const' or 'linear' */
+__global__ void cukern_extrapolateConstBdyXMinus(double *phi, int nx, int ny, int nz)
+{
+	XSASKERN_PREAMBLE
+	phi += stridey*yidx + stridez*zidx;
+	phi[threadIdx.x] = phi[3];
+}
+
+__global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int nz)
+{
+	XSASKERN_PREAMBLE
+	phi += stridey*yidx + stridez*zidx + nx - 3;
+	phi[threadIdx.x] = phi[-1];
+}
+
+__global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz)
+{
+	__shared__ double f[3];
+	XSASKERN_PREAMBLE
+	phi += stridey*yidx + stridez*zidx;
+	f[threadIdx.x] = phi[threadIdx.x+3];
+	__syncthreads();
+	phi[threadIdx.x] = phi[3] + (3-threadIdx.x)*(f[0]-f[1]);
+}
+
+__global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, int nz)
+{
+	__shared__ double f[3];
+	XSASKERN_PREAMBLE
+	phi += stridey*yidx + stridez*zidx + nx-5;
+	f[threadIdx.x] = phi[threadIdx.x];
+	__syncthreads();
+	phi[threadIdx.x+2] = f[1] + (threadIdx.x+1)*(f[1]-f[0]);
+}
+
 
 /* Y DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
 /* assume a block size of [A 1 B] with grid dimensions [M N 1] s.t. AM >= nx, BN >=nz */
