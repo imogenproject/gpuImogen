@@ -14,7 +14,8 @@
 
 #include "cudaCommon.h"
 
-#define BLEN 128
+/* Simply set a block size for these silly cookie-cutter kernels */
+#define BLEN 256
 
 #define KERNPREAMBLE int addr = BLEN*blockIdx.x + threadIdx.x;\
 if(addr >= n) { return; }

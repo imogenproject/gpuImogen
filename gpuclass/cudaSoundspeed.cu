@@ -72,7 +72,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     double gg1 = gam*(gam-1);
 
     double hostP[6];
-    hostP[0] = ALFVEN_FACTOR - .5*gg1;
+    hostP[0] = ALFVEN_CSQ_FACTOR - .5*gg1;
     hostP[1] = gg1;
     
     cudaMemcpyToSymbol(pressParams, &hostP[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);

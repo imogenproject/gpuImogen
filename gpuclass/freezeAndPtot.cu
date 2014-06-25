@@ -77,7 +77,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     hostgf[2] = gam*(gam-1.0);
     hostgf[3] = (1.0 - .5*gam);
     hostgf[4] = (*mxGetPr(prhs[10]))*(*mxGetPr(prhs[10])); // min c_s squared ;
-    hostgf[5] = (ALFVEN_FACTOR - .5*gam*(gam-1.0));
+    hostgf[5] = (ALFVEN_CSQ_FACTOR - .5*gam*(gam-1.0));
   
   cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
 

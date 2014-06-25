@@ -1,15 +1,28 @@
-#define ALFVEN_FACTOR 1
-
 // These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
+// These parameters would normally be stored in a __device__ __constant__ array:
+// gm1fact = gamma - 1
+// alfact = (1-gamma/2)
+// gg1fact = gamma*(gamma-1)
+// alcoef = 1-.5*gamma*(gamma-1)
 
-#define PRESS_HD(E, T, gm1fact) ( (gm1fact)*((E)-(T)) )
-#define PRESS_MHD(E, T, bsq, gm1fact, alfact) (  (gm1fact)*((E)-(T)) + (alfact)*(bsq)  )
-#define CSQ_HD(E, T, rho, gg1fact) ( (gg1fact)*((E) - (T)) / (rho) )
-#define CSQ_MHD(E, T, bsq, rhogg1fact, alfact) (  ( (gg1fact)*((E)-(T)) + (alfact)*(bsq) )/(rho)  )
+// This modifies the freezing speed calculation and can stabilize low-beta conditions
+#define ALFVEN_CSQ_FACTOR 1
 
+// gasdynamic pressure = (gamma-1)*eint = (gamma-1)*(Etot - T) = (gamma-1)*(Etot - .5*p.p/rho)
+#define PRESS_HD(E, Psq, rho, gm1fact) ( (gm1fact)*((E)-.5*(Psq)/(rho)) )
+// mhd total pressure  = (gamma-1)*eint + B^2/2 = (gamma-1)*(E-T-B^2/2) + B^2/2
+//                                              = (gamma-1)*(E-p^2/2rho) + (2-gamma) B^2/2
+#define PRESS_MHD(E, Psq, rho, Bsq, gm1fact, alfact) (  (gm1fact)*((E)-.5*((Psq)/(rho))) + alfact*(bsq)  )
+// gasdynamic csq = gamma*P/rho
+#define CSQ_HD(E, Psq, rho, gg1fact) ( (gg1fact)*((E) - .5*((Psq)/(rho)) ) / (rho) )
+// mhd maximal c_fast^2 = v_s^2 + v_a^2 = g*P/rho + B^2/rho
+//                      = g*[(g-1)*(E-T-B^2/2)]/rho + B^2/rho
+//                      = [g*(g-1)*(E-T) + (1-.5*g*(g-1))B^2] / rho
+#define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
+
+// Generic error catcher routines
 #define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, amd_ptr, direction, string) \
 checkCudaLaunchError(cudaGetLastError(), bsize, gsize, amd_ptr, direction, string, __FILE__, __LINE__)
-
 #define CHECK_CUDA_ERROR(astring) checkCudaError(astring, __FILE__, __LINE__)
 
 typedef struct {
@@ -58,21 +71,30 @@ if(r > 0.0) { return r /(derivL+derivR); }
 return 0;
 }
 
-__device__ __inline__ double fluxLimiter_Osher(double A, double B)
-{
-double r = A*B;
-if(r <= 0.0) return 0.0;
-
-return 1.5*r*(A+B)/(A*A+r+B*B);
-
-}
-
 __device__ __inline__ double fluxLimiter_minmod(double derivL, double derivR)
 {
 if(derivL * derivR < 0) return 0.0;
 
 if(fabs(derivL) > fabs(derivR)) { return derivR; } else { return derivL; }
 }
+
+__device__ __inline__ double fluxLimiter_superbee(double derivL, double derivR)
+{
+if(derivL * derivR < 0) return 0.0;
+
+if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
+return fluxLimiter_minmod(2*derivL, derivR);
+}
+
+__device__ __inline__ double fluxLimiter_Osher(double A, double B)
+{
+double r = A*B;
+if(r <= 0.0) return 0.0;
+
+return 1.5*r*(A+B)/(A*A+r+B*B);
+}
+
+__device__ __inline__ double fluxLimiter_Zero(double A, double B) { return 0.0; }
 
 #define FINITEDIFFX_PREAMBLE \
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\
