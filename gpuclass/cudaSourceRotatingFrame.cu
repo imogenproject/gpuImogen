@@ -35,7 +35,7 @@ __constant__ __device__ int devIntParams[3];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
-	if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, omega, dt, [xvector yvector])\n");
+	if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceRotatingFrame(rho, E, px, py, omega, dt, [xvector yvector])\n");
 
 	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
