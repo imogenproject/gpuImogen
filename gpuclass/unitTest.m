@@ -124,10 +124,12 @@ end
 
 function fail = testCudaArrayRotate2(res)
 fail = -1;
+%no
 end
 
 function fail = testCudaFluidTVD(res)
 fail = -1;
+%no
 end
 
 function fail = testCudaWStep(res)
@@ -281,52 +283,239 @@ end
 
 function fail = testCudaMHDKernels(res)
 fail = -1;
+%hmmmmm
 end
 
 function fail = testCudaMagPrep(res)
 fail = -1;
+
+rho = 2 - rand(res);
+p = rand(res);
+
+x = 1:1:res(1);
+i = 1:1:res(2);
+
+rhoD = GPU_Type(rho);
+pD = GPU_Type(p);
+cudaMagPrepD = GPU_Type(cudaMagPrep(pD, rhoD, [i x]));
+
+Adir = [1 0 0; 1 0 0; 0 1 0; 0 1 0; 0 0 1; 0 0 1];
+Bdir = [0 1 0; 0 0 1; 1 0 0; 0 0 1; 1 0 0; 0 1 0];
+
+CudaDir = [1 2; 1 3; 2 1; 2 3; 3 1; 3 2];
+
+for N = 1:6;
+    a1 = .25*(circshift(p, Adir(N,:)) + circshift(p, Adir(N,:)*0)) ./ (circshift(rho, Adir(N,:)) + circshift(rho, Adir(N,:)*0));
+    a2 = (circshift(a1, Bdir(N,:)) + 2*a1 + circshift(a1, -Bdir(N,:)));
+    cudaMagPrepD = GPU_Type(cudaMagPrep(pD, rhoD, [CudaDir(N, :)]));
+    a(N) = max(a2(:) - cudaMagPrepD.array(:));
+end
+
+n = [a(1), a(2), a(3), a(4), a(5), a(6)];
+abs(n)
+
+if abs(n) < 1e-12;
+    fail = 0;
+else fail = -1;
+end
 end
 
 function fail = testCudaMagTVD(res)
 fail = -1;
+%no
 end
 
 function fail = testCudaMagW(res)
 fail = -1;
+%no
 end
 
 function fail = testCudaPointPotentials(res)
 fail = -1;
+%later
 end
 
 function fail = testCudaShift(res)
 fail = -1;
+%not used!!!!!!! but there should be a function in /gpuclass
+%(kirk_testCudaShift) which implements this routine, if needed
 end
 
 function fail = testCudaSoundspeed(res)
-fail = -1;
+fail = 0;
+
+gamma = 5/3; %choose a number between 1 and 5/3
+rho =  2 - rand(res);
+bx = 0.1*rand(res);
+by = 0*rand(res);
+bz = 0*rand(res);
+px = 2*rand(res);
+py = 3*rand(res);
+pz = 2*rand(res);
+
+B = (bx.^2+by.^2+bz.^2);
+T = .5*(px.^2+py.^2+pz.^2) ./ rho;
+Etotal1 = T + .1 + rand(res);
+Etotal0 = Etotal1 + 0.5*B; %for no B field, .1 could be any small number
+P = (gamma-1)*(Etotal1 - T);
+
+c_sq = sqrt(gamma*P./rho); %sound speed c_s^2
+cf_sq = sqrt(B./rho); %alven speed c_a^2
+c_fast = sqrt((c_sq).^2 + (cf_sq).^2); %c_fast^2
+
+%GPU
+
+rhoD =  GPU_Type(rho);
+bxD = GPU_Type(bx);
+byD = GPU_Type(by);
+bzD = GPU_Type(bz);
+pxD = GPU_Type(px);
+pyD = GPU_Type(py);
+pzD = GPU_Type(pz);
+Etotal0D = GPU_Type(Etotal0);
+Etotal1D = GPU_Type(Etotal1);
+
+c_s = GPU_Type(cudaSoundspeed(rhoD, Etotal0D, pxD, pyD, pzD, bxD, byD, bzD, gamma));
+c_s1 = GPU_Type(cudaSoundspeed(rhoD, Etotal1D, pxD, pyD, pzD, gamma));
+
+a = max(abs(c_sq(:) - c_s1.array(:)));
+b = max(abs(c_fast(:) - c_s.array(:)));
+n = [a,b];
+
+if max(abs(n)) < 1e-10;
+    fail = 0;
+else fail = 1;
+end;
 end
 
 function fail = testCudaSourceAntimach(res)
 fail = -1;
+%no
 end
 
 function fail = testCudaSourceRotatingFrame(res)
 fail = -1;
+
+w = rand(1);
+px = rand(res);
+py = rand(res);
+x = 1:res(1);
+y = 1:res(2);
+rho = 0.5 + rand(res);
+vx = px ./ rho;
+vy = py ./ rho;
+E = rand(res) + .5 * rho .* ((vx).^2 + (vy).^2);
+[x,y] = ndgrid(x,y);
+dt = .01;
+
+pxD = GPU_Type(px);
+pyD = GPU_Type(py);
+xD = GPU_Type(x);
+yD = GPU_Type(y);
+rhoD = GPU_Type(rho);
+ED = GPU_Type(E);
+
+dvx = (2 * w * vy + w^2 * x)*(dt/2);
+dvy = (-2 * w * vx + w^2 * y)*(dt/2);
+
+dpx = (2 * w * py + w^2 * rho .* x)*(dt/2);
+dpy = (-2 * w * px + w^2 * rho .* y)*(dt/2);
+
+vx1 = vx + dvx;
+vy1 = vy + dvy;
+
+px1 = px + dpx;
+py1 = py + dpy;
+
+dvx1 = (2 * w * vy1 + w^2 * x)*(dt);
+dvy1 = (-2 * w * vx1 + w^2 * y)*(dt);
+ 
+dpx1 = (2 * w * py1 + w^2 * rho .* x)*(dt);
+dpy1 = (-2 * w * px1 + w^2 * rho .* y)*(dt);
+
+vx = vx + dvx1;
+vy = vy + dvy1;
+
+E = E + (px + .5*dpx1) .* (dpx1 ./ rho) + (py + .5*dpy1) .* (dpy1 ./ rho);
+
+px = px + dpx1;
+py = py + dpy1;
+
+%GPU
+
+cudaSourceRotatingFrame(rhoD, ED, pxD, pyD, w, dt, GPU_Type([1:res(1) 1:res(2)]));
+a = max(px(:) - pxD.array(:));
+b = max(py(:) - pyD.array(:));
+c = max(E(:) - ED.array(:));
+
+n = [a, b, c];
+if max(abs(n)) < 1e-10;
+    fail = 0;
+else fail = -1;
+end
 end
 
 function fail = testCudaSourceScalarPotential(res)
 fail = -1;
+
+rho = rand(res);
+px = rand(res);
+py = rand(res);
+pz = rand(res);
+E = rand(1) + .5*(px.^2 + py.^2 +pz.^2) ./ rho;
+phi = rand(res);
+beta = ones(res);
+dt = .01; % small timestep
+d3x = [.01, .01, .01]; % small volume
+rho_c = .01; % density for min effect of grav
+rho_g = .1; % density for full effect of grav
+
+rhoD = GPU_Type(rho);
+pxD = GPU_Type(px);
+pyD = GPU_Type(py);
+pzD = GPU_Type(pz);
+ED = GPU_Type(E);
+phiD = GPU_Type(phi);
+
+beta(rho_g < rho) = 1;
+beta(rho < rho_g) = [(rho(rho < rho_g) - rho_c) / (rho_g - rho_c)];
+beta(rho < rho_c) = 0;
+
+grad_phiX = .5*(circshift(phi, [-1,0,0]) - circshift(phi, [1,0,0])) / d3x(1);
+grad_phiY = .5*(circshift(phi, [0,-1,0]) - circshift(phi, [0,1,0])) / d3x(2);
+grad_phiZ = .5*(circshift(phi, [0,0,-1]) - circshift(phi, [0,0,1])) / d3x(3);
+
+Fx = -beta .* rho .* grad_phiX;
+Fy = -beta .* rho .* grad_phiY;
+Fz = -beta .* rho .* grad_phiZ;
+
+E = E - beta .* (px .* grad_phiX + py .* grad_phiY + pz .* grad_phiZ)*dt;
+px = px + Fx * dt;
+py = py + Fy * dt;
+pz = pz + Fz * dt;
+
+cudaSourceScalarPotential(rhoD, ED, pxD, pyD, pzD, phiD, dt, d3x, rho_c, rho_g);
+a = max(px(:) - pxD.array(:));
+b = max(py(:) - pyD.array(:));
+c = max(pz(:) - pzD.array(:));
+d = max(E(:) - ED.array(:));
+
+n = [a, b, c, d];
+if max(abs(n)) < 1e-10;
+    fail = 0;
+else fail = -1;
+end;
 end
 
 function fail = testCudaStatics(res)
 fail = -1;
+%next
 end
 
 function fail = testDirectionalMaxFinder(res)
 fail = -1;
+%yes
 end
-
 
 function fail = testFreezeAndPtot(res)
     [xpos ypos zpos] = ndgrid((1:res(1))*2*pi/res(1), (1:res(2))*2*pi/res(2), (1:res(3))*2*pi/res(3));

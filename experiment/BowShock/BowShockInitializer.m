@@ -76,7 +76,7 @@ classdef BowShockInitializer < Initializer
            
             obj.ballCells        = [32 32 32];
             obj.ballCenter       = round(input/2);
-	    obj.ballXRadius      = 1;
+            obj.ballXRadius      = 1;
             obj.ballLock         = 1;
 
             obj.magX                = 0;
@@ -107,23 +107,26 @@ classdef BowShockInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         % Returns the initial conditions for a bow shock simulation
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
+            GIS = GlobalIndexSemantics();    
             potentialField = [];
             selfGravity = [];
+            %obj.grind -> GIS.pMySize; this enables parallelization
+            
 
             %--- Background Values ---%
-            mass        = zeros(obj.grid);
-            mom         = zeros([3 obj.grid]);
-            mag         = zeros([3 obj.grid]);
-            ener        = zeros(obj.grid);
+            mass        = zeros(GIS.pMySize);
+            mom         = zeros([3 GIS.pMySize]);
+            mag         = zeros([3 GIS.pMySize]);
+            ener        = zeros(GIS.pMySize);
 
-momx = zeros(obj.grid);
-momy = zeros(obj.grid);
-momz = zeros(obj.grid);
+            momx = zeros(GIS.pMySize);
+            momy = zeros(GIS.pMySize);
+            momz = zeros(GIS.pMySize);
 
             %--- Static Values ---%
             statics = StaticsInitializer();
 
-            [X Y Z] = ndgrid(1:obj.grid(1), 1:obj.grid(2), 1:obj.grid(3));
+            [X Y Z] = GIS.ndgridSetXYZ();
             Ledge = (X < 8); % Left edge - we establish plane flow here
 
             % The obstacle is a spheroid 
@@ -138,8 +141,8 @@ momz = zeros(obj.grid);
             blast = HDJumpSolver(obj.blastMach, 0, obj.gamma);
 
             xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
-            postshockX = 1:xedge;
-            preshockX = (xedge+1):obj.grid(1);
+            postshockX = GIS.toLocalCoords(1:xedge);
+            preshockX = GIS.toLocalCoords((xedge+1):GIS.pMySize(1));
 
             % Density distribution of background fluid
             mass(postshockX,:,:) = obj.preshockRho*blast.rho(2);
@@ -178,9 +181,9 @@ momz = zeros(obj.grid);
             % Set up statics if we're locking the obstacle in place
 
             statics.indexSet{1} = indexSet_fromLogical(ball); % ball
-            %statics.indexSet{2} = indexSet(obj.grid, 1:2, 1:(obj.grid(2)-0), 1:obj.grid(3)); % incoming blast
-            %statics.indexSet{3} = indexSet(obj.grid, (obj.grid(1)-4):(obj.grid(1)-0), 1:obj.grid(2), 1:obj.grid(3)); % right edge
-            %statics.indexSet{4} = indexSet(obj.grid, 1:(obj.grid(1)-2), 1:2, 1:obj.grid(3)); % top edge
+            %statics.indexSet{2} = indexSet(GIS.pMySize, 1:2, 1:(GIS.pMySize(2)-0), 1:GIS.pMySize(3)); % incoming blast
+            %statics.indexSet{3} = indexSet(GIS.pMySize, (GIS.pMySize(1)-4):(GIS.pMySize(1)-0), 1:GIS.pMySize(2), 1:GIS.pMySize(3)); % right edge
+            %statics.indexSet{4} = indexSet(GIS.pMySize, 1:(GIS.pMySize(1)-2), 1:2, 1:GIS.pMySize(3)); % top edge
 
             statics.valueSet = { mass(ball),  momx(ball), momy(ball), momz(ball), ener(ball) };
 
@@ -197,7 +200,7 @@ momz = zeros(obj.grid);
 %                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(1), statics.CELLVAR, 1, 10);
 %                statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(2), statics.CELLVAR, 1, 11);
 %            end
-                if obj.grid(3) > 1    
+                if GIS.pMySize(3) > 1    
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
 %                    if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 1, 1); end;
                 end
