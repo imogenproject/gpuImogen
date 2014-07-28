@@ -96,6 +96,45 @@ return 1.5*r*(A+B)/(A*A+r+B*B);
 
 __device__ __inline__ double fluxLimiter_Zero(double A, double B) { return 0.0; }
 
+/* These differ in that they return _HALF_ of the (limited) difference,
+ * i.e. the projection from i to i+1/2 assuming uniform widths of cells i and i+1
+ */
+__device__ __inline__ double slopeLimiter_VanLeer(double derivL, double derivR)
+{
+double r;
+
+r = derivL * derivR;
+if(r > 0.0) { return r /(derivL+derivR); }
+
+return 0;
+}
+
+__device__ __inline__ double slopeLimiter_minmod(double derivL, double derivR)
+{
+if(derivL * derivR < 0) return 0.0;
+
+if(fabs(derivL) > fabs(derivR)) { return .5*derivR; } else { return .5*derivL; }
+}
+
+__device__ __inline__ double slopeLimiter_superbee(double derivL, double derivR)
+{
+if(derivL * derivR < 0) return 0.0;
+
+if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
+return .5*fluxLimiter_minmod(2*derivL, derivR);
+}
+
+__device__ __inline__ double slopeLimiter_Osher(double A, double B)
+{
+double r = A*B;
+if(r <= 0.0) return 0.0;
+
+return .75*r*(A+B)/(A*A+r+B*B);
+}
+
+__device__ __inline__ double slopeLimiter_Zero(double A, double B) { return 0.0; }
+
+
 #define FINITEDIFFX_PREAMBLE \
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\
 int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);\

@@ -112,7 +112,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //             e > rho rho_min^(g-1)/(g-1)
   gamHost[4] = powl(rhomin, gamma-1.0)/(gamma-1.0);
   gamHost[5] = 1.0 - .5*gamma;
-  gamHost[6] = ALFVEN_FACTOR - .5*(gamma-1.0)*gamma;
+  gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 // Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root)
 
   cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 7*sizeof(double), 0, cudaMemcpyHostToDevice);

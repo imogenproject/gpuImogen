@@ -26,6 +26,8 @@ cs0 = sqrt(run.GAMMA*(run.fluid.MINMASS^(run.GAMMA-1)) );
 
 GIS = GlobalIndexSemantics();
 
+a1 = mass.array; a2 = ener.array; a3 = mom(1).array; a4 = mom(2).array;
+
 % Advanced fluid quantities through a 2nd order upwind timestep
 cudaFluidStep(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), mag(L(1)).cellMag, mag(L(2)).cellMag, ...
     mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS], GIS.topology);

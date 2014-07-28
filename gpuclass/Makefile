@@ -125,6 +125,13 @@ cudaFluidW.o: cudaFluidW.cu
 cudaFluidW: cudaCommon.o cudaFluidW.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
+cudaFluidW_dumb.o: cudaFluidW_dumb.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaFluidW_dumb.cu -o cudaFluidW_dumb.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFluidW_dumb.cpp
+cudaFluidW_dumb: cudaCommon.o cudaFluidW_dumb.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+
 cudaFluidTVD.o: cudaFluidTVD.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaFluidTVD.cu -o cudaFluidTVD.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFluidTVD.cpp

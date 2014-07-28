@@ -18,6 +18,11 @@
 #include "parallel_halo_arrays.h"
 //#include "mpi_common.h"
 
+#define RK_PREDICT 0
+#define RK_CORRECT 1
+
+void __syncthreads(void);
+
 /* THIS FUNCTION
 
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -50,27 +55,39 @@ pParallelTopology topoStructureToC(const mxArray *prhs);
 void cfSync(double *cfArray, int cfNumel, const mxArray *topo);
 
 __global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx);
-__global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx);
-
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Qin, double halflambda, int nx);
-__global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double *Qin, double halfLambda, int nx);
+
+__global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz);
+__global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, int ny, int nz);
+
+template <unsigned int PCswitch>
+__global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny);
 
 #define BLOCKLEN 92
 #define BLOCKLENP2 94
 #define BLOCKLENP4 96
 
-__constant__ __device__ double *inputPointers[8];
-__constant__ __device__ double fluidQtys[7];
+__constant__ __device__ double *inputPointers[9];
+__constant__ __device__ double fluidQtys[8];
 __constant__ __device__ int devArrayNumel;
 
+#define LIMITERFUNC fluxLimiter_Zero
+//#define LIMITERFUNC fluxLimiter_minmod
 //#define LIMITERFUNC fluxLimiter_Osher
-#define LIMITERFUNC fluxLimiter_minmod
+//#define LIMITERFUNC fluxLimiter_VanLeer
+//#define LIMITERFUNC fluxLimiter_superbee
+
+#define SLOPEFUNC slopeLimiter_Osher
+//#define SLOPEFUNC slopeLimiter_Zero
+//#define SLOPEFUNC slopeLimiter_minmod
+//#define SLOPEFUNC slopeLimiter_VanLeer
 
 #define FLUID_GAMMA   fluidQtys[0]
 #define FLUID_GM1     fluidQtys[1]
 #define FLUID_GG1     fluidQtys[2]
 #define FLUID_MINMASS fluidQtys[3]
 #define FLUID_MINEINT fluidQtys[4]
+#define FLUID_GOVERGM1 fluidQtys[7]
 
 #define MHD_PRESS_B   fluidQtys[5]
 #define MHD_CS_B      fluidQtys[6]
@@ -98,8 +115,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// This bit is actually redundant now since arrays are always rotated so the fluid step is finite-differenced in the X direction
 	blocksize.x = BLOCKLENP4; blocksize.y = blocksize.z = 1;
 	switch(fluxDirection) {
-	case 1: // X direction flux: u = x, v = y, w = z;
-		gridsize.x = arraySize.y;
+	case 1: // X direction flux: x = sup(nx/blocksize.x), y = nz
+		gridsize.x = (arraySize.x/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < arraySize.x);
 		gridsize.y = arraySize.z;
 		break;
 	case 2: // Y direction flux: u = y, v = x, w = z
@@ -114,7 +131,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *thermo = mxGetPr(prhs[12]);
 	double gamma = thermo[0];
 	double rhomin= thermo[1];
-	double gamHost[7];
+	double gamHost[8];
 	gamHost[0] = gamma;
 	gamHost[1] = gamma-1.0;
 	gamHost[2] = gamma*(gamma-1.0);
@@ -125,10 +142,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	//             e > rho rho_min^(g-1)/(g-1)
 	gamHost[4] = powl(rhomin, gamma-1.0)/(gamma-1.0);
 	gamHost[5] = 1.0 - .5*gamma;
-	gamHost[6] = ALFVEN_FACTOR - .5*(gamma-1.0)*gamma;
+	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
+	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
+
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
 
-	cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 7*sizeof(double), 0, cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
 
 	int arrayNumel =  amd.dim[0]*amd.dim[1]*amd.dim[2];
 	double *wStepValues;
@@ -137,6 +156,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	cudaMemcpyToSymbol(devArrayNumel, &arrayNumel, sizeof(int), 0, cudaMemcpyHostToDevice);
 	CHECK_CUDA_ERROR("In cudaFluidStep: halfstep devArrayNumel memcpy");
 
+	/* Replicate copies of the freezing speed array for the fluid routines to edit */
+	dim3 repBlock; repBlock.x = 8; repBlock.y = 1; repBlock.z = 1;
+	dim3 repGrid;
+	repGrid.x = amd.dim[1];
+	repGrid.y = amd.dim[2];
+
+	dim3 reduceGrid;
+	reduceGrid.x = amd.dim[1]; reduceGrid.y = amd.dim[2]; reduceGrid.z = 1;
+
+	double *freezeClone;
+	cudaMalloc((void **)&freezeClone, amd.dim[1]*amd.dim[2]*sizeof(double)*gridsize.x);
+	CHECK_CUDA_ERROR("In cudaFluidStep: c_freeze replicated array alloc");
 
 	int hydroOnly;
 	hydroOnly = (int)*mxGetPr(prhs[11]);
@@ -144,14 +175,42 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if(hydroOnly == 1) {
 		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: first hd c_f sync");
-		cudaMemcpyToSymbol(inputPointers,  srcs, 5*sizeof(double *), 0, cudaMemcpyHostToDevice);
+		replicateFreezeArray<<<repGrid, repBlock>>>(srcs[9], freezeClone, gridsize.x, amd.dim[1], amd.dim[2]);
+		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -666, "In cudaFluidStep: Freeze array cloning");
 
-		cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[8], srcs[9], wStepValues, .25*lambda, arraySize.x);
+		// Copies [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
+		cudaMemcpyToSymbol(inputPointers,  srcs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
+
+		//cukern_Wstep_hydro_uniform<<<gridsize, blocksize>>>(srcs[8], wStepValues, .5*lambda, arraySize.x, arraySize.y);
+		blocksize.y = 2;
+		cukern_AUSM_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro W step");
 
-		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
-		CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
-		cukern_TVDStep_hydro_uniform<<<gridsize, blocksize>>>(wStepValues + 5*arrayNumel, srcs[9], wStepValues, .5*lambda, arraySize.x);
+	/* This copies the Wstep_hydro_uniform values to the output arrays. Use to disable 2nd order step for testing */
+/*cudaMemcpy(srcs[0], wStepValues,              arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+cudaMemcpy(srcs[1], wStepValues+  arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+cudaMemcpy(srcs[2], wStepValues+2*arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+cudaMemcpy(srcs[3], wStepValues+3*arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+cudaMemcpy(srcs[4], wStepValues+4*arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+cudaMemcpy(srcs[8], wStepValues+5*arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice); */
+
+		//reduceFreezeArray<<<reduceGrid, 16>>>(freezeClone, srcs[9], gridsize.x, amd.dim[1], amd.dim[2]);
+
+		//CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: Freeze array reduce");
+
+		//cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+		//CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
+
+		 /*This dumps the input/output arrays to the "half-step" arrays; Use to test TVD step */
+		/*cudaMemcpy(wStepValues,              srcs[0], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(wStepValues+  arrayNumel, srcs[1], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(wStepValues+2*arrayNumel, srcs[2], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(wStepValues+3*arrayNumel, srcs[3], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(wStepValues+4*arrayNumel, srcs[4], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(wStepValues+5*arrayNumel, srcs[8], arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);*/
+
+		blocksize.y = 2;
+		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro TVD step");
 	} else {
 		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
@@ -167,8 +226,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd TVD step");
 	}
 
-
-
+cudaFree(freezeClone);
 cudaFree(wStepValues);
 
 
@@ -279,557 +337,479 @@ return pt;
 }
 
 
+/* Invoke with [8 1] threadblock and [ny nz] grid */
+__global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz)
+{
+	int y = blockIdx.x;
+	int z = blockIdx.y;
+	__shared__ double c;
 
+	if(threadIdx.x == 0) {
+		c = freezeIn[y + ny*z];
+	}
+	__syncthreads();
+	int x;
+	for(x = threadIdx.x; x < ncopies; x += blockDim.x) {
+		freezeOut[x + ncopies*(y+ny*z)] = c;
+	}
+}
 
+/* Invoke with [x 1 1] threads and [ny nz] grid */
+__global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, int ny, int nz)
+{
+	__shared__ double locarr[16];
+	int y = blockIdx.x;
+	int z = blockIdx.y;
+	int tix = threadIdx.x;
 
+	double phi = 0.0;
+	freezeClone += nx*(y+ny*z);
+	int i;
+	for(i = 0; i < nx; i += 16) {
+		phi = (freeze[i+tix] > phi)? freeze[i+tix] : phi;
+	}
+	__syncthreads();
 
+	locarr[tix] = phi;
 
+	if(tix < 8) locarr[tix] = (locarr[tix+8] > locarr[tix])? locarr[tix+8] : locarr[tix];
+	__syncthreads();
+	if(tix < 4) locarr[tix] = (locarr[tix+4] > locarr[tix])? locarr[tix+4] : locarr[tix];
+	__syncthreads();
+	if(tix < 2) locarr[tix] = (locarr[tix+2] > locarr[tix])? locarr[tix+2] : locarr[tix];
+	__syncthreads();
+	if(tix == 0) freeze[y+ny*z] = (locarr[1] > locarr[0])? locarr[1] : locarr[0];
 
-
-
-
-
-#define FLUXLa_OFFSET 0
-#define FLUXLb_OFFSET (BLOCKLENP4)
-#define FLUXRa_OFFSET (2*(BLOCKLENP4))
-#define FLUXRb_OFFSET (3*(BLOCKLEN+4))
-    #define FLUXA_DECOUPLE(i) fluxArray[FLUXLa_OFFSET+threadIdx.x] = q_i[i]*C_f - w_i; fluxArray[FLUXRa_OFFSET+threadIdx.x] = q_i[i]*C_f + w_i;
-    #define FLUXB_DECOUPLE(i) fluxArray[FLUXLb_OFFSET+threadIdx.x] = q_i[i]*C_f - w_i; fluxArray[FLUXRb_OFFSET+threadIdx.x] = q_i[i]*C_f + w_i;
-
-    #define FLUXA_DELTA lambdaqtr*(fluxArray[FLUXLa_OFFSET+threadIdx.x] - fluxArray[FLUXLa_OFFSET+threadIdx.x+1] + fluxArray[FLUXRa_OFFSET+threadIdx.x] - fluxArray[FLUXRa_OFFSET+threadIdx.x-1])
-    #define FLUXB_DELTA lambdaqtr*(fluxArray[FLUXLb_OFFSET+threadIdx.x] - fluxArray[FLUXLb_OFFSET+threadIdx.x+1] + fluxArray[FLUXRb_OFFSET+threadIdx.x] - fluxArray[FLUXRb_OFFSET+threadIdx.x-1])
-
-#define momhalfsq momhalfsq
+}
 
 __global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx)
 {
-double C_f, velocity;
-double q_i[5];
-double b_i[3];
-double w_i;
-double velocity_half;
-double rho_half;
-__shared__ double fluxArray[4*(BLOCKLENP4)];
-__shared__ double freezeSpeed[BLOCKLENP4];
-freezeSpeed[threadIdx.x] = 0;
-
-/* Step 0 - obligatory annoying setup stuff (ASS) */
-int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
-int Xindex = (threadIdx.x-2);
-int Xtrack = Xindex;
-Xindex += nx*(threadIdx.x < 2);
-
-int x; /* = Xindex % nx; */
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
-
-/* Step 1 - calculate W values */
-C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
-double locP, momhalfsq, momdotB, invrho0;
-double Ehalf;
-
-while(Xtrack < nx+2) {
-    x = I0 + (Xindex % nx);
-    doIflux &= (Xindex < nx);
-
-    b_i[0] = inputPointers[5][x]; /* Load the magnetic field */
-    b_i[1] = inputPointers[6][x];
-    b_i[2] = inputPointers[7][x];
-
-    q_i[0] = inputPointers[0][x]; // Load mass density
-    q_i[1] = inputPointers[1][x]; /* load the energy denstiy */
-    q_i[2] = inputPointers[2][x]; // load x momentum density
-    q_i[3] = inputPointers[3][x]; // load y momentum density
-    q_i[4] = inputPointers[4][x]; // load z momentum density
-
-    locP = P[x];
-    velocity = q_i[2] / q_i[0];
-    invrho0 = 1.0 / q_i[0]; // for when we need rho_0 to compute <v|b> from <p|b>
-
-    w_i = q_i[2]; // rho flux = px
-    FLUXA_DECOUPLE(0)
-    w_i = q_i[3]*velocity - b_i[0]*b_i[1]; // py flux = py*v - b by
-    FLUXB_DECOUPLE(3)
-
-    momdotB = b_i[0]*q_i[2] + b_i[1]*q_i[3] + b_i[2]*q_i[4];
-
-    __syncthreads();
-    if(doIflux) {
-        rho_half = q_i[0] - FLUXA_DELTA;
-        q_i[3] -= FLUXB_DELTA;
-        momhalfsq = q_i[3]*q_i[3]; // store py_half^2
-        Qout[x+2*devArrayNumel] = q_i[3];
-        //outputPointers[3][x] = q_i[3]; // WROTE PY_HALF
-        }
-    __syncthreads();
-
-    w_i = velocity*q_i[4] - b_i[0]*b_i[2]; // p_z flux
-    FLUXA_DECOUPLE(4);
-    w_i = (velocity*q_i[2] + locP - b_i[0]*b_i[0]); /* px flux = v*px + P - bx^2*/
-    FLUXB_DECOUPLE(2);
-    __syncthreads();
-
-    if(doIflux) {
-        q_i[4] -= FLUXA_DELTA; // momz_half
-        momhalfsq += q_i[4]*q_i[4]; // now have (py^2 + pz^2)|_half
-        Qout[x+3*devArrayNumel] = q_i[3];
-        //outputPointers[4][x] = q_i[4]; // WROTE PZ_HALF
-
-        q_i[2] -= FLUXB_DELTA;
-        momhalfsq += q_i[2]*q_i[2]; // now have complete p^2 at halfstep.
-        Qout[x+devArrayNumel] = q_i[3];
-        //outputPointers[2][x] = q_i[2]; // WROTE PX_HALF
-// q; P psq pdb le vhf = [pzhalf pxhalf E; P (momhalf^2) (<p|b>) 1/rho rhohalf]
-        }
-    __syncthreads();
-
-    w_i = velocity*(q_i[1]+locP) - b_i[0]*momdotB*invrho0; /* E flux = v*(E+P) - bx(p dot B)/rho */
-    FLUXA_DECOUPLE(1)
-    __syncthreads();
-
-    if(doIflux) {
-        Ehalf = q_i[1] - FLUXA_DELTA; /* Calculate Ehalf and store a copy in locP */
-
-//        outputPointers[0][x] = q_i[0] = (rho_half > FLUID_MINMASS) ? rho_half : FLUID_MINMASS; // enforce minimum mass density.
-        Qout[x] = q_i[0] = (rho_half > FLUID_MINMASS) ? rho_half : FLUID_MINMASS; // enforce minimum mass density.
-
-        momhalfsq = .5*momhalfsq/q_i[0]; // calculate kinetic energy density at halfstep
-
-        q_i[4] = b_i[0]*b_i[0]+b_i[1]*b_i[1]+b_i[2]*b_i[2]; // calculate scalar part of magnetic pressure.
-
-        velocity_half = q_i[2] / q_i[0]; // Calculate vx_half = px_half / rho_half 
-
-        q_i[1] = Ehalf; // set to energy
-        locP = Ehalf - momhalfsq; // magnetic + epsilon energy density
-
-        // We must enforce a sane thermal energy density
-        // Do this for the thermal sound speed even though the fluid is magnetized
-        // assert   cs^2 > cs^2(rho minimum)
-        //     g P / rho > g rho_min^(g-1) under polytropic EOS
-        //g(g-1) e / rho > g rho_min^(g-1)
-        //             e > rho rho_min^(g-1)/(g-1) = rho FLUID_MINEINT
-/*        if((locP - q_i[4]) < q_i[0]*FLUID_MINEINT) {
-          q_i[1] = momhalfsq + q_i[4] + q_i[0]*FLUID_MINEINT; // Assert minimum E = T + B^2/2 + epsilon_min
-          locP = q_i[4] + q_i[0]*FLUID_MINEINT;
-          } */
- /* Assert minimum temperature */
-
-        //outputPointers[5][x] = FLUID_GM1*locP + MHD_PRESS_B*q_i[4]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
-        Qout[x+5*devArrayNumel] = FLUID_GM1*locP + MHD_PRESS_B*q_i[4]; /* Calculate P = (gamma-1)*(E-T) + .5*(2-gamma)*B^2 */
-        //outputPointers[1][x] = q_i[1]; /* store total energy: We need to correct this for negativity shortly */
-        Qout[x+4*devArrayNumel] = q_i[1]; /* store total energy: We need to correct this for negativity shortly */
-
-        /* calculate local freezing speed = |v_x| + sqrt( g(g-1)*Pgas/rho + B^2/rho) = sqrt(c_thermal^2 + c_alfven^2)*/
-        locP = abs(velocity_half) + sqrt( abs(FLUID_GG1*locP + MHD_CS_B * q_i[4])/q_i[0]);
-        if(locP > freezeSpeed[threadIdx.x]) {
-          // Do not update C_f from the edgemost cells, they are wrong.
-          if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locP;
-          }
-        }
-
-
-    Xindex += BLOCKLEN;
-    Xtrack += BLOCKLEN;
-    __syncthreads();
-    }
-
-/* We have a block of 64 threads. Fold this shit in */
-
-if(threadIdx.x >= 32) return;
-
-if(freezeSpeed[threadIdx.x+32] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+32];
-if(freezeSpeed[threadIdx.x+64] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+64];
-
-__syncthreads();
-if(threadIdx.x > 16) return;
-
-if(freezeSpeed[threadIdx.x+16] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+16];
-__syncthreads();
-if(threadIdx.x > 8) return;
-
-if(freezeSpeed[threadIdx.x+8] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+8];
-__syncthreads();
-if(threadIdx.x > 4) return;
-
-if(freezeSpeed[threadIdx.x+4] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+4];
-__syncthreads();
-if(threadIdx.x > 2) return;
-
-if(freezeSpeed[threadIdx.x+2] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+2];
-__syncthreads();
-if(threadIdx.x > 1) return;
-/*if(threadIdx.x > 0) return;
-for(x = 0; x < BLOCKLENP4; x++) { if(freezeSpeed[x] > freezeSpeed[0]) freezeSpeed[0] = freezeSpeed[x]; }
-Cfreeze[blockIdx.x + gridDim.x * blockIdx.y] = freezeSpeed[0];*/
-
-Cfreeze[blockIdx.x + gridDim.x * blockIdx.y] = (freezeSpeed[1] > freezeSpeed[0]) ? freezeSpeed[1] : freezeSpeed[0];
 
 }
 
-__global__ void cukern_Wstep_hydro_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx)
+#define BLK0 (tix+1               )
+#define BLK1 (tix+1+  (BLOCKLENP4))
+#define BLK2 (tix+1+2*(BLOCKLENP4))
+#define BLK3 (tix+1+3*(BLOCKLENP4))
+#define BLK4 (tix+1+4*(BLOCKLENP4))
+#define BLK5 (tix+1+5*(BLOCKLENP4))
+#define BLK6 (tix+1+6*(BLOCKLENP4))
+#define BLK7 (tix+1+7*(BLOCKLENP4))
+
+/* cukern_AUSM_predict reads inputPointers[0 1 2 3 4 9][x] to read [rho E px py pz P]
+ * It them performs MUSCL reconstruction of left/right edge states to acheive 2nd order accuracy
+ * It then uses AUSM to calculate fluxes and stores Q - lambda*diff(F) -> Qout */
+
+/* if PCswitch is RK_PREDICT (0), derivs are found using inputPointers[n][x0] and Qstore = i.p.'s + lambda qdot
+ * if PCswitch is RK_CORRECT (1), derivs are calculated using Qstore and inputPointers[n][x0] updated according to 2nd
+ * stage of Runge-Kutta
+ */
+
+
+template <unsigned int PCswitch>
+__global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny)
 {
-double C_f, velocity;
-double q_i[3];
-double w_i;
-double velocity_half;
-__shared__ double fluxArray[4*(BLOCKLENP4)];
-__shared__ double freezeSpeed[BLOCKLENP4];
-freezeSpeed[threadIdx.x] = 0;
+	int tix = threadIdx.x;
+	/* Declare variable arrays */
+	__shared__ double shblk[8*BLOCKLENP4+2];
+	double Ale, Ble, Cle;
+	double Are, Bre, Cre;
 
-/* Step 0 - obligatory annoying setup stuff (ASS) */
-int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
-int Xindex = (threadIdx.x-2);
-int Xtrack = Xindex;
-Xindex += nx*(threadIdx.x < 2);
+	double Fa, Fb;
+	double Csle, Csre, Mleft, Mright;
+	double Pleft, Pright;
 
-int x; /* = Xindex % nx; */
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLEN+2);
+	/* My x index: thread + blocksize block, wrapped circularly */
+	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
+	int thisThreadDelivers = (threadIdx.x > 1) && (threadIdx.x < blockDim.x-2);
 
-/* Step 1 - calculate W values */
-C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
-double locPsq;
-double locE;
+	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
+	if(x0 < 0) x0 += nx; // left wraps to right edge
+	if(x0 > (nx+1)) return; // More than 2 past right returns
+	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
 
-// int stopme = (blockIdx.x == 0) && (blockIdx.y == 0); // For cuda-gdb
+	/* Do some index calculations */
+	x0 += nx*ny*blockIdx.y; /* This block is now positioned to start at its given (x,z) coordinate */
+	int j = 0;
+	for(j = 0; j < ny; j++) {
 
-while(Xtrack < nx+2) {
-    x = I0 + (Xindex % nx);
-    doIflux &= (Xindex < nx);
+		if(threadIdx.y == 0) { /* Cord 0 */
 
-/* rho q_i[0] = inputPointers[0][x];  Preload these out here 
-     E q_i[1] = inputPointers[1][x];  So we avoid multiple loops 
-    px q_i[2] = inputPointers[2][x];  over them inside the flux loop 
-    py q_i[3] = inputPointers[3][x];  
-    pz q_i[4] = inputPointers[4][x];  */
+			/*************** BEGIN SECTION 1 */
+			if(PCswitch == RK_PREDICT) {
+				Ale = inputPointers[0][x0]; /* load rho */
+				Bre = inputPointers[2][x0]; /* load px */
+				Cle = inputPointers[8][x0]; /* load pressure */
+			} else {
+				Ale = Qstore[x0 + 0*devArrayNumel]; /* load rho */
+				Bre = Qstore[x0 + 2*devArrayNumel]; /* load px */
+				Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
+			}
+			Ble = Bre / Ale; /* Calculate vx */
+			shblk[BLK0] = Ale;
+			shblk[BLK1] = Ble;
+			shblk[BLK2] = Cle;
+			__syncthreads();
 
-    q_i[0] = inputPointers[0][x];
-    q_i[1] = inputPointers[2][x];
-    q_i[2] = inputPointers[1][x];
-    locPsq   = P[x];
+			/*************** BEGIN SECTION 2 */
+			Are = Ale - shblk[BLK0 - 1];
+			Bre = Ble - shblk[BLK1 - 1];
+			Cre = Cle - shblk[BLK2 - 1];
+			__syncthreads();
 
-    velocity = q_i[1] / q_i[0];
+			/*************** BEGIN SECTION 3 */
+			shblk[BLK0] = Are;
+			shblk[BLK1] = Bre;
+			shblk[BLK2] = Cre;
+			__syncthreads();
 
-    w_i = velocity*(q_i[2]+locPsq); /* E flux = v*(E+P) */
-    FLUXA_DECOUPLE(2)
-    w_i = (velocity*q_i[1] + locPsq); /* px flux = v*px + P */
-    FLUXB_DECOUPLE(1)
-    __syncthreads();
+			/*************** BEGIN SECTION 4 */
+			Fa = SLOPEFUNC(Are, shblk[BLK0+1]);
+			Are = Ale + Fa;
+			Ale -= Fa;
+			Fa = SLOPEFUNC(Bre, shblk[BLK1+1]);
+			Bre = Ble + Fa;
+			Ble -= Fa;
+			Fa = SLOPEFUNC(Cre, shblk[BLK2+1]);
+			Cre = Cle + Fa;
+			Cle -= Fa;
+			__syncthreads();
 
-    if(doIflux) {
-        locE = q_i[2] - FLUXA_DELTA; /* Calculate Ehalf */
-        velocity_half = locPsq = q_i[1] - FLUXB_DELTA; /* Calculate Pxhalf */
-        //outputPointers[2][x] = locPsq; /* store pxhalf */
-        Qout[x+devArrayNumel] = locPsq; /* store pxhalf */
-        }
-    __syncthreads();
+			/*************** BEGIN SECTION 5 */
+			shblk[BLK4] = Csle = sqrt(FLUID_GAMMA*Cle/Ale);
+			shblk[BLK5] = Csre = sqrt(FLUID_GAMMA*Cre/Are);
 
-    locPsq *= locPsq; /* store p^2 in locPsq */
+			Mleft  = Ble / Csle;
+			Mright = Bre / Csre;
+			Fa = fabs(Mleft);
+			Fb = fabs(Mright);
 
-    q_i[0] = inputPointers[3][x];
-    q_i[2] = inputPointers[4][x];
-    w_i = velocity*q_i[0]; /* py flux = v*py */
-    FLUXA_DECOUPLE(0)
-    w_i = velocity*q_i[2]; /* pz flux = v pz */
-    FLUXB_DECOUPLE(2)
-    __syncthreads();
-    if(doIflux) {
-        q_i[0] -= FLUXA_DELTA;
-        locPsq += q_i[0]*q_i[0];
-        //outputPointers[3][x] = q_i[0]; // py out
-        Qout[x+2*devArrayNumel] = q_i[0]; // py out
-        q_i[2] -= FLUXB_DELTA;
-        locPsq += q_i[2]*q_i[2]; /* Finished accumulating p^2 */
-        //outputPointers[4][x] = q_i[2]; // pz out
-        Qout[x+3*devArrayNumel] = q_i[2]; // pz out
-        }
-    __syncthreads();
+			if(Mright*Mright < 1.0) {
+				Pright = .5*(1+Mright)*Cre;
+				Mright = .25*(Mright+1)*(Mright+1);
+			} else {
+				Pright= .5*(Mright+Fb)*Cre/Mright;
+				Mright = .5*(Mright+Fb);
 
-    q_i[0] = inputPointers[0][x];
-    w_i = q_i[1]; /* rho flux = px */
-    FLUXA_DECOUPLE(0)
-    __syncthreads();
-    if(doIflux) {
-        q_i[0] -= FLUXA_DELTA; /* Calculate rho_half */
-//      outputPointers[0][x] = q_i[0];
-        q_i[0] = (q_i[0] < FLUID_MINMASS) ? FLUID_MINMASS : q_i[0]; /* Enforce minimum mass density */
-        //outputPointers[0][x] = q_i[0];
-        Qout[x] = q_i[0];
+			}
 
-        velocity_half /= q_i[0]; /* calculate velocity at the halfstep for doing C_freeze */
+			if(Mleft*Mleft < 1.0) {
+				Pleft = .5*(1-Mleft)*Cle;
+				Mleft = -.25*(Mleft-1)*(Mleft-1);
+			} else {
+				Pleft = .5*(Mleft-Fa)*Cle/Mleft;
+				Mleft= .5*(Mleft-Fa);
+			}
 
-        
-        locPsq = (locE - .5*(locPsq/q_i[0])); /* Calculate epsilon = E - T */
-//      P[x] = FLUID_GM1*locPsq; /* Calculate P = (gamma-1) epsilon */
+			shblk[BLK2] = Mleft;
+			shblk[BLK3] = Mright;
 
-// For now we have to store the above before fixing them so the original freezeAndPtot runs unperturbed
-// but assert the corrected P, C_f values below to see what we propose to do.
-// it should match the freezeAndPtot very accurately.
+			__syncthreads();
 
-// assert   cs^2 > cs^2(rho minimum)
-//     g P / rho > g rho_min^(g-1) under polytropic EOS
-//g(g-1) e / rho > g rho_min^(g-1)
-//             e > rho rho_min^(g-1)/(g-1) = rho FLUID_MINEINT
-        if(locPsq < q_i[0]*FLUID_MINEINT) {
-          locE = locE - locPsq + q_i[0]*FLUID_MINEINT; // Assert minimum E = T + epsilon_min
-          locPsq = q_i[0]*FLUID_MINEINT; // store minimum epsilon.
-          } /* Assert minimum temperature */
+			/*************** BEGIN SECTION 6 */
+			shblk[BLK0] = FLUID_GOVERGM1*Cle + .5*Ale*Ble*Ble; /* export our part of the energy flux for read by cord 1*/
+			shblk[BLK1] = FLUID_GOVERGM1*Cre + .5*Are*Bre*Bre;
+			shblk[BLK6] = Ale;
+			shblk[BLK7] = Are; /* we don't give a crap about efficiency until this WORKS */
+			Mleft  += shblk[BLK3-1];
+			Mright += shblk[BLK2+1];
+			__syncthreads();
 
-        //outputPointers[5][x] = FLUID_GM1*locPsq; /* Calculate P = (gamma-1) epsilon */
-        Qout[x+5*devArrayNumel] = FLUID_GM1*locPsq; /* Calculate P = (gamma-1) epsilon */
-        //outputPointers[1][x] = locE; /* store total energy: We need to correct this for negativity shortly */
-        Qout[x+4*devArrayNumel] = locE; /* store total energy: We need to correct this for negativity shortly */
+			/*************** BEGIN SECTION 7 */
 
-        /* calculate local freezing speed */
-        locPsq = abs(velocity_half) + sqrt(FLUID_GG1*locPsq/q_i[0]);
-        if(locPsq > freezeSpeed[threadIdx.x]) {
-          if((Xtrack > 2) && (Xtrack < (nx-3))) freezeSpeed[threadIdx.x] = locPsq;
-          }
-        }
+			shblk[BLK4] = Ale*Csle;
+			shblk[BLK5] = Are*Csre;
+			__syncthreads();
 
-    Xindex += BLOCKLEN;
-    Xtrack += BLOCKLEN;
-    __syncthreads();
-    }
+			/*************** BEGIN SECTION 8 */
+			if(Mright > 0) { Fb = shblk[BLK5]; } else { Fb = shblk[BLK4+1]; }
+			if(Mleft  > 0) { Fa = shblk[BLK5-1]; } else { Fa = shblk[BLK4]; }
+			if(thisThreadDelivers) {/* Density update */
+				if(PCswitch == RK_PREDICT) {
+					Qstore[x0] = Cle = .5*(Ale+Are) + lambda * (Mleft*Fa - Mright*Fb);
+				} else {
+					inputPointers[0][x0] = inputPointers[0][x0] + lambda* (Mleft*Fa - Mright*Fb);
+				}
+			}
 
-/* We have a block of 64 threads. Fold this shit in */
+			Fa = Ale * Csle * Ble;
+			Fb = Are * Csre * Bre;
+			__syncthreads();
 
-if(threadIdx.x > 32) return;
+			/*************** BEGIN SECTION 9*/
+			shblk[BLK2] = Fa;
+			shblk[BLK3] = Fb;
+			shblk[BLK4] = Pleft;
+			shblk[BLK5] = Pright;
+			__syncthreads();
 
-if(freezeSpeed[threadIdx.x+32] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+32];
-__syncthreads();
-if(threadIdx.x > 16) return;
+			/*************** BEGIN SECTION 10 */
+			if(Mright > 0) { Fb = shblk[BLK3]; } else { Fb = shblk[BLK2+1]; }
+			if(Mleft  > 0) { Fa = shblk[BLK3-1]; } else { Fa = shblk[BLK2]; }
+			if(thisThreadDelivers) { /* X momentum update */
+				if(PCswitch == RK_PREDICT) {
+					Qstore[x0 + 2*devArrayNumel] = shblk[BLK7] = .25*(Ale+Are)*(Ble+Bre) + lambda * (Mleft*Fa - Mright*Fb + Pleft - Pright - shblk[BLK4+1] + shblk[BLK5-1]);
+					shblk[BLK6] = Cle;
+				} else {
+					inputPointers[2][x0] = inputPointers[2][x0] + lambda* (Mleft*Fa - Mright*Fb + Pleft - Pright - shblk[BLK4+1] + shblk[BLK5-1]);
+				}
+			}
 
-if(freezeSpeed[threadIdx.x+16] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+16];
-__syncthreads();
-if(threadIdx.x > 8) return;
+			/*************** BEGIN SECTION 11 */
+			if(PCswitch == RK_PREDICT) __syncthreads();
 
-if(freezeSpeed[threadIdx.x+8] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+8];
-__syncthreads();
-if(threadIdx.x > 4) return;
+		} else { /* Cord 1 */
+			/*************** BEGIN SECTION 1 */
+			if(PCswitch == RK_PREDICT) {
+				Ale = inputPointers[1][x0];  // energy
+				Ble = inputPointers[3][x0];// mom y
+				Cle = inputPointers[4][x0];// mom z
+			} else {
+				Ale = Qstore[x0 + devArrayNumel];  // energy
+				Ble = Qstore[x0 + 3*devArrayNumel];// mom y
+				Cle = Qstore[x0 + 4*devArrayNumel];// mom z
+			}
+			shblk[BLK3] = Ale;
+			shblk[BLK4] = Ble;
+			shblk[BLK5] = Cle;
+			__syncthreads();
 
-if(freezeSpeed[threadIdx.x+4] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+4];
-__syncthreads();
-if(threadIdx.x > 2) return;
+			/*************** BEGIN SECTION 2 */
+			Are = Ale - shblk[BLK3-1];
+			Bre = Ble - shblk[BLK4-1];
+			Cre = Cle - shblk[BLK5-1];
+			__syncthreads();
 
-if(freezeSpeed[threadIdx.x+2] > freezeSpeed[threadIdx.x]) freezeSpeed[threadIdx.x] = freezeSpeed[threadIdx.x+2];
-__syncthreads();
-if(threadIdx.x > 1) return;
-/*if(threadIdx.x > 0) return;
-for(x = 0; x < BLOCKLENP4; x++) { if(freezeSpeed[x] > freezeSpeed[0]) freezeSpeed[0] = freezeSpeed[x]; }
-Cfreeze[blockIdx.x + gridDim.x * blockIdx.y] = freezeSpeed[0];*/
+			/*************** BEGIN SECTION 3 */
+			shblk[BLK3] = Are;
+			shblk[BLK4] = Bre;
+			shblk[BLK5] = Cre;
+			__syncthreads();
 
-Cfreeze[blockIdx.x + gridDim.x * blockIdx.y] = (freezeSpeed[1] > freezeSpeed[0]) ? freezeSpeed[1] : freezeSpeed[0];
+			/*************** BEGIN SECTION 4 */
+			Fa = SLOPEFUNC(shblk[BLK3], shblk[BLK3+1]);
+			Are = Ale + Fa;
+			Ale -= Fa;
 
+			Fa = SLOPEFUNC(shblk[BLK4], shblk[BLK4+1]);
+			Bre = Ble + Fa;
+			Ble -= Fa;
+
+			Fa = SLOPEFUNC(shblk[BLK5], shblk[BLK5+1]);
+			Cre = Cle + Fa;
+			Cle -= Fa;
+			__syncthreads();
+
+			/*************** BEGIN SECTION 5 */
+
+			__syncthreads();
+
+			/*************** BEGIN SECTION 6 */
+			Mleft  = shblk[BLK2] + shblk[BLK3-1];
+			Mright = shblk[BLK3] + shblk[BLK2+1];
+			Csle = shblk[BLK4];
+			Csre = shblk[BLK5];
+			__syncthreads();
+
+			/*************** BEGIN SECTION 7 */
+			shblk[BLK0] = Csle * (shblk[BLK0] + .5*(Ble*Ble+Cle*Cle)/shblk[BLK6]); /* Publicize energy fluxes */
+			shblk[BLK1] = Csre * (shblk[BLK1] + .5*(Bre*Bre+Cre*Cre)/shblk[BLK7]);
+			shblk[BLK6] = Cle*Csle; /* pz momentum fluxes */
+			shblk[BLK7] = Cre*Csre;
+			__syncthreads();
+
+			/*************** BEGIN SECTION 8 */
+			if(thisThreadDelivers) {
+				if(Mleft > 0) { Fa = shblk[BLK1 - 1]; } else { Fa = shblk[BLK0]; } // Energy update
+				if(Mright > 0){ Fb = shblk[BLK1]; } else { Fb = shblk[BLK0 + 1]; }
+				if(PCswitch == RK_PREDICT) {
+					Qstore[x0 + 1*devArrayNumel] = Ale = .5*(Ale+Are) + lambda * (Mleft*Fa - Mright*Fb);
+					/* STORED E_half in Ale! */
+				} else {
+					inputPointers[1][x0] = inputPointers[1][x0] + lambda * (Mleft*Fa - Mright*Fb);
+				}
+				if(Mleft > 0) { Fa = shblk[BLK7 - 1]; } else { Fa = shblk[BLK6]; } // Pz update
+				if(Mright > 0){ Fb = shblk[BLK7]; } else { Fb = shblk[BLK6 + 1]; }
+				if(PCswitch == RK_PREDICT) {
+					Qstore[x0 + 4*devArrayNumel] = Are = .5*(Cle+Cre) + lambda * (Mleft*Fa - Mright*Fb);
+					Are *= .5*Are;
+				} else {
+					inputPointers[4][x0] = inputPointers[4][x0] + lambda * (Mleft*Fa - Mright*Fb);
+				}
+			}
+
+			__syncthreads();
+
+			/*************** BEGIN SECTION 9 */
+			shblk[BLK0] = Ble*Csle;
+			shblk[BLK1] = Bre*Csre;
+
+			__syncthreads();
+
+			/*************** BEGIN SECTION 10 */
+			if(thisThreadDelivers) {
+							if(Mleft > 0) { Fa = shblk[BLK1 - 1]; } else { Fa = shblk[BLK0]; } // Py update
+							if(Mright > 0){ Fb = shblk[BLK1]; } else { Fb = shblk[BLK0 + 1]; }
+							if(PCswitch == RK_PREDICT) {
+								Qstore[x0 + 3*devArrayNumel] = Cre = .5*(Ble+Bre) + lambda * (Mleft*Fa - Mright*Fb);
+								Are += .5*Cre*Cre; /* Store py^2+pz^2 */
+							} else {
+								inputPointers[3][x0] = inputPointers[3][x0] + .5*lambda * (Mleft*Fa - Mright*Fb);
+							}
+
+						}
+
+			/***************** BEGIN SECTION 11: Now cord 1 must calculate EoS if we are in predictor step*/
+			if(PCswitch == RK_PREDICT) {
+				__syncthreads();
+				//P = (g-1)*(Etot - T)
+			    if(thisThreadDelivers) Qstore[x0 + 5*devArrayNumel] = FLUID_GM1 * (Ale- (.5*shblk[BLK7]*shblk[BLK7] + Are)/shblk[BLK6]);
+			}
+		}
+		x0 += nx;
+		__syncthreads();
+
+	}
 }
 
-#define LEFTMOST_FLAG 1
-#define RIGHTMOST_FLAG 2
-#define ENDINGRHS_FLAG 4
-#define IAM_MAIN_BLOCK 8
-
-#define IAMLEFTMOST (whoflags & LEFTMOST_FLAG)
-#define IAMRIGHTMOST (whoflags & RIGHTMOST_FLAG)
-#define IAMENDRHS   (whoflags & ENDINGRHS_FLAG)
-#define IAMMAIN     (whoflags & IAM_MAIN_BLOCK)
-
-/* blockidx.{xy} is our index in {yz}, and gridDim.{xy} gives the {yz} size */
-/* Expect invocation with n+4 threads */
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Qin, double halfLambda, int nx)
 {
-// Declare a bunch of crap, much more than needed.
-// In NVCC -O2 and symbolic algebra transforms we trust
-double c_f, velocity;
-double q_i[5];
-double prop_i[5]; // proposed q_i values
-double b_i[3];
-double w_i;
-__shared__ double fluxLR[2][BLOCKLENP4];
-__shared__ double fluxDerivA[BLOCKLENP4+1];
-__shared__ double fluxDerivB[BLOCKLENP4+1];
-
-// Precompute some information about "special" threads.
-int whoflags = 0;
-if(threadIdx.x < 2)           whoflags += LEFTMOST_FLAG; // Mark which threads form the left most of the block,
-if(threadIdx.x >= BLOCKLENP2) whoflags += RIGHTMOST_FLAG; // The rightmost, and the two which will form the final RHS
-if((threadIdx.x == ( (nx % BLOCKLEN) + 2)) || (threadIdx.x == ( (nx % BLOCKLEN) + 3)) ) whoflags += ENDINGRHS_FLAG;
-if((threadIdx.x > 1) && (threadIdx.x < BLOCKLENP2)) whoflags += IAM_MAIN_BLOCK;
-
-// Calculate the usual stupid indexing tricks
-int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
-int Xindex = (threadIdx.x-2);
-int Xtrack = Xindex;
-Xindex += nx*(threadIdx.x < 2);
-int x;
-int i;
-
-unsigned int threadIndexL = (threadIdx.x-1)%BLOCKLENP4;
-
-// Load the freezing speed once
-c_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
-
-while(Xtrack < nx+2) {
-    x = I0 + (Xindex % nx);
-
-    q_i[0] = Qin[x]; // rho
-    q_i[1] = Qin[x+4*devArrayNumel]; // Etot      /* So we avoid multiple loops */
-    q_i[2] = Qin[x+1*devArrayNumel]; // Px     /* over them inside the flux loop */
-    q_i[3] = Qin[x+2*devArrayNumel]; // Py
-    q_i[4] = Qin[x+3*devArrayNumel]; // Pz
-    b_i[0] = inputPointers[5][x]; // Bx
-    b_i[1] = inputPointers[6][x]; // By
-    b_i[2] = inputPointers[7][x]; // Bz
-
-    velocity = q_i[2]/q_i[0];
-
-    __syncthreads();
-
-    /* rho, E, px, py, pz going down */
-    /* Iterate over variables to flux */
-    for(i = 0; i < 5; i++) {
-        /* Calculate raw fluxes */
-        switch(i) {
-            case 0: w_i = q_i[2]; break;
-            case 1: w_i = (velocity * (q_i[1] + P[x]) - b_i[0]*(q_i[2]*b_i[0]+q_i[3]*b_i[1]+q_i[4]*b_i[2])/q_i[0] ); break;
-            case 2: w_i = (velocity*q_i[2] + P[x] - b_i[0]*b_i[0]); break;
-            case 3: w_i = (velocity*q_i[3]        - b_i[0]*b_i[1]); break;
-            case 4: w_i = (velocity*q_i[4]        - b_i[0]*b_i[2]); break;
-            }
-
-        /* Decouple to L/R flux. */
-        fluxLR[0][threadIdx.x] = (q_i[i]*c_f - w_i); /* Left  going flux */
-        fluxLR[1][threadIdx.x] = (q_i[i]*c_f + w_i); /* Right going flux */
-        __syncthreads();
-
-        /* Derivative of left flux, then right flux */
-        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIdx.x] - fluxLR[0][threadIndexL])/2.0;
-        fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL])/2.0;
-        __syncthreads();
-
-        /* Apply limiter function to 2nd order corrections */
-        fluxLR[0][threadIdx.x] -= LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]); // A=bkwd(x), B=fwd(x)
-        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]); // A=fwd(x), B=bkwd(x)
-        __syncthreads();
-
-        /* Perform flux and propose output value */
-       if( IAMMAIN && (Xindex < nx) ) {
-            prop_i[i] = inputPointers[i][x] - halfLambda * ( -fluxLR[0][threadIdx.x+1] + fluxLR[0][threadIdx.x] + \
-                                                              fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]  );
-          }
-
-        __syncthreads();
-        }
-
-    if( IAMMAIN && (Xindex < nx) ) {
-      prop_i[0] = (prop_i[0] < FLUID_MINMASS) ? FLUID_MINMASS : prop_i[0]; // enforce min density
-
-      w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0] + .5*(b_i[0]*b_i[0] + b_i[1]*b_i[1] + b_i[2]*b_i[2]);
-
-      if((prop_i[1] - w_i) < prop_i[0]*FLUID_MINEINT) {
-        prop_i[1] = prop_i[0]*FLUID_MINEINT + w_i;
-        }
-
-      inputPointers[0][x] = prop_i[0];
-      inputPointers[1][x] = prop_i[1];
-      inputPointers[2][x] = prop_i[2];
-      inputPointers[3][x] = prop_i[3];
-      inputPointers[4][x] = prop_i[4];
-      }
-
-    Xindex += BLOCKLEN;
-    Xtrack += BLOCKLEN;
-    }
 
 }
 
-__global__ void cukern_TVDStep_hydro_uniform(double *P, double *Cfreeze, double *Qin, double halfLambda, int nx)
+
+
+__device__ __inline__ double Mminus(double M) {
+	if(M > 1.0) return 0.0;
+	if(M*M < 1) return -.25*(M-1.0)*(M-1.0);
+	return M;
+}
+__device__ __inline__ double Mplus(double M) {
+	if(M < -1.0) return 0.0;
+	if(M*M < 1) return .25*(M+1.0)*(M+1.0);
+	return M;
+}
+
+/* This kernel reads from inputPointers[0...4][x] and writes Qout[(0...4)*numel + x]
+ * The Cfreeze array is round_up(NX / blockDim.x) x NY x NZ and is reduced in the X direction after
+ * blockdim = [ xsize, 1, 1]
+ * griddim  = [ sup[nx/(xsize - 4)], ny, 1]
+ */
+__global__ void cukern_AUSM_firstorder_uniform(double *P, double *Qout, double lambdaQtr, int nx, int ny)
 {
-double C_f, velocity;
-double q_i[5];
-double w_i;
-__shared__ double fluxLR[2][BLOCKLENP4];
-__shared__ double fluxDerivA[BLOCKLENP4+1];
-__shared__ double fluxDerivB[BLOCKLENP4+1];
+	/* Declare variable arrays */
+	double q_i[5], s_i[5];
+	double Plocal, w, vx;
+	double Csonic, Mach, Mabs, Mplus, Mminus, Pleftgoing, Prightgoing;
+	__shared__ double fluxLeft[BLOCKLENP4], fluxRight[BLOCKLENP4], pressAux[BLOCKLENP4];
 
-/* Step 0 - obligatory annoying setup stuff (ASS) */
-int I0 = nx*(blockIdx.x + gridDim.x * blockIdx.y);
-int Xindex = (threadIdx.x-2);
-int Xtrack = Xindex;
-Xindex += nx*(threadIdx.x < 2);
+	/* My x index: thread + blocksize block, wrapped circularly */
+	int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
+	int thisThreadDelivers = (threadIdx.x > 1) && (threadIdx.x < blockDim.x-2);
 
-int x; /* = Xindex % nx; */
-int i;
-bool doIflux = (threadIdx.x > 1) && (threadIdx.x < BLOCKLENP2);
-double prop_i[5];
+	int x0 = threadIdx.x + (blockDim.x-4)*blockIdx.x - 2;
+	if(x0 < 0) x0 += nx; // left wraps to right edge
+	if(x0 > (nx+1)) return; // More than 2 past right returns
+	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
 
-unsigned int threadIndexL = (threadIdx.x-1+BLOCKLENP4)%BLOCKLENP4;
 
-/* Step 1 - calculate W values */
-C_f = Cfreeze[blockIdx.x + gridDim.x * blockIdx.y];
+	/* Do some index calculations */
+	x0 += nx*ny*blockIdx.y; /* This block is now positioned to start at its given (x,z) coordinate */
 
-while(Xtrack < nx+2) {
-    x = I0 + (Xindex % nx);
+	int i, j;
+	for(j = 0; j < ny; j++) {
+		/* Calculate this x segment's update: */
+		/* Load local variables */
+		q_i[0] = inputPointers[0][x0]; /* rho */
+		q_i[1] = inputPointers[1][x0]; /* E */
+		q_i[2] = inputPointers[2][x0]; /* px */
+		q_i[3] = inputPointers[3][x0]; /* py */
+		q_i[4] = inputPointers[4][x0]; /* pz */
+		Plocal = P[x0];
 
-    q_i[0] = Qin[x+0*devArrayNumel]; /* Preload these out here */
-    q_i[1] = Qin[x+4*devArrayNumel]; /* So we avoid multiple loops */
-    q_i[2] = Qin[x+1*devArrayNumel]; /* over them inside the flux loop */
-    q_i[3] = Qin[x+2*devArrayNumel];
-    q_i[4] = Qin[x+3*devArrayNumel];
-    velocity = q_i[2] / q_i[0];
+		Csonic = sqrt(FLUID_GAMMA * Plocal / q_i[0]); // adiabatic c_s = gamma P / rho
 
-    /* rho, E, px, py, pz going down */
-    /* Iterate over variables to flux */
-    for(i = 0; i < 5; i++) {
-        /* Calculate raw fluxes */
-        switch(i) {
-            case 0: w_i = q_i[2]; break;
-            case 1: w_i = (velocity * (q_i[1] + P[x]) ) ; break;
-            case 2: w_i = (velocity * q_i[2] + P[x]); break;
-            case 3: w_i = (velocity * q_i[3]); break;
-            case 4: w_i = (velocity * q_i[4]); break;
-            }
+		vx = q_i[2] / q_i[0]; /* This is used repeatedly. */
 
-        /* Decouple to L/R flux */
-        fluxLR[0][threadIdx.x] = (C_f*q_i[i] - w_i); /* Left  going flux */
-        fluxLR[1][threadIdx.x] = (C_f*q_i[i] + w_i); /* Right going flux */
-        __syncthreads();
+		Mach = vx / Csonic;
+		Mabs = abs(Mach);
 
-        /* Calculate proposed flux corrections */
-        fluxDerivA[threadIdx.x] = (fluxLR[0][threadIndexL] - fluxLR[0][threadIdx.x]) / 2.0; /* Deriv of leftgoing flux */
-        fluxDerivB[threadIdx.x] = (fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL]) / 2.0; /* Deriv of rightgoing flux */
-        __syncthreads();
+		if(Mabs < 1.0) {
+			Mplus = .25*(Mach+1)*(Mach+1);
+			Mminus = -.25*(Mach-1)*(Mach-1);
+			Pleftgoing = .5*(1-Mach)*Plocal;
+			Prightgoing = .5*(1+Mach)*Plocal;
+		} else {
+			Mplus = .5*(Mach+Mabs);
+			Mminus= .5*(Mach-Mabs);
+			Pleftgoing = .5*(Mach-Mabs)*Plocal/Mach;
+			Prightgoing= .5*(Mach+Mabs)*Plocal/Mach;
+		}
 
-        /* Impose TVD limiter */
-        fluxLR[0][threadIdx.x] += LIMITERFUNC(fluxDerivA[threadIdx.x], fluxDerivA[threadIdx.x+1]);
-        fluxLR[1][threadIdx.x] += LIMITERFUNC(fluxDerivB[threadIdx.x+1], fluxDerivB[threadIdx.x]); // A=fwd(x), B=bkwd(x)
-        __syncthreads();
+		fluxLeft[threadIdx.x] = Mplus; fluxRight[threadIdx.x] = Mminus;
+		__syncthreads();
+		/* generate agreed upon values of M_i-1/2 in Mminus and M_i+1/2 in Mplus */
+		if(thisThreadPonders) {
+			Mplus += fluxRight[threadIdx.x+1]; /* mach on right side */
+			Mminus+= fluxLeft[threadIdx.x-1];  /* mach on left side  */
+		}
+		__syncthreads();
 
-        /* Perform flux and write to output array */
-       if( doIflux && (Xindex < nx) ) {
-            prop_i[i] = inputPointers[i][x] - halfLambda * ( fluxLR[1][threadIdx.x] - fluxLR[1][threadIndexL] +
-                                                              -fluxLR[0][threadIdx.x+1] + fluxLR[0][threadIdx.x]);//
-            }
+		/* Iterating over each variable, */
+		for(i = 0; i < 5; i++) {
+			/* Share values of advective flux */
+			switch(i) {
+			case 0: fluxLeft[threadIdx.x] = Csonic * q_i[0]; break;
+			case 1: fluxLeft[threadIdx.x] = Csonic * (Plocal + q_i[1]); break;
+			case 2: fluxLeft[threadIdx.x] = Csonic * q_i[2];            fluxRight[threadIdx.x] = Pleftgoing; pressAux[threadIdx.x] = Prightgoing;  break;
+			case 3: fluxLeft[threadIdx.x] = Csonic * q_i[3];            break;
+			case 4: fluxLeft[threadIdx.x] = Csonic * q_i[4];            break;
+			}
 
-        __syncthreads();
-        }
+			//			fluxLeft[threadIdx.x]  = Cfreeze_loc * q_i[i] - w;
+			//			fluxRight[threadIdx.x] = Cfreeze_loc * q_i[i] + w;
 
-    if( doIflux && (Xindex < nx) ) {
-        prop_i[0] = (prop_i[0] < FLUID_MINMASS) ? FLUID_MINMASS : prop_i[0];
-        w_i = .5*(prop_i[2]*prop_i[2] + prop_i[3]*prop_i[3] + prop_i[4]*prop_i[4])/prop_i[0];
+			/* Calculate timestep: Make sure all fluxes are visible and difference it */
+			__syncthreads();
 
-        if((prop_i[1] - w_i) < prop_i[0]*FLUID_MINEINT) {
-            prop_i[1] = w_i + prop_i[0]*FLUID_MINEINT;
-            }
+			if(thisThreadDelivers) {
+				/* left side flux */
+				Mach = Mminus*fluxLeft[threadIdx.x-1]*(Mminus >= 0) + Mminus*fluxLeft[threadIdx.x]*(Mminus < 0);
+				/* right side flux */
+				Mabs = Mplus*fluxLeft[threadIdx.x]*(Mplus >= 0)    + Mplus*fluxLeft[threadIdx.x+1]*(Mplus < 0);
 
-        inputPointers[0][x] = prop_i[0];
-        inputPointers[1][x] = prop_i[1];
-        inputPointers[2][x] = prop_i[2];
-        inputPointers[3][x] = prop_i[3];
-        inputPointers[4][x] = prop_i[4];
-        }
+				/* Difference */
+				s_i[i] = q_i[i] + lambdaQtr*(Mach-Mabs);
 
-    __syncthreads();
+				if(i == 2) { /* Momentum equation: Difference pressure term as well */
+					s_i[i] += lambdaQtr*(-fluxRight[threadIdx.x+1] + fluxRight[threadIdx.x] + pressAux[threadIdx.x-1] - pressAux[threadIdx.x]);
+				}
+			}
+			__syncthreads();
 
-    Xindex += BLOCKLEN;
-    Xtrack += BLOCKLEN;
-    }
+		}
 
+		__syncthreads(); /* Prevent anyone from reaching Cfreeze step and overwriting flux array too soon */
+
+		/* Run sanity checks, and compute predicted pressure + freezing speed */
+		if(thisThreadDelivers) {
+			w = .5*(s_i[2]*s_i[2]+s_i[3]*s_i[3]+s_i[4]*s_i[4])/s_i[0]; /* Kinetic energy density */
+
+			if((s_i[1] - w) < s_i[0] * FLUID_MINEINT) { /* if( (E-T) < minimum e_int density, */
+				s_i[1] = w + s_i[0] * FLUID_MINEINT; /* Assert smallest possible pressure */
+			}
+
+			Plocal = FLUID_GM1 * (s_i[1] - w); /* Final decision on pressure */
+			Qout[x0                  ] = s_i[0];
+			Qout[x0 + devArrayNumel  ] = s_i[1];
+			Qout[x0 + 2*devArrayNumel] = s_i[2];
+			Qout[x0 + 3*devArrayNumel] = s_i[3];
+			Qout[x0 + 4*devArrayNumel] = s_i[4];
+			Qout[x0 + 5*devArrayNumel] = Plocal;
+		}
+		__syncthreads();
+
+		/* Move in the Y direction */
+		x0 += nx;
+	}
 }
