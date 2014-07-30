@@ -98,9 +98,9 @@ classdef GlobalIndexSemantics < handle
         % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
         function [u v w] = toLocalCoords(obj, x, y, z)
             u = []; v = []; w = [];
-            if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<obj.pMySize(1))); end
-            if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<obj.pMySize(2))); end
-            if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<obj.pMySize(3))); end
+            if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<=obj.pMySize(1))); end
+            if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<=obj.pMySize(2))); end
+            if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<=obj.pMySize(3))); end
         end
 
 
