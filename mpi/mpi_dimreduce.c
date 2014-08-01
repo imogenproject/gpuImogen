@@ -6,7 +6,6 @@
 #include "parallel_halo_arrays.h"
 #include "mpi_common.h"
 
-
 pParallelTopology topoStructureToC(const mxArray *prhs); 
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -17,89 +16,66 @@ pParallelTopology topology = topoStructureToC(prhs[2]);
 
 /* Reversed for silly Fortran memory ordering */
 int d = (int)*mxGetPr(prhs[1]); /* dimension we're calculating in*/
-int delta0; /* to one proc over in my line of processors */
-
-switch(d) {
-  case 2: delta0 = 1; break;
-  case 1: delta0 = topology->nproc[2]; break;
-  case 0: delta0 = topology->nproc[2]*topology->nproc[1]; break;
-/*  case 0: delta0 = 1; break;
-  case 1: delta0 = topology->nproc[0]; break;
-  case 2: delta0 = topology->nproc[0]*topology->nproc[1]; break; */
-  }
-
-int delta = delta0;
-int n = topology->coord[d]; /*n = my topology.coord[d] in this dimension */
 int dmax = topology->nproc[d];
+
 MPI_Comm commune = MPI_Comm_f2c(topology->comm);
 int r0; MPI_Comm_rank(commune, &r0);
 
-int j = 2; /* the distance we're sending the next fold-in */
 
-long numel = mxGetNumberOfElements(prhs[0]);
+long arrayNumel = mxGetNumberOfElements(prhs[0]);
 
-double *tmpstore = (double *)malloc(sizeof(double)*numel);
+double *tmpstore = (double *)malloc(sizeof(double)*arrayNumel);
 double *sendbuf  = mxGetPr(prhs[0]);
 
 MPI_Status amigoingtodie;
 
-while((j/2) < dmax) { /* as long as we aren't trying to send it past the end of the line.
-                                                                   send it past the end of the line.
-                                                                                the end of the line.
-                                                                                    END   OF   LINE */
-
-  /* Send iff we are in the middle of the foldin */
-  if((n % j) == (j/2))
-    {
-/*   printf("fanin: %i here with n=%i at j=%i: would tx to %i\n", r0, n, j, r0-delta); */
-    MPI_Send((void *)sendbuf, numel, MPI_DOUBLE, r0 - delta, 12345, commune); 
-/*  send my array back by (j >> 1) */
-    }
-  if(((n % j) == 0) && (n + (j/2) < dmax ) ) {
-/*    printf("fanin: %i here with n=%i at j=%i: would rx from %i\n", r0, n, j, r0+delta); */
-    MPI_Recv((void *)tmpstore, numel, MPI_DOUBLE, r0 + delta, 12345, commune, &amigoingtodie); 
-    /* store in my array the max of (mine, received) */
-    long q; for(q = 0; q < numel; q++) { if(tmpstore[q] > sendbuf[q]) sendbuf[q] = tmpstore[q]; } 
-    }
-  j     *= 2;
-  delta *= 2;
-
-
+/* FIXME: This is a temporary hack
+   FIXME: The creation of these communicators should be done once,
+   FIXME: by PGW, at start time. */
+int dimprocs[dmax];
+int proc0, procstep;
+switch(d) { /* everything here is Wrong because fortran is Wrong */
+  case 0: /* i0 = nx Y + nx ny Z, step = 1 -> nx ny */
+	  /* x dimension: step = ny nz, i0 = z + nz y */
+    proc0 = topology->coord[2] + topology->nproc[2]*topology->coord[1];
+    procstep = topology->nproc[2]*topology->nproc[1];
+    break;
+  case 1: /* i0 = x + nx ny Z, step = nx */
+	  /* y dimension: step = nz, i0 = z + nx ny x */
+    proc0 = topology->coord[2] + topology->nproc[2]*topology->nproc[1]*topology->coord[0];
+    procstep = topology->nproc[2];
+    break;
+  case 2: /* i0 = x + nx Y, step = nx ny */
+	  /* z dimension: i0 = nz y + nz ny x, step = 1 */
+    proc0 = topology->nproc[2]*(topology->coord[1] + topology->nproc[1]*topology->coord[0]);
+    procstep = 1;
+    break;
   }
 
-MPI_Barrier(commune);
-
-/* Sample sequence:
-      n = 0  1  2  3  4  5  6  7  8  9
-  
-  m,i=0   0  1  0  1  0  1  0  1  0  1  
-  i=0     R  T  R  T  R  T  R  T  R  T  j=2, delta = 1
-  
-  m,i=1   0  1  2  3  0  1  2  3  0  1
-  i=1     R     T     R     T     x     j=4, delta = 2
-  
-  m,i=2   0  1  2  3  4  5  6  7  0  1  
-  i=2     R           T           x     j=8, delta = 4
-  
-  m,i=3   0  1  2  3  4  5  6  7  8  9
-  i=3     R                       T     j=16,delta = 8: end
-
-   n=0 now posesses the global maximum. Now log fold-out instead. */
-
-while(j >= 2) {
-  if((n % j) == (j /2))
-    {
-/*    printf("fanout: %i here with n=%i at j=%i: would rx from %i\n", r0, n, j, r0-delta); */
-    MPI_Recv((void *)sendbuf, numel, MPI_DOUBLE, r0 - delta, 12345, commune, &amigoingtodie); 
-    }
-  if(((n % j) == 0) && (n + (j/2) < dmax ) ) {
-/*    printf("fanout: %i here with n=%i at j=%i: would tx to %i\n", r0, n, j, r0+delta);*/
-    MPI_Send((void *)sendbuf, numel, MPI_DOUBLE, r0 + delta, 12345, commune); 
-    }
-
-  j = j/2;
-  delta = delta / 2;
+int j;
+for(j = 0; j < dmax; j++) {
+  dimprocs[j] = proc0 + j*procstep;
   }
+
+MPI_Group worldgroup, dimgroup;
+MPI_Comm dimcomm;
+/* r0 has our rank in the world group */
+MPI_Comm_group(commune, &worldgroup);
+MPI_Group_incl(worldgroup, dmax, dimprocs, &dimgroup);
+/* Create communicator for this dimension */
+MPI_Comm_create(commune, dimgroup, &dimcomm);
+
+/* Perform the reduce */
+MPI_Allreduce(sendbuf, tmpstore, arrayNumel, MPI_DOUBLE, MPI_MAX, dimcomm);
+
+MPI_Barrier(dimcomm);
+/* Clean up */
+MPI_Group_free(&dimgroup);
+MPI_Comm_free(&dimcomm);
+
+memcpy(sendbuf, tmpstore, arrayNumel*sizeof(double));
+
+return;
 
 free(tmpstore);
 
