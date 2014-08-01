@@ -68,8 +68,8 @@ classdef Edges < handle
             for i=1:dim
                 iIndex      = obj.pIndex;
                 switch bcModes{n, i}
-		    % Constant BCs: hold the three cells adjacent to that edge fixed at all times
-                    case ENUM.BCMODE_CONST
+		    % Static BC: hold the three cells adjacent to that edge fixed to original value forever
+                    case ENUM.BCMODE_STATIC
                         if (n == 1)
                             uslice = (1:3)+S.GIS.pMyOffset(i);
                         else
