@@ -3,15 +3,15 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
-grid = [1024 16 1];
+grid = [1024 8 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run             = SodShockTubeInitializer(grid);
 run.direction   = SodShockTubeInitializer.X;
 run.shockAngle  = 0;
-run.iterMax     = 5000;
-run.timeMax     = 0.15;
+run.timeMax     = 0.25;
+run.iterMax     = 2*run.timeMax*grid(1); % This will give steps max ~ 1.2x required
 
 run.alias       = '';
 run.info        = 'Sod shock tube test.';
