@@ -1,4 +1,4 @@
-function source(run, mass, mom, ener, mag)
+function source(run, mass, mom, ener, mag, tFraction)
 % This function sources the non-conservative terms in the MHD equations like gravitational potential
 % and radiation terms. Effectively it provides the means to add terms that cannot be brought within 
 % the del operator, which is the foundation of the spatial fluxing routines.
@@ -16,11 +16,13 @@ GIS = GlobalIndexSemantics();
 % while purely mechanical forces act only on kinetic energy + momentum
 % and self-gravity force is a function only of density
 
+dTime = 2 * tFraction * run.time.dTime;
+
     % FIXME: This could be improved by calculating this affine transform once and storing it
     if run.frameRotateOmega ~= 0
         [xg yg] = GIS.ndgridVecs;
         xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ]); 
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, 2*run.time.dTime, xyvector);
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime, xyvector);
         clear xyvector;
     end
 
@@ -31,13 +33,13 @@ GIS = GlobalIndexSemantics();
         % position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
         % Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
         lowleft = GIS.cornerIndices();
-        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, 2*run.time.dTime, GIS.topology.nproc) );
+        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, dTime, GIS.topology.nproc) );
     end
 
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
 %    if run.potentialField.ACTIVE
-%        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, run.time.dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+%        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
 %    end
 
     % FIXME: This sequence is only first order accurate in the energy equation
@@ -47,7 +49,7 @@ GIS = GlobalIndexSemantics();
     if run.selfGravity.ACTIVE
         enerSource = zeros(run.gridSize);
         for i=1:3
-            momSource       = run.time.dTime*mass.thresholdArray ...
+            momSource       = dTime*mass.thresholdArray ...
                                                     .* grav.calculate5PtDerivative(i,run.DGRID{i});
             enerSource      = enerSource + momSource .* mom(i).array ./ mass.array;
             mom(i).array    = mom(i).array - momSource;
@@ -58,7 +60,7 @@ GIS = GlobalIndexSemantics();
     %--- Radiation Sourcing ---%
     %       If radiation is active, subtract from internal energy
     if strcmp(run.fluid.radiation.type, ENUM.RADIATION_NONE) == false
-        run.fluid.radiation.solve(run, mass, mom, ener, mag);
+        run.fluid.radiation.solve(run, mass, mom, ener, mag, dTime);
     end
 
     if run.selfGravity.ACTIVE % | run.potentialField.ACTIVE
