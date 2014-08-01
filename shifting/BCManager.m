@@ -140,13 +140,13 @@ classdef BCManager < handle
             for i=1:3; for n=1:2; switch arrayObj.bcModes{n,i}
                         case ENUM.BCMODE_CIRCULAR,    arrayObj.edgeshifts{n,i} = @circ_shift;
                         case ENUM.BCMODE_CONST,       arrayObj.edgeshifts{n,i} = @constant_shift;
-                        case ENUM.BCMODE_FADE,        arrayObj.edgeshifts{n,i} = @fade_shift;
-                        case ENUM.BCMODE_FLIP,        arrayObj.edgeshifts{n,i} = @flip_shift;
                         case ENUM.BCMODE_LINEAR,      arrayObj.edgeshifts{n,i} = @linear_shift;
                         case ENUM.BCMODE_MIRROR,      arrayObj.edgeshifts{n,i} = @mirror_shift;
+			case ENUM.BCMODE_STATIC,      arrayObj.edgeshifts{n,i} = @constant_shift; % FIXME: This is wrong...
+                        case ENUM.BCMODE_FADE,        arrayObj.edgeshifts{n,i} = @fade_shift;
+                        case ENUM.BCMODE_FLIP,        arrayObj.edgeshifts{n,i} = @flip_shift;
                         case ENUM.BCMODE_TRANSPARENT, arrayObj.edgeshifts{n,i} = @transparent_shift;
                         case ENUM.BCMODE_WALL,        arrayObj.edgeshifts{n,i} = @wall_shift;
-                        case ENUM.BCMODE_WORMHOLE,    arrayObj.edgeshifts{n,i} = @wormhole_shift;
                         case ENUM.BCMODE_ZERO,        arrayObj.edgeshifts{n,i} = @zero_shift;
                         otherwise
                             error(['Imogen:UnknownType: Unknown BC mode ', arrayObj.bcModes{n,i}]);
