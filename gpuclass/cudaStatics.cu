@@ -208,7 +208,7 @@ switch(direction) {
   case 1: {
     blockdim.x = 3;
     blockdim.y = 16;
-    blockdim.z = 16;
+    blockdim.z = 8;
     griddim.x = amd->dim[1] / blockdim.y; griddim.x += (griddim.x*blockdim.y < amd->dim[1]);
     griddim.y = amd->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < amd->dim[2]);
     }; break;
