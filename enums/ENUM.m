@@ -20,15 +20,18 @@ classdef ENUM
         PRESSURE_MAGNETIC        = 'magnetic'
         
         %--- Boundary Condition Modes  ---%
-        BCMODE_CIRCULAR     = 'circ';       % Circular, wrapping, conditions over boundaries.
-        BCMODE_CONST        = 'const';      % Constant values along edges.
+	% These are implemented and work as advertised
+        BCMODE_CIRCULAR     = 'circ';       % Circular/periodic BC at edge
+        BCMODE_CONST        = 'const';      % Constant-value extrapolation; Appropriate for supersonic in/outflow
+        BCMODE_LINEAR       = 'linear';     % Linear extrapolation; Dangerous, prone to backflow mistake.
+        BCMODE_MIRROR       = 'mirror';     % Mirrors across boundaries.
+	BCMODE_STATIC       = 'bcstatic';
+
+	% These not so much
         BCMODE_FADE         = 'fade';       % Fade arrays out to ICs at edges.
         BCMODE_FLIP         = 'flip';       % Flips vector boundaries along shifting direction.
-        BCMODE_LINEAR       = 'linear';     % Linear interpolated boundary condition type.
-        BCMODE_MIRROR       = 'mirror';     % Mirrors across boundaries.
         BCMODE_TRANSPARENT  = 'trans';      % Transparent boundary condition type.
         BCMODE_WALL         = 'wall';       % Immutable wall boundary set by initial conditions.
-        BCMODE_WORMHOLE     = 'wormhole';   % Special BC mode for rotating axisymmetric objects.
         BCMODE_ZERO         = 'zero';       % Zero fluxes but constant values.
 
         %--- Time update Modes ---%
