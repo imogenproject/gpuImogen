@@ -1,5 +1,5 @@
 %function imogen(massDen, momDen, enerDen, magnet, ini, statics)
-function outdirectory = imogen(input, resumeinfo)
+function outdirectory = imogen(srcData, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
 %
@@ -10,12 +10,12 @@ function outdirectory = imogen(input, resumeinfo)
 %>> IC.ini         Listing of properties and settings for the run.             struct
 %>> IC.statics     Static arrays with lookup to static values.                 struct
 %<< outdirectory   Path to directory containing results                        string
-    if isstruct(input) == 0
-        load(input);
+    if isstruct(srcData) == 0
+        load(srcData);
         if mpi_amirank0(); disp('Resuming from file'); end
     else
-        IC = input;
-        clear input;
+        IC = srcData;
+        clear srcData;
         evalin('caller','clear IC'); % Make ML release the memory used above
         if mpi_amirank0(); disp('Starting for first time'); end
     end
@@ -124,20 +124,16 @@ function outdirectory = imogen(input, resumeinfo)
 
     run.save.logPrint('Beginning simulation loop...\n');
     clockA = clock;
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
-    % This is a purely artificial term that applies a fictitious braking force
-    % when the fluid's grid speed passes Mach 25. Lost kinetic energy turns
-    % into heat (E is not changed, thus lost T is re-interperted as epsilon,
-    % so the fluid heats), further reducing Mach.
-    %cudaSourceAntimach(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.time.dTime, run.DGRID{1});
-
         run.time.update(mass, mom, ener, mag, i);
         for i=1:2 % Two timesteps per iteration, forward & backward
             flux(run, mass, mom, ener, mag, direction(i));
             treadmillGrid(run, mass, mom, ener, mag);
-            if i == 1; source(run, mass, mom, ener, mag); end
+            if i == 1; source(run, mass, mom, ener, mag, 1); end
         end
+
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
         run.time.step();
