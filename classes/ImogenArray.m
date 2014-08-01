@@ -237,9 +237,9 @@ classdef ImogenArray < handle
 % Applies the static conditions for the ImogenArray to the data array. This method is called during
 % array assignment (set.array).
         function applyBoundaryConditions(obj, direction)
-            if numel(obj.boundaryData.staticsData) > 0
+        %    if numel(obj.boundaryData.staticsData) > 0
                 cudaStatics(obj, 8, direction);
-            end
+        %    end
         end
 
 %___________________________________________________________________________________________________ setupBoundaries
