@@ -154,7 +154,7 @@ classdef RadiatingShockInitializer < Initializer
         L_c = radflow.coolingLength(jump.v(1,2));
         T_c = radflow.coolingTime(jump.v(1,2));
 
-        radflow.setCutoff('thermal',1);
+        radflow.setCutoff('thermal',1.1);
 
         flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
         flowValues   = radflow.solutionTable();
