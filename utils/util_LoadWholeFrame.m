@@ -54,7 +54,7 @@ while u <= numel(ranks)
     massiveFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, ranks);
     massiveFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, ranks);
     massiveFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, ranks);
-    if numel(frame.magX) > 0
+    if numel(frame.magX) > 1
         massiveFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, ranks);
         massiveFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, ranks);
         massiveFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, ranks);
