@@ -45,7 +45,7 @@ function dataframe = util_LoadFrameSegment(namebase, padsize, rank, frameno)
             dataframe = getfield(tempname,nom_de_plume{1});
         end
     catch ERR
-        fprintf('SERIOUS on %s: Frame %s in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), fname, pwd());
+        fprintf('SERIOUS on %s: Frame in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), pwd());
         ERR
         dataframe = -1;
     end
