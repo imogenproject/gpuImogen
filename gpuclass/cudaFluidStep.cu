@@ -21,7 +21,7 @@
 #define RK_PREDICT 0
 #define RK_CORRECT 1
 
-void __syncthreads(void);
+//void __syncthreads(void);
 
 /* THIS FUNCTION
 
@@ -51,6 +51,27 @@ and considerably speeds up the process.
 
 //__device__ void __syncthreads(void);
 
+/*__device__ double slopeLimiter_Osher(double A, double B)
+{
+double retval;
+asm(    ".reg .f64 s;\n\t"      // hold sum
+        ".reg .f64 p;\n\t"       // hold product
+        ".reg .f64 q;\n\t"       // hold quotient"
+        ".reg .pred isneg;\n\t"  // predicate for positivity
+        "mul.f64        s, %1, %2;\n\t" // Store AB in s
+        "mov.f64        %0, 0d0000000000000000;\n\t" // Load output register with zero
+        "setp.le.f64    isneg, s, 0d0000000000000000;\n\t" // isneg is true if AB <= 0
+        "@isneg bra     endline;\n\t" // Hop past the computation to follow
+        "neg.f64        p, s;\n\t"      // store -AB in p
+        "add.f64        s, %1, %2;\n\t" // Store A+B in s
+        "fma.rn.f64     q, s, s, p;\n\t" // Store (A+B)^2 - AB = AA + AB + BB in q
+        "mul.f64        p, p, 0dBFE8000000000000;\n\t" // store -.75(-AB) = .75AB in p
+        "mul.f64        p, p, s;\n\t" // Store p s  = (.75 A B) (A+B) in p
+        "div.rn.f64     %0, p, q;\n\t" // Store that / the quotient in return register
+        "endline:\n\t" : "=d"(retval) : "d"(A), "d"(B) );
+return retval;
+}*/
+
 pParallelTopology topoStructureToC(const mxArray *prhs);
 void cfSync(double *cfArray, int cfNumel, const mxArray *topo);
 
@@ -71,9 +92,9 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny);
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
 __global__ void cukern_PressureSolver(double *Qstore);
 
-#define BLOCKLEN 92
-#define BLOCKLENP2 94
-#define BLOCKLENP4 96
+#define BLOCKLEN 12
+#define BLOCKLENP2 14
+#define BLOCKLENP4 16
 
 __constant__ __device__ double *inputPointers[9];
 __constant__ __device__ double fluidQtys[8];
@@ -189,7 +210,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		// Copies [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
 		cudaMemcpyToSymbol(inputPointers,  srcs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
 
-		blocksize.y = 1;
+		blocksize.y = 4;
 //		cukern_AUSM_firstorder_uniform<<<gridsize, blocksize>>>(srcs[8], wStepValues, .5*lambda, arraySize.x, arraySize.y);
 		cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro W step");
@@ -223,7 +244,6 @@ cudaMemcpy(srcs[8], wStepValues+5*arrayNumel, arrayNumel*sizeof(double), cudaMem
 
 
 		cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-		blocksize.y = 2;
 //		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro TVD step");
 	} else {
@@ -401,14 +421,15 @@ __global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qou
 
 }
 
-#define BLK0 (tix+1               )
-#define BLK1 (tix+1+  (BLOCKLENP4))
-#define BLK2 (tix+1+2*(BLOCKLENP4))
-#define BLK3 (tix+1+3*(BLOCKLENP4))
-#define BLK4 (tix+1+4*(BLOCKLENP4))
-#define BLK5 (tix+1+5*(BLOCKLENP4))
-#define BLK6 (tix+1+6*(BLOCKLENP4))
-#define BLK7 (tix+1+7*(BLOCKLENP4))
+#define N_SHMEM_BLOCKS 8
+#define BOS0 0
+#define BOS1 16
+#define BOS2 32
+#define BOS3 48
+#define BOS4 64
+#define BOS5 80
+#define BOS6 96
+#define BOS7 112
 
 #define HLL_LEFT 0
 #define HLL_HLL  1
@@ -417,9 +438,19 @@ __global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qou
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 {
-	int tix = threadIdx.x;
+	// Create center, rotate-left and rotate-right indexes
+	int IC = threadIdx.x;
+	int IL = threadIdx.x - 1;
+	IL += 1*(IL < 0);
+	int IR = threadIdx.x + 1;
+	IR -= 16*(IL > 15);
+
+	IC += N_SHMEM_BLOCKS*16*threadIdx.y;
+	IL += N_SHMEM_BLOCKS*16*threadIdx.y;
+	IR += N_SHMEM_BLOCKS*16*threadIdx.y;
+
 	/* Declare variable arrays */
-	__shared__ double shblk[8*BLOCKLENP4+2];
+	__shared__ double shblk[4*N_SHMEM_BLOCKS*BLOCKLENP4];
 	double Ale, Ble, Cle;
 	double Are, Bre, Cre;
 	int HLL_FluxMode;
@@ -428,7 +459,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
-	int thisThreadDelivers = (threadIdx.x > 1) && (threadIdx.x < blockDim.x-2);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
 	if(x0 < 0) x0 += nx; // left wraps to right edge
@@ -436,15 +467,16 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
 
 	/* Do some index calculations */
-	x0 += nx*ny*blockIdx.y; /* This block is now positioned to start at its given (x,z) coordinate */
-	int j = 0;
-	for(j = 0; j < ny; j++) {
+	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	int j = threadIdx.y;
+
+	for(; j < ny; j += blockDim.y) {
 
 		if(PCswitch == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
 			Ale = Are = inputPointers[0][x0]; /* load rho */
 			Bre = inputPointers[2][x0]; /* load px */
-			Cle = Cre =inputPointers[8][x0]; /* load pressure */
+			Cle = Cre = inputPointers[8][x0]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 			Bre = Ble;
 		} else {
@@ -454,31 +486,31 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 			Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 
-			shblk[BLK0] = Ale;
-			shblk[BLK1] = Ble;
-			shblk[BLK2] = Cle;
+			shblk[IC + BOS0] = Ale;
+			shblk[IC + BOS1] = Ble;
+			shblk[IC + BOS2] = Cle;
 			__syncthreads();
 
 			/*************** BEGIN SECTION 2 */
-			Are = Ale - shblk[BLK0 - 1];
-			Bre = Ble - shblk[BLK1 - 1];
-			Cre = Cle - shblk[BLK2 - 1];
+			Are = Ale - shblk[IL + BOS0];
+			Bre = Ble - shblk[IL + BOS1];
+			Cre = Cle - shblk[IL + BOS2];
 			__syncthreads();
 
 			/*************** BEGIN SECTION 3 */
-			shblk[BLK0] = Are;
-			shblk[BLK1] = Bre;
-			shblk[BLK2] = Cre;
+			shblk[IC + BOS0] = Are;
+			shblk[IC + BOS1] = Bre;
+			shblk[IC + BOS2] = Cre;
 			__syncthreads();
 
 			/*************** BEGIN SECTION 4 */
-			Fa = SLOPEFUNC(Are, shblk[BLK0+1]);
+			Fa = SLOPEFUNC(Are, shblk[IR + BOS0]);
 			Are = Ale + Fa;
 			Ale -= Fa;
-			Fa = SLOPEFUNC(Bre, shblk[BLK1+1]);
+			Fa = SLOPEFUNC(Bre, shblk[IR + BOS1]);
 			Bre = Ble + Fa;
 			Ble -= Fa;
-			Fa = SLOPEFUNC(Cre, shblk[BLK2+1]);
+			Fa = SLOPEFUNC(Cre, shblk[IR + BOS2]);
 			Cre = Cle + Fa;
 			Cle -= Fa;
 		}
@@ -487,16 +519,16 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 		/* Rotate the [le_i-1 re_i-1][le_i re_i][le_i+1 re_i+1] variables one left
 		 * so that each cell stores [re_i le_i+1]
 		 * and thus each thread deals with F_i+1/2 */
-		shblk[BLK0] = Ale;
-		shblk[BLK1] = Are;
-		shblk[BLK2] = Ble;
-		shblk[BLK4] = Cle;
+		shblk[IC + BOS0] = Ale;
+		shblk[IC + BOS1] = Are;
+		shblk[IC + BOS2] = Ble;
+		shblk[IC + BOS4] = Cle;
 
 		__syncthreads();
 
-		Ale = sqrt(Are); Are = sqrt(shblk[BLK0+1]);
-		Ble = Bre; Bre = shblk[BLK2+1];
-		Cle = Cre; Cre = shblk[BLK4+1];
+		Ale = sqrt(Are); Are = sqrt(shblk[IR + BOS0]);
+		Ble = Bre; Bre = shblk[IR + BOS2];
+		Cle = Cre; Cre = shblk[IR + BOS4];
 		/* Calculation may now proceed based only on register variables! */
 
 //48 registers
@@ -511,19 +543,22 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 		Sright = Utilde + Atilde;
 // 48 regs
 
-		/* We always divide by 1/2a so save some calculations from here out */
+		/* We always divide by 1/2a for flux mode HLL_HLL so save some calculations from here out */
 		Atilde = .5/Atilde;
 
 		// Load non-square-rooted density back up down here after using Ale/Are as scratch
-		Ale = shblk[BLK1]; Are = shblk[BLK0+1];
+		Ale = shblk[IC + BOS1]; Are = shblk[IR + BOS0];
 		/* Accumulate 2*kinetic energy */
 		__syncthreads();
 
-		shblk[BLK0] = Ale*Ble;
-		shblk[BLK2] = Are*Bre;
+		Fa = Ale*Ble; // Raw mass flux
+		Fb = Are*Bre;
 
-		shblk[BLK6] = Ale*Ble*Ble;
-		shblk[BLK7] = Are*Bre*Bre;
+		shblk[IC + BOS0] = Fa;
+		shblk[IC + BOS2] = Fb;
+
+		shblk[IC + BOS6] = Ble*Fa; // Raw (convective) momentum flux, also to be used for pressure calculation
+		shblk[IC + BOS7] = Bre*Fb;
 
 		/* Determine where our flux originates from (Uleft, Uhll, or Uright) */
 		HLL_FluxMode = HLL_HLL;
@@ -533,31 +568,31 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 
 		/* Calculate the mass and momentum fluxes */
 		switch(HLL_FluxMode) {
-		case HLL_LEFT:  shblk[BLK1] = Ale*Ble;
-		shblk[BLK3] = Ale*Ble*Ble + Cle; break;
-		case HLL_HLL:   shblk[BLK1] = (Sright*shblk[BLK0] - Sleft*shblk[BLK2] + Sleft*Sright*(Are-Ale))*Atilde;
-		shblk[BLK3] = (Sright*(shblk[BLK6]+Cle) - Sleft*(shblk[BLK7]+Cre) + Sleft*Sright*(Are*Bre-Ale*Ble))*Atilde; break;
-		case HLL_RIGHT: shblk[BLK1] = Are*Bre;
-		shblk[BLK3] = Are*Bre*Bre + Cre; break;
+		case HLL_LEFT:  shblk[IC + BOS1] = Fa;
+		shblk[IC + BOS3] = Fa*Ble + Cle; break;
+		case HLL_HLL:   shblk[IC + BOS1] = (Sright*Fa - Sleft*Fb + Sleft*Sright*(Are-Ale))*Atilde;
+		shblk[IC + BOS3] = (Sright*(Ble*Fa+Cle) - Sleft*(Bre*Fb+Cre) + Sleft*Sright*(Fb-Fa))*Atilde; break;
+		case HLL_RIGHT: shblk[IC + BOS1] = Fb;
+		shblk[IC + BOS3] = Fb*Bre + Cre; break;
 		}
 // 52 registers
 		/* Transfer Atilde to shmem, freeing Utilde/Atilde as Ule/Ure pair */
-		shblk[BLK5] = Atilde;
+		shblk[IC + BOS5] = Atilde;
 
 		__syncthreads();
 
-		shblk[BLK2] = lambda*(shblk[BLK1-1]-shblk[BLK1]);
-		shblk[BLK4] = lambda*(shblk[BLK3-1]-shblk[BLK3]);
+		shblk[IC + BOS2] = (shblk[IL + BOS1]-shblk[IC + BOS1]);
+		shblk[IC + BOS4] = (shblk[IL + BOS3]-shblk[IC + BOS3]);
 
 		/* Flux density and momentum... for prediction we explicitly did not use MUSCL and
                    therefore Ale = Acentered. */
 		if(thisThreadDelivers) {
 			if(PCswitch == RK_PREDICT) {
-				Qstore[x0                  ] = Ale     + shblk[BLK2];
-				Qstore[x0 + 2*devArrayNumel] = Ale*Ble + shblk[BLK4];
+				Qstore[x0                  ] = Ale + lambda * shblk[IC + BOS2];
+				Qstore[x0 + 2*devArrayNumel] = Fa  + lambda * shblk[IC + BOS4];
 			} else {
-				inputPointers[0][x0] += shblk[BLK2];
-				inputPointers[2][x0] += shblk[BLK4];
+				inputPointers[0][x0] += lambda * shblk[IC + BOS2];
+				inputPointers[2][x0] += lambda * shblk[IC + BOS4];
 			}
 		}
 
@@ -572,64 +607,65 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 			Fa = Qstore[x0 + 3*devArrayNumel]; /* load py */
 			Utilde = Qstore[x0 + 4*devArrayNumel]; /* load pz */
 
-			shblk[BLK0] = Fa;
-			shblk[BLK2] = Utilde;
+			shblk[IC + BOS0] = Fa;
+			shblk[IC + BOS2] = Utilde;
 			__syncthreads();
 
 			/*************** BEGIN SECTION 2 */
-			Fb = Fa - shblk[BLK0 - 1];
-			Atilde = Utilde - shblk[BLK2 - 1];
+			Fb = Fa - shblk[IL + BOS0];
+			Atilde = Utilde - shblk[IL + BOS2];
 			__syncthreads();
 
 			/*************** BEGIN SECTION 3 */
-			shblk[BLK0] = Fb;
-			shblk[BLK2] = Atilde;
+			shblk[IC + BOS0] = Fb;
+			shblk[IC + BOS2] = Atilde;
 			__syncthreads();
 
 			/*************** BEGIN SECTION 4 */
 			/* Take the speed hit and use shmem #4 to avoid eating more registers */
-			shblk[BLK4] = SLOPEFUNC(Fb, shblk[BLK0+1]);
-			Fb = Fa + shblk[BLK4];
-			Fa -= shblk[BLK4];
-			shblk[BLK4] = SLOPEFUNC(Atilde, shblk[BLK2+1]);
-			Atilde = Utilde + shblk[BLK4];
-			Utilde -= shblk[BLK4];
+			shblk[IC + BOS4] = SLOPEFUNC(Fb, shblk[IR + BOS0]);
+			Fb = Fa + shblk[IC + BOS4];
+			Fa -= shblk[IC + BOS4];
+			shblk[IC + BOS4] = SLOPEFUNC(Atilde, shblk[IR + BOS2]);
+			Atilde = Utilde + shblk[IC + BOS4];
+			Utilde -= shblk[IC + BOS4];
 		}
 		/* Rotate py and pz to the left so cell i has L/R values of interface i+1/2 */
 		__syncthreads();
 //55 registers
-		shblk[BLK0] = Fa;
-		shblk[BLK1] = Utilde;
+		shblk[IC + BOS0] = Fa;
+		shblk[IC + BOS1] = Utilde;
 
 		__syncthreads();
 		if(PCswitch == RK_PREDICT) {
-			Fb = shblk[BLK0+1];
-			Atilde = shblk[BLK1+1];
+			Fb = shblk[IR + BOS0];
+			Atilde = shblk[IR + BOS1];
 		} else {
-			Fa = Fb; Fb = shblk[BLK0+1];
-			Utilde = Atilde; Atilde = shblk[BLK1+1];
+			Fa = Fb; Fb = shblk[IR + BOS0];
+			Utilde = Atilde; Atilde = shblk[IR + BOS1];
 		}
 
 // 55 registers
 
-		shblk[BLK6] = .5*(shblk[BLK6] + (Fa*Fa + Utilde*Utilde)/Ale);
-		shblk[BLK7] = .5*(shblk[BLK7] + (Fb*Fb + Atilde*Atilde)/Are);
+		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
+		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
 // 57 registers
 #if 1
 		// FATAL: This code section causes register utilization to jump from 57 to 63.
 		// FUCK THAT NOISE, this must be stopped ;-(
 		switch(HLL_FluxMode) {
-		case HLL_LEFT:  shblk[BLK2] = Fa * Ble; /* py flux */
-		shblk[BLK3] = Utilde * Ble; /* pz flux */
-		shblk[BLK4] = Ble * (shblk[BLK6] + FLUID_GOVERGM1*Cle); break; /* E flux */
-
-		case HLL_HLL:   shblk[BLK2] = (Sright*(Fa*Ble) - Sleft*(Fb*Bre) + Sleft*Sright*(Fb-Fa))*shblk[BLK5];
-		shblk[BLK3] = (Sright*(Utilde*Ble) - Sleft*(Atilde*Bre) + Sleft*Sright*(Atilde-Utilde)) * shblk[BLK5];
-		shblk[BLK4] = (Sright*Ble*(shblk[BLK6] + FLUID_GOVERGM1*Cle) - Sleft*Bre*(shblk[BLK7] + FLUID_GOVERGM1*Cre) + Sleft*Sright*(shblk[BLK7] + FLUID_GOVERGM1*Cre - shblk[BLK6] - FLUID_GOVERGM1*Cle))*shblk[BLK5]; break;
-
-		case HLL_RIGHT:	shblk[BLK2] = Fb * Bre;
-		shblk[BLK3] = Atilde * Bre;
-		shblk[BLK4] = Bre * (shblk[BLK7] + FLUID_GOVERGM1*Cre); break;
+		case HLL_LEFT:  shblk[IC + BOS2] = Fa * Ble; /* py flux */
+		shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
+		shblk[IC + BOS4] = Ble * (shblk[IC + BOS6] + FLUID_GOVERGM1*Cle);
+		break; /* E flux */
+		case HLL_HLL:   shblk[IC + BOS2] = (Sright*(Fa*Ble) - Sleft*(Fb*Bre) + Sleft*Sright*(Fb-Fa))*shblk[IC + BOS5];
+		shblk[IC + BOS3] = (Sright*(Utilde*Ble) - Sleft*(Atilde*Bre) + Sleft*Sright*(Atilde-Utilde)) * shblk[IC + BOS5];
+		shblk[IC + BOS4] = (Sright*Ble*(shblk[IC + BOS6] + FLUID_GOVERGM1*Cle) - Sleft*Bre*(shblk[IC + BOS7] + FLUID_GOVERGM1*Cre) + Sleft*Sright*(shblk[IC + BOS7] + FLUID_GOVERGM1*Cre - shblk[IC + BOS6] - FLUID_GOVERGM1*Cle))*shblk[IC + BOS5];
+		break;
+		case HLL_RIGHT:	shblk[IC + BOS2] = Fb * Bre;
+		shblk[IC + BOS3] = Atilde * Bre;
+		shblk[IC + BOS4] = Bre * (shblk[IC + BOS7] + FLUID_GOVERGM1*Cre);
+		break;
 
 		}
 // 63 registers
@@ -637,17 +673,17 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 
 		if(thisThreadDelivers) {
 			if(PCswitch == RK_PREDICT) {
-				Qstore[x0 +   devArrayNumel] = inputPointers[1][x0] + lambda*(shblk[BLK4-1]-shblk[BLK4]);
-				Qstore[x0 + 3*devArrayNumel] = Fa                   + lambda*(shblk[BLK2-1]-shblk[BLK2]);
-				Qstore[x0 + 4*devArrayNumel] = Utilde               + lambda*(shblk[BLK3-1]-shblk[BLK3]);
+				Qstore[x0 +   devArrayNumel] = inputPointers[1][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				Qstore[x0 + 3*devArrayNumel] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				Qstore[x0 + 4*devArrayNumel] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			} else {
-				inputPointers[1][x0] += lambda*(shblk[BLK4-1]-shblk[BLK4]);
-				inputPointers[3][x0] += lambda*(shblk[BLK2-1]-shblk[BLK2]);
-				inputPointers[4][x0] += lambda*(shblk[BLK3-1]-shblk[BLK3]);
+				inputPointers[1][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				inputPointers[3][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				inputPointers[4][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			}
 		}
 #endif
-		x0 += nx;
+		x0 += blockDim.y*nx;
 		__syncthreads();
 
 
@@ -655,282 +691,6 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 
 }
 
-
-/* cukern_AUSM_predict reads inputPointers[0 1 2 3 4 9][x] to read [rho E px py pz P]
- * It them performs MUSCL reconstruction of left/right edge states to acheive 2nd order accuracy
- * It then uses AUSM to calculate fluxes and stores Q - lambda*diff(F) -> Qout */
-
-/* if PCswitch is RK_PREDICT (0), derivs are found using inputPointers[n][x0] and Qstore = i.p.'s + lambda qdot
- * if PCswitch is RK_CORRECT (1), derivs are calculated using Qstore and inputPointers[n][x0] updated according to 2nd
- * stage of Runge-Kutta
- */
-
-
-template <unsigned int PCswitch>
-__global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny)
-{
-	int tix = threadIdx.x;
-	/* Declare variable arrays */
-	__shared__ double shblk[8*BLOCKLENP4+2];
-	double Ale, Ble, Cle;
-	double Are, Bre, Cre;
-
-	double Fa, Fb;
-	double Csle, Csre, Mleft, Mright;
-	double Pleft, Pright;
-
-	/* My x index: thread + blocksize block, wrapped circularly */
-	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
-	int thisThreadDelivers = (threadIdx.x > 1) && (threadIdx.x < blockDim.x-2);
-
-	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
-	if(x0 < 0) x0 += nx; // left wraps to right edge
-	if(x0 > (nx+1)) return; // More than 2 past right returns
-	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
-
-	/* Do some index calculations */
-	x0 += nx*ny*blockIdx.y; /* This block is now positioned to start at its given (x,z) coordinate */
-	int j = 0;
-	for(j = 0; j < ny; j++) {
-
-		if(threadIdx.y == 0) { /* Cord 0 */
-
-			/*************** BEGIN SECTION 1 */
-			if(PCswitch == RK_PREDICT) {
-				Ale = inputPointers[0][x0]; /* load rho */
-				Bre = inputPointers[2][x0]; /* load px */
-				Cle = inputPointers[8][x0]; /* load pressure */
-			} else {
-				Ale = Qstore[x0 + 0*devArrayNumel]; /* load rho */
-				Bre = Qstore[x0 + 2*devArrayNumel]; /* load px */
-				Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
-			}
-			Ble = Bre / Ale; /* Calculate vx */
-			shblk[BLK0] = Ale;
-			shblk[BLK1] = Ble;
-			shblk[BLK2] = Cle;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 2 */
-			Are = Ale - shblk[BLK0 - 1];
-			Bre = Ble - shblk[BLK1 - 1];
-			Cre = Cle - shblk[BLK2 - 1];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 3 */
-			shblk[BLK0] = Are;
-			shblk[BLK1] = Bre;
-			shblk[BLK2] = Cre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 4 */
-			Fa = SLOPEFUNC(Are, shblk[BLK0+1]);
-			Are = Ale + Fa;
-			Ale -= Fa;
-			Fa = SLOPEFUNC(Bre, shblk[BLK1+1]);
-			Bre = Ble + Fa;
-			Ble -= Fa;
-			Fa = SLOPEFUNC(Cre, shblk[BLK2+1]);
-			Cre = Cle + Fa;
-			Cle -= Fa;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 5 */
-			shblk[BLK4] = Csle = sqrt(FLUID_GAMMA*Cle/Ale);
-			shblk[BLK5] = Csre = sqrt(FLUID_GAMMA*Cre/Are);
-
-			Mleft  = Ble / Csle;
-			Mright = Bre / Csre;
-			Fa = fabs(Mleft);
-			Fb = fabs(Mright);
-
-			if(Mright*Mright < 1.0) {
-				Pright = .5*(1+Mright)*Cre;
-				Mright = .25*(Mright+1)*(Mright+1);
-			} else {
-				Pright= .5*(Mright+Fb)*Cre/Mright;
-				Mright = .5*(Mright+Fb);
-
-			}
-
-			if(Mleft*Mleft < 1.0) {
-				Pleft = .5*(1-Mleft)*Cle;
-				Mleft = -.25*(Mleft-1)*(Mleft-1);
-			} else {
-				Pleft = .5*(Mleft-Fa)*Cle/Mleft;
-				Mleft= .5*(Mleft-Fa);
-			}
-
-			shblk[BLK2] = Mleft;
-			shblk[BLK3] = Mright;
-
-			__syncthreads();
-
-			/*************** BEGIN SECTION 6 */
-			shblk[BLK0] = FLUID_GOVERGM1*Cle + .5*Ale*Ble*Ble; /* export our part of the energy flux for read by cord 1*/
-			shblk[BLK1] = FLUID_GOVERGM1*Cre + .5*Are*Bre*Bre;
-			shblk[BLK6] = Ale;
-			shblk[BLK7] = Are; /* we don't give a crap about efficiency until this WORKS */
-			Mleft  += shblk[BLK3-1];
-			Mright += shblk[BLK2+1];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 7 */
-
-			shblk[BLK4] = Ale*Csle;
-			shblk[BLK5] = Are*Csre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 8 */
-			if(Mright > 0) { Fb = shblk[BLK5]; } else { Fb = shblk[BLK4+1]; }
-			if(Mleft  > 0) { Fa = shblk[BLK5-1]; } else { Fa = shblk[BLK4]; }
-			if(thisThreadDelivers) {/* Density update */
-				if(PCswitch == RK_PREDICT) {
-					Qstore[x0] = Cle = .5*(Ale+Are) + lambda * (Mleft*Fa - Mright*Fb);
-				} else {
-					inputPointers[0][x0] = inputPointers[0][x0] + lambda* (Mleft*Fa - Mright*Fb);
-				}
-			}
-
-			Fa = Ale * Csle * Ble;
-			Fb = Are * Csre * Bre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 9*/
-			shblk[BLK2] = Fa;
-			shblk[BLK3] = Fb;
-			shblk[BLK4] = Pleft;
-			shblk[BLK5] = Pright;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 10 */
-			if(Mright > 0) { Fb = shblk[BLK3]; } else { Fb = shblk[BLK2+1]; }
-			if(Mleft  > 0) { Fa = shblk[BLK3-1]; } else { Fa = shblk[BLK2]; }
-			if(thisThreadDelivers) { /* X momentum update */
-				if(PCswitch == RK_PREDICT) {
-					Qstore[x0 + 2*devArrayNumel] = shblk[BLK7] = .25*(Ale+Are)*(Ble+Bre) + lambda * (Mleft*Fa - Mright*Fb + Pleft - Pright - shblk[BLK4+1] + shblk[BLK5-1]);
-					shblk[BLK6] = Cle;
-				} else {
-					inputPointers[2][x0] = inputPointers[2][x0] + lambda* (Mleft*Fa - Mright*Fb + Pleft - Pright - shblk[BLK4+1] + shblk[BLK5-1]);
-				}
-			}
-
-			/*************** BEGIN SECTION 11 */
-			if(PCswitch == RK_PREDICT) __syncthreads();
-
-		} else { /* Cord 1 */
-			/*************** BEGIN SECTION 1 */
-			if(PCswitch == RK_PREDICT) {
-				Ale = inputPointers[1][x0];  // energy
-				Ble = inputPointers[3][x0];// mom y
-				Cle = inputPointers[4][x0];// mom z
-			} else {
-				Ale = Qstore[x0 + devArrayNumel];  // energy
-				Ble = Qstore[x0 + 3*devArrayNumel];// mom y
-				Cle = Qstore[x0 + 4*devArrayNumel];// mom z
-			}
-			shblk[BLK3] = Ale;
-			shblk[BLK4] = Ble;
-			shblk[BLK5] = Cle;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 2 */
-			Are = Ale - shblk[BLK3-1];
-			Bre = Ble - shblk[BLK4-1];
-			Cre = Cle - shblk[BLK5-1];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 3 */
-			shblk[BLK3] = Are;
-			shblk[BLK4] = Bre;
-			shblk[BLK5] = Cre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 4 */
-			Fa = SLOPEFUNC(shblk[BLK3], shblk[BLK3+1]);
-			Are = Ale + Fa;
-			Ale -= Fa;
-
-			Fa = SLOPEFUNC(shblk[BLK4], shblk[BLK4+1]);
-			Bre = Ble + Fa;
-			Ble -= Fa;
-
-			Fa = SLOPEFUNC(shblk[BLK5], shblk[BLK5+1]);
-			Cre = Cle + Fa;
-			Cle -= Fa;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 5 */
-
-			__syncthreads();
-
-			/*************** BEGIN SECTION 6 */
-			Mleft  = shblk[BLK2] + shblk[BLK3-1];
-			Mright = shblk[BLK3] + shblk[BLK2+1];
-			Csle = shblk[BLK4];
-			Csre = shblk[BLK5];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 7 */
-			shblk[BLK0] = Csle * (shblk[BLK0] + .5*(Ble*Ble+Cle*Cle)/shblk[BLK6]); /* Publicize energy fluxes */
-			shblk[BLK1] = Csre * (shblk[BLK1] + .5*(Bre*Bre+Cre*Cre)/shblk[BLK7]);
-			shblk[BLK6] = Cle*Csle; /* pz momentum fluxes */
-			shblk[BLK7] = Cre*Csre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 8 */
-			if(thisThreadDelivers) {
-				if(Mleft > 0) { Fa = shblk[BLK1 - 1]; } else { Fa = shblk[BLK0]; } // Energy update
-				if(Mright > 0){ Fb = shblk[BLK1]; } else { Fb = shblk[BLK0 + 1]; }
-				if(PCswitch == RK_PREDICT) {
-					Qstore[x0 + 1*devArrayNumel] = Ale = .5*(Ale+Are) + lambda * (Mleft*Fa - Mright*Fb);
-					/* STORED E_half in Ale! */
-				} else {
-					inputPointers[1][x0] = inputPointers[1][x0] + lambda * (Mleft*Fa - Mright*Fb);
-				}
-				if(Mleft > 0) { Fa = shblk[BLK7 - 1]; } else { Fa = shblk[BLK6]; } // Pz update
-				if(Mright > 0){ Fb = shblk[BLK7]; } else { Fb = shblk[BLK6 + 1]; }
-				if(PCswitch == RK_PREDICT) {
-					Qstore[x0 + 4*devArrayNumel] = Are = .5*(Cle+Cre) + lambda * (Mleft*Fa - Mright*Fb);
-					Are *= .5*Are;
-				} else {
-					inputPointers[4][x0] = inputPointers[4][x0] + lambda * (Mleft*Fa - Mright*Fb);
-				}
-			}
-
-			__syncthreads();
-
-			/*************** BEGIN SECTION 9 */
-			shblk[BLK0] = Ble*Csle;
-			shblk[BLK1] = Bre*Csre;
-
-			__syncthreads();
-
-			/*************** BEGIN SECTION 10 */
-			if(thisThreadDelivers) {
-							if(Mleft > 0) { Fa = shblk[BLK1 - 1]; } else { Fa = shblk[BLK0]; } // Py update
-							if(Mright > 0){ Fb = shblk[BLK1]; } else { Fb = shblk[BLK0 + 1]; }
-							if(PCswitch == RK_PREDICT) {
-								Qstore[x0 + 3*devArrayNumel] = Cre = .5*(Ble+Bre) + lambda * (Mleft*Fa - Mright*Fb);
-								Are += .5*Cre*Cre; /* Store py^2+pz^2 */
-							} else {
-								inputPointers[3][x0] = inputPointers[3][x0] + .5*lambda * (Mleft*Fa - Mright*Fb);
-							}
-
-						}
-
-			/***************** BEGIN SECTION 11: Now cord 1 must calculate EoS if we are in predictor step*/
-			if(PCswitch == RK_PREDICT) {
-				__syncthreads();
-				//P = (g-1)*(Etot - T)
-			    if(thisThreadDelivers) Qstore[x0 + 5*devArrayNumel] = FLUID_GM1 * (Ale- (.5*shblk[BLK7]*shblk[BLK7] + Are)/shblk[BLK6]);
-			}
-		}
-		x0 += nx;
-		__syncthreads();
-
-	}
-}
 
 __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Qin, double halfLambda, int nx)
 {
@@ -939,19 +699,7 @@ __global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Q
 
 
 
-__device__ __inline__ double Mminus(double M) {
-	if(M > 1.0) return 0.0;
-	if(M*M < 1) return -.25*(M-1.0)*(M-1.0);
-	return M;
-}
-__device__ __inline__ double Mplus(double M) {
-	if(M < -1.0) return 0.0;
-	if(M*M < 1) return .25*(M+1.0)*(M+1.0);
-	return M;
-}
-
-/* This kernel reads from inputPointers[0...4][x] and writes Qout[(0...4)*numel + x]
- * The Cfreeze array is round_up(NX / blockDim.x) x NY x NZ and is reduced in the X direction after
+ /* The Cfreeze array is round_up(NX / blockDim.x) x NY x NZ and is reduced in the X direction after
  * blockdim = [ xsize, 1, 1]
  * griddim  = [ sup[nx/(xsize - 4)], ny, 1]
  */

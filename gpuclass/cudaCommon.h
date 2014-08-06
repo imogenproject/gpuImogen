@@ -126,10 +126,12 @@ return .5*fluxLimiter_minmod(2*derivL, derivR);
 
 __device__ __inline__ double slopeLimiter_Osher(double A, double B)
 {
-double r = A*B;
-if(r <= 0.0) return 0.0;
-
-return .75*r*(A+B)/(A*A+r+B*B);
+double R = A*B;
+if(R > 0) {
+	double S = A+B;
+	return .75*R*S/(S*S-R);
+	}
+return 0.0;
 }
 
 __device__ __inline__ double slopeLimiter_Zero(double A, double B) { return 0.0; }
