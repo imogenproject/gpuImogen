@@ -11,21 +11,12 @@ classdef StorageArray < InitializedArray
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %							P U B L I C  [P]
 		threshold;
-		thresholdArray;
     end %PUBLIC
 	
 	
 	
 %===================================================================================================
     methods %																		P U B L I C  [M]
-		
-		function result = get.thresholdArray(obj)
-			if (obj.threshold > 0)
-				result = obj.pArray .* (obj.pArray > obj.threshold);
-			else
-				result = obj.pArray;
-			end
-		end
 		
 %___________________________________________________________________________________________________ StorageArray
         function obj = StorageArray(component, id, run, statics)

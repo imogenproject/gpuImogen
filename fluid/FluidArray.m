@@ -11,25 +11,12 @@ classdef FluidArray < ImogenArray
 
 %===================================================================================================
     properties (Dependent = true) %                                            D E P E N D E N T [P]
-        thresholdArray;     % Data array with values below threshold set to zero.   double
     end %DEPENDENT
     
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
 
-%___________________________________________________________________________________________________ GS: thresholdArray
-% Returns the threshold array where values below the threshold property value are set to zero. If
-% the threshold is set to zero, which it is by default, the threshold array and the main data array
-% are identical. The threshold array is used for mass density when sourcing the graviational 
-% potential, to avoid gravity acting on low mass cells, which causes unnecessarily high velocities.
-        function result = get.thresholdArray(obj)
-            result = obj.pArray;
-            if (obj.threshold > 0)
-                result = result .* (result > obj.threshold);
-            end
-        end
-        
     end%GET/SET
     
 %===================================================================================================
