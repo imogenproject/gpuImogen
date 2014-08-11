@@ -6,8 +6,9 @@ include ../Make.config
 GEN_OPTS = 
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
-#NVCC_OPTS = -gencode arch=compute_20,code=sm_20 -g -G
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v" # Emit resource utilization info on compile
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
+# To get debuggability & ptxas chatter...
+#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v"
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -140,9 +141,9 @@ cudaFluidTVD: cudaCommon.o cudaFluidTVD.o
 
 cudaFluidStep.o: cudaFluidStep.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaFluidStep.cpp
+	mex $(MEX_OPTS)  -c cudaFluidStep.cpp
 cudaFluidStep: cudaCommon.o cudaFluidStep.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 
 cudaMHDKernels.o: cudaMHDKernels.cu
