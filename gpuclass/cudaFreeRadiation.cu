@@ -99,7 +99,13 @@ CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
 
 }
 
-
+/* NOTE: This uses an explicit algorithm to perform radiation,
+ * i.e. E[t+dt] = E[t] - Lambda[t] dt with radiation rate Lambda
+ * This is conditionally stable with a CFL set by dt < E / Lambda
+ * 
+ * Normally E / Lambda >> [dx / max(Vx)], i.e. cooling time much
+ * longer than advection time, but an implicit algorithm would be
+ * wise as it is unconditionally stable. */
 #define PSQUARED px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]
 #define BSQUARED bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]
 
@@ -107,19 +113,22 @@ __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, d
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P; double dE; double den;
+double P; double dE; double den; double ep1, ep2;
 
 while(x < numel) {
   den = rho[x];
   P = GAMMA_M1*(E[x] - (PSQUARED)/(2*den)); // gas pressure
-  dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
-  if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
+
+  dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
+  if(P > den*TFLOOR) {
+  if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
 
   x += BLOCKDIM*GRIDDIM;
   }
 
 }
 
+// STRENGTH = beta*dt
 __global__ void cukern_FreeMHDRadiation(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, int numel)
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
@@ -137,6 +146,7 @@ while(x < numel) {
 
 }
 
+/* These functions return the instantaneous rate, strictly the first derivative e_t */
 __global__ void cukern_FreeHydroRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *radrate, int numel)
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
