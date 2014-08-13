@@ -87,9 +87,7 @@ classdef KelvinHelmholtzInitializer < Initializer
             GIS = GlobalIndexSemantics();
 
             indeces = cell(1,3);
-            for i=1:3  
-	    indeces{i} = 1:obj.grid(i); 
-	    end
+            for i=1:3;  indeces{i} = 1:obj.grid(i); end
                      
             obj.dGrid = 1./obj.grid;
   
@@ -102,8 +100,8 @@ classdef KelvinHelmholtzInitializer < Initializer
 	    onethird = ceil(obj.grid/3);
 	    twothird = ceil(obj.grid*2/3);
             fields  = {obj.X, obj.Y, obj.Z};
-	    halves = false;
-	    thirds = true;
+	    halves = true;
+	    thirds = false;
             if halves
 	        for i=1:3
                     if strcmpi(obj.direction,fields{i})
@@ -124,7 +122,6 @@ classdef KelvinHelmholtzInitializer < Initializer
                 end
 	    end
             if thirds
-            mass    = ones(GIS.pMySize)*(1/obj.massRatio);
                 for i=1:3
                     if strcmpi(obj.direction,fields{i})
                         index = indeces;
@@ -133,8 +130,7 @@ classdef KelvinHelmholtzInitializer < Initializer
                         else
                             index{1} = onethird(1):twothird(1);
                         end
-                        %mass(index{:}) = 1/obj.massRatio;%*mass(index{:});
-                        mass(index{:}) = 1;%*mass(index{:});
+                        mass(index{:}) = 1/obj.massRatio*mass(index{:});
                         mom(i,:,:,:)     = speed*mass;
                         mom(i,index{:}) = -squeeze(mom(i,index{:}));
                         obj.bcMode.(fields{i}) = 'circ';
@@ -145,14 +141,29 @@ classdef KelvinHelmholtzInitializer < Initializer
                 end
             end
 
+%            if 0*obj.perturb 
+%		maxDensity = maxFinderND(mass);
+%	        x1=linspace(-pi,pi,(max(obj.grid)/16));
+%                x=x1*(max(obj.grid)*.02)/pi+(max(obj.grid)/2);
+%                y=(cos(x1)+1)*(max(obj.grid)*.01)/pi+(max(obj.grid)/2);
+%               for i=1:(max(obj.grid)/16);
+%                   mass(ceil(x(i)),ceil(y(i)))=maxDensity;
+%               end
+%               for j=1:max(obj.grid);
+%                   for i=0:max(obj.grid)-2;
+%		       if mass(j,max(obj.grid)-i) == maxDensity;
+%                          mass(j,max(obj.grid)-i-1) = maxDensity;
+%                       end
+%		   end
+%               end	   
+%	     end
            
 	    if obj.perturb
 		
-	        runWaved = false; % Whether to have a sinusoidal wave 
+	        runWaved = 0; % Whether to have a sinusoidal wave 
                 numPerturb = 8; % How many wave peaks to have
-		heightmodifier = .005;
 
-		runRandomly = true; % Whether to seed the grid with momentum instabilities
+		runRandomly = 1; % Whether to seed the grid with momentum instabilities
                 RandSeedTop = .01; % The maximum amplitude of random fluctuations as a fraction of initial conditions
                 RandSeedBottom = .5;	 
 
@@ -160,11 +171,10 @@ classdef KelvinHelmholtzInitializer < Initializer
 		maxMass = max(max(max(mass)));	
 	        maxDensity = maxFinderND(mass);
 		
-		if runWaved
-                    x=linspace(1,obj.grid(1),obj.grid(1));
+		if runWaved == 1
                     x1=linspace(-numPerturb*pi,numPerturb*pi,obj.grid(1));
-		    if halves
-                    y=(cos(x1)+1)*obj.grid(2)*heightmodifier+obj.grid(2)/2;
+                    x=linspace(1,obj.grid(1),obj.grid(1));
+                    y=(cos(x1)+1)*obj.grid(2)*.005+obj.grid(2)/2;
                 
 		    for i=1:(max(obj.grid));
                         mass(ceil(x(i)),ceil(y(i)))=maxDensity;
@@ -178,21 +188,13 @@ classdef KelvinHelmholtzInitializer < Initializer
                             end
                         end
                     end
-		    end
-		    if thirds
-		% Add unnecessarily complex code here for uniform wave perturbations in the case of thirds.
-                	ytop=(cos(x1)+1)*obj.grid(2)*heightmodifier+obj.grid(2)/3;
-                	ybottom=(cos(x1)+1)*obj.grid(2)*heightmodifier+2*obj.grid(2)/3;
-			highdensity = (ytop-ybottom);
-					% Not finished!
-		    end
 		end
-		if runRandomly
+		if runRandomly == 1
 
 		    if RandSeedTop == RandSeedBottom
 		    mom(1,:,:,1) = mom(1,:,:,1) + RandSeedTop*(mom(1,:,:,1).*(2*rand(size(mom(1,:,:,1)))-1));
 		    mom(2,:,:,1) = mom(2,:,:,1) + RandSeedTop*(mom(2,:,:,1).*(2*rand(size(mom(2,:,:,1)))-1));
-                    end
+                    else
 		    if halves
                     mom(1,:,1:half(1),1) = mom(1,:,1:half(1),1) + RandSeedTop*(mom(1,:,1:half(1),1).*(2*rand(size(mom(1,:,1:half(1),1)))-1));
                     mom(2,:,1:half(2),1) = mom(2,:,1:half(2),1) + RandSeedTop*(mom(2,:,1:half(2),1).*(2*rand(size(mom(2,:,1:half(2),1)))-1));
@@ -201,14 +203,11 @@ mom(1,:,half(1):obj.grid(1),1) = mom(1,:,half(1):obj.grid(1),1) + RandSeedBottom
 mom(2,:,half(2):obj.grid(2),1) = mom(2,:,half(2):obj.grid(2),1) + RandSeedBottom*(mom(2,:,half(2):obj.grid(2),1).*(2*rand(size(mom(2,:,half(2):obj.grid(2),1)))-1));
 		    end
 		    if thirds
-		    RandSeedOutside = RandSeedTop;
-		    RandSeedInside = RandSeedBottom;
-		    mom(:,:,:,:) = mom(:,:,:,:) + RandSeedOutside*(mom(:,:,:,:).*(2*rand(size(mom(:,:,:,:)))-1));
-		    mom(1,:,onethird(1):twothird(1),1) = mom(1,:,onethird(1):twothird(1),1) + RandSeedInside*(mom(1,:,onethird(1):twothird(1),1).*(2*rand(size(mom(1,:,onethird(1):twothird(1),1)))-1));
-                    mom(2,:,onethird(2):twothird(2),1) = mom(2,:,onethird(2):twothird(2),1) + RandSeedInside*(mom(2,:,onethird(2):twothird(2),1).*(2*rand(size(mom(2,:,onethird(2):twothird(2),1)))-1));
+			% Stuff goes here for seeding the thirds properly!
+		    end
 		    end
 		end
-	    end
+            end
 
 	ener = (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     	% internal
         + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic

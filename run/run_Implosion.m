@@ -1,23 +1,20 @@
-% Run a test of the Kelvin-Helmholtz instability test.
+% Run the implosion symmetry test.
 
 %-- Initialize Imogen directory ---%
 starterRun();
 
-grid = [512 512 1];
+grid = [2048 2048 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
-run                 = KelvinHelmholtzInitializer(grid);
-run.iterMax         = 500;
+run                 = ImplosionInitializer(grid);
+run.iterMax         = 30000;
 
-run.mach = 2.0;
-run.timeMax = (sqrt(5/3)/run.mach)*20;
-
-run.direction       = KelvinHelmholtzInitializer.X;
+run.direction       = ImplosionInitializer.X;
 run.image.interval  = 50;
 run.image.mass      = true;
 run.activeSlices.xy = true;
-run.info            = 'Kelvin-Helmholtz instability test.';
+run.info            = 'Implosion symmetry test';
 run.notes           = '';
 
 
