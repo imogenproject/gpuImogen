@@ -57,6 +57,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         dframe = util_LoadFrameSegment('2D_XY',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
+	run.image.frame = resumeinfo.imgframe;
 
         % (4) Recall and give a somewhat late init to indexing semantics.
         GIS = GlobalIndexSemantics(); GIS.setup(dframe.parallel.globalDims);
@@ -108,6 +109,9 @@ function outdirectory = imogen(srcData, resumeinfo)
     GIS = GlobalIndexSemantics();
     if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
 
+    doInSitu = ini.useInSituAnalysis;
+    if doInSitu; inSituAnalyzer = ini.inSituHandle(); inSituSteps = ini.stepsPerInSitu; end
+
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
     run.initialize(mass, mom, ener, mag);
@@ -136,12 +140,20 @@ function outdirectory = imogen(srcData, resumeinfo)
 
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
+	
+        %--- Analysis done as simulation runs ---%
+	if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
+	    inSituAnalyzer.FrameAnalyzer(mass, ener, mom(1), mom(2), mom(3), run);
+	end
+
         run.time.step();
     end
     %%%=== END MAIN LOOP ========================================================================%%%
     run.save.logPrint(sprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
                                      etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
+
+if doInSitu; inSituAnalyzer.finish(run); end
 
 % This is a bit hackish but it works
 if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0

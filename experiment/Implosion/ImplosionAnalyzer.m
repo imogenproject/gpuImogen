@@ -26,21 +26,26 @@ classdef ImplosionAnalyzer < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-	function obj = FrameAnalyzer(mass,ener,momX,momY,momZ,timeStruct)
-	
-	mass = mass.array(end:-1:1,:);
+	function FrameAnalyzer(obj,mass,ener,momX,momY,momZ, run)
+            m = mass.array(end:-1:1,:);
 
-	calculatedAsymmetry = norm((mass - mass'),'fro'); 
-	asymmetryNorm(end+1) = calculatedAsymmetry;
-
-
-
-	time(end+1) = sum(timeStruct.history);
+            calculatedAsymmetry = norm((m - m'),'fro'); 
+            obj.asymmetryNorm(end+1) = calculatedAsymmetry;
+            obj.time(end+1) = sum(run.time.history);
 	end
 
 	function result = ImplosionAnalyzer()
 
 	end
+
+	function finish(obj, run)
+	    implode.time = obj.time;
+            implode.asymmetry = obj.asymmetryNorm;	
+
+	    save([run.paths.save '/asymmetryTracking.mat'], 'implode');
+
+	end
+
         end%PUBLIC
        
 %===================================================================================================        
