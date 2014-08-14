@@ -108,6 +108,10 @@ classdef Initializer < handle
             obj.radiation            = RadiationSubInitializer();
             obj.fluxLimiter          = struct();
 
+            obj.useInSituAnalysis    = 0;
+            obj.stepsPerInSitu       = 99999999999;
+
+
             obj.useGPU               = true;
             obj.gpuDeviceNumber            = 0;
             obj.pureHydro = 0;
