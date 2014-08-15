@@ -1,0 +1,85 @@
+
+
+\subsection{Centrifuge Test}
+
+The centrifuge test checks the ability of the code to evolve an analytically time-independent
+hydrodynamic flow and maintain its original time-independent values, and also provides a
+valuable test of the rotating frame's implementation.
+
+\subsubsection{Analysis}
+
+The centrifuge test balances centripetal acceleration against a pressure gradient,
+\[ \rho r \omega(r)^2 = dP/dr \]
+Under the ideal gas law,
+\[ P = K \rho T \]
+and assuming that we are dealing with a thermodynamically simple gas or mixture whose 
+internal degrees of freedom are pleasantly unchanging,
+\[ \rho r \omega(r)^2 = K T d\rho/dr + K \rho dT/dr \]
+
+Two of $\omega$, $\rho$ and $T$ have to be specified, then our differential equation
+plus boundary conditions defines the third.
+
+We chose to define an arbitrary $\omega$, except for the requirement that velocity behave
+itself at the origin (diverging slower than $1/r$) and that $\omega$ is defined on a
+compact region $[0, r_0]$, outside of which it equals zero (in other words, fluid at rest
+at infinity).
+
+Isobaric conditions are impossible, but isothermal, isochoric and adiabatic equilibria
+can all be defined for any sane initial conditions. The ODE is solved by separation
+of variables; Because it occurs often, the quantity
+\[ \int_{r_0}^r r \omega(r)^2 dr \equiv \Phi(r,r0) \]
+to save space.
+
+\textbf{Isothermal}
+With a fixed temperature (represented in the code as a fixed isothermal soundspeed), the ODE
+\[ \Phi(r,r_0) = K T \int_{\rho_0}^\rho d\rho / \rho \]
+is separated and has solution
+\[ \rho(r)  = \rho_0 e^{\Phi(r,r_0)/KT} \]
+With $\rho_0$ specified at the outer edge radius $r_0$ and an isothermal soundspeed $KT$,
+a physical solution exists for sane inputs.
+
+\textbf{Isochoric}
+At a fixed volume (here taken as fixed density), the ODE
+\[ \Phi(r,r_0) = K \int_{T_0}^T dT \]
+is separated and has solution
+\[ T(r) = (a^2 + \Phi(r,r0))/K \]
+which gives pressure
+\[ P = \rho K T = \rho_0 (a^2 + \Phi(r,r0)) \]
+With the initial temperature set by proxy by isothermal soundspeed $a$ at the center
+and density fixed, the temperature ramps up as required and a solution exists for sane
+inputs.
+
+\textbf{Adiabatic}
+Under adiabatic conditions we use the relation $P = K \rho^\gamma$ and so
+\[ \frac{\Phi(r,r_0)}{K \gamma} = \int_{\rho_0}^\rho \rho^{\gamma-2} d\rho \]
+with solution
+\[ \rho(r) = \left[ \rho_0^{\gamma-1} + \frac{(\gamma-1)\Phi(r,r_0)}{K \gamma} \right]^{1/(\gamma-1)} \]
+Defining $\rho_0$ at $r_0$ and given $K$, a solution exists for all sane inputs.
+
+\subsubsection{Initial Conditions}
+
+The physical input parameters to the centifuge test are:
+\begin{itemize}
+\item \tt{rho0}
+\item \tt{polyK}
+\item \tt{cs0}
+\item \tt{omegaCurve} is an anonymous function of an array $r$ which gives $\omega(r)$. This is assumed to obey the constraints given. $r$ is normalized between 0 (center) and 1 (edge).
+\item \tt{eqnOfState} must be symbolically set to one of the \tt{CentrifugeInitializer} class' symbolic values \tt{EOS\_ISOTHERMAL}, \tt{EOS\_ISOCHORIC} or \tt{EOS\_ADIABATIC}.
+\end{itemize}
+
+Two additional numeric parameters are
+\begin{itemize}
+\item \tt{edgeFraction} - Sets how far the simulation domain extends past the edge of the
+rotating region
+\item \tt{omega0} - Sets the rate at which the simulation frame is rotated. This can improve the timestep considerably if rotation is in one direction and advection speed dominates soundspeed.
+\end{itemize}
+
+with the initial conditions set by
+\begin{align*}
+\rho(x,y,z) &= \rho_0(r) \\
+\mathbf{v(x,y,z)} &= r (\omega(r) - \omega_0) \hat{\phi} \\
+P &= P_0(r)
+\end{align*}
+the simulation proceeds adiabatically with the set index $\gamma$.
+
+ 

@@ -1,0 +1,248 @@
+\documentclass[letterpaper,12pt,twocolumn]{article}
+\pagestyle{empty}
+
+\pdfpagewidth 8.5in
+\pdfpageheight 11in
+
+\hoffset = 0pt
+\oddsidemargin = 0pt
+\marginparwidth = 0pt
+
+\voffset = 0pt
+\topmargin = 0pt
+\headheight = 0pt
+\headsep = 12pt
+
+\textwidth = 7in
+\textheight = 9.5in
+\footskip = 0pt
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+
+\author{Erik Keever}
+\title{Imogen User's Manual}
+
+\begin{document} 
+
+\maketitle
+
+\section{Setup}
+
+This section will guide you through the Imogen acquisition and setup process.
+
+The setup process consists in making sure that you have the proper libraries
+available and informing Imogen of where they are through the Make.config file
+in the top level directory. The template Make.config.default should be copied
+to Make.config and then setup per instructions below.
+
+\subsection{Download}
+
+Imogen lives online at \url{https://github.com/imogenproject/gpuImogen}
+
+To download it into directory \textit{./gpuimogen} from the public repo,
+
+\textit{ git clone https://github.com/imogenproject/gpuImogen.git ./gpuimogen }
+
+\subsection{Matlab}
+
+Imogen runs in Matlab and so obviously Matlab is a prerequisite to have. A standard
+Matlab installation will have everything you need - the parallel computing toolkit
+is not needed.
+
+The \textit{MATLAB\_DIR} variable in Make.config must be set to the root of
+the Matlab installation (e.g. /opt/Matlab/R2013b). Running Imogen in a different
+Matlab version than used here to compile the binary modules is less likely than
+might be imagined to cause problems.
+
+\subsection{MPI}
+
+MPI, even if parallel processing is not used, must be available (Imogen still
+uses MPI to check that it is running serially), including development headers
+to compile the Matlab mex files.
+
+In Make.config, \textit{MPI\_DIR} must refer to the directory containing the include/ folder
+that holds the mpi.h file, i.e. the --prefix specified when MPI was installed.
+
+\subsection{Parallel Gateway}
+
+Imogen uses the Parallel Gateway (PGW) library as a go-between with MPI.
+
+Make.config's \textit{PGW\_DIR} variable must be set to the install directory
+containing PGW.
+
+\subsection{CUDA}
+
+Imogen's GPU routines are written in CUDA and access to cuda 4.0 or later
+libraries is required. The runtime alone isn't sufficient, the SDK is
+needed to provide the headers.
+
+Once it is installed set \textit{CUDA\_DIR} to the install location.
+
+Other variables to be set are
+\begin{itemize}
+\item \textit{CUDA\_LDIR} - either 'lib' on 32bit or 'lib64' on 64bit machines
+\item \textit{NVARCH} - \textit{compute\_20} for Fermi, \textit{compute\_30} for Kepler
+\item \textit{NVCODE} - \textit{sm\_20} for Fermi, \textit{sm\_30} for Kepler
+\end{itemize}
+
+NVARCH and NVCODE are further explained by the nvcc manual page.
+
+\subsection{Compiling}
+
+Once all the above variables are set, run \textit{make} in both the mpi/ and gpuclass/
+directories. Both build in parallel so feel free to use -j. 
+
+\subsection{Filesystem}
+
+Imogen will open/create the directory ~/Results. It is not required that this
+be a shared filesystem.
+
+\subsection{Cluster access}
+
+Imogen invokes itself in parallel with the './imogen cluster ...' format.
+
+This takes place on lines 95 to 124 of the run/imogen file. Before running
+in parallel on a cluster it would be a good idea to examine this section since
+it will almost certainly need to be amended, if only to set the package
+names to their local values.
+
+\subsection{Troubleshooting}
+
+It is very important that PGW, MPI and the CUDA modules all be compiled
+using the same compiler. PGW in particular is insistent about the version
+of libfortran it accesses.
+
+Unfortunately this is growing progressively more difficult as CUDA requires
+newer GCCs and Mathworks' MEX compiler-wrapper lags.
+
+If Imogen fails because Matlab complains about being unable to resolve an MPI
+symbol, the problem is that Matlab defaults to lazy symbol resolution when
+loading dynamic libraries and apparently something about the MPI lib trips
+up on this. The solution:
+\begin{itemize} \item LD\_PRELOAD="\$MPIDIR/lib/libmpi.so"
+\end{itemize}
+Putting this in your .bashrc (or as sysadmin, in the system's /etc/profile.d) will
+make it go away permanently.
+
+\section{Invocation}
+
+Imogen is run through the script run/imogen
+
+There are three separate general types of run:
+\begin{itemize}
+\item serial - One process uses ones GPU; Directly executed by script
+\item parallel - N processes select N GPUs; Direct execution of mpirun by script
+\item cluster - N processes on M nodes; Writes script and qsubs it
+\end{itemize}
+
+Serial and parallel are for small size simulations that work on a single SMP system,
+while the cluster option uses qsub to fire jobs onto large systems.
+
+The invocation syntaxes (also available through ./imogen -help) is as follows:
+\begin{itemize}
+\item ./imogen serial runfile.m [stream\# [GPU\#]];
+\item ./imogen runfile.m; A shortcut that assumes serial, stream 0 and GPU 0.
+\item ./imogen parallel runfile.m [stream\#] [NP]
+\end{itemize}
+
+\section{Selftest}
+
+\textbf{This is not yet complete -- Erik}
+
+Imogen includes a comprehensive full-simulation test, the simulation
+\textit{run\_FullTestSuite.m}. This ``simulation'' will run dozens of test cases
+for which an exact solution (or reasonable facimile thereof) is available
+and determine whether Imogen is going them right and, where analytic answers
+are available, provide convergence orders.
+
+Note that there are a lot of tests to run, and this test falls under the "go have
+lunch then check back" class.
+
+\section{Physics}
+
+\section{CFD}
+
+At its core Imogen solves the Euler equations,
+
+(insert Euler equations here)
+
+using an adiabatic equation of state,
+
+\[ eos \]
+
+\textbf{This has been pretty thoroughly tested and should have no code problems.}
+
+\subsection{MHD}
+
+Imogen can simulate magnetic fields in the limit of Ideal MHD where the Euler equations
+become:
+
+(ideal mhd equations)
+
+\subsection{Frame rotation}
+
+In many cases a simulation is desired of an object that exhibits coherent rotation at
+near-supersonic or (in e.g. the case of cold accretion disks) highly supersonic speeds.
+
+By giving the center and rate of rotation Imogen allows the frame to be set in motion.
+Reducing the grid-relative velocities means less risk of truncation error in the equation
+of state, shorter simulation time due to reduced grid relative velocities and better
+simulations due to reduced numerical diffusion (due to fewer steps).
+
+This is controlled by setting the .frameRotateCenter and .frameRotateOmega parameters
+
+FIXME: Imogen itself should take care of putting the simulation into the rotating frame
+or at least offer the option. Currently the user is required to subtract off the momentum
+associated with the frame's rotation in their own simulation init code...
+
+\textbf{This has been tested using the Centrifuge experiment and appears to work properly.
+Confidence is fairly high.}
+
+\subsection{Radiation}
+
+Imogen provides for radiative losses in the optically thin regime. The built in default
+is power law cooling,
+
+(power law lambda)
+
+Programming in different cooling laws is extremely simple as a test by making additional
+entries to the experiment/Radiation.m file, templatted after the thin power law radiation
+one. Of course, don't expect them to be as fast as the GPU accelerated routines.
+
+\textbf{Power law optically thin cooling should be completely reliable.} 
+
+\subsection{Gravity}
+
+\subsubsection{Point gravity}
+
+Imogen allows the addition of massive points to the fluid simulation which obey Newton's
+laws. Both point-point and point-fluid gravitational force are computed.
+
+These points, ``compact objects'' as Imogen calls them, are used as standins for stars
+or planets which cannot be resolved at reasonably available levels of resolution.
+
+Far away from the object, they behave as point masses. Within a distance defined as
+its 'radius', matter is considered as having been accreted. Each step, the mass and
+linear and angular momentum in cells whose center is within r of a compact mass
+are added to the compact object and replaced with grid's vaccuum values instead.
+
+NOTE: This is not the desired behavior in some cases - e.g. a planet would require a surface
+pressure, not a surface vaccuum, in order to be embedded in the disk.
+
+\textbf{Point <-> disk gravity appears to work. Confidence is moderate pending testing.}
+
+\subsubsection{Self gravity}
+
+This is basically dead for now, especially in parallel.
+
+The serial solver could easily enough be resurrected but there's no way I'm going
+to have time to setup a parallel Poisson solver, let alone shovel it onto the GPU.
+
+\section{Experiments}
+
+\input{../experiment/CentrifugeTest/centrifugeDoc.tex}
+
+
+\end{document}
