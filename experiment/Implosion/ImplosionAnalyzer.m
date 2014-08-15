@@ -27,9 +27,9 @@ classdef ImplosionAnalyzer < handle
     methods (Access = public) %                                                     P U B L I C  [M]
 
 	function FrameAnalyzer(obj,mass,ener,momX,momY,momZ, run)
-            m = mass.array(end:-1:1,:);
+            m = mass.array;
 
-            calculatedAsymmetry = norm((m - m'),'fro'); 
+            calculatedAsymmetry = norm((m - m'),'fro');
             obj.asymmetryNorm(end+1) = calculatedAsymmetry;
             obj.time(end+1) = sum(run.time.history);
 	end
@@ -40,7 +40,8 @@ classdef ImplosionAnalyzer < handle
 
 	function finish(obj, run)
 	    implode.time = obj.time;
-            implode.asymmetry = obj.asymmetryNorm;	
+	    % mult by h^2 scales sqrt(sum(Mij^2)) to be resolution-invariant
+            implode.asymmetry = obj.asymmetryNorm * run.DGRID{1}^2;	
 
 	    save([run.paths.save '/asymmetryTracking.mat'], 'implode');
 
