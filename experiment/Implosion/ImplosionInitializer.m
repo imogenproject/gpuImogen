@@ -15,8 +15,10 @@ classdef ImplosionInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        direction;      % enumerated orientation of the baseline flow.              str
-        massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
+
+	Mcorner;
+	Pcorner;
+
     end %PUBLIC
 
 %===================================================================================================
@@ -48,8 +50,9 @@ classdef ImplosionInitializer < Initializer
             obj.bcMode.y = 'mirror';
             obj.bcMode.z = 'mirror';
             
-            obj.direction        = ImplosionInitializer.X;
-            obj.massRatio        = 8;
+	    obj.Mcorner = 0.125;
+            obj.Pcorner = 0.14;
+
 	    obj.pureHydro        = true;
             obj.operateOnInput(input);
         end
@@ -77,6 +80,13 @@ classdef ImplosionInitializer < Initializer
 	   % GIS.makeDimNotCircular(1);
 	   % GIS.makeDimNotCircular(2);
 
+            if obj.grid(1) ~= obj.grid(2)
+		warning(sprintf('WARNING: grid [%g %g %g] was not square. grid(2) set to grid(1).\n', obj.grid(1), obj.grid(2), obj.grid(3)));
+		obj.grid(2) = obj.grid(1);
+	    end
+
+	    obj.dGrid = 0.3 / obj.grid(1);
+
             mass    = ones(GIS.pMySize);
             mom     = zeros([3 GIS.pMySize]);
             mag     = zeros([3 GIS.pMySize]);
@@ -84,36 +94,16 @@ classdef ImplosionInitializer < Initializer
 	    
 	    corner = true;
 
-	    if corner
+            [X Y] = GIS.ndgridSetXY();
 
-		Pcorner = 0.14;
-		mcorner = .125; % = obj.massRatio^(-1)
+	    corn = (X + Y < obj.grid(1)/2);
 
-		entrywise = false;		
+	    mass(corn) = obj.Mcorner;
+	    P(corn)    = obj.Pcorner;
 
-		if entrywise
-		    x = linspace(1,obj.grid(1),obj.grid(1));
-		    mass = mass*mcorner;
-		    P = P*Pcorner;
-		    for i = 1:length(x)
-			for j = 1:length(x)
-			    if i + j > obj.grid(1)/2
-				P(i,obj.grid(1)-j+1,1) = 1;
-				mass(i,obj.grid(1)-j+1,1) = 1;
-			    end
-			end
-		    end
-		else
-		   P(1:obj.grid(1)/2,obj.grid(2)/2+1:obj.grid(2)) = triu(Pcorner*ones(size(P)/2)-1)+1;
-                   mass(1:obj.grid(1)/2,obj.grid(2)/2+1:obj.grid(2)) = triu(mcorner*ones(size(mass)/2)-1)+1;
-		end
-
-
-	    end
-
-	ener = P/(obj.gamma - 1) ...     				% internal
-        + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
-        + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
+	    ener = P/(obj.gamma - 1) ...     		% internal
+            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
         end
     end%PROTECTED       
 %===================================================================================================    
