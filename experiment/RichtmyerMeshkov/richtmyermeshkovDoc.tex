@@ -8,8 +8,16 @@ a jet from the denser fluid into the lighter fluid.
 
 \subsubsection{Analysis}
 
-\subsubsection{Initial Conditions}
+For this run, we used a square grid 2048 zones across, for 20,000 iterations.
+\begin{figure*}
+\begin{center}
+\includegraphics[width=.5\textwidth]{RMI.eps}
+\caption{Richtmyer-Meshkov instability at t = 6504}
+\end{center}
+\end{figure*}
 
+\subsubsection{Initial Conditions}
+Boundary conditions are periodic around the X axis, constant around the Y axis, and mirrored around the Z axis.
 
 The physical input parameters to the Richtmyer-Meshkov Instability test are:
 \begin{itemize}
@@ -18,3 +26,14 @@ The physical input parameters to the Richtmyer-Meshkov Instability test are:
 \item \tt{rhobottom} - Defines the density of the heavier fluid
 \end{itemize}
 
+To create the non-uniform interface, we create a cosine wave with an amplitude 1/20 of the height 
+of the grid and with a wavelength 2x the length of the grid. We then place the center of the wave 
+4 total wave amplitudes below the center of the grid, and set the mass density of the entire 
+region below the wave equal to rhobottom. The rest of the grid is previously set to have density 
+equal to rhotop, and is unchanged by the wave. We then create a shocked region from the top of 
+the grid to a height just 20 zones above the peak of the wave. This shock is composed of a momentum 
+and pressure equal to a blast wave with mach set by the input 'mach'.
+
+Note that the entire region must then be given a momentum in the direction opposing the shock to 
+maintain position on the grid. This opposing momentum is calculated by the same function as is used 
+to calculate the initial shock.
