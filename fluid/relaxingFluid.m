@@ -27,8 +27,9 @@ cs0 = sqrt(run.GAMMA*(run.fluid.MINMASS^(run.GAMMA-1)) );
 GIS = GlobalIndexSemantics();
 
 % Advanced fluid quantities through a 2nd order upwind timestep
+% third [] parameter: 1 = Xin/Jin TVD step, 2 = HLL, 3 = HLLC
 cudaFluidStep(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), mag(L(1)).cellMag, mag(L(2)).cellMag, ...
-    mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS], GIS.topology);
+    mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS 3], GIS.topology);
 
 GPU_free(pressa);
 GPU_free(freezea);

@@ -21,13 +21,11 @@
 #define RK_PREDICT 0
 #define RK_CORRECT 1
 
-//void __syncthreads(void);
-
-#define FLUID_METHOD_HLLC 1
-//#define FLUID_METHOD_HLL 1
+#define STEPTYPE_XINJIN 1
+#define STEPTYPE_HLL 2
+#define STEPTYPE_HLLC 3
 
 /* THIS FUNCTION
-
 This function calculates a first order accurate upwind step of the conserved transport part of the 
 Euler equations (CFD or MHD) which is used as the half-step predictor in the Runge-Kutta timestep
 
@@ -78,9 +76,6 @@ return retval;
 pParallelTopology topoStructureToC(const mxArray *prhs);
 void cfSync(double *cfArray, int cfNumel, const mxArray *topo);
 
-__global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx);
-__global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Qin, double halflambda, int nx);
-
 __global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz);
 __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, int ny, int nz);
 
@@ -95,21 +90,29 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny);
 template <unsigned int PCswitch>
 __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny);
 
+template <unsigned int PCswitch>
+__global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny);
+
+template <unsigned int PCswitch>
+__global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny);
+
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
-__global__ void cukern_PressureSolver(double *Qstore);
+__global__ void cukern_PressureSolverHydro(double *Qstore);
+__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny);
 
 #define BLOCKLEN 12
 #define BLOCKLENP2 14
 #define BLOCKLENP4 16
 
 #define YBLOCKS 4
+#define FREEZE_NY 4
 
 __constant__ __device__ double *inputPointers[9];
 __constant__ __device__ double fluidQtys[8];
 __constant__ __device__ int devArrayNumel;
 
-#define LIMITERFUNC fluxLimiter_Zero
-//#define LIMITERFUNC fluxLimiter_minmod
+//#define LIMITERFUNC fluxLimiter_Zero
+#define LIMITERFUNC fluxLimiter_minmod
 //#define LIMITERFUNC fluxLimiter_Osher
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
@@ -137,9 +140,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	ArrayMetadata amd;
 	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);
-
-	// Establish launch dimensions & a few other parameters
-	int fluxDirection = 1;
 	double lambda     = *mxGetPr(prhs[10]);
 
 	dim3 arraySize;
@@ -149,25 +149,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	dim3 blocksize, gridsize;
 
-	// This bit is actually redundant now since arrays are always rotated so the fluid step is finite-differenced in the X direction
 	blocksize.x = BLOCKLENP4; blocksize.y = YBLOCKS; blocksize.z = 1;
-	switch(fluxDirection) {
-	case 1: // X direction flux: x = sup(nx/blocksize.x), y = nz
-		gridsize.x = (arraySize.x/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < arraySize.x);
-		gridsize.y = arraySize.z;
-		break;
-	case 2: // Y direction flux: u = y, v = x, w = z
-		gridsize.x = arraySize.x;
-		gridsize.y = arraySize.z;
-		break;
-	case 3: // Z direction flux: u = z, v = x, w = y;
-		gridsize.x = arraySize.x;
-		gridsize.y = arraySize.y;
-		break;
-	}
+
+	gridsize.x = (arraySize.x/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < arraySize.x);
+	gridsize.y = arraySize.z;
+
 	double *thermo = mxGetPr(prhs[12]);
 	double gamma = thermo[0];
 	double rhomin= thermo[1];
+
+	int steptype = (int)thermo[2];
+
 	double gamHost[8];
 	gamHost[0] = gamma;
 	gamHost[1] = gamma-1.0;
@@ -193,100 +185,65 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	cudaMemcpyToSymbol(devArrayNumel, &arrayNumel, sizeof(int), 0, cudaMemcpyHostToDevice);
 	CHECK_CUDA_ERROR("In cudaFluidStep: halfstep devArrayNumel memcpy");
 
-	/* Replicate copies of the freezing speed array for the fluid routines to edit */
-	dim3 repBlock; repBlock.x = 8; repBlock.y = 1; repBlock.z = 1;
-	dim3 repGrid;
-	repGrid.x = amd.dim[1];
-	repGrid.y = amd.dim[2];
-
-	dim3 reduceGrid;
-	reduceGrid.x = amd.dim[1]; reduceGrid.y = amd.dim[2]; reduceGrid.z = 1;
-
-	double *freezeClone;
-	cudaMalloc((void **)&freezeClone, amd.dim[1]*amd.dim[2]*sizeof(double)*gridsize.x);
-	CHECK_CUDA_ERROR("In cudaFluidStep: c_freeze replicated array alloc");
-
+	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
+	cudaMemcpyToSymbol(inputPointers,  srcs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
 	int hydroOnly;
 	hydroOnly = (int)*mxGetPr(prhs[11]);
 
 	if(hydroOnly == 1) {
-//		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
-		CHECK_CUDA_ERROR("In cudaFluidStep: first hd c_f sync");
-//		replicateFreezeArray<<<repGrid, repBlock>>>(srcs[9], freezeClone, gridsize.x, amd.dim[1], amd.dim[2]);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -666, "In cudaFluidStep: Freeze array cloning");
+		// Switches between various prediction steps
+		switch(steptype) {
+		case STEPTYPE_XINJIN: {
+			cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.25*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 
-		// Copies [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
-		cudaMemcpyToSymbol(inputPointers,  srcs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
+			dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
+			dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
+			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
-//		cukern_AUSM_firstorder_uniform<<<gridsize, blocksize>>>(srcs[8], wStepValues, .5*lambda, arraySize.x, arraySize.y);
-#ifdef FLUID_METHOD_HLL
-		cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
-#warning NOTE: Using HLL flux method
-#endif
-#ifdef FLUID_METHOD_HLLC
-		cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
-#warning NOTE: Using HLLC flux method
-#endif
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro prediction step");
-
-		cukern_PressureSolver<<<256, 32>>>(wStepValues);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro pressure solver");
-
-/*
-// This copies the first-order step's result to the output arrays
-// Use to test first-order kernels
-int NB = arrayNumel*sizeof(double);
-cudaMemcpy(srcs[0], wStepValues,              NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(srcs[1], wStepValues+  arrayNumel, NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(srcs[2], wStepValues+2*arrayNumel, NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(srcs[3], wStepValues+3*arrayNumel, NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(srcs[4], wStepValues+4*arrayNumel, NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(srcs[8], wStepValues+5*arrayNumel, NB, cudaMemcpyDeviceToDevice); */
-
-		//
-//		cudaMemcpy(srcs[8], wStepValues+5*arrayNumel, arrayNumel*sizeof(double), cudaMemcpyDeviceToDevice);
-		//reduceFreezeArray<<<reduceGrid, 16>>>(freezeClone, srcs[9], gridsize.x, amd.dim[1], amd.dim[2]);
-
-		//CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: Freeze array reduce");
-
-		//cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
-		//CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
-
- /*This dumps the input/output arrays to the "half-step" arrays; Use to test TVD step */
-/*cudaMemcpy(wStepValues,              srcs[0], NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(wStepValues+  arrayNumel, srcs[1], NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(wStepValues+2*arrayNumel, srcs[2], NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(wStepValues+3*arrayNumel, srcs[3], NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(wStepValues+4*arrayNumel, srcs[4], NB, cudaMemcpyDeviceToDevice);
-cudaMemcpy(wStepValues+5*arrayNumel, srcs[8], NB, cudaMemcpyDeviceToDevice);*/
-
-#ifdef FLUID_METHOD_HLL
-		cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-#warning NOTE: Using HLL flux method
-#endif
-#ifdef FLUID_METHOD_HLLC
-		cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-#warning NOTE: Using HLLC flux method
-#endif
+			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
+			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+		} break;
+		case STEPTYPE_HLL: {
+			cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
+			cukern_PressureSolverHydro<<<256, 32>>>(wStepValues);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+			cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+		} break;
+		case STEPTYPE_HLLC: {
+			cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+			cukern_PressureSolverHydro<<<256, 32>>>(wStepValues);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+			cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+		} break;
+		}
+// We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
 //		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: hydro TVD step");
 	} else {
 		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: first mhd c_f sync");
-		cudaMemcpyToSymbol(inputPointers,  srcs, 8*sizeof(double *), 0, cudaMemcpyHostToDevice);
 
-		cukern_Wstep_mhd_uniform<<<gridsize, blocksize>>>(srcs[8], srcs[9], wStepValues, .25*lambda, arraySize.x);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd W step");
+		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.25*lambda, arraySize.x, arraySize.y);
+		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd predict step");
 
+		//cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
+		//CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
 		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: second mhd c_f sync");
-		cukern_TVDStep_mhd_uniform  <<<gridsize, blocksize>>>(wStepValues + 5*arrayNumel, srcs[9], wStepValues, .5*lambda, arraySize.x);
+		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd TVD step");
 	}
 
-cudaFree(freezeClone);
 cudaFree(wStepValues);
-
 
 }
 
@@ -306,7 +263,7 @@ double *storeB = (double*)malloc(sizeof(double)*cfNumel);
 
 cudaMemcpy(storeA, cfArray, cfNumel*sizeof(double), cudaMemcpyDeviceToHost);
 
-MPI_Status amigoingtodie;
+//MPI_Status amigoingtodie;
 
 /* FIXME: This is a temporary hack
    FIXME: The creation of these communicators should be done once,
@@ -394,7 +351,6 @@ return pt;
 
 }
 
-
 /* Invoke with [8 1] threadblock and [ny nz] grid */
 __global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz)
 {
@@ -437,11 +393,6 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 	if(tix < 2) locarr[tix] = (locarr[tix+2] > locarr[tix])? locarr[tix+2] : locarr[tix];
 	__syncthreads();
 	if(tix == 0) freeze[y+ny*z] = (locarr[1] > locarr[0])? locarr[1] : locarr[0];
-
-}
-
-__global__ void cukern_Wstep_mhd_uniform(double *P, double *Cfreeze, double *Qout, double lambdaqtr, int nx)
-{
 
 }
 
@@ -573,17 +524,14 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny)
 // 48 regs
 
 
-		/* We always divide by 1/2a for flux mode HLL_HLL so save some calculations from here out */
-		Atilde = .5/Atilde;
-
-		// Load non-square-rooted density back up down here after using Ale/Are as scratch
+		// Load non-square-rooted density back up down here after using Ale/Are as sqrt(rho) scratchpad
 		Ale = shblk[IC + BOS1]; Are = shblk[IR + BOS0];
-		/* Accumulate 2*kinetic energy */
 		__syncthreads();
 
+		// Calculate the speed in the star region
 		Sstar = (Cre - Cle + Ale*Ble*(Sleft-Ble) - Are*Bre*(Sright-Bre))/(Ale*(Sleft-Ble)-Are*(Sright-Bre));
 
-		shblk[IC + BOS6] = Ale*Ble*Ble; // Accumulate kinetic energy density to use in energy fluxing
+		shblk[IC + BOS6] = Ale*Ble*Ble; // Accumulate kinetic energy density to use in energy flux
 		shblk[IC + BOS7] = Are*Bre*Bre;
 
 		if(Sstar > 0) { // Either left approximate wave or supersonic rightbound upwind
@@ -606,9 +554,6 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny)
 			}
 		}
 
-		/* Transfer Atilde to shmem, freeing Utilde/Atilde as Ule/Ure pair */
-		shblk[IC + BOS5] = Atilde;
-
 		__syncthreads();
 
 		// Calculate conservative differences for mass and x momentum fluxes
@@ -628,7 +573,6 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny)
 		}
 
 		__syncthreads();
-// 55 registers
 
 		// Now go back and do the whole thing again for y momentum, z momentum and energy
 		if(PCswitch == RK_PREDICT) {
@@ -686,7 +630,7 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny)
 
 		/* Note that energy flux is computed without ever loading the E array */
 		/* Either E or P provides the necessary state and consistency requires */
-		/* Use of exactly one of them */
+		/* that we use of exactly one of them */
 		if(Sstar > 0) {
 			if(Sleft < 0) {
 				shblk[IC + BOS2] = Fa * (Ble + Sleft*(Beta - 1.0));
@@ -992,11 +936,259 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny)
 
 }
 
-__global__ void cukern_TVDStep_mhd_uniform(double *P, double *Cfreeze, double *Qin, double halfLambda, int nx)
+template <unsigned int PCswitch>
+__global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny)
 {
+	// Create center, rotate-left and rotate-right indexes
+	int IC = threadIdx.x;
+	int IL = threadIdx.x - 1;
+	IL += 1*(IL < 0);
+	int IR = threadIdx.x + 1;
+	IR -= 1*(IL > 15);
+
+	IC += 4*16*threadIdx.y;
+	IL += 4*16*threadIdx.y;
+	IR += 4*16*threadIdx.y;
+
+	/* Declare variable arrays */
+	__shared__ double shblk[2*YBLOCKS*4*BLOCKLENP4];
+	double Q[5]; double prop[5];
+	double P, C_f, vx, w;
+
+	/* My x index: thread + blocksize block, wrapped circularly */
+	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
+
+	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
+	if(x0 < 0) x0 += nx; // left wraps to right edge
+	if(x0 > (nx+1)) return; // More than 2 past right returns
+	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+
+	/* Do some index calculations */
+	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	int j = threadIdx.y;
+	int i;
+
+	for(; j < ny; j += YBLOCKS) {
+		C_f = Cfreeze[j + ny*blockIdx.y];
+
+		if(PCswitch == RK_PREDICT) {
+			// Load from init inputs, write to Qstore[]
+			Q[0] = inputPointers[0][x0];
+			Q[1] = inputPointers[1][x0];
+			Q[2] = inputPointers[2][x0];
+			Q[3] = inputPointers[3][x0];
+			Q[4] = inputPointers[4][x0];
+			P    = inputPointers[8][x0];
+		} else {
+			// Load from qstore, update init inputs
+			Q[0] = Qstore[x0];
+			Q[1] = Qstore[x0+  devArrayNumel];
+			Q[2] = Qstore[x0+2*devArrayNumel];
+			Q[3] = Qstore[x0+3*devArrayNumel];
+			Q[4] = Qstore[x0+4*devArrayNumel];
+			P    = Qstore[x0+5*devArrayNumel];
+		}
+
+		vx = Q[2] / Q[0];
+
+		for(i = 0; i < 5; i++) {
+			/* Calculate raw fluxes for rho, E, px, py, pz in order: */
+				switch(i) {
+				case 0: w = Q[2];          break;
+				case 1: w = vx*(Q[1] + P); break;
+				case 2: w = vx*Q[2] + P;   break;
+				case 3: w = vx*Q[3];       break;
+				case 4: w = vx*Q[4];       break;
+				}
+
+				shblk[IC + BOS0] = (C_f*Q[i] - w); /* Left  going flux */
+				shblk[IC + BOS1] = (C_f*Q[i] + w); /* Right going flux */
+				__syncthreads();
+
+				if(PCswitch == RK_CORRECT) {
+					/* Entertain two flux corrections */
+					shblk[IC + BOS2] = (shblk[IL + BOS0] - shblk[IC + BOS0]) / 2.0; /* Deriv of leftgoing flux */
+					shblk[IC + BOS3] = (shblk[IC + BOS1] - shblk[IL + BOS1]) / 2.0; /* Deriv of ritegoing flux */
+					__syncthreads();
+
+					/* Impose TVD limiter */
+					shblk[IC + BOS0] += LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
+					shblk[IC + BOS1] += LIMITERFUNC(shblk[IR+BOS3], shblk[IC+BOS3]);
+					__syncthreads();
+				}
+
+				if(thisThreadDelivers) {
+					if(PCswitch == RK_PREDICT) {
+						prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+							                        shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					} else {
+						prop[i] = inputPointers[i][x0] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+													shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					}
+				}
+
+			__syncthreads();
+		}
+
+		if(thisThreadDelivers) {
+			// Enforce density positivity
+			prop[0] = (prop[0] < FLUID_MINMASS) ? FLUID_MINMASS : prop[0];
+
+			// Calculate kinetic energy density and enforce minimum pressure
+			w = .5*(prop[2]*prop[2] + prop[3]*prop[3] + prop[4]*prop[4])/prop[0];
+			if((prop[1] - w) < prop[0]*FLUID_MINEINT) {
+				prop[1] = w + prop[0]*FLUID_MINEINT;
+			}
+
+			if(PCswitch == RK_PREDICT) {
+				Qstore[x0] = prop[0];
+				Qstore[x0+devArrayNumel] = prop[1];
+				Qstore[x0+2*devArrayNumel] = prop[2];
+				Qstore[x0+3*devArrayNumel] = prop[3];
+				Qstore[x0+4*devArrayNumel] = prop[4];
+			} else {
+				inputPointers[0][x0] = prop[0];
+				inputPointers[1][x0] = prop[1];
+				inputPointers[2][x0] = prop[2];
+				inputPointers[3][x0] = prop[3];
+				inputPointers[4][x0] = prop[4];
+			}
+		}
+
+		x0 += YBLOCKS*nx;
+		__syncthreads();
+	}
 
 }
 
+template <unsigned int PCswitch>
+__global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny)
+{
+	// Create center, rotate-left and rotate-right indexes
+	int IC = threadIdx.x;
+	int IL = threadIdx.x - 1;
+	IL += 1*(IL < 0);
+	int IR = threadIdx.x + 1;
+	IR -= 1*(IL > 15);
+
+	IC += 4*16*threadIdx.y;
+	IL += 4*16*threadIdx.y;
+	IR += 4*16*threadIdx.y;
+
+	/* Declare variable arrays */
+	__shared__ double shblk[2*YBLOCKS*4*BLOCKLENP4];
+	double Q[5]; double prop[5]; double B[3];
+	double P, C_f, vx, w;
+
+	/* My x index: thread + blocksize block, wrapped circularly */
+	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
+
+	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
+	if(x0 < 0) x0 += nx; // left wraps to right edge
+	if(x0 > (nx+1)) return; // More than 2 past right returns
+	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+
+	/* Do some index calculations */
+	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	int j = threadIdx.y;
+	int i;
+
+	for(; j < ny; j += YBLOCKS) {
+		C_f = Cfreeze[j + ny*blockIdx.y];
+
+		if(PCswitch == RK_PREDICT) {
+			// Load from init inputs, write to Qstore[]
+			Q[0] = inputPointers[0][x0];
+			Q[1] = inputPointers[1][x0];
+			Q[2] = inputPointers[2][x0];
+			Q[3] = inputPointers[3][x0];
+			Q[4] = inputPointers[4][x0];
+			P    = inputPointers[8][x0];
+		} else {
+			// Load from qstore, update init inputs
+			Q[0] = Qstore[x0];
+			Q[1] = Qstore[x0+  devArrayNumel];
+			Q[2] = Qstore[x0+2*devArrayNumel];
+			Q[3] = Qstore[x0+3*devArrayNumel];
+			Q[4] = Qstore[x0+4*devArrayNumel];
+			P    = Qstore[x0+5*devArrayNumel];
+		}
+		B[0] = inputPointers[5][x0]; // Bx
+		B[1] = inputPointers[6][x0]; // By
+		B[2] = inputPointers[7][x0]; // Bz
+		vx = Q[2] / Q[0];
+
+		for(i = 0; i < 5; i++) {
+			/* Calculate raw fluxes for rho, E, px, py, pz in order: */
+				switch(i) {
+				case 0: w = Q[2]; break;
+				case 1: w = (vx * (Q[1] + P) - B[0]*(Q[2]*B[0]+Q[3]*B[1]+Q[4]*B[2])/Q[0] ); break;
+				case 2: w = (vx*Q[2] + P - B[0]*B[0]); break;
+				case 3: w = (vx*Q[3]        - B[0]*B[1]); break;
+				case 4: w = (vx*Q[4]        - B[0]*B[2]); break;
+				}
+
+				shblk[IC + BOS0] = (C_f*Q[i] - w); /* Left  going flux */
+				shblk[IC + BOS1] = (C_f*Q[i] + w); /* Right going flux */
+				__syncthreads();
+
+				if(PCswitch == RK_CORRECT) {
+					/* Entertain two flux corrections */
+					shblk[IC + BOS2] = (shblk[IL + BOS0] - shblk[IC + BOS0]) / 2.0; /* Deriv of leftgoing flux */
+					shblk[IC + BOS3] = (shblk[IC + BOS1] - shblk[IL + BOS1]) / 2.0; /* Deriv of ritegoing flux */
+					__syncthreads();
+
+					/* Impose TVD limiter */
+					shblk[IC + BOS0] += LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
+					shblk[IC + BOS1] += LIMITERFUNC(shblk[IR+BOS3], shblk[IC+BOS3]);
+					__syncthreads();
+				}
+
+				if(thisThreadDelivers) {
+					if(PCswitch == RK_PREDICT) {
+						prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+							                        shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					} else {
+						prop[i] = inputPointers[i][x0] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+													shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					}
+				}
+
+			__syncthreads();
+		}
+
+		if(thisThreadDelivers) {
+			// Enforce density positivity
+			prop[0] = (prop[0] < FLUID_MINMASS) ? FLUID_MINMASS : prop[0];
+
+			// Calculate kinetic+magnetic energy density and enforce minimum pressure
+			w = .5*(prop[2]*prop[2] + prop[3]*prop[3] + prop[4]*prop[4])/prop[0] + .5*(B[0]*B[0] + B[1]*B[1] + B[2]*B[2]);
+			if((prop[1] - w) < prop[0]*FLUID_MINEINT) {
+				prop[1] = w + prop[0]*FLUID_MINEINT;
+			}
+
+			if(PCswitch == RK_PREDICT) {
+				Qstore[x0] = prop[0];
+				Qstore[x0+devArrayNumel] = prop[1];
+				Qstore[x0+2*devArrayNumel] = prop[2];
+				Qstore[x0+3*devArrayNumel] = prop[3];
+				Qstore[x0+4*devArrayNumel] = prop[4];
+			} else {
+				inputPointers[0][x0] = prop[0];
+				inputPointers[1][x0] = prop[1];
+				inputPointers[2][x0] = prop[2];
+				inputPointers[3][x0] = prop[3];
+				inputPointers[4][x0] = prop[4];
+			}
+		}
+
+		x0 += YBLOCKS*nx;
+		__syncthreads();
+	}
+
+}
 
 
  /* The Cfreeze array is round_up(NX / blockDim.x) x NY x NZ and is reduced in the X direction after
@@ -1124,7 +1316,8 @@ __global__ void cukern_AUSM_firstorder_uniform(double *P, double *Qout, double l
 
 
 /* Read Qstore and calculate pressure in it */
-__global__ void cukern_PressureSolver(double *Qstore)
+/* invoke with nx threads and nb blocks, whatever's best for the arch */
+__global__ void cukern_PressureSolverHydro(double *Qstore)
 {
 int x = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -1148,3 +1341,75 @@ while(x < DAN) {
 }
 
 }
+
+/* Invoke with [64 x N] threads and [ny/N nz 1] blocks */
+__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny)
+{
+__shared__ double Cfshared[64*FREEZE_NY];
+
+Qstore += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+
+int x = threadIdx.x;
+int i = threadIdx.x + 64*threadIdx.y;
+
+double invrho, px, psq, P, locCf, cmax;
+
+Cfshared[i] = 0.0;
+cmax = 0.0;
+
+for(; x < nx; x += 64) {
+	invrho = 1.0/Qstore[0]; // load inverse of density
+	psq = Qstore[3*devArrayNumel]; // accumulate p^2 and end with px
+	px =  Qstore[4*devArrayNumel];
+	psq = psq*psq + px*px;
+	px = Qstore[2*devArrayNumel];
+	psq += px*px;
+
+	// Store pressure
+	Qstore[5*devArrayNumel] = P = (Qstore[devArrayNumel] - .5*psq*invrho)*FLUID_GM1;
+
+    locCf = fabs(px)*invrho + sqrt(FLUID_GAMMA*P*invrho);
+
+	cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
+	Qstore += 64;
+}
+
+Cfshared[i] = cmax;
+
+// Perform a reduction
+if(threadIdx.x >= 32) return;
+__syncthreads();
+locCf = Cfshared[i+32];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 16) return;
+__syncthreads();
+locCf = Cfshared[i+16];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 8) return;
+__syncthreads();
+locCf = Cfshared[i+8];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 4) return;
+__syncthreads();
+locCf = Cfshared[i+4];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 2) return;
+__syncthreads();
+locCf = Cfshared[i+2];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 1) return;
+__syncthreads();
+locCf = Cfshared[i+1];
+cmax = (locCf > cmax) ? locCf : cmax;
+
+// Index into the freezing speed array
+x = (threadIdx.y + FREEZE_NY * blockIdx.x) + ny*(blockIdx.y);
+
+Cfreeze[x] = cmax;
+}
+
