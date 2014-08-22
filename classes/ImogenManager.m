@@ -133,6 +133,14 @@ classdef ImogenManager < handle
         function initialize(obj, mass, mom, ener, mag)
 %            obj.gravity.initialize(obj, mass);
             
+	    if obj.frameRotateOmega ~= 0
+		% This is necessary because the alter routine assumes we're _already_
+		% turning at that rate
+		j = obj.frameRotateOmega;
+		obj.frameRotateOmega = 0;
+		alterFrameRotation(obj, mass, ener, mom, j);
+            end
+
             obj.fluid.radiation.initialize(obj, mass, mom, ener, mag);
         end
         

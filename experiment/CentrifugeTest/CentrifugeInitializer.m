@@ -14,9 +14,9 @@ classdef CentrifugeInitializer < Initializer
         
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        EOS_ISOTHERM = 1;
-        EOS_ISODENSITY = 2;
-        EOS_ADIABATIC = 3;
+        EOS_ISOTHERMAL = 1;
+        EOS_ISOCHORIC  = 2;
+        EOS_ADIABATIC  = 3;
     end%CONSTANT
     
 %===================================================================================================
@@ -67,7 +67,7 @@ classdef CentrifugeInitializer < Initializer
             obj.polyK               = 1;
             obj.minMass             = 1e-5;
 
-            obj.eqnOfState          = obj.EOS_ISOTHERM;
+            obj.eqnOfState          = obj.EOS_ISOTHERMAL;
             obj.omegaCurve          = @(r) obj.omega0*(1-cos(2*pi*r));
 
             obj.operateOnInput(input, [64 64 1]);
@@ -118,10 +118,10 @@ classdef CentrifugeInitializer < Initializer
 
             rho(10001:10002) = obj.rho0;
             rads = [rads 1.5*(1+obj.edgeFraction)];
-            momphi = rho .* rads .* (obj.omegaCurve(rads) - obj.frameRotateOmega);
+            momphi = rho .* rads .* obj.omegaCurve(rads);
 
             % Tack on static boundary region
-            momphi(10001:10002) = -obj.rho0*rads(10001:10002)*obj.frameRotateOmega;
+            momphi(10001:10002) = 0;
 
             % FIXME: This will take a dump if Nz > 1...
             gridR = sqrt(Xv.^2+Yv.^2);
@@ -140,32 +140,33 @@ classdef CentrifugeInitializer < Initializer
                         + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
             
             statics = [];%StaticsInitializer(obj.grid);
-
             selfGravity = [];
             potentialField = [];%PotentialFieldInitializer();
-
         end
     % Given the centrifuge potential, integral(r w(r)^2), 
     % Solves the integral(P' / rho) side 
     function [rho, Pgas] = thermo(obj, rphi)
 
 	% rho(r) = rho0 exp(-rphi / a^2)
-        if obj.eqnOfState == obj.EOS_ISOTHERM
+        if obj.eqnOfState == obj.EOS_ISOTHERMAL
             rho  = obj.rho0 * exp(rphi / obj.cs0^2);
             Pgas = obj.cs0^2*rho;
 	end
 
-	% rho(r) = 
+	% rho(r) = (rho0^gm1 + gm1 Phi / k gamma)^(1/gm1)
 	if obj.eqnOfState == obj.EOS_ADIABATIC
             gm1 = obj.gamma - 1;
 	    rho = (gm1*rphi/(obj.gamma*obj.polyK) + obj.rho0^gm1).^(1/gm1);
             Pgas = obj.polyK * rho.^obj.gamma;
 	end
 
-	% Danger Zone: This has regions of no-solution!
-	if obj.eqnOfState == obj.EOS_ISODENSITY
+	if obj.eqnOfState == obj.EOS_ISOCHORIC
+            % Reset to phi = 0 at center
+            rphi = rphi - rphi(1);
+
             rho = ones(size(rphi))*obj.rho0;
-            Pgas = obj.cs0^2 * obj.rho0 * obj.gamma - obj.rho0 * rphi;
+
+            Pgas = obj.rho0 .* (obj.cs0^2 + rphi);
 
             if any(Pgas < 0);
                 error('Fatal: Centrifuge solution thermodynamically impossible.');

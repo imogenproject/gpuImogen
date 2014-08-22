@@ -122,8 +122,6 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     mom = zeros(size(rho));
     mom(isPartOfDisk) = momentumKojima(isPartOfDisk);
 
-    mom = mom - 1*rdinf.axialRadius.*rho.*isPartOfDisk; % Subtract frame rotation effects from _all_ points, including background fluid.
-
 %--- Lathe radial info onto cubical grid --- %
     %        I experimented with doing this in one interpolation with not much luck.
     [Xblk Yblk Zblk] = GIS.ndgridSetXYZ();
