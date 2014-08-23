@@ -161,15 +161,61 @@ are available, provide convergence orders.
 Note that there are a lot of tests to run, and this test falls under the "go have
 lunch then check back" class.
 
-\section{Physics}
+\section{Physics solved by the Imogen simulation engine}
 
-\section{CFD}
+\subsection{CFD}
 
-At its core Imogen solves the Euler equations,
+At its core Imogen solves the Euler equations, written here in conservative form:
+\begin{align*}
+\frac{\partial \rho}{\partial t} &= -\frac{\partial}{\partial x_i} \rho v_i \\
+\frac{\partial (\rho v_i)}{\partial t} &= -\frac{\partial}{\partial x_j} (T_{ij} + \mathbb{I} P) \\
+\frac{\partial E}{\partial t} &= -\frac{\partial}{\partial x_i} v_i (E + P)
+\end{align*}
+with mass density $\rho$, fluid bulk velocity $v_i$, momentum stress tensor
+$T_{ij} = \rho v_i v_j$, identity tensor $\mathbb{I}$, scalar thermal pressure $P$,
+and total energy density $E = \frac{1}{2} \rho v^2 + \epsilon$.
 
-(insert Euler equations here)
+These are closed by the equation of state $P(\epsilon)$. Imogen implements the
+adiabatic ideal gas equation of state, $P = (\gamma-1)\epsilon$ for $\gamma > 1$
+(physical gas values are $1 < \gamma \le 5/3$).
 
-using an adiabatic equation of state,
+With the assumption of a gamma law, the energy flux is written into the
+code as $v_i \times (\frac{1}{2} \rho v^2 + \frac{\gamma}{\gamma-1}P)$ with $P$ calculated
+before fluxing.
+
+\subsubsection{Operator splitting}
+
+Imogen uses a dimensionally split flux solving scheme. Assuming a splittable Hamiltonian
+exists in the form
+\[\mathbf{H} = \mathbf{E} + \mathbf{F} + \mathbf{G}\]
+where in our case, $E$, $F$, and $G$ represent the fluid fluxes in 3 non-degenerate
+directions (normally taken as 3 orthogonal directions in a curvilinear coordinate
+system: Here, fluxes in the x, y, and z directions), an approximate scheme of the form
+\[e^{\epsilon \mathbf{H}} = e^{\epsilon \mathbf{E}} e^{\epsilon \mathbf{F}}
+e^{\epsilon \mathbf{G}} + \mathbb{O}(\epsilon^2) \]
+always exists, and the reader may easily verify that the local error associated with
+doing this with two operators equals their commutator times $\epsilon^2$.
+
+Strang [reference!] showed that by performing such a first order step, then
+applying the same operators in exactly reversed order, will cancel all the first-order
+errors. This Strang splitting provides an easy way of constructing second spatial order
+solvers.
+
+Denoting the operators that solve the inviscid flux equations in the three directions as
+$\mathbf{X}$, $\mathbf{Y}$ and $\mathbf{Z}$, there are 6 ways to order them which are the
+elements of the permutation group of $\{ \mathbf{X}, \mathbf{Y}, \mathbf{Z} \}$.
+In a two-dimensional simulation, there are only two orderings ($XYYX$ and $YXXY$).
+
+Imogen cycles through them iteration to iteration, the idea being that this will average
+away (or at least partly so) any systematic errors associated with a given ordering.
+
+There are additional operators associated with MHD (magnetic fluxing operators), non-inertial
+frames, radiation, and scalar potental fields (fixed potentials, point objects or
+self-gravitation).
+
+The MHD operators are necessarily sprinkled among the fluid update operators. The rest
+are mixed in with
+
 
 \[ eos \]
 
@@ -185,26 +231,35 @@ become:
 \subsection{Frame rotation}
 
 In many cases a simulation is desired of an object that exhibits coherent rotation at
-near-supersonic or (in e.g. the case of cold accretion disks) highly supersonic speeds.
+high speeds.
 
-By giving the center and rate of rotation Imogen allows the frame to be set in motion.
-Reducing the grid-relative velocities means less risk of truncation error in the equation
-of state, shorter simulation time due to reduced grid relative velocities and better
-simulations due to reduced numerical diffusion (due to fewer steps).
+Imogen's CFL constraint is set by
+\[ dt < dt (|v_i| + c_s) \]
+so if $v_i$ can be significantly reduced by setting the grid to co-rotate with a flow,
+the timestep can be significantly increased for advection-dominated flows with reduced
+errors resulting.
 
-This is controlled by setting the .frameRotateCenter and .frameRotateOmega parameters
+The non-inertial sourcing operator introduces its own errors and it is up to the user to
+determine the point at which the change is worth it.
 
-FIXME: Imogen itself should take care of putting the simulation into the rotating frame
-or at least offer the option. Currently the user is required to subtract off the momentum
-associated with the frame's rotation in their own simulation init code...
+This physics is activated by setting a nonzero value for any initializer's
+\begin{tt}frameRotateOmega\end{tt} property. The grid
+will then rotate about the $\hat{z}$ axis, centered on the X-Y point given in
+\begin{tt}run.frameRotateCenter\end{tt}. Positive $\omega$ values cause the frame to turn
+counterclockwise as seen from above, i.e. a point on the +X axis with a positive Y momentum
+would have its momentum in the rotating frame reduced by a positive $\omega$.
 
-\textbf{This has been tested using the Centrifuge experiment and appears to work properly.
-Confidence is fairly high.}
+Imogen checks for nonzero rotation at init automatically and makes the appropriate frame
+transform by calling
+
+\tt{alterFrameRotation(run, mass, ener, mom, newOmega)}
+
+The user's in-situ analysis function is also free to call it, but be aware, this function
+is NOT gpu-accelerated and should be assumed to be Slow.
 
 \subsection{Radiation}
 
-Imogen provides for radiative losses in the optically thin regime. The built in default
-is power law cooling,
+Imogen can solve optically thin radiation with power law cooling,
 
 (power law lambda)
 
@@ -212,7 +267,13 @@ Programming in different cooling laws is extremely simple as a test by making ad
 entries to the experiment/Radiation.m file, templatted after the thin power law radiation
 one. Of course, don't expect them to be as fast as the GPU accelerated routines.
 
-\textbf{Power law optically thin cooling should be completely reliable.} 
+While the power law cooling is reliable enough in and of itself, it has exhibited a
+remarkable ability to derange Imogen's fluid solver routines. None of them has exhibited
+the ability to handle an extremely slowly-moving radiating shock front (i.e. the motion
+associated with the finite accuracy of the simulation) without some measure of oscillatory
+density error at the adiabatic jump.
+
+(Post pics of evil radiative shocks here)
 
 \subsection{Gravity}
 
@@ -240,6 +301,41 @@ This is basically dead for now, especially in parallel.
 
 The serial solver could easily enough be resurrected but there's no way I'm going
 to have time to setup a parallel Poisson solver, let alone shovel it onto the GPU.
+
+\section{Physics solvers in the initializers}
+
+Many fluid and physics subproblems come up when writing initial condition generators
+for Imogen. Some of these have convenient self-contained solvers available within
+Imogen.
+
+The available units include:
+\begin{itemize}
+\item \tt{J = HDJumpSolver(Mach, $\gamma$, $\theta$)}: Returns a structure $J$ describing the
+only physical shock solution to a hydrodynamic shock of strength $Mach$ in a fluid of
+adiabatic index $\gamma$ and preshock shock-normal flow inclination $\theta$ (in degrees).
+\item \tt{J = MHDJumpSolver(Mach, Alfven Mach, $\gamma$, $\theta$)}: Solves the MHD jump
+equations for the slowest shock permitted.
+\item 
+\item \tt{F = fim(X, @f(X))}: Short for Fourier Integral Method, calculates the integral of
+anonymous function f on the presumed regularly spaced points $X$ by calculating a polynomial
+that renders $f$ 3 times continuous at the endpoints, integrating the polynomial directly
+and the residual by Fourier transform.
+\item \tt{The ICM}: \tt{icm.m} is currently very much a prototype and not ready for normal use.
+It is short for Integral Constraints Method.
+\item \tt{t = pade(c\_n, a, b, x)}: Given a polynomial $\sum_n c_n x^n$, calculates the (a,b)
+Pade approximant P(a)/Q(b) of the polynomial and evaluates it at x, for any $a+b \le 6$.
+\item RadiatingFlowSolver class: Solves the equations of a power-law-radiating hydrodynamic
+or magnetohydrodynamic flow. It initializes itself using the 4th (MHD) or 6th (HD) order power
+series solution of the flow and then integrates using a 6th order implicit LMM, restarting with
+reduced step size when it encounters sharp flow features (knees).
+\item Linear wave eigenvectors: The function eigenvectorEntropy, eigenvectorAlfven, eigenvectorSonic,
+eigenevectorMA(rho, csq, v, b, k, wavetype) return the linear wave eigenvectors associated with the
+flows with the given uniform density, thermal acoustic soundspeed, velocity, magnetic field and wavevector.
+Alfven and sonic waves have wavetype +1 for a wave which advances towards $\mathbf{k}$ and -1 for
+against $\mathbf{k}$. The MA wavetype can have either sign, with magnitude 2 for a fast MS
+wave and magnitude 1 for a slow MS wave. If a nonzero B is passed to a sonic wave, it will invoke the
+fast MS solver.
+\end{itemize}
 
 \section{Experiments}
 
