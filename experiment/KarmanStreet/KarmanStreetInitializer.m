@@ -94,6 +94,7 @@ classdef KarmanStreetInitializer < Initializer
 	   
 	    % Set the momentum inside the obstruction to zero 
 	    momx(ball) = 0;
+	    mom(1,ball) = 0;
 	    
 	    % Calculate energy density array
 	    ener = P/(obj.gamma - 1) ...     		% internal
