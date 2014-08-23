@@ -252,7 +252,7 @@ would have its momentum in the rotating frame reduced by a positive $\omega$.
 Imogen checks for nonzero rotation at init automatically and makes the appropriate frame
 transform by calling
 
-\tt{alterFrameRotation(run, mass, ener, mom, newOmega)}
+$\tt{alterFrameRotation(run, mass, ener, mom,\newline newOmega)}$
 
 The user's in-situ analysis function is also free to call it, but be aware, this function
 is NOT gpu-accelerated and should be assumed to be Slow.
@@ -293,7 +293,7 @@ are added to the compact object and replaced with grid's vaccuum values instead.
 NOTE: This is not the desired behavior in some cases - e.g. a planet would require a surface
 pressure, not a surface vaccuum, in order to be embedded in the disk.
 
-\textbf{Point <-> disk gravity appears to work. Confidence is moderate pending testing.}
+\textbf{Point does not feel fluid gravity presently.}
 
 \subsubsection{Self gravity}
 
@@ -343,6 +343,7 @@ fast MS solver.
 \input{../experiment/DoubleBlast/doubleblastDoc.tex}
 \input{../experiment/Einfeldt/einfeldtDoc.tex}
 \input{../experiment/RichtmyerMeshkov/richtmyermeshkovDoc.tex}
+\input{../experiment/ShuOsherTube/shuoshertubeDoc.tex}
 
 
 \end{document}
