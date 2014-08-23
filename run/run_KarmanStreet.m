@@ -1,21 +1,22 @@
-% Run the spherical shock test.
+% Run the Karman Vortex street test.
 
 %-- Initialize Imogen directory ---%
 starterRun();
 
-grid = [1366 2048 1];
+grid = [1024 512 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
-run                 = SphericalShockInitializer(grid);
-run.iterMax         = 15000;
+run                 = KarmanStreetInitializer(grid);
+run.iterMax         = 400;
 
-run.image.interval  = 20;
+run.image.interval  = 25;
 run.image.mass      = true;
 run.activeSlices.xy = true;
-run.info            = 'Spherical Shock test';
+run.info            = 'Karman Street test';
 run.notes           = '';
-
+run.ppSave.dim2     = 25;
+run.mach	    = .8;
 
 %--- Run tests ---%
 if (true)

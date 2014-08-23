@@ -8,14 +8,16 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run             = DoubleBlastInitializer(grid);
-run.direction   = DoubleBlastInitializer.X;
-run.shockAngle  = 0;
 run.timeMax     = 0.038;
 run.iterMax     = 5000;%2*run.timeMax*grid(1); % This will give steps max ~ 1.2x required
 
 run.alias       = '';
 run.info        = '2D Double Blast Wave test.';
-%run.notes       = 'Simple axis aligned  test';
+run.notes       = '';
+
+run.pr		= 100;
+run.pl		= 1000;
+run.pa		= .01;
 
 run.ppSave.dim2 = 5;
 

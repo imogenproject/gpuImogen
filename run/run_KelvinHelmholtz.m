@@ -13,7 +13,6 @@ run.iterMax         = 500;
 run.mach = 2.0;
 run.timeMax = (sqrt(5/3)/run.mach)*20;
 
-run.direction       = KelvinHelmholtzInitializer.X;
 run.image.interval  = 50;
 run.image.mass      = true;
 run.activeSlices.xy = true;

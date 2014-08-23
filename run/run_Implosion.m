@@ -8,9 +8,11 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run                 = ImplosionInitializer(grid);
-run.iterMax         = 10000;
+run.iterMax         = 100;
 
-run.direction       = ImplosionInitializer.X;
+obj.Mcorner 	    = 0.125;
+obj.Pcorner 	    = 0.14;
+
 run.image.interval  = 100;
 run.image.mass      = true;
 run.activeSlices.xy = true;

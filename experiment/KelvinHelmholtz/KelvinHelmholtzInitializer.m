@@ -64,8 +64,8 @@ classdef KelvinHelmholtzInitializer < Initializer
 	    obj.pureHydro        = true;
             
             obj.operateOnInput(input);
+
         end
-               
         
     end%GET/SET
     
