@@ -1,7 +1,7 @@
 === SETUP
 
 1) Make sure that Matlab, GCC (or compiler of choice), and NVCC are available. Test that
-	* which matlab gcc nvcc
+	* which [matlab | gcc | nvcc]
 	all indicate an executable and not 'no file ... in path'
 2) Copy Make.config.default to Make.config so you can edit it without git being git
 3) Edit Make.config with paths to the required libraries
@@ -15,16 +15,16 @@
 	* from the imogen root: cd mpi; make; cd ../gpuclass; make
 	* Both can be build with -jN
 	* Poke one of the mexa64 files in both /mpi and /gpuclass with ldd and see that
-		it can see all the required .so files, in particular libmpi_f90. If not then
-		something is probably unhappy with versioning; make sure the libs you reference
-		in Make.config, run/imogen and have loaded are the same.
-	* ldd won't see the Matlab mex .so's; Matlab modifies your environment to provide them
+		it can see all the required .so files, in particular libmpi_f90.
 
+                If not then something is probably unhappy with versioning; make sure the libs
+		you reference in Make.config, run/imogen and presently have loaded are the same.
+	* ldd won't see the Matlab mex .so's; Matlab modifies your environment to provide them
 
 === USE
 
-The Imogen Magnetohydrodynamics Code is an advanced astrophysical simulation tool. It solves the
-equations of compressible ideal MHD using a TVD method that is second order in space and time.
+The Imogen HD/MHD code is a GPU-accelerated fluid simulation tool. It solves the Euler or Ideal 
+MHD equations with multiple methods that are second-order space and time.
 
 Simulations are started from the run/ directory using the 'imogen' command residing there. Run
 	./imogen help
@@ -32,4 +32,24 @@ to get information on how to invoke Imogen. Currently cluster invocation assumes
 and a Torque that feeds mpi the list of nodes to be used; Otherwise modification will be required -
 please email changes for this to [ekeever1@uoregon.edu]
 
-Imogen runs in parallel on both the GPU and on multiple computers with GPUs via MPI.
+Imogen can run in parallel on one node with multiple GPUs (./imogen parallel ...) or in parallel
+on multiple nodes with one or multiple GPUs (./imogen cluster ...). If there are multiple GPUs, it
+must be arranged that there be one Matlab process per GPU at present, and on each node the
+Matlab instances will activate GPUs in numeric order.
+
+== ALGORITHMS & PROPERTIES
+
+Imogen has three different GPU-accelerated solvers for the hydrodynamic Euler equations available:
+  * HLL approximate Riemann (CFL < 0.5)
+  * HLLC approximate Riemann (CFL < 0.5)
+  * Xin/Jin Relaxing TVD method (CFL < 1.0)
+
+The approximate Riemann methods draw strongly on the underlying physics of the Euler equations and
+capture certain stationary features exactly (Both capture shocks, HLLC captures contacts). The more
+general Xin/Jin method is the only one in Imogen which solves both HD and MHD flows, but exhibits
+reduced resolution on HD flows.
+
+The hydrodynamic algorithm is selected by altering the indicated # in fluid/relaxingFluid.m
+
+
+

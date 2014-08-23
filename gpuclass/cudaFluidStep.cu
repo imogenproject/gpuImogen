@@ -99,6 +99,7 @@ __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double 
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
 __global__ void cukern_PressureSolverHydro(double *Qstore);
 __global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny);
+__global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, int nx, int ny);
 
 #define BLOCKLEN 12
 #define BLOCKLENP2 14
@@ -203,7 +204,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
 			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
 			cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
 			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
@@ -235,8 +236,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.25*lambda, arraySize.x, arraySize.y);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd predict step");
 
-		//cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
-		//CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
+		dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
+		dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
+		cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
+		cukern_PressureFreezeSolverMHD<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
+		CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
 		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: second mhd c_f sync");
 		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
@@ -1342,6 +1346,7 @@ while(x < DAN) {
 
 }
 
+
 /* Invoke with [64 x N] threads and [ny/N nz 1] blocks */
 __global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny)
 {
@@ -1372,6 +1377,90 @@ for(; x < nx; x += 64) {
 
 	cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
 	Qstore += 64;
+}
+
+Cfshared[i] = cmax;
+
+// Perform a reduction
+if(threadIdx.x >= 32) return;
+__syncthreads();
+locCf = Cfshared[i+32];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 16) return;
+__syncthreads();
+locCf = Cfshared[i+16];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 8) return;
+__syncthreads();
+locCf = Cfshared[i+8];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 4) return;
+__syncthreads();
+locCf = Cfshared[i+4];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 2) return;
+__syncthreads();
+locCf = Cfshared[i+2];
+Cfshared[i] = cmax = (locCf > cmax) ? locCf : cmax;
+
+if(threadIdx.x >= 1) return;
+__syncthreads();
+locCf = Cfshared[i+1];
+cmax = (locCf > cmax) ? locCf : cmax;
+
+// Index into the freezing speed array
+x = (threadIdx.y + FREEZE_NY * blockIdx.x) + ny*(blockIdx.y);
+
+Cfreeze[x] = cmax;
+}
+
+
+/* Invoke with [64 x N] threads and [ny/N nz 1] blocks */\
+/* Reads magnetic field from inputPointers[5, 6, 7][x] */
+__global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, int nx, int ny)
+{
+__shared__ double Cfshared[64*FREEZE_NY];
+
+int delta = threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+
+Qstore += delta;
+
+int x = threadIdx.x;
+int i = threadIdx.x + 64*threadIdx.y;
+
+double invrho, px, psq, P, locCf, cmax;
+double b, bsq;
+
+Cfshared[i] = 0.0;
+cmax = 0.0;
+
+for(; x < nx; x += 64) {
+	invrho = 1.0/Qstore[0]; // load inverse of density
+	psq = Qstore[3*devArrayNumel]; // accumulate p^2 and end with px
+	px =  Qstore[4*devArrayNumel];
+	psq = psq*psq + px*px;
+	px = Qstore[2*devArrayNumel];
+	psq += px*px;
+
+	b = inputPointers[5][delta];
+	bsq = inputPointers[6][delta];
+	bsq = bsq*bsq + b*b;
+	b = inputPointers[7][delta];
+	bsq = bsq + b*b;
+
+	// Store pressure
+	Qstore[5*devArrayNumel] = P = FLUID_GM1 *(Qstore[devArrayNumel] - .5*psq*invrho) + MHD_PRESS_B*bsq;
+
+	// Find the maximal fast wavespeed
+    locCf = fabs(px)*invrho + sqrt((FLUID_GAMMA*P + MHD_PRESS_B*bsq)*invrho);
+
+	cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
+	Qstore += 64;
+	delta += 64;
 }
 
 Cfshared[i] = cmax;
