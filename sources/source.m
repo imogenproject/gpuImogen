@@ -38,32 +38,36 @@ dTime = 2 * tFraction * run.time.dTime;
 
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
-%    if run.potentialField.ACTIVE
-%        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
-%    end
+    if run.potentialField.ACTIVE
+        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+    end
 
     % FIXME: This sequence is only first order accurate in the energy equation
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.
-    if run.selfGravity.ACTIVE
-        enerSource = zeros(run.gridSize);
-        for i=1:3
-            momSource       = dTime*mass.thresholdArray ...
-                                                    .* grav.calculate5PtDerivative(i,run.DGRID{i});
-            enerSource      = enerSource + momSource .* mom(i).array ./ mass.array;
-            mom(i).array    = mom(i).array - momSource;
-        end
-        ener.array          = ener.array - enerSource;
-    end
+% Disabling this because SG is dead until further notice
+%    if run.selfGravity.ACTIVE
+%        enerSource = zeros(run.gridSize);
+%        for i=1:3
+%            momSource       = dTime*mass.thresholdArray ...
+%                                                    .* grav.calculate5PtDerivative(i,run.DGRID{i});
+%            enerSource      = enerSource + momSource .* mom(i).array ./ mass.array;
+%            mom(i).array    = mom(i).array - momSource;
+%        end
+%        ener.array          = ener.array - enerSource;
+%    end
     
+
+    % The mechanical routines above are written to exactly conserve internal energy so that
+    % they commute with things which act purely on internal energy (e.g. radiation)
     %--- Radiation Sourcing ---%
     %       If radiation is active, subtract from internal energy
     if strcmp(run.fluid.radiation.type, ENUM.RADIATION_NONE) == false
         run.fluid.radiation.solve(run, mass, mom, ener, mag, dTime);
     end
 
-    if run.selfGravity.ACTIVE % | run.potentialField.ACTIVE
+    if run.selfGravity.ACTIVE | run.potentialField.ACTIVE
         % Oh you better believe we need to synchronize up in dis house
         GIS = GlobalIndexSemantics();
 %        S = {mom(1), mom(2), mom(3), ener};
