@@ -26,7 +26,7 @@ classdef ImplosionAnalyzer < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-	function FrameAnalyzer(obj,mass,ener,momX,momY,momZ, run)
+	function FrameAnalyzer(obj,mass,ener,mom, mag, run)
             m = mass.array;
 
             calculatedAsymmetry = norm((m - m'),'fro');
@@ -55,14 +55,6 @@ classdef ImplosionAnalyzer < handle
                 
 %==================================================================================================        
         methods (Static = true) %                                                 S T A T I C    [M]
-
-	function singleObj = getInstance()
-            persistent instance;
-	    if isempty(instance) || ~isvalid(instance)
-	        instance = ImplosionAnalyzer();
-	    end
-	    singleObj = instance;
-    	end
 
     end%PROTECTED
         
