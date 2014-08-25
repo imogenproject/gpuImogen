@@ -15,5 +15,8 @@ devel: devel.tex imogenInvoke.ps
 	latex devel.tex
 	dvipdf devel.dvi
 
+cleanup:
+	rm -f *aux *dvi *log *out
+
 imogenInvoke.ps: imogenInvoke.dot
 	$(DOT) $(DOTOPTS) imogenInvoke.dot -o imogenInvoke.ps

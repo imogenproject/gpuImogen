@@ -131,11 +131,11 @@ make it go away permanently.
 
 Imogen is run through the script run/imogen
 
-There are three separate general types of run:
+There are three separate general types of run, all of which end up doing "matlab -r":
 \begin{itemize}
-\item serial - One process uses ones GPU; Directly executed by script
-\item parallel - N processes select N GPUs; Direct execution of mpirun by script
-\item cluster - N processes on M nodes; Writes script and qsubs it
+\item serial - One process uses ones GPU; 'imogen' calls Matlab.
+\item parallel - N processes select N GPUs; 'imogen' calls mpirun calls Matlab
+\item cluster - N processes on M nodes; 'imogen' writes a script for qsub that calls Matlab
 \end{itemize}
 
 Serial and parallel are for small size simulations that work on a single SMP system,
@@ -213,49 +213,42 @@ There are additional operators associated with MHD (magnetic fluxing operators),
 frames, radiation, and scalar potental fields (fixed potentials, point objects or
 self-gravitation).
 
-The MHD operators are necessarily sprinkled among the fluid update operators. The rest
-are mixed in with
-
-
-\[ eos \]
-
-\textbf{This has been pretty thoroughly tested and should have no code problems.}
+\textbf{The MHD algorithm has major problems with low-beta plasma and seems to be
+subtly broken at present.}
 
 \subsection{MHD}
 
-Imogen can simulate magnetic fields in the limit of Ideal MHD where the Euler equations
-become:
+Imogen can evolve magnetic fields in the limit of Ideal MHD where the Euler equations
+become
+\begin{align*}
+\frac{\partial \rho}{\partial t} &= -\frac{\partial}{\partial x_i} \rho v_i \\
+\frac{\partial (\rho v_i)}{\partial t} &= -\frac{\partial}{\partial x_j} (T_{ij} + \mathbb{I}(P+B^2/2) \\
+\frac{\partial E}{\partial t} &= -\frac{\partial}{\partial x_i} v_i (E + P) - B_i (v_j B_j) \\
+\frac{\partial B_i}{\partial t} &= \frac{\partial}{\partial x_i} (v_i B_j - B_i v_j)
+\end{align*}
+now with the stress tensor $T_{ij} = \rho v_i v_j - B_i B_j$ and under the requirement
+$\nabla \mathbf{B} = 0$.
 
-(ideal mhd equations)
+There is no computational requirement that the \textbf{B} field be initialized this way,
+however Imogen solves no advection equation for $\mathbf{B}$-charge and any divergence
+introduced will simply stay there.
 
 \subsection{Frame rotation}
 
 In many cases a simulation is desired of an object that exhibits coherent rotation at
 high speeds.
 
-Imogen's CFL constraint is set by
+Imogen has the Eulerian explicit CFL constraint is set by
 \[ dt < dt (|v_i| + c_s) \]
-so if $v_i$ can be significantly reduced by setting the grid to co-rotate with a flow,
-the timestep can be significantly increased for advection-dominated flows with reduced
-errors resulting.
+and so if $v_i$ can be significantly reduced by setting the grid to co-rotate with a flow,
+the timestep can be significantly increased for advection-dominated flows.
 
 The non-inertial sourcing operator introduces its own errors and it is up to the user to
 determine the point at which the change is worth it.
 
-This physics is activated by setting a nonzero value for any initializer's
-\begin{tt}frameRotateOmega\end{tt} property. The grid
-will then rotate about the $\hat{z}$ axis, centered on the X-Y point given in
-\begin{tt}run.frameRotateCenter\end{tt}. Positive $\omega$ values cause the frame to turn
-counterclockwise as seen from above, i.e. a point on the +X axis with a positive Y momentum
-would have its momentum in the rotating frame reduced by a positive $\omega$.
-
-Imogen checks for nonzero rotation at init automatically and makes the appropriate frame
-transform by calling
-
-$\tt{alterFrameRotation(run, mass, ener, mom,\newline newOmega)}$
-
-The user's in-situ analysis function is also free to call it, but be aware, this function
-is NOT gpu-accelerated and should be assumed to be Slow.
+Imogen checks for a rotating frame at simulation initialization and performs the
+transformation to the noninertial frame for you - simulations should be initialized
+in the lab inertial frame.
 
 \subsection{Radiation}
 
@@ -310,19 +303,18 @@ Imogen.
 
 The available units include:
 \begin{itemize}
-\item \tt{J = HDJumpSolver(Mach, $\gamma$, $\theta$)}: Returns a structure $J$ describing the
+\item \begin{tt}J = HDJumpSolver(Mach, $\gamma$, $\theta$)\end{tt}: Returns a structure $J$ describing the
 only physical shock solution to a hydrodynamic shock of strength $Mach$ in a fluid of
 adiabatic index $\gamma$ and preshock shock-normal flow inclination $\theta$ (in degrees).
-\item \tt{J = MHDJumpSolver(Mach, Alfven Mach, $\gamma$, $\theta$)}: Solves the MHD jump
+\item \begin{tt}J = MHDJumpSolver(Mach, Alfven Mach, $\gamma$, $\theta$)\end{tt}: Solves the MHD jump
 equations for the slowest shock permitted.
-\item 
-\item \tt{F = fim(X, @f(X))}: Short for Fourier Integral Method, calculates the integral of
+\item \begin{tt}F = fim(X, @f(X))\end{tt}: Short for Fourier Integral Method, calculates the integral of
 anonymous function f on the presumed regularly spaced points $X$ by calculating a polynomial
 that renders $f$ 3 times continuous at the endpoints, integrating the polynomial directly
 and the residual by Fourier transform.
-\item \tt{The ICM}: \tt{icm.m} is currently very much a prototype and not ready for normal use.
+\item \begin{tt}The ICM\end{tt}: \begin{tt}icm.m\end{tt} is currently very much a prototype and not ready for normal use.
 It is short for Integral Constraints Method.
-\item \tt{t = pade(c\_n, a, b, x)}: Given a polynomial $\sum_n c_n x^n$, calculates the (a,b)
+\item \begin{tt}t = pade(c\_n, a, b, x)\end{tt}: Given a polynomial $\sum_n c_n x^n$, calculates the (a,b)
 Pade approximant P(a)/Q(b) of the polynomial and evaluates it at x, for any $a+b \le 6$.
 \item RadiatingFlowSolver class: Solves the equations of a power-law-radiating hydrodynamic
 or magnetohydrodynamic flow. It initializes itself using the 4th (MHD) or 6th (HD) order power
@@ -334,8 +326,85 @@ flows with the given uniform density, thermal acoustic soundspeed, velocity, mag
 Alfven and sonic waves have wavetype +1 for a wave which advances towards $\mathbf{k}$ and -1 for
 against $\mathbf{k}$. The MA wavetype can have either sign, with magnitude 2 for a fast MS
 wave and magnitude 1 for a slow MS wave. If a nonzero B is passed to a sonic wave, it will invoke the
-fast MS solver.
+fast MS solver (as the fast wave is the one connected with the nonmagnetized sonic wave).
+\item The bow shock problem, in two-dimensional testing of a source with outflow, has acquired a routine
+analyticalOutflow() which solves the exact adiabatic expansion of a $\gamma=5/3$ gas away from a cylinder
+with the inner boundary condition of $v_{radial} = v_0$ at $r=r_0$.
 \end{itemize}
+
+\section{Programming Experiments}
+
+\subsection{Common parameters of all experiments}
+
+All experiment initializers should inherit from the \begin{tt}Initializer\end{tt} class
+and share its not inconsiderable breadth of parameters. Among the more important 
+names are
+\begin{itemize}
+\item \begin{tt}cfl\end{tt} coefficient by which the CFL-limit timestep is scaled. \textbf{WARNING
+IMOGEN DOES NOT SANITY CHECK THIS}
+\item \begin{tt}gamma\end{tt} - The adiabatic index of the fluid
+\item \begin{tt}grid\end{tt} - The [nx ny nz] grid resolution of the \textit{global} domain. This
+should normally be set when creating the initializer and not messed with again.
+\item \begin{tt}iterMax\end{tt} - the maximum number of timesteps to take
+\item \begin{tt}useInSituAnalysis\end{tt} - If nonzero, Imogen uses the given in-situ analysis tool
+\item \begin{tt}inSituHandle\end{tt} - @AnalyzerClass which must meet the requirements of an
+in-situ analyzer (see REF)
+\item \begin{tt}stepsPerInSitu\end{tt} - Number of timesteps between calls to the analyzer
+\item \begin{tt}frameRotateOmega\end{tt} - If nonzero, Imogen places the simulation into a rotating
+frame and applies appropriate source terms. \textbf{Simulation is still initialized in lab frame}
+\item \begin{tt}frameRotateCenter\end{tt} - If frame is rotating, this is the center (\textbf{in cells})
+about which the frame rotates on the $(x,y)$ plane.
+\end{itemize}
+
+\subsection{How to setup frame rotation}
+
+To turn on the rotating frame during start, simply set a nonzero value for the \begin{tt}frameRotateOmega\end{tt}
+parameter, and assign a 2-element array $\left[x_0, y_0\right]$ to \begin{tt}frameRotateCenter\end{tt}
+and Imogen will automatically transform the fluid momentum field into the noninertial frame at start.
+
+Caution: $x_0$ and $y_0$ need to be in cell coordinates... yes it's dumb.
+
+The rotation rate can be altered during simulation time using 
+\begin{tt}
+alterFrameRotation(run, mass,\newline
+ener, mom, newOmega)
+\end{tt}
+in the user's in-situ analysis function. This has no physical effect (outside truncation error)
+and will not e.g. generate the Euler term, it simply alters the rate at which the grid traverses
+the fluid in the lab frame. Note also that the alterFrameRotation function is not GPU accelerated
+and probably shouldn't called willy nilly.
+
+One \textit{could} directly alter \begin{tt}run.frameRotateOmega\end{tt} during the run,
+and this will generate physical consequences. However the sourcing function assumes the
+rotation rate is constant and therefore will \textit{not} account for the Euler term caused
+by varying rotation rate.
+
+\subsection{How to setup radiation}
+
+\subsection{How to setup a potential field}
+
+\subsection{How to set up a compact object}
+
+\subsection{How to setup in-situ analysis}
+
+Recognizing that it is not practical to save the entire simulation output for post-hoc analysis in
+most cases, Imogen allows the construction of in-situ analyzers. These are classes that must have
+two public members:
+\begin{itemize}
+\item \begin{tt}.FrameAnalyzer(mass, ener, mom, mag, run)\end{tt}
+\item \begin{tt}.finish(run)\end{tt}
+\end{itemize}
+
+They must be set at initialization time with these three parameters in the initializer:
+\begin{itemize}
+\item \begin{tt}useInSituAnalysis\end{tt} - Set to nonzero to enable
+\item \begin{tt}inSituHandle\end{tt} - @AnalyzerClass which must meet the requirements of an
+in-situ analyzer (see above)
+\item \begin{tt}stepsPerInSitu\end{tt} - Number of timesteps between calls to the .FrameAnalyzer() function
+\end{itemize}
+
+The \begin{tt}.finish\end{tt} member is called when the simulation is exiting and presumably should
+take the data that has been gathered and safely flush it to disk since Imogen is about to return.
 
 \section{Experiments}
 
