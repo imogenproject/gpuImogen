@@ -255,11 +255,15 @@ classdef Initializer < handle
 
         % These either dump ICs to a file or return them as a structure.
         function icfile = saveInitialCondsToFile(obj)
-             [mass, mom, ener, magnet, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
+             [mass, mom, ener, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
              IC.mass = mass;
-             IC.mom = mom;
              IC.ener = ener;
-             IC.magnet = magnet;
+             IC.momX = squeeze(mom(1,:,:,:));
+             IC.momY = squeeze(mom(2,:,:,:));
+             IC.momZ = squeeze(mom(3,:,:,:));
+             IC.magX = squeeze(mag(1,:,:,:));
+             IC.magY = squeeze(mag(2,:,:,:));
+             IC.magZ = squeeze(mag(3,:,:,:));
              if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
@@ -270,11 +274,15 @@ classdef Initializer < handle
         end
 
         function IC = saveInitialCondsToStructure(obj)
-             [mass, mom, ener, magnet, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
+             [mass, mom, ener, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
              IC.mass = mass;
-             IC.mom = mom;
              IC.ener = ener;
-             IC.magnet = magnet;
+             IC.momX = squeeze(mom(1,:,:,:));
+             IC.momY = squeeze(mom(2,:,:,:));
+             IC.momZ = squeeze(mom(3,:,:,:));
+             IC.magX = squeeze(mag(1,:,:,:));
+             IC.magY = squeeze(mag(2,:,:,:));
+             IC.magZ = squeeze(mag(3,:,:,:));
              if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end

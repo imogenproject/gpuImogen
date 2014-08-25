@@ -1,19 +1,22 @@
-function initializeResultPaths(run, serializedPaths)
+function initializeResultPaths(run, IC)
 % Creates the directories to store results based on the user input save settings and stores them as
 % a Paths object contained within the ImogenManager instance for the run.
 %
 %<> run              manager object for the Imogen run								ImogenManager
 %>> serializedPaths  If present, path structure to resume from.
-    if nargin == 1
-        run.paths.initialize();
-    else
+
+    if isfield(IC, 'originalPathStruct')
         run.paths.deserialize(serializedPaths);
+	setupDirectories = 0;
+    else
+        run.paths.initialize();
+	setupDirectories = 1;
     end
    
     mpi_barrier(); % force all units to evaluate to the same paths
     run.paths.indexPadding = length(num2str(run.time.ITERMAX));
 
-    if mpi_amirank0() && (nargin == 1)
+    if mpi_amirank0() && (setupDirectories == 1)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------

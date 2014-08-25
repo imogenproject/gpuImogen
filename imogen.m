@@ -32,13 +32,8 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
 
-    if RESTARTING
-        % Recreates our original paths exactly w/o changing
-        initializeResultPaths(run, IC.originalPathStruct);
-    else
-        % Generate unique new paths
-        initializeResultPaths(run);
-    end
+    % Behavior depends if IC.originalPathStruct exists
+    initializeResultPaths(run, IC)
 
     outdirectory = run.paths.save;
     run.save.saveIniSettings(ini);
@@ -53,6 +48,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         % garner important values from saved files:
         % (1) save paths [above]
         % (2) Q(x,t0) from saved files
+	% WARNING - this really, really needs to _know_ which frame type to load
         origpath=pwd(); cd(run.paths.save);
         dframe = util_LoadFrameSegment('2D_XY',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
@@ -63,35 +59,25 @@ function outdirectory = imogen(srcData, resumeinfo)
         GIS = GlobalIndexSemantics(); GIS.setup(dframe.parallel.globalDims);
 
         cd(origpath); clear origpath;
+	FieldSource = dframe;
+    else
+	FieldSource = IC;
+    end
 
-        mass = FluidArray(ENUM.SCALAR, ENUM.MASS, dframe.mass, run, statics);
-        ener = FluidArray(ENUM.SCALAR, ENUM.ENER, dframe.ener, run, statics);
-        mom  = FluidArray.empty(3,0); mag  = MagnetArray.empty(3,0);
-        fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
+    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, FieldSource.mass, run, statics);
+    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, FieldSource.ener, run, statics);
+    mom  = FluidArray.empty(3,0);
+    mag  = MagnetArray.empty(3,0);
+    fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
 
-        for i = 1:3;
-            mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, getfield(dframe, fieldnames{i}), run, statics);
-            if run.pureHydro == 0
-                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(dframe,fieldnames{i+3}), run, statics);
-            else
-                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
-            end
+    for i = 1:3;
+        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, getfield(FieldSource, fieldnames{i}), run, statics);
+        if run.pureHydro == 0
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
+        else
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
         end
-
-     else % IC contains Q(x,t0)
-        mass = FluidArray(ENUM.SCALAR, ENUM.MASS, IC.mass, run, statics);
-        ener = FluidArray(ENUM.SCALAR, ENUM.ENER, IC.ener, run, statics);
-        mom  = FluidArray.empty(3,0);
-        mag  = MagnetArray.empty(3,0);
-        for i=1:3
-            mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, IC.mom(i,:,:,:), run, statics); 
-            if run.pureHydro == 0
-                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, IC.magnet(i,:,:,:), run, statics);
-            else
-                mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
-            end
-        end
-    end    
+     end
 
     mf1 = GPU_memavail();
     asize = mass.gridSize();
@@ -140,10 +126,10 @@ function outdirectory = imogen(srcData, resumeinfo)
 
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
-	
+
         %--- Analysis done as simulation runs ---%
 	if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
-	    inSituAnalyzer.FrameAnalyzer(mass, ener, mom(1), mom(2), mom(3), run);
+	    inSituAnalyzer.FrameAnalyzer(mass, ener, mom, mag, run);
 	end
 
         run.time.step();
