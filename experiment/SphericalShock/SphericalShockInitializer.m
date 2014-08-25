@@ -13,8 +13,7 @@ classdef SphericalShockInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        direction;      % enumerated orientation of the baseline flow.              str
-        massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
+    
     end %PUBLIC
 
 %===================================================================================================
@@ -34,6 +33,7 @@ classdef SphericalShockInitializer < Initializer
             obj.gamma            = 5/3;
             obj.runCode          = 'Sphere';
             obj.info             = 'Spherical Shock test';
+	    obj.pureHydro        = true;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
@@ -46,13 +46,10 @@ classdef SphericalShockInitializer < Initializer
             obj.bcMode.y = 'circ';
             obj.bcMode.z = 'mirror';
             
-            obj.direction        = SphericalShockInitializer.X;
-            obj.massRatio        = 8;
-	    obj.pureHydro        = true;
             obj.operateOnInput(input);
+
         end
-               
-        
+
     end%GET/SET
     
 %===================================================================================================
@@ -69,47 +66,30 @@ classdef SphericalShockInitializer < Initializer
             statics = [];
             potentialField = [];
             selfGravity = [];
-
             GIS = GlobalIndexSemantics();
 
 	   % GIS.makeDimNotCircular(1);
 	   % GIS.makeDimNotCircular(2);
 
+	    % Initialize arrays
             mass    = ones(GIS.pMySize);
             mom     = zeros([3 GIS.pMySize]);
             mag     = zeros([3 GIS.pMySize]);
 	    P 	    = ones(GIS.pMySize)*.1;
- 
-	    circle = true;
 
-	    if circle
-
-	    Pinner = 10;
+	    % Define structure variables
+	    Psphere = 10;
 	    radius = obj.grid(1)/5;
 
-
-	ndgridmethod = true;
-	if ndgridmethod
+	    % Initialize parallel vectors and logicals
 	    [X Y Z] = GIS.ndgridSetXYZ();
 	    sphere = (sqrt((X-round(obj.grid(1)/2)).^2+(Y-round(obj.grid(2)/2)).^2)<=radius);
-	    P(sphere) = Pinner;
-	end
+	    P(sphere) = Psphere;
 
-	scanxyzmethod = false;
-	if scanxyzmethod
-	    for i = 1:obj.grid(1)% Scanning X
-		for j = 1:obj.grid(2)% Scanning Y
-		    if (i-obj.grid(1)/2)^2+(j-obj.grid(2)/2)^2<=radius^2
-		    P(i,j)=Pinner;
-	            end
-	        end
-	    end
-	end
-	    end
-
-	ener = P/(obj.gamma - 1) ...     				% internal
-        + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
-        + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
+	    % Calculate energy density array
+	    ener = P/(obj.gamma - 1) ...     				% internal
+            + 0.5*squeeze(sum(mom.*mom,1))./mass ...           		% kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));                    		% magnetic
         end
     end%PROTECTED       
 %===================================================================================================    

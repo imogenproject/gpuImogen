@@ -14,7 +14,6 @@ classdef RichtmyerMeshkovInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         mach;
-	direction;      % enumerated orientation of the baseline flow.              str
         massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
     end %PUBLIC
 
@@ -48,12 +47,11 @@ classdef RichtmyerMeshkovInitializer < Initializer
             obj.bcMode.y = 'const';
             obj.bcMode.z = 'mirror';
             
-            obj.direction        = RichtmyerMeshkovInitializer.X;
             obj.massRatio        = 5;
 	    obj.pureHydro        = true;
             obj.operateOnInput(input);
+
         end
-               
         
     end%GET/SET
     
@@ -96,17 +94,14 @@ classdef RichtmyerMeshkovInitializer < Initializer
                 y=-(cos(x1)+InterfaceOffset)*obj.grid(2)*HeightModifier+obj.grid(2)/2;
 
 
-	%	equalizer = .75;
                 for i=1:(max(obj.grid));
                     mass(ceil(x(i)),ceil(y(i)))=obj.massRatio;
-                    %mom(2,ceil(x(i)),ceil(y(i)),1)=-result.v(1)*obj.massRatio*equalizer;
                     mom(2,ceil(x(i)),ceil(y(i)),1)=-result.v(1,2)*obj.massRatio;
                 end
                 for j=1:max(obj.grid);
                     for i=1:max(obj.grid)-1;
                         if mass(j,i) == obj.massRatio;
                             mass(j,i+1) = obj.massRatio;
-			    %mom(2,j,i+1,1) = -result.v(1)*obj.massRatio*equalizer;
 			    mom(2,j,i+1,1) = -result.v(1,2)*obj.massRatio;
 			end
                     end
@@ -128,7 +123,6 @@ classdef RichtmyerMeshkovInitializer < Initializer
 	if addshock
 	    shockmargin = 20;
 
-            %mom(2,:,1:(floor(min(y)-shockmargin)),1) = result.v(1)*result.rho(2);
             mom(2,:,1:(floor(min(y)-shockmargin)),1) = (result.v(1,1)-result.v(1,2))*result.rho(2);
             mass(:,1:(floor(min(y)-shockmargin)),:) = result.rho(2);
             P(:,1:(floor(min(y)-shockmargin)),:) = result.Pgas(2);
