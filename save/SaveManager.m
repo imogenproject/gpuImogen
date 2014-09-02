@@ -18,6 +18,9 @@ classdef SaveManager < handle
         save2DData % Specifies whether or not to save 2D slices.                         logical
         save3DData% Specifies whether or not to save 3D slices.                          logical
         saveCustomData % Specifies whether or not to save custom slices.                 logical
+
+        format; % ENUM.FORMAT_MAT or ENUM.FORMAT_NC
+
         done % Specifies if the code has reached the end for final save.                 logical
         previousUpdateTimes;% Saves the times of previous updates for each slice type. double(5)
                                                 %        1:        last time 1D data was saved.
@@ -277,6 +280,8 @@ classdef SaveManager < handle
                     obj.save3DData              = true;
                     obj.saveCustomData          = false;
                     obj.done                    = false;
+
+        obj.format = ENUM.FORMAT_NC;
     end
 
 %______________________________________________________________________________ updateWallDataSaves

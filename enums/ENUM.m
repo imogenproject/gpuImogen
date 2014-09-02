@@ -63,6 +63,9 @@ classdef ENUM
 	CUATOMIC_SETMIN  = 1;
 	CUATOMIC_SETMAX  = 2;
 	CUATOMIC_FIXNAN  = 3;
+
+	FORMAT_MAT  = 1;
+	FORMAT_NC   = 2;
     end
 
 end

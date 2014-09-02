@@ -226,6 +226,12 @@ try
 catch MERR, loc_initializationError('ppSave',MERR);
 end
 
+%% .format
+try
+    run.save.format = ini.saveFormat;
+catch MERR, loc_initializationError('format',MERR);
+end
+
 %% .slice                       Index Locations for slice and image save files
 
 try       

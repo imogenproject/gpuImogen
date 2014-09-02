@@ -30,6 +30,7 @@ classdef Initializer < handle
         runCode;        % Code used to specify experiment type.             string
         alias;          % Unique identifier for the run.                    string
         save;           % Enable/disable saving data to files for a run.    logical
+        saveFormat;     % Either ENUM.FORMAT_MAT or ENUM.FORMAT_NC          integer
         slice;          % Indices for slices when saving data (1x3).        int
         specSaves;      % Arrays of special iterations used to save data.   struct
         thresholdMass;  % Minium mass acted on by gravitational forces      double
@@ -98,6 +99,7 @@ classdef Initializer < handle
             obj.ppSave.cust          = 50;
             obj.profile              = false;
             obj.save                 = true;
+            obj.saveFormat           = ENUM.FORMAT_NC;
             obj.thresholdMass        = 0;
             obj.timeMax              = 1e5;
             obj.wallMax              = 1e5;

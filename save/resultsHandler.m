@@ -102,17 +102,19 @@ function resultsHandler(run, mass, mom, ener, mag)
                 sl.dim = sliceDim;
        
                 fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix, '.nc'];
+                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
                 sliceName = strcat('sx_', run.save.SLICELABELS{i}, '_', fileSuffix);
                 if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                 try
 %                  brainDamagedIdioticWorkaround(sliceName, sl);
-
-%                    save(fileName, sliceName);
-                  util_Frame2NCD(sl, fileName);
+                    switch(run.save.format);
+                        case ENUM.FORMAT_MAT; eval([sliceName '= sl;']); save(fileName, sliceName);
+                        case ENUM.FORMAT_NC;  util_Frame2NCD(sl, [fileName '.nc']);
+                    end
                 catch MERR %#ok<NASGU>
-                    fprintf('In resultsHandler:115, unable to save frame. Skipping');
+                    fprintf('In resultsHandler:115, unable to save frame. Skipping\n');
+                    fprintf('If just started resuming, this is normal for .nc because of trying to overwrite existing data files.');
                     MERR.identifier
                     MERR.message
                     MERR.cause
