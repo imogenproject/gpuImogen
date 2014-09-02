@@ -70,7 +70,7 @@ dTime = 2 * tFraction * run.time.dTime;
     if run.selfGravity.ACTIVE | run.potentialField.ACTIVE
         % Oh you better believe we need to synchronize up in dis house
         GIS = GlobalIndexSemantics();
-%        S = {mom(1), mom(2), mom(3), ener};
+        S = {mom(1), mom(2), mom(3), ener};
         for j = 1:4; for dir = 1:3
 %            iscirc = double([strcmp(S{j}.bcModes{1,dir},ENUM.BCMODE_CIRCULAR) strcmp(S{j}.bcModes{2,dir}, ENUM.BCMODE_CIRCULAR)]);
             cudaHaloExchange(S{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));

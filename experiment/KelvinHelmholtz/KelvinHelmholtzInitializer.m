@@ -1,18 +1,12 @@
 classdef KelvinHelmholtzInitializer < Initializer
+
 % Creates initial conditions for a Kelvin-Helmholtz instability, where two anti-parallel shearing 
 % flows are seeded with noise along the shearing barrier. The perturbation of the barrier causes
 % the well known Kelvin-Helmholtz instabiliity phenomena to form. It should be noted that to 
 % prevent a large shock wave from forming across the barrier the two regions, while having differing
 % mass density values, have equal pressures. This makes sense given the usual observation of this
 % phenomena in clouds, where such conditions exist.
-%
-% Unique properties for this initializer:
-%     direction      % enumerated orientation of the baseline flow.              str
-%     massRatio      % ratio of (low mass)/(high mass) for the flow regions.     double
-%     mach           % differential mach number between flow regions.            double
-%     perturb        % specifies if flow should be perturbed.                    logical
-    
-        
+
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
         X = 'x';
@@ -22,10 +16,11 @@ classdef KelvinHelmholtzInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        direction;      % enumerated orientation of the baseline flow.              str
+        mach;
+	waveHeight;
+	numWave;
+	randAmp;
         massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
-        mach;           % differential mach number between flow regions.            double
-        perturb;        % specifies if flow should be perturbed.                    logical
     end %PUBLIC
 
 %===================================================================================================
@@ -44,25 +39,26 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj = obj@Initializer();
             obj.gamma            = 5/3;
             obj.runCode          = 'KelHelm';
-            obj.info             = 'Kelvin-Helmholtz instability trial.';
+            obj.info             = 'Kelvin-Helmholtz instability test';
+	    obj.pureHydro        = true;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
             obj.cfl              = 0.4;
             obj.iterMax          = 1500;
-            obj.activeSlices.xy  = true;
+            obj.mach             = 0.25;
+	    obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
+
+	    obj.waveHeight	 = 0;
+	    obj.numWave	 	= 10;
+	    obj.randAmp	 	= .1;
 
             obj.bcMode.x = 'circ';
             obj.bcMode.y = 'circ';
-            obj.bcMode.z = 'circ';
+            obj.bcMode.z = 'mirror';
             
-            obj.direction        = KelvinHelmholtzInitializer.X;
             obj.massRatio        = 8;
-            obj.mach             = 0.25;
-            obj.perturb          = true;
-	    obj.pureHydro        = true;
-            
             obj.operateOnInput(input);
 
         end
@@ -80,141 +76,52 @@ classdef KelvinHelmholtzInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics = [];
-            potentialField = [];
-            selfGravity = [];
+            statics 		= [];
+            potentialField 	= [];
+            selfGravity 	= [];
+            GIS 		= GlobalIndexSemantics();
 
-            GIS = GlobalIndexSemantics();
+	   % GIS.makeDimNotCircular(1);
+	   % GIS.makeDimNotCircular(2);
 
-            indeces = cell(1,3);
-            for i=1:3  
-	    indeces{i} = 1:obj.grid(i); 
-	    end
-                     
-            obj.dGrid = 1./obj.grid;
-  
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-            speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
+	    % Set various variables
+            speed   		= speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0); % Gives the speed of the fluid in both directions
 
-            half    = ceil(obj.grid/2);
-	    onethird = ceil(obj.grid/3);
-	    twothird = ceil(obj.grid*2/3);
-            fields  = {obj.X, obj.Y, obj.Z};
-	    halves = false;
-	    thirds = true;
-            if halves
-	        for i=1:3
-                    if strcmpi(obj.direction,fields{i})
-                        index = indeces;                        
-                        if (i ~= 1) 
-                            index{1} = half(1):obj.grid(1);
-                        else
-                            index{2} = half(2):obj.grid(2);
-                        end
-			mass(index{:}) = 1/obj.massRatio*mass(index{:});
-                        mom(i,:,:,:)     = speed*mass;
-                        mom(i,index{:}) = -squeeze(mom(i,index{:}));
-                        obj.bcMode.(fields{i}) = 'circ';
-                    else 
-		        obj.bcMode.(fields{i}) = 'circ'; 
-		% To return to solid boundaries on top and bottom, change this back to 'const'
-                    end
-                end
-	    end
-            if thirds
-            mass    = ones(GIS.pMySize)*(1/obj.massRatio);
-                for i=1:3
-                    if strcmpi(obj.direction,fields{i})
-                        index = indeces;
-                        if (i == 1)
-                            index{2} = onethird(2):twothird(2);
-                        else
-                            index{1} = onethird(1):twothird(1);
-                        end
-                        %mass(index{:}) = 1/obj.massRatio;%*mass(index{:});
-                        mass(index{:}) = 1;%*mass(index{:});
-                        mom(i,:,:,:)     = speed*mass;
-                        mom(i,index{:}) = -squeeze(mom(i,index{:}));
-                        obj.bcMode.(fields{i}) = 'circ';
-                    else
-                        obj.bcMode.(fields{i}) = 'circ';
-                % To return to solid boundaries on top and bottom, change this back to 'const'
-                    end
-                end
+	    % Initialize Arrays
+            mass    		= ones(GIS.pMySize);
+            mom     		= zeros([3 GIS.pMySize]);
+            mag     		= zeros([3 GIS.pMySize]);
+            P	    		= ones(GIS.pMySize);
+
+	    % Initialize parallelized vectors
+	    [X Y Z] 		= GIS.ndgridSetXYZ();
+	    obj.dGrid 		= 1./obj.grid;
+	    X 			= X*obj.dGrid(1);
+	    Y 			= Y*obj.dGrid(2);
+	    Z 			= Z*obj.dGrid(3);
+
+	    % Define the wave contact in parallel
+            topwave		= .33 + obj.waveHeight*sin(obj.numWave*2*pi*X);
+            bottomwave		= .66 + obj.waveHeight*sin(obj.numWave*2*pi*X);
+	    heavy		= (Y > topwave) & (Y < bottomwave);
+
+	    % Define properties of the various regions. The high-density region in the middle moves in positive X, while the low-density regions move in negative X.
+	    mom(1,:,:,:)	= -speed;
+	    mom(1,heavy)	= speed;
+	    mass(heavy) 	= obj.massRatio;
+
+	    % Give the grid a random velocity component in both X and Y of a size 'randamp', then multiply by the mass array to give momentum.
+	    mom(1,:,:,:)	= mom(1,:,:,:) + obj.randAmp*(2*rand(size(mom(1,:,:,:)))-1);
+	    mom(2,:,:,:)	= mom(2,:,:,:) + obj.randAmp*(2*rand(size(mom(2,:,:,:)))-1);
+	    mom(1,:,:,:) 	= squeeze(mom(1,:,:,:)).*mass;
+	    mom(2,:,:,:) 	= squeeze(mom(2,:,:,:)).*mass;
+
+	    % Calculate energy density array
+	    ener = (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     	% internal
+	    + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
             end
-
-           
-	    if obj.perturb
-		
-	        runWaved = false; % Whether to have a sinusoidal wave 
-                numPerturb = 8; % How many wave peaks to have
-		heightmodifier = .005;
-
-		runRandomly = true; % Whether to seed the grid with momentum instabilities
-                RandSeedTop = .01; % The maximum amplitude of random fluctuations as a fraction of initial conditions
-                RandSeedBottom = .5;	 
-
-		maxSpeed = max(max(max(speed)));
-		maxMass = max(max(max(mass)));	
-	        maxDensity = maxFinderND(mass);
-		
-		if runWaved
-                    x=linspace(1,obj.grid(1),obj.grid(1));
-                    x1=linspace(-numPerturb*pi,numPerturb*pi,obj.grid(1));
-		    if halves
-                    y=(cos(x1)+1)*obj.grid(2)*heightmodifier+obj.grid(2)/2;
-                
-		    for i=1:(max(obj.grid));
-                        mass(ceil(x(i)),ceil(y(i)))=maxDensity;
-		        mom(1,ceil(x(i)),ceil(y(i)),1)=(maxSpeed*maxMass);
-                    end
-                    for j=1:max(obj.grid);
-                        for i=0:max(obj.grid)-2;
-                            if mass(j,max(obj.grid)-i) == maxDensity;
-                                mass(j,max(obj.grid)-i-1) = maxDensity;
-		   	        mom(1,j,max(obj.grid)-i-1,1) = (maxSpeed*maxMass);
-                            end
-                        end
-                    end
-		    end
-		    if thirds
-		% Add unnecessarily complex code here for uniform wave perturbations in the case of thirds.
-                	ytop=(cos(x1)+1)*obj.grid(2)*heightmodifier+obj.grid(2)/3;
-                	ybottom=(cos(x1)+1)*obj.grid(2)*heightmodifier+2*obj.grid(2)/3;
-			highdensity = (ytop-ybottom);
-					% Not finished!
-		    end
-		end
-		if runRandomly
-
-		    if RandSeedTop == RandSeedBottom
-		    mom(1,:,:,1) = mom(1,:,:,1) + RandSeedTop*(mom(1,:,:,1).*(2*rand(size(mom(1,:,:,1)))-1));
-		    mom(2,:,:,1) = mom(2,:,:,1) + RandSeedTop*(mom(2,:,:,1).*(2*rand(size(mom(2,:,:,1)))-1));
-                    end
-		    if halves
-                    mom(1,:,1:half(1),1) = mom(1,:,1:half(1),1) + RandSeedTop*(mom(1,:,1:half(1),1).*(2*rand(size(mom(1,:,1:half(1),1)))-1));
-                    mom(2,:,1:half(2),1) = mom(2,:,1:half(2),1) + RandSeedTop*(mom(2,:,1:half(2),1).*(2*rand(size(mom(2,:,1:half(2),1)))-1));
-
-mom(1,:,half(1):obj.grid(1),1) = mom(1,:,half(1):obj.grid(1),1) + RandSeedBottom*(mom(1,:,half(1):obj.grid(1),1).*(2*rand(size(mom(1,:,half(1):obj.grid(1),1)))-1));
-mom(2,:,half(2):obj.grid(2),1) = mom(2,:,half(2):obj.grid(2),1) + RandSeedBottom*(mom(2,:,half(2):obj.grid(2),1).*(2*rand(size(mom(2,:,half(2):obj.grid(2),1)))-1));
-		    end
-		    if thirds
-		    RandSeedOutside = RandSeedTop;
-		    RandSeedInside = RandSeedBottom;
-		    mom(:,:,:,:) = mom(:,:,:,:) + RandSeedOutside*(mom(:,:,:,:).*(2*rand(size(mom(:,:,:,:)))-1));
-		    mom(1,:,onethird(1):twothird(1),1) = mom(1,:,onethird(1):twothird(1),1) + RandSeedInside*(mom(1,:,onethird(1):twothird(1),1).*(2*rand(size(mom(1,:,onethird(1):twothird(1),1)))-1));
-                    mom(2,:,onethird(2):twothird(2),1) = mom(2,:,onethird(2):twothird(2),1) + RandSeedInside*(mom(2,:,onethird(2):twothird(2),1).*(2*rand(size(mom(2,:,onethird(2):twothird(2),1)))-1));
-		    end
-		end
-	    end
-
-	ener = (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     	% internal
-        + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
-        + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
-        end
-    end%PROTECTED       
+	end%PROTECTED       
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
     end

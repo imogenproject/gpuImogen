@@ -14,6 +14,8 @@ classdef RichtmyerMeshkovInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         mach;
+	numWave;
+	waveHeight;
         massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
     end %PUBLIC
 
@@ -43,6 +45,9 @@ classdef RichtmyerMeshkovInitializer < Initializer
 	    obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
 
+	    obj.numWave		 = 1;
+	    obj.waveHeight	 = .05;
+
             obj.bcMode.x = 'circ';
             obj.bcMode.y = 'const';
             obj.bcMode.z = 'mirror';
@@ -66,69 +71,54 @@ classdef RichtmyerMeshkovInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics = [];
-            potentialField = [];
-            selfGravity = [];
-
-            GIS = GlobalIndexSemantics();
+            statics 		= [];
+            potentialField 	= [];
+            selfGravity 	= [];
+            GIS 		= GlobalIndexSemantics();
 
 	   % GIS.makeDimNotCircular(1);
 	   % GIS.makeDimNotCircular(2);
 
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-            P	    = ones(GIS.pMySize);
-	    theta = 0;
-	    [result] = HDJumpSolver(obj.mach^(-1), theta, obj.gamma);
-	    
-	    runWaved = true;
-            if runWaved
 
-		InterfaceOffset = -4;
-		numPerturb = 1;
-		HeightModifier = .05;
+	    % Initialize Arrays
+            mass    		= ones(GIS.pMySize);
+            mom     		= zeros([3 GIS.pMySize]);
+            mag     		= zeros([3 GIS.pMySize]);
+            P	    		= ones(GIS.pMySize);
+	    result 		= HDJumpSolver(obj.mach^(-1), 0, obj.gamma);
 
-		x1=linspace(-numPerturb*pi,numPerturb*pi,obj.grid(1));
-                x=linspace(1,obj.grid(1),obj.grid(1));
-                y=-(cos(x1)+InterfaceOffset)*obj.grid(2)*HeightModifier+obj.grid(2)/2;
+	    % Initialize parallelized vectors
+	    [X Y Z] 		= GIS.ndgridSetXYZ();
+	    obj.dGrid 		= 1./obj.grid;
+	    X 			= X*obj.dGrid(1);
+	    Y 			= Y*obj.dGrid(2);
+	    Z 			= Z*obj.dGrid(3);
 
+	    % Set various variables
+	    shockmargin		= 20*obj.dGrid(2); % Places the shock a short distance away from the peak of the sinusoid
+	    vpostshock		= result.v(1,1)-result.v(1,2); % Corrects post-shock velocity to form a standing shock
+	    wavepos		= .7;	% Determines the position of the wave on the y-axis
+	    preshockcorrect	= .8;   % Makes a small correction to the whole grid to capture the jet
 
-                for i=1:(max(obj.grid));
-                    mass(ceil(x(i)),ceil(y(i)))=obj.massRatio;
-                    mom(2,ceil(x(i)),ceil(y(i)),1)=-result.v(1,2)*obj.massRatio;
-                end
-                for j=1:max(obj.grid);
-                    for i=1:max(obj.grid)-1;
-                        if mass(j,i) == obj.massRatio;
-                            mass(j,i+1) = obj.massRatio;
-			    mom(2,j,i+1,1) = -result.v(1,2)*obj.massRatio;
-			end
-                    end
-                end
-            end	
+	    % Define the wave contact in parallel
+            wave		= wavepos + obj.waveHeight*cos(obj.numWave*2*pi*X);
+	    postshock 		= (Y < wavepos - obj.waveHeight - shockmargin); 
+	    heavy		= (Y >= wave);
 
-%  result.rho = [rho1 rho2];
-%  result.v = [vx1 vx2; vy1 vy2];
-%  result.B = [0 0; 0 0; 0 0]; % For compatibility w/MHDJumpSolver output
-%  result.Pgas = [P1 P2];
-%  result.Etot = [P1/(gamma-1) + T1, P2/(gamma-1) + T2];
-%  result.theta = theta;
-%  result.sonicMach = ms;
-%  result.error = [rho2*vx2 - rho1*vx1, (rho1*vx1^2 + P1 - (rho2*vx2^2+P2)), vx1*(T1+gamma*P1/gm1) - vx2*(T2+gamma*P2/gm1)];
+	    % Set parameters for heavy fluid and subtract pre-shock velocity to maintain position on the grid
+	    mass(heavy) 	= obj.massRatio;
+	    mom(2,:,:,:) 	= -result.v(1,2)*mass;
 
+	    % Set parameters for the shocked region
+	    mass(postshock) 	= result.rho(2);
+	    mom(2,postshock) 	= vpostshock*result.rho(2);
+	    P(postshock) 	= result.Pgas(2);
 
-	% Create the shocked region 
-	addshock = true;
-	if addshock
-	    shockmargin = 20;
+	    % Make a small correction to the entire grid to capture the jet before it flows off-grid
+	    mom(2,:,:,:) 	= mom(2,:,:,:)*preshockcorrect;
 
-            mom(2,:,1:(floor(min(y)-shockmargin)),1) = (result.v(1,1)-result.v(1,2))*result.rho(2);
-            mass(:,1:(floor(min(y)-shockmargin)),:) = result.rho(2);
-            P(:,1:(floor(min(y)-shockmargin)),:) = result.Pgas(2);
-	end
-
-	    ener = P/(obj.gamma - 1) ...     				% internal
+	    % Calculate energy density array
+	    ener = P/(obj.gamma - 1) ...     					% internal
 	    + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
             + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
             end
