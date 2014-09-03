@@ -3,10 +3,10 @@ function initializeResultPaths(run, IC)
 % a Paths object contained within the ImogenManager instance for the run.
 %
 %<> run              manager object for the Imogen run								ImogenManager
-%>> serializedPaths  If present, path structure to resume from.
+%>> IC               Initial condition structure containing path, time, and grid info
 
     if isfield(IC, 'originalPathStruct')
-        run.paths.deserialize(serializedPaths);
+        run.paths.deserialize(IC.originalPathStruct); 
 	setupDirectories = 0;
     else
         run.paths.initialize();
