@@ -20,18 +20,23 @@ gp1 = gamma + 1;
 vx1 = ms*cs1;
 vy1 = vx1 * tan(theta);
 
+T1 = rho1 * (vx1^2 + vy1^2) / 2;
+
 if ms <= 1
     % The only solution is no jump
     result.rho = [1 1];
-    result.P = [1 1];
     result.v = [vx1 vx1; vy1 vy1];
+    result.B = [0 0; 0 0; 0 0];
+    result.Pgas = [1 1];
+    result.Etot = [1 1]*(P1/(gamma-1)+T1);
+    result.theta = theta;
+    result.sonicMach = ms;
     result.error = [0 0 0];
 
     return;
 end
 
 % Otherwise the shock solution
-T1 = rho1 * (vx1^2 + vy1^2) / 2;
 
   vx2 = vx1*gm1/gp1 + 2*gamma*P1/(vx1*rho1*gp1);
   vy2 = vy1;
