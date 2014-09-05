@@ -96,7 +96,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
 
     doInSitu = ini.useInSituAnalysis;
-    if doInSitu; inSituAnalyzer = ini.inSituHandle(); inSituSteps = ini.stepsPerInSitu; end
+    if doInSitu; inSituAnalyzer = ini.inSituHandle(run, mass, mom, ener, mag); inSituSteps = ini.stepsPerInSitu; end
 
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
@@ -129,7 +129,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
         %--- Analysis done as simulation runs ---%
 	if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
-	    inSituAnalyzer.FrameAnalyzer(mass, ener, mom, mag, run);
+	    inSituAnalyzer.FrameAnalyzer(run, mass, mom, ener, mag);
 	end
 
         run.time.step();

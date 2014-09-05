@@ -96,18 +96,18 @@ disp('There should be help here... I''ll write some once the code is not evolvin
         predictW = pi/mean(diff(zeta));
        
         optfunc = @(q, x) q(1)+q(2)*exp(x*q(3)).*cos(x*q(4)+q(5));
-        cfit = lsqcurvefit(optfunc, [mean(xfrontmean) 4 .1 predictW 0], tau, xfrontmean);
+     %   cfit = lsqcurvefit(optfunc, [mean(xfrontmean) 4 .1 predictW 0], tau, xfrontmean);
 
         % Plot the mean front position over time; This should allow us to track radial oscillations:
         figure();
-        plot(tau, xfrontmean-mean(xfrontmean),'r-','linewidth',2);
+      %  plot(tau, xfrontmean-mean(xfrontmean),'r-','linewidth',2);
         hold on;
-        plot(tau, optfunc(cfit, tau)-cfit(1),'g*');
-        obj.labelplot('Normalized time elapsed', 'Shock front position fluctuation', ...
-            sprintf('Fluctuations in average shock front position over time.\nMean position=%f',mean(xfrontmean)));
-        grid
+       % plot(tau, optfunc(cfit, tau)-cfit(1),'g*');
+%        obj.labelplot('Normalized time elapsed', 'Shock front position fluctuation', ...
+%            sprintf('Fluctuations in average shock front position over time.\nMean position=%f',mean(xfrontmean)));
+%        grid
         
-        annotation(gcf(),'textbox',[.2 .2 .2 .1], 'string',sprintf('Curve fit: %4.3f + %4.3f exp(%4.3f\\tau) cos(%4.3f\\tau+%4.3f)', cfit(1), cfit(2), cfit(3), cfit(4), cfit(5)));
+%        annotation(gcf(),'textbox',[.2 .2 .2 .1], 'string',sprintf('Curve fit: %4.3f + %4.3f exp(%4.3f\\tau) cos(%4.3f\\tau+%4.3f)', cfit(1), cfit(2), cfit(3), cfit(4), cfit(5)));
 
         figure();
         imagesc(obj.frameX, tau, obj.rhobar);
