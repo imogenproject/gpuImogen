@@ -107,10 +107,9 @@ classdef AdvectionInitializer < Initializer
             if numel(velocity) == 1; velocity = [velocity 0 0]; end
             speed = norm(velocity);
 
-            mom(1,:,:,:) = mass*velocity(1);
-            mom(2,:,:,:) = mass*velocity(2);
-            mom(3,:,:,:) = mass*velocity(3);
-            ener         = ener + .5*(squeeze(sum(mom.^2,1))./mass + .5*squeeze(sum(mag.^2,1)));
+            mom(1,:,:,:) = velocity(1);
+            mom(2,:,:,:) = velocity(2);
+            mom(3,:,:,:) = velocity(3);
 
             % omega = c_wave k
             % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
@@ -154,11 +153,11 @@ classdef AdvectionInitializer < Initializer
             %     E   <- E + (d[.5 rho v^2]     ) + d[P] / (gamma-1)
             %   = E   <- E + (.5 v^2 drho + p dv) + c_s^2 drho / (gamma-1)
             mass = mass + drho;
-            ener = ener + .5*speed^2*drho + squeeze(sum(mom.*dV + mag.*dB,1)) + deps / (obj.gamma - 1);
-            for i = 1:3
-                mom(i,:,:,:) = squeeze(mom(i,:,:,:)).*(1 + drho./mass) + mass.*squeeze(dV(i,:,:,:));
-            end
+	    for i = 1:3
+                mom(i,:,:,:) = squeeze(mom(i,:,:,:) + dV(i,:,:,:)).*mass; % p = v*(rho+drho)+dv(rho+drho)==p + v*drho + rho*dv +drho*dv
+	    end
             mag  = mag  + dB;
+            ener = ener + deps / (obj.gamma - 1) + 0.5*squeeze(sum(mom.^2,1))./mass + 0.5*squeeze(sum(mag.^2,1));
 
             % forward speed = background speed + wave speed; Sim time = length/speed
             if abs(wavespeed) < .05*c_s; wavespeed = c_s; end
