@@ -33,13 +33,13 @@ dTime = 2 * tFraction * run.time.dTime;
         % position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
         % Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
         lowleft = GIS.cornerIndices();
-        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, dTime, GIS.topology.nproc) );
+        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass, mom(1), mom(2), mom(3), ener, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, dTime, GIS.topology.nproc) );
     end
 
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(mass.gputag, ener.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, run.potentialField.field.GPU_MemPtr, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+        cudaSourceScalarPotential(mass, ener, mom(1), mom(2), mom(3), run.potentialField.field, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
     end
 
     % FIXME: This sequence is only first order accurate in the energy equation
