@@ -20,15 +20,15 @@ function [result, aux] = pressure(mode, run, mass, momvel, ener, mag)
     if run.useGPU
         switch( mode )
             case ENUM.PRESSURE_TOTAL_AND_SOUND
-                [result aux] = cudaMHDKernels(5, mass.gputag, ener.gputag, momvel(1).gputag, momvel(2).gputag, momvel(3).gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, GAMMA);                
+                [result aux] = cudaMHDKernels(5, mass, ener, momvel(1), momvel(2), momvel(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, GAMMA);                
             case ENUM.PRESSURE_SOUND_SPEED
-                result = cudaMHDKernels(1, mass.gputag, ener.gputag, momvel(1).gputag, momvel(2).gputag, momvel(3).gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, GAMMA);
+                result = cudaMHDKernels(1, mass, ener, momvel(1), momvel(2), momvel(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, GAMMA);
             case ENUM.PRESSURE_GAS
-                result = cudaMHDKernels(2, mass.gputag, ener.gputag, momvel(1).gputag, momvel(2).gputag, momvel(3).gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, GAMMA);
+                result = cudaMHDKernels(2, mass, ener, momvel(1), momvel(2), momvel(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, GAMMA);
             case ENUM.PRESSURE_TOTAL
-                result = cudaMHDKernels(3, mass.gputag, ener.gputag, momvel(1).gputag, momvel(2).gputag, momvel(3).gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, GAMMA);
+                result = cudaMHDKernels(3, mass, ener, momvel(1), momvel(2), momvel(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, GAMMA);
             case ENUM.PRESSURE_MAGNETIC
-                result = cudaMHDKernels(4, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag);
+                result = cudaMHDKernels(4, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag);
         end
 
         return;
