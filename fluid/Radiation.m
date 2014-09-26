@@ -68,7 +68,7 @@ classdef Radiation < handle
             end
 
             if strcmp(obj.strengthMethod, 'inimax')         
-                unscaledRadiation = GPU_Type(cudaFreeRadiation(mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, mag(1).cellMag.gputag, mag(2).cellMag.gputag, mag(3).cellMag.gputag, run.GAMMA, obj.exponent, 1));
+                unscaledRadiation = GPU_Type(cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, run.GAMMA, obj.exponent, 1));
             
                 kineticEnergy     = 0.5*(mom(1).array .* mom(1).array + mom(2).array .* mom(2).array ...
                                         + mom(3).array .* mom(3).array) ./ mass.array;
