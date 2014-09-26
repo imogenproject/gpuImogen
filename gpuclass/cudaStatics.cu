@@ -53,17 +53,15 @@ __global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
-void setBoundarySAS(double *gpuarray, ArrayMetadata *amd, int side, int direction, int sas);
+void setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if( (nlhs != 0) || (nrhs != 3)) { mexErrMsgTxt("cudaStatics operator is cudaStatics(ImogenArray, blockdim, direction)"); }
 
   CHECK_CUDA_ERROR("entering cudaStatics");
 
-  ArrayMetadata ama, amf;
-
-  /* This will force an error exit if invalid */
-  double **array = getGPUSourcePointers(prhs, &ama, 0, 0);
+  MGArray phi, statics;
+  int worked = accessMGArrays(prhs, 0, 0, &phi);
 
  /* Grabs the whole boundaryData struct from the ImogenArray class */
   mxArray *boundaryData = mxGetProperty(prhs[0], 0, "boundaryData");
@@ -72,7 +70,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   /* The statics describe "solid" structures which we force the grid to have */
   mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
   if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
-  double **statics = getGPUSourcePointers((const mxArray **)(&gpuStatics), &amf, 0, 0);
+  worked = accessMGArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
 
   /* The indexPermute property tells us how the array's indices are currently oriented. */
   mxArray *permArray =  mxGetProperty(prhs[0], 0, "indexPermute");
@@ -96,10 +94,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
     }
 
-  /* Every call results in applying specials */
-  cukern_applySpecial_fade<<<griddim, blockdim>>>(array[0], statics[0] + staticsOffset, staticsNumel, amf.dim[0]);
+  PAR_WARN(phi)
 
-  CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &ama, 0, "cuda statics application");
+  /* Every call results in applying specials */
+  cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, statics.numel, statics.dim[0]);
+
+  CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
 
   /* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
   int vectorComponent = (int)(*mxGetPr(mxGetProperty(prhs[0], 0, "component")) );
@@ -123,8 +123,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     /* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
          'type plus  x', 'type plus y',  'type plus z'};
-       Yes, strings in a cell array. But hey, you can totally read that off by eye if you're
-       in Matlab debug mode and the desire to print it out strikes you. */
+       Yes, strings in a cell array. */
 
     mxArray *bcstr; char *bs;
     
@@ -135,23 +134,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
       // Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
       if(strcmp(bs, "mirror") == 0)
-        setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], vectorComponent == trueDirect);
+        setBoundarySAS(&phi, d, (int)directionToSet[j], vectorComponent == trueDirect);
        
       // Extrapolates f(b+x) = f(b)
       if(strcmp(bs, "const") == 0) {
-    	  setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], 2);
+    	  setBoundarySAS(&phi, d, (int)directionToSet[j], 2);
       }
 
       // Extrapolates f(b+x) = f(b) + x f'(b)
       if(strcmp(bs, "linear") == 0) {
-    	  setBoundarySAS(array[0], &ama, d, (int)directionToSet[j], 3);
+    	  setBoundarySAS(&phi, d, (int)directionToSet[j], 3);
       }
       
     }
   }
-
-  free(array);
-  free(statics);
 
 }
 
@@ -164,7 +160,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
    *: As passed, assuming ImogenArray's indexPermute has been handled for us.
    */
 
-void setBoundarySAS(double *gpuarray, ArrayMetadata *amd, int side, int direction, int sas)
+void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 {
 dim3 blockdim, griddim;
 
@@ -209,28 +205,28 @@ switch(direction) {
     blockdim.x = 3;
     blockdim.y = 16;
     blockdim.z = 8;
-    griddim.x = amd->dim[1] / blockdim.y; griddim.x += (griddim.x*blockdim.y < amd->dim[1]);
-    griddim.y = amd->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < amd->dim[2]);
+    griddim.x = phi->dim[1] / blockdim.y; griddim.x += (griddim.x*blockdim.y < phi->dim[1]);
+    griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
     }; break;
   case 2: {
     blockdim.x = 16;
     blockdim.y = 1;
     blockdim.z = 16;
-    griddim.x = amd->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < amd->dim[0]);
-    griddim.y = amd->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < amd->dim[2]);
+    griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
+    griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
     } break;
   case 3: {
     blockdim.x = 16;
     blockdim.y = 16;
     blockdim.z = 1;
-    griddim.x = amd->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < amd->dim[0]);
-    griddim.y = amd->dim[1] / blockdim.y; griddim.y += (griddim.y*blockdim.y < amd->dim[1]);
+    griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
+    griddim.y = phi->dim[1] / blockdim.y; griddim.y += (griddim.y*blockdim.y < phi->dim[1]);
     } break;
   }
 
-bckernel<<<griddim, blockdim>>>(gpuarray, amd->dim[0], amd->dim[1], amd->dim[2]);
+bckernel<<<griddim, blockdim>>>(phi->devicePtr[0], phi->dim[0], phi->dim[1], phi->dim[2]);
 
-CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, amd, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
+CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
 
 return;
 }

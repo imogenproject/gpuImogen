@@ -49,61 +49,58 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   if((nlhs != 1) || (nrhs != 2)) { mexErrMsgTxt("cudaArrayRotate operator is rotated = cudaArrayRotate(array, dir)\n"); }
   CHECK_CUDA_ERROR("entering cudaArrayRotate");
 
-  ArrayMetadata amd;
-  double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
+  MGArray phi;
+  MGArray clone;
+  int worked = accessMGArrays(prhs, 0, 0, &phi);
 
-  int64_t oldref[5];
-  arrayMetadataToTag(&amd, &oldref[0]);
+  PAR_WARN(phi)
+
+  clone = phi;
+  MGArray *dest;
 
   int indExchange = (int)*mxGetPr(prhs[1]);
 
-  switch(oldref[1]) { /* on # dimensions */
-    case 3:
+  if(phi.dim[2] > 1) { /* 2-dimensional */
       if(indExchange == 2) {
-        gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-        gridsize.y = amd.dim[1] / BDIM; if(gridsize.y*BDIM < amd.dim[1]) gridsize.y++;
+        gridsize.x = phi.dim[0] / BDIM; if(gridsize.x*BDIM < phi.dim[0]) gridsize.x++;
+        gridsize.y = phi.dim[1] / BDIM; if(gridsize.y*BDIM < phi.dim[1]) gridsize.y++;
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        ArrayMetadata newAMD = amd;
-        newAMD.dim[1] = amd.dim[0];
-        newAMD.dim[0] = amd.dim[1];
-        double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
-
-        cukern_ArrayExchangeY<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], amd.dim[2]);
+        clone.dim[1] = phi.dim[0];
+        clone.dim[0] = phi.dim[1];
+        dest = createMGArrays(plhs, 1, &clone);
+        cukern_ArrayExchangeY<<<gridsize, blocksize>>>(phi.devicePtr[0], dest->devicePtr[0], phi.dim[0], phi.dim[1], phi.dim[2]);
         }
       if(indExchange == 3) {
-        gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-        gridsize.y = amd.dim[2] / BDIM; if(gridsize.y*BDIM < amd.dim[2]) gridsize.y++;
+        gridsize.x = phi.dim[0] / BDIM; if(gridsize.x*BDIM < phi.dim[0]) gridsize.x++;
+        gridsize.y = phi.dim[2] / BDIM; if(gridsize.y*BDIM < phi.dim[2]) gridsize.y++;
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        ArrayMetadata newAMD = amd;
-        newAMD.dim[0] = amd.dim[2];
-        newAMD.dim[2] = amd.dim[0];
-        double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
-
-        cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1], amd.dim[2]);
+        clone.dim[2] = phi.dim[0];
+        clone.dim[0] = phi.dim[2];
+        dest = createMGArrays(plhs, 1, &clone);
+        cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(phi.devicePtr[0], dest->devicePtr[0], phi.dim[0], phi.dim[1], phi.dim[2]);
         }
-      break;
-    case 2:
-      gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-      gridsize.y = amd.dim[1] / BDIM; if(gridsize.y*BDIM < amd.dim[1]) gridsize.y++;
+    } else {
+      gridsize.x = phi.dim[0] / BDIM; if(gridsize.x*BDIM < phi.dim[0]) gridsize.x++;
+      gridsize.y = phi.dim[1] / BDIM; if(gridsize.y*BDIM < phi.dim[1]) gridsize.y++;
 
       blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-      ArrayMetadata newAMD = amd;
-      newAMD.dim[0] = amd.dim[1];
-      newAMD.dim[1] = amd.dim[0];
-      double **destPtr = makeGPUDestinationArrays(&newAMD, plhs, 1);
+      clone.dim[1] = phi.dim[0];
+      clone.dim[0] = phi.dim[1];
+      dest = createMGArrays(plhs, 1, &clone);
 
-      cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], destPtr[0], amd.dim[0], amd.dim[1]);
+      cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(phi.devicePtr[0], dest->devicePtr[0], phi.dim[0], phi.dim[1]);
 
-      break;      
     }
 
+free(dest);
+
 cudaError_t epicFail = cudaGetLastError();
-if(epicFail != cudaSuccess) CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, oldref[1], "array transposition");
+//if(epicFail != cudaSuccess) CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, oldref[1], "array transposition");
 
 }
 

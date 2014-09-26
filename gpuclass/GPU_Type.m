@@ -28,6 +28,7 @@ classdef GPU_Type < handle
         numdims;    % integer, 2 or 3 depending on how many nonzero extents exist
                     % This is for compatibility with matlab,
                     % even if it is mathematically nonsense to claim [] has 2 dimensions
+        manager;
     end
 
     methods
@@ -38,6 +39,8 @@ classdef GPU_Type < handle
             if nargin > 0
                 obj.handleDatain(arrin);
             end
+
+            obj.manager = GPUManager.getInstance();
 
         end % Constructor
 
@@ -56,7 +59,7 @@ classdef GPU_Type < handle
         function result = get.array(obj)
             % Return blank if not allocated, or dump the GPU array to CPU if we are
             if obj.allocated == false; result = []; return; end
-            result = GPU_cudamemcpy(obj.GPU_MemPtr);
+            result = GPU_download(obj.GPU_MemPtr);
         end
 
         function result = eq(obj)
@@ -90,10 +93,7 @@ classdef GPU_Type < handle
         % Cookie-cutter operations for basic math interpertation
         % Warning, these are very much suboptimal due to excessive memory BW use        
         function y = plus(a, b);
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-
-            y = GPU_Type(cudaBasicOperations(q, r, 1)); return;
+            y = GPU_Type(cudaBasicOperations(a, b, 1)); return;
 
 %            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 1)); return;  end
 %            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 1)); return; end;
@@ -185,6 +185,7 @@ classdef GPU_Type < handle
     methods (Access = private)
 
         function handleDatain(obj, arrin)
+            gm = GPUManager.getInstance();
             if isa(arrin, 'double')
                 if isempty(arrin); obj.clearArray(); return; end
 
@@ -194,22 +195,21 @@ classdef GPU_Type < handle
                 if numel(obj.asize) == 2; obj.asize(3) = 1; end
                 obj.numdims = ndims(arrin);
 
-                obj.GPU_MemPtr = GPU_cudamemcpy(arrin);
+                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [gm.useHalo gm.partitionDir]);
             elseif isa(arrin, 'GPU_Type') == 1
-                % Make a copy of another GPU double
                 obj.allocated = true;
                 obj.asize     = arrin.asize;
                 obj.numdims   = arrin.numdims;
 
-                obj.GPU_MemPtr = GPU_cudamemcpy(arrin.GPU_MemPtr, 1);
-            elseif (isa(arrin, 'int64') == 1) && (numel(arrin) == 5)
+                obj.GPU_MemPtr = GPU_clone(arrin.GPU_MemPtr);
+            elseif (isa(arrin, 'int64') == 1)
                 % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
                 obj.allocated = true;
                 obj.GPU_MemPtr = arrin;
 
                 q = double(arrin);
-                obj.numdims = q(2);
-                obj.asize = q(3:5)';
+                obj.numdims = 3; if q(3)==1; obj.numdims = 2; end
+                obj.asize = q(1:3)';
             else
                  error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
             end

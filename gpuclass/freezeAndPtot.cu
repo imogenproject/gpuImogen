@@ -45,30 +45,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int nArrays;
   if(ispurehydro) { nArrays = 5; } else { nArrays = 8; }
 
-  ArrayMetadata amd;
-  double **args = getGPUSourcePointers(prhs, &amd, 0, nArrays-1);
+  MGArray fluid[8];
+  accessMGArrays(prhs, 0, nArrays-1, fluid);
 
   dim3 arraySize;
-  arraySize.x = amd.dim[0];
-  arraySize.y = amd.dim[1];
-  arraySize.z = amd.dim[2];
+  arraySize.x = fluid->dim[0];
+  arraySize.y = fluid->dim[1];
+  arraySize.z = fluid->dim[2];
   dim3 blocksize, gridsize;
 
   blocksize.x = BLOCKDIM; blocksize.y = blocksize.z = 1;
   gridsize.x = arraySize.y;
   gridsize.y = arraySize.z;
 
-  int64_t oldref[5];
-  arrayMetadataToTag(&amd, &oldref[0]);
-  double **ptot = makeGPUDestinationArrays(&amd, plhs, 1); // ptotal array
+  MGArray clone;
+  MGArray *POut;
+  MGArray *cfOut;
 
-  ArrayMetadata cfmeta = amd;
-  cfmeta.ndims--;
-  cfmeta.dim[0] = arraySize.y;
-  cfmeta.dim[1] = arraySize.z;
-  cfmeta.dim[2] = 1;
-
-  double **freezea = makeGPUDestinationArrays(&cfmeta, &plhs[1], 1); // freeze array
+  clone = fluid[0];
+  clone.dim[0] = arraySize.y;
+  clone.dim[1] = arraySize.z;
+  clone.dim[2] = 1;
+  POut = createMGArrays(plhs, 1, fluid); 
+  cfOut= createMGArrays(plhs+1, 1, &clone);
 
   double hostgf[6];
   double gam = *mxGetPr(prhs[8]);
@@ -80,20 +79,49 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     hostgf[5] = (ALFVEN_CSQ_FACTOR - .5*gam*(gam-1.0));
   
   cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
+  CHECK_CUDA_ERROR("cfreeze symbol upload");
 
+  int i;
+  int sub[6];
 
   if(ispurehydro) {
-    cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4]     , freezea[0], ptot[0], arraySize.x);
-//                                                   (*rho,    *E,      *px,     *py,     *pz,      gam,              *freeze,  *ptot,  nx)
-  } else {
-    cukern_FreezeSpeed_mhd<<<gridsize, blocksize>>>(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]     , freezea[0], ptot[0], arraySize.x);
-//                                                 (*rho,    *E,      *px,     *py,     *pz,     *bx,     *by,     *bz,     gam,              *freeze,  *ptot,  nx)
-  }
-  free(ptot);
-  free(args);
-  free(freezea);
+    for(i = 0; i < fluid->nGPUs; i++) {
+      cudaSetDevice(fluid->deviceID[i]);
+      CHECK_CUDA_ERROR("cudaSetDevice()");
+      calcPartitionExtent(fluid, i, sub);
+      cukern_FreezeSpeed_hydro<<<gridsize, blocksize>>>(
+		fluid[0].devicePtr[i],
+		fluid[1].devicePtr[i],
+		fluid[2].devicePtr[i],
+		fluid[3].devicePtr[i],
+		fluid[4].devicePtr[i],
+		cfOut->devicePtr[i], POut->devicePtr[i], arraySize.x);
+      CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Freeze speed hydro");
+      
+      }
 
-  CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, ispurehydro, "Getting freezing speed");
+//  (*rho,    *E,      *px,     *py,     *pz,      gam,              *freeze,  *ptot,  nx)
+  } else {
+    for(i = 0; i < fluid->nGPUs; i++) {
+      cudaSetDevice(fluid->deviceID[i]);
+      calcPartitionExtent(fluid, i, sub);
+      cukern_FreezeSpeed_mhd<<<gridsize, blocksize>>>(
+                fluid[0].devicePtr[i],
+                fluid[1].devicePtr[i],
+                fluid[2].devicePtr[i],
+                fluid[3].devicePtr[i],
+                fluid[4].devicePtr[i],
+                fluid[5].devicePtr[i],
+                fluid[6].devicePtr[i],
+                fluid[7].devicePtr[i],
+                cfOut->devicePtr[i], POut->devicePtr[i], arraySize.x);
+  CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "freeze speed MHD");
+//     (*rho, *E,   *px,  *py,  *pz,  *bx,  *by,  *bz,  gam,     *freeze,  *ptot,  nx)
+    }
+  }
+
+  free(POut);
+  free(cfOut);
 
 }
 

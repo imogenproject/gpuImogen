@@ -44,45 +44,56 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   CHECK_CUDA_ERROR("entering directionalMaxFinder");
 
-  ArrayMetadata amd;
+  int i; 
+  int sub[6];
 
 switch(nrhs) {
   case 3: {
-  double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);
-
-  double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
+  MGArray in[2];
+  int worked   = accessMGArrays(prhs, 0, 1, in);
+  MGArray *out = createMGArrays(plhs, 1, in);
 
   dim3 blocksize, gridsize, dims;
 
-  dims.x = amd.dim[0];
-  dims.y = amd.dim[1];
-  dims.z = amd.dim[2];
+  for(i = 0; i < in->nGPUs; i++) {
+    calcPartitionExtent(in, i, sub);
+    dims.x = sub[3];
+    dims.y = sub[4];
+    dims.z = sub[5];
 
-  blocksize.x = blocksize.y = BLOCKDIM; blocksize.z =1;
+    blocksize.x = blocksize.y = BLOCKDIM; blocksize.z =1;
 
-  switch((int)*mxGetPr(prhs[2])) {
-    case 1:
-	gridsize.x = dims.y / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.y) gridsize.x++;
-	gridsize.y = dims.z / BLOCKDIM; if (gridsize.y * BLOCKDIM < dims.z) gridsize.y++;
-	break;
-    case 2:
+    switch((int)*mxGetPr(prhs[2])) {
+      case 1:
+        gridsize.x = dims.y / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.y) gridsize.x++;
+        gridsize.y = dims.z / BLOCKDIM; if (gridsize.y * BLOCKDIM < dims.z) gridsize.y++;
+        break;
+      case 2:
         gridsize.x = dims.x / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.x) gridsize.x++;
         gridsize.y = dims.z / BLOCKDIM; if (gridsize.y * BLOCKDIM < dims.z) gridsize.y++;
-	break;
-    case 3:
-	gridsize.x = dims.x / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.x) gridsize.x++;
+        break;
+      case 3:
+        gridsize.x = dims.x / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.x) gridsize.x++;
         gridsize.y = dims.y / BLOCKDIM; if (gridsize.y * BLOCKDIM < dims.y) gridsize.y++;
-	break;
-    default: mexErrMsgTxt("Direction passed to directionalMaxFinder is not in { 1,2,3 }");
-  }
+        break;
+      default: mexErrMsgTxt("Direction passed to directionalMaxFinder is not in { 1,2,3 }");
+    }
   
   //printf("%i %i %i %i %i %i\n", gridsize.x, gridsize.y, gridsize.z, blocksize.x, blocksize.y, blocksize.z);
-  cukern_DirectionalMax<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], (int)*mxGetPr(prhs[2]), dims.x, dims.y, dims.z);
-  CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "directional max finder");
+    cudaSetDevice(in->deviceID[i]);
+    CHECK_CUDA_ERROR("setCudaDevice()");
+    cukern_DirectionalMax<<<gridsize, blocksize>>>(in[0].devicePtr[i], in[1].devicePtr[i], out->devicePtr[i], (int)*mxGetPr(prhs[2]), dims.x, dims.y, dims.z);
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, in, i, "directionalMaxFinder(a,b,direct)");
+  }
+
+  // FIXME: Must now check if prhs[2] == in->partitionDir and them max across partitions
+
+  free(out);
 
   } break;
   case 1: {
-    double **arr  = getGPUSourcePointers(prhs, &amd, 0, 0);
+    MGArray a;
+    accessMGArrays(prhs, 0, 0, &a);
 
     dim3 blocksize, gridsize;
     blocksize.x = 256; blocksize.y = blocksize.z = 1;
@@ -90,14 +101,17 @@ switch(nrhs) {
     gridsize.x = 64;
     gridsize.y = gridsize.z =1;
 
+    // Allocate nGPUs * gridsize) elements of pinned memory
+    // Results wil be conveniently waiting on the CPU for us when we're done
     double *blkA;
-    cudaMalloc(&blkA, gridsize.x * sizeof(double));
+    cudaMallocHost(&blkA, gridsize.x * a.nGPUs);
 
-    cukern_GlobalMax<<<gridsize, blocksize>>>(arr[0], amd.numel, blkA);
-
-    double maxes[gridsize.x];
-    cudaMemcpy(&maxes[0], blkA, sizeof(double)*gridsize.x, cudaMemcpyDeviceToHost);
-    cudaFree(blkA);
+    int i;
+    for(i = 0; i < a.nGPUs; i++) {
+      cudaSetDevice(a.deviceID[i]);
+      CHECK_CUDA_ERROR("calling cudaSetDevice()");
+      cukern_GlobalMax<<<gridsize, blocksize>>>(a.devicePtr[i], a.partNumel[i], blkA+gridsize.x*i);
+    }
 
     mwSize dims[2];
     dims[0] = 1;
@@ -105,16 +119,14 @@ switch(nrhs) {
     plhs[0] = mxCreateNumericArray (2, dims, mxDOUBLE_CLASS, mxREAL);
 
     double *d = mxGetPr(plhs[0]);
-    d[0] = maxes[0];
-
-    int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > d[0]) d[0] = maxes[i];  }
-
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "cuda global max kern");
-
+    d[0] = *blkA;
+    for(i = 1; i < a.nGPUs*gridsize.x; i++) { if(blkA[i] > *d) *d = blkA[i]; }
+    cudaFreeHost(blkA);
   } break;
   case 5: {
     // Get input arrays: [rho, c_s, px, py, pz]
-    double **arraysIn = getGPUSourcePointers(prhs, &amd, 0, 4); 
+    MGArray fluid[5];
+    int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
 
     dim3 blocksize, gridsize;
     blocksize.x = GLOBAL_BLOCKDIM; blocksize.y = blocksize.z = 1;
@@ -123,27 +135,29 @@ switch(nrhs) {
     gridsize.x = 64;
     gridsize.y = gridsize.z =1;
 
-    // Allocate space for each block to print its max into
+    // Allocate enough pinned emory
     double *blkA; int *blkB;
-    cudaMalloc(&blkA, gridsize.x * sizeof(double));
-    cudaMalloc(&blkB, gridsize.x * sizeof(int));
-    // Searches (blockdim*griddim) at a time until getting to the end.
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL malloc");
+    int hblockElements = gridsize.x * fluid->nGPUs;
 
-    cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(arraysIn[0], arraysIn[1], arraysIn[2], arraysIn[3], arraysIn[4], amd.numel, blkA, blkB);
+    cudaMallocHost((void **)&blkA, hblockElements * sizeof(double));
+    CHECK_CUDA_ERROR("CFL malloc double");
+    cudaMallocHost((void **)&blkB, hblockElements * sizeof(int));
+    CHECK_CUDA_ERROR("CFL malloc ints");
 
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL max finder");
-
-
-    // Copy the result back to the CPU for final analysis of the 64 potential maxima
-    double maxes[gridsize.x]; int maxIndices[gridsize.x];
-    cudaMemcpy(&maxes[0], blkA, sizeof(double)*gridsize.x, cudaMemcpyDeviceToHost);
-    cudaMemcpy(&maxIndices[0], blkB, sizeof(int)*gridsize.x, cudaMemcpyDeviceToHost);
-
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, nrhs, "CFL max finder memcopy");
-
-    cudaFree(blkA);
-    cudaFree(blkB);
+    int i;
+    for(i = 0; i < fluid->nGPUs; i++) {
+        cudaSetDevice(fluid->deviceID[i]);
+        CHECK_CUDA_ERROR("cudaSetDevice()");
+        cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(
+		fluid[0].devicePtr[i],
+		fluid[1].devicePtr[i],
+		fluid[2].devicePtr[i],
+		fluid[3].devicePtr[i],
+		fluid[4].devicePtr[i],
+		fluid[0].partNumel[i], blkA + i*gridsize.x, blkB + i*gridsize.x);
+        CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &fluid[0], i, "CFL max finder");
+        cudaDeviceSynchronize();
+    }
 
     mwSize dims[2];
     dims[0] = 1;
@@ -153,13 +167,18 @@ switch(nrhs) {
 
     double *maxout = mxGetPr(plhs[0]);
     double *dirout = mxGetPr(plhs[1]);
-    maxout[0] = maxes[0];
-    dirout[0] = (double)maxIndices[0];
+    maxout[0] = blkA[0];
+    dirout[0] = (double)blkB[0];
     
-    int i; for(i = 1; i < gridsize.x; i++) { if(maxes[i] > maxout[0]) { maxout[0] = maxes[i]; dirout[0] = maxIndices[0]; }  }
+    for(i = 1; i < fluid->nGPUs*gridsize.x; i++) {
+        if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; } 
+    }
+
+    cudaFreeHost(blkA);
+    cudaFreeHost(blkB);
 
   } break;
-  }
+}
 
 }
 

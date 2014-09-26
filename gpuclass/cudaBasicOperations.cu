@@ -62,8 +62,8 @@ __global__ void cukern_harmonicmean(double *a, double *b, double *y, int n) { KE
     double al = a[addr];
     double bl = b[addr];
 
-    double s = al + bl;
-    if(abs(s) < 1e-14) { y[addr] = 0.0; } else { al = al*bl; if(al > 0) { y[addr] = al / s; } else { y[addr] = 0; } } 
+    double p = al*bl;
+    if(p <= 0.0) { y[addr] = 0.0; } else { y[addr] = .5*p/(al+bl); }
     }
 
 
@@ -85,100 +85,102 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   dim3 blocksize; blocksize.x = BLEN; blocksize.y = blocksize.z = 1;
   dim3 gridsize;
-  ArrayMetadata amd;
 
   if((nlhs == 1) && (nrhs == 2)) {
     // a = f(b) operators
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-    double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
 
-    gridsize = setLaunchParams(&amd.dim[0]);
+    void *ktable[15] = { (void *)cukern_sqrt, (void *)cukern_log, (void *)cukern_exp, (void *)cukern_sin, (void *)cukern_cos, (void *)cukern_tan, (void *)cukern_asin, (void *)cukern_acos, (void *)cukern_atan, (void *)cukern_sinh, (void *)cukern_cosh, (void *)cukern_tanh, (void *)cukern_asinh, (void *)cukern_acosh, (void *)cukern_atanh};
 
-int op = (int)*mxGetPr(prhs[1]);
+    int op = (int)*mxGetPr(prhs[1]);
+    if((op < 1) || (op > 15)) mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a) operation code invalid");
 
-CHECK_CUDA_ERROR("Entering cudaBasicOperations");
+    void (* baskern)(double *, double *, int) = (void (*)(double *, double *, int))ktable[op-1];
 
-    switch(op) {
-      case 1: cukern_sqrt<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 2: cukern_log<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 3: cukern_exp<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 4: cukern_sin<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 5: cukern_cos<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 6: cukern_tan<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 7: cukern_asin<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 8: cukern_acos<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 9: cukern_atan<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 10: cukern_sinh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 11: cukern_cosh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 12: cukern_tanh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 13: cukern_asinh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 14: cukern_acosh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
-      case 15: cukern_atanh<<<gridsize, blocksize>>>(srcs[0], dest[0], amd.numel); break;
+    MGArray srcArray;
+    MGArray *dstArray;
+    int worked = accessMGArrays(prhs, 0, 0, &srcArray);
+    dstArray = createMGArrays(plhs, 1, &srcArray);
 
-      default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a) operation code invalid"); break;
-      }
-     return;
+    int j;
+    int sub[6];
+    for(j = 0; j < srcArray.nGPUs; j++) {
+        calcPartitionExtent(&srcArray, j, &sub[0]);
+        gridsize = setLaunchParams(sub+3);
+        cudaSetDevice(srcArray.deviceID[j]);
+        baskern<<<gridsize, blocksize>>>(srcArray.devicePtr[j], dstArray->devicePtr[j], srcArray.partNumel[j]);
+    }
+
+    free(dstArray);
+    return;
   }
 
   if((nlhs == 1) && (nrhs == 3)) {
     // y = f(a, b) operators
-    double **srcs;
-    double **dest;
-    double n;
+    MGArray srcA, srcB;
+    MGArray *dest;
     int optype = 0;
+    int worked = 0;
+    double n;
 
-    if((mxGetClassID(prhs[0]) == mxINT64_CLASS) && (mxGetClassID(prhs[1]) == mxDOUBLE_CLASS)) {
+    if(mxGetClassID(prhs[1]) == mxDOUBLE_CLASS) {
       n = *mxGetPr(prhs[1]);
-      srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-      dest = makeGPUDestinationArrays(&amd, plhs, 1);
+      worked = accessMGArrays(prhs, 0, 0, &srcA);
       optype = 1;
-      }
-
-    if((mxGetClassID(prhs[0]) == mxDOUBLE_CLASS) && (mxGetClassID(prhs[1]) == mxINT64_CLASS)) {
+    } else if(mxGetClassID(prhs[0]) == mxDOUBLE_CLASS) {
       n = *mxGetPr(prhs[0]);
-      srcs = getGPUSourcePointers(prhs, &amd, 1,1);
-      dest = makeGPUDestinationArrays(&amd, plhs, 1);
+      worked = accessMGArrays(prhs, 1, 1, &srcA);
       optype = 2;
-      }
-
-    if((mxGetClassID(prhs[0]) == mxINT64_CLASS) && (mxGetClassID(prhs[1]) == mxINT64_CLASS)) {
-      srcs = getGPUSourcePointers(prhs, &amd, 0, 1);
-      dest = makeGPUDestinationArrays(&amd, plhs, 1);
+    } else {
+      worked = accessMGArrays(prhs, 0, 0, &srcA);
+      worked = accessMGArrays(prhs, 1, 1, &srcB);
       optype = 3;
-      }
+    }
+    
+    dest   = createMGArrays(plhs, 1, &srcA);
 
-    gridsize = setLaunchParams(&amd.dim[0]);
+    int j;
+    int sub[6];
     int op = (int)*mxGetPr(prhs[2]);
 
-    switch(optype) {
-      case 1: switch(op) { // gpu + scalar
-        case 1: cukern_addsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 2: cukern_subsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 4: cukern_divsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 5: cukern_minsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
+    for(j = 0; j < srcA.nGPUs; j++) {
+      calcPartitionExtent(&srcA, j, &sub[0]);
+      gridsize = setLaunchParams(sub+3);
+
+      cudaSetDevice(srcA.deviceID[j]);
+
+      switch(optype) {
+        case 1: switch(op) { // gpu + scalar
+          case 1: cukern_addsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 2: cukern_subsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 4: cukern_mulsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], 1.0/n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 5: cukern_minsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,scalar operation code invalid"); break;
         } break;
       case 2: switch(op) { // scalar + gpu
-        case 1: cukern_addsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 2: cukern_scsub<<<gridsize, blocksize>>>(n, srcs[0], dest[0], amd.numel); break;
-        case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 4: cukern_scdiv<<<gridsize, blocksize>>>(n, srcs[0], dest[0], amd.numel); break;
-        case 5: cukern_minsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
-        case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcs[0], n, dest[0], amd.numel); break;
+          case 1: cukern_addsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 2: cukern_scsub<<<gridsize, blocksize>>>(n, srcA.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 3: cukern_mulsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 4: cukern_scdiv<<<gridsize, blocksize>>>(n, srcA.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 5: cukern_minsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 6: cukern_maxsc<<<gridsize, blocksize>>>(srcA.devicePtr[j], n, dest->devicePtr[j], srcA.partNumel[j]); break;
+          default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(scalar,a) operation code invalid"); break;
         } break;
       case 3: switch(op) { // gpu + gpu
-        case 1: cukern_add<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 2: cukern_sub<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 3: cukern_mul<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 4: cukern_div<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 5: cukern_min<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 6: cukern_max<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        case 7: cukern_harmonicmean<<<gridsize, blocksize>>>(srcs[0], srcs[1], dest[0], amd.numel); break;
-        default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid"); break;
+          case 1: cukern_add<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 2: cukern_sub<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 3: cukern_mul<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 4: cukern_div<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 5: cukern_min<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 6: cukern_max<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          case 7: cukern_harmonicmean<<<gridsize, blocksize>>>(srcA.devicePtr[j], srcB.devicePtr[j], dest->devicePtr[j], srcA.partNumel[j]); break;
+          default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid"); break;
         } break;
       }
 
+    }
+  free(dest);
   }
 
 }

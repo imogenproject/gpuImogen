@@ -42,56 +42,105 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   if((nlhs != 0) || (nrhs != 2)) { mexErrMsgTxt("cudaArrayRotate2 operator is cudaArrayRotate2(array, dir)\n"); }
   CHECK_CUDA_ERROR("entering cudaArrayRotate");
 
-  ArrayMetadata amd;
-  double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-
-  int64_t oldref[5];
-  arrayMetadataToTag(&amd, &oldref[0]);
+  MGArray src;
+  int worked = accessMGArrays(prhs, 0, 0, &src);
+  PAR_WARN(src)
+  MGArray copy = src;
+  MGArray *clone;
 
   int indExchange = (int)*mxGetPr(prhs[1]);
-
-  switch(oldref[1]) { /* on # dimensions */
+  int i, sub[6];
+  switch(src.dim[2] > 1 ? 3 : 2) { /* on # dimensions */
     case 3:
       if(indExchange == 2) {
-        gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-        gridsize.y = amd.dim[1] / BDIM; if(gridsize.y*BDIM < amd.dim[1]) gridsize.y++;
+        gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+        gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        int newdims[3]; newdims[0] = oldref[3]; newdims[1] = oldref[2]; newdims[2] = oldref[4];
-        double *newarray = replaceGPUArray(prhs, 0, &newdims[0]);
+	// Transpose X and Y
+        copy.dim[0] = src.dim[1];
+        copy.dim[1] = src.dim[0];
+        // Recalculate the partition sizes
+	for(i = 0; i < copy.nGPUs; i++) {
+            calcPartitionExtent(&copy, i, sub);
+            copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+        }
+	// Allocate new memory
+	clone = allocMGArrays(1, &copy);
+        // Overwrite the original tag
+        serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
 
-        cukern_ArrayExchangeY<<<gridsize, blocksize>>>(srcs[0], newarray, amd.dim[0], amd.dim[1], amd.dim[2]);
-        cudaFree(srcs[0]);
+	for(i = 0; i < copy.nGPUs; i++) {
+            cudaSetDevice(copy.deviceID[i]);
+            CHECK_CUDA_ERROR("cudaSetDevice()");
+            cukern_ArrayExchangeY<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1], src.dim[2]);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+            cudaFree(src.devicePtr[i]);
+        }
+	free(clone);
         }
       if(indExchange == 3) {
-        gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-        gridsize.y = amd.dim[2] / BDIM; if(gridsize.y*BDIM < amd.dim[2]) gridsize.y++;
+        gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+        gridsize.y = src.dim[2] / BDIM; if(gridsize.y*BDIM < src.dim[2]) gridsize.y++;
 
         blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-        int newdims[3]; newdims[0] = oldref[4]; newdims[1] = oldref[3]; newdims[2] = oldref[2];
-        double *newarray = replaceGPUArray(prhs, 0, &newdims[0]);
+        // Transpose X and Z
+        copy.dim[0] = src.dim[2];
+        copy.dim[2] = src.dim[0];
+        // Recalculate the partition sizes
+        for(i = 0; i < copy.nGPUs; i++) {
+            calcPartitionExtent(&copy, i, sub);
+            copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+        }
+        // Allocate new memory
+        clone = allocMGArrays(1, &copy);
+        // Overwrite the original tag
+        serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
 
-        cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(srcs[0], newarray, amd.dim[0], amd.dim[1], amd.dim[2]);
-        cudaFree(srcs[0]);
+        for(i = 0; i < copy.nGPUs; i++) {
+            cudaSetDevice(copy.deviceID[i]);
+            CHECK_CUDA_ERROR("cudaSetDevice()");
+            cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1], src.dim[2]);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+            cudaFree(src.devicePtr[i]);
+        }
+
+	free(clone);
         }
       break;
     case 2:
-      gridsize.x = amd.dim[0] / BDIM; if(gridsize.x*BDIM < amd.dim[0]) gridsize.x++;
-      gridsize.y = amd.dim[1] / BDIM; if(gridsize.y*BDIM < amd.dim[1]) gridsize.y++;
+      gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+      gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
 
       blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-      int newdims[3]; newdims[0] = oldref[3]; newdims[1] = oldref[2]; newdims[2] = oldref[4];
-      double *newarray = replaceGPUArray(prhs, 0, &newdims[0]);
+      // Transpose X and Y
+      copy.dim[0] = src.dim[1];
+      copy.dim[1] = src.dim[0];
+      // Recalculate the partition sizes
+      for(i = 0; i < copy.nGPUs; i++) {
+          calcPartitionExtent(&copy, i, sub);
+          copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+      }
+      // Allocate new memory
+      clone = allocMGArrays(1, &copy);
+      // Overwrite the original tag
+      serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
 
-      cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(srcs[0], newarray, amd.dim[0], amd.dim[1]);
-      cudaFree(srcs[0]);
+      for(i = 0; i < copy.nGPUs; i++) {
+          cudaSetDevice(copy.deviceID[i]);
+          CHECK_CUDA_ERROR("cudaSetDevice()");
+          cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1]);
+          CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+          cudaFree(src.devicePtr[i]);
+      }
+      free(clone);
+
       break;      
     }
 
-CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, oldref[1], "array transposition");
 
 }
 

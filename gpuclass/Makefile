@@ -6,9 +6,9 @@ include ../Make.config
 GEN_OPTS = 
 
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
+#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
 # To get debuggability & ptxas chatter...
-#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v"
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -Xptxas="-v"
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -24,16 +24,18 @@ PAR_LIBS = -lpgw -lmpi
 all: base fluids parallel lambda
 	echo "Finished compiling GPU support."
 
-base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
-	echo "Done building base operations!"
+#base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
+#	echo "Done building base operations!"
 
-fluids: cudaArrayRotate cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaShift cudaStatics directionalMaxFinder freezeAndPtot cudaFluidW cudaFluidTVD cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_memavail cudaBasicOperations
+
+fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
-lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceAntimach
+lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
 	echo "Done building source/sink term kernels"
 
-thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidW cudaFluidTVD
+thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidStep
 	echo "Rebuilt pressure/thermo related routines"
 
 parallel: cudaHaloExchange
@@ -57,6 +59,24 @@ GPU_free.o: GPU_free.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_free.cu -o GPU_free.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_free.cpp 
 GPU_free: GPU_free.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+GPU_clone.o: GPU_clone.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_clone.cu -o GPU_clone.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_clone.cpp 
+GPU_clone: GPU_clone.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+GPU_download.o: GPU_download.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_download.cu -o GPU_download.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_download.cpp 
+GPU_download: GPU_download.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+GPU_upload.o: GPU_upload.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_upload.cu -o GPU_upload.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_upload.cpp 
+GPU_upload: GPU_upload.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 GPU_cudamemcpy.o: GPU_cudamemcpy.cu

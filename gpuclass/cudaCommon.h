@@ -21,9 +21,11 @@
 #define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
 
 // Generic error catcher routines
-#define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, amd_ptr, direction, string) \
-checkCudaLaunchError(cudaGetLastError(), bsize, gsize, amd_ptr, direction, string, __FILE__, __LINE__)
+#define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
+checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
 #define CHECK_CUDA_ERROR(astring) checkCudaError(astring, __FILE__, __LINE__)
+
+#define PAR_WARN(x) if(x.nGPUs > 1) mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK");
 
 typedef struct {
         double *fluidIn[5];
@@ -34,6 +36,39 @@ typedef struct {
         double *Ptotal;
         double *cFreeze;
         } fluidVarPtrs;
+
+#define MAX_GPUS_USED 4
+#define PARTITION_X 1
+#define PARTITION_Y 2
+#define PARTITION_Z 3
+
+typedef struct {
+    int dim[3];
+    int64_t numel;
+
+    int haloSize;
+    int partitionDir;
+
+    int nGPUs;
+    int deviceID[MAX_GPUS_USED];
+    double *devicePtr[MAX_GPUS_USED];
+    int partNumel[MAX_GPUS_USED];
+    } MGArray; 
+
+int64_t *getGPUTypeTag (const mxArray *gputype); // matlab -> c
+bool     sanityCheckTag(const mxArray *tag);     // sanity
+
+void     calcPartitionExtent(MGArray *m, int P, int *sub);
+
+void     deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
+void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
+int      accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
+MGArray *allocMGArrays(int N, MGArray *skeleton);
+MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
+
+void exchangeMGArrayHalos(MGArray *a, int n);
+__global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h);
+__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h);
 
 typedef struct {
     int ndims;
@@ -55,7 +90,7 @@ void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double
 void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim);
 
 void checkCudaError(char *where, char *fname, int lname);
-void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, ArrayMetadata *a, int i, char *srcname, char *fname, int lname);
+void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname);
 const char *errorName(cudaError_t E);
 
 void printdim3(char *name, dim3 dim);

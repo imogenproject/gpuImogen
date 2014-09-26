@@ -139,14 +139,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
-	ArrayMetadata amd;
-	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 9);
+	int hydroOnly;
+	hydroOnly = (int)*mxGetPr(prhs[11]);
+
+        MGArray fluid[5], mag[3], PC[2];
+        int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+        if(hydroOnly == false) worked = accessMGArrays(prhs, 5, 7, &mag[0]);
+            worked = accessMGArrays(prhs, 8, 9, &PC[0]);
+	
 	double lambda     = *mxGetPr(prhs[10]);
 
+	PAR_WARN(fluid[0])
+
 	dim3 arraySize;
-	arraySize.x = amd.dim[0];
-	arraySize.y = amd.dim[1];
-	arraySize.z = amd.dim[2];
+	arraySize.x = fluid[0].dim[0];
+	arraySize.y = fluid[0].dim[1];
+	arraySize.z = fluid[0].dim[2];
 
 	dim3 blocksize, gridsize;
 
@@ -179,72 +187,75 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
 
-	int arrayNumel =  amd.dim[0]*amd.dim[1]*amd.dim[2];
 	double *wStepValues;
-	cudaMalloc((void **)&wStepValues,arrayNumel*sizeof(double)*6); // [rho px py pz E P]_.5dt
+	cudaMalloc((void **)&wStepValues,fluid[0].numel*sizeof(double)*6); // [rho px py pz E P]_.5dt
 	CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
-	cudaMemcpyToSymbol(devArrayNumel, &arrayNumel, sizeof(int), 0, cudaMemcpyHostToDevice);
+        int dan = fluid[0].numel;
+	cudaMemcpyToSymbol(devArrayNumel, &dan, sizeof(int), 0, cudaMemcpyHostToDevice);
 	CHECK_CUDA_ERROR("In cudaFluidStep: halfstep devArrayNumel memcpy");
 
 	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
-	cudaMemcpyToSymbol(inputPointers,  srcs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
-	int hydroOnly;
-	hydroOnly = (int)*mxGetPr(prhs[11]);
+        int i;
+        double *hostptrs[10];
+        for(i = 0; i < 5; i++) hostptrs[i] = fluid[i].devicePtr[0];
+        for(i = 0; i < 3; i++) hostptrs[5+i]= mag[i].devicePtr[0];
+        for(i = 0; i < 2; i++) hostptrs[8+i]= PC[i].devicePtr[0];
+	cudaMemcpyToSymbol(inputPointers,  hostptrs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
 
 	if(hydroOnly == 1) {
 		// Switches between various prediction steps
 		switch(steptype) {
 		case STEPTYPE_XINJIN: {
-			cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
-			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.25*lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 
 			dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
 			dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
-			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
-			cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues, hostptrs[9], arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
-			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
 		} break;
 		case STEPTYPE_HLL: {
 			cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
 			cukern_PressureSolverHydro<<<256, 32>>>(wStepValues);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 			cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
 		} break;
 		case STEPTYPE_HLLC: {
 			cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, .5*lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
 			cukern_PressureSolverHydro<<<256, 32>>>(wStepValues);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 			cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
 		} break;
 		}
 // We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
 //		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
 	} else {
-		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+		cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: first mhd c_f sync");
 
-		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.25*lambda, arraySize.x, arraySize.y);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd predict step");
+		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues, hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y);
+		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd predict step");
 
 		dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
 		dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 		cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
-		cukern_PressureFreezeSolverMHD<<<cfgrid, cfblk>>>(wStepValues, srcs[9], arraySize.x, arraySize.y);
-		CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, &amd, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
-		cfSync(srcs[9], amd.dim[1]*amd.dim[2], prhs[13]);
+		cukern_PressureFreezeSolverMHD<<<cfgrid, cfblk>>>(wStepValues, hostptrs[9], arraySize.x, arraySize.y);
+		CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
+		cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: second mhd c_f sync");
-		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, srcs[9], 0.5*lambda, arraySize.x, arraySize.y);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, hydroOnly, "In cudaFluidStep: mhd TVD step");
+		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y);
+		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
 	}
 
 cudaFree(wStepValues);
@@ -1130,8 +1141,8 @@ __global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double la
 				case 0: w = Q[2]; break;
 				case 1: w = (vx * (Q[1] + P) - B[0]*(Q[2]*B[0]+Q[3]*B[1]+Q[4]*B[2])/Q[0] ); break;
 				case 2: w = (vx*Q[2] + P - B[0]*B[0]); break;
-				case 3: w = (vx*Q[3]        - B[0]*B[1]); break;
-				case 4: w = (vx*Q[4]        - B[0]*B[2]); break;
+				case 3: w = (vx*Q[3]     - B[0]*B[1]); break;
+				case 4: w = (vx*Q[4]     - B[0]*B[2]); break;
 				}
 
 				shblk[IC + BOS0] = (C_f*Q[i] - w); /* Left  going flux */
@@ -1432,7 +1443,7 @@ Qstore += delta;
 int x = threadIdx.x;
 int i = threadIdx.x + 64*threadIdx.y;
 
-double invrho, px, psq, P, locCf, cmax;
+double invrho, px, psq, locCf, cmax;
 double b, bsq;
 
 Cfshared[i] = 0.0;
@@ -1452,11 +1463,13 @@ for(; x < nx; x += 64) {
 	b = inputPointers[7][delta];
 	bsq = bsq + b*b;
 
+	b = Qstore[devArrayNumel] - .5*psq*invrho;
+
 	// Store pressure
-	Qstore[5*devArrayNumel] = P = FLUID_GM1 *(Qstore[devArrayNumel] - .5*psq*invrho) + MHD_PRESS_B*bsq;
+	Qstore[5*devArrayNumel] = FLUID_GM1 *b + MHD_PRESS_B*bsq;
 
 	// Find the maximal fast wavespeed
-    locCf = fabs(px)*invrho + sqrt((FLUID_GAMMA*P + MHD_PRESS_B*bsq)*invrho);
+    locCf = fabs(px)*invrho + sqrt((FLUID_GG1*b + MHD_CS_B*bsq)*invrho);
 
 	cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
 	Qstore += 64;

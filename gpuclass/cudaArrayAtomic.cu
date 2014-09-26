@@ -14,7 +14,7 @@
 #include "cudaCommon.h"
 
 /* THIS FUNCTION
-The cudaArrayAtomic function is meant to perform operations that operate elementsize
+The cudaArrayAtomic function is meant to perform operations that operate elementwise
 on single arrays. The only such functions yet encountered are in "control" functions where
 we require that either density be kept to a minimum value, or that NaNs be replaced by 0s.
 */
@@ -35,18 +35,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   double val       = *mxGetPr(prhs[1]);
   int operation = (int)*mxGetPr(prhs[2]);
 
-  ArrayMetadata amd;
-  double **atomArray = getGPUSourcePointers(prhs, &amd, 0, 0);
+  MGArray phi;
+  int worked = accessMGArrays(prhs, 0, 0, &phi);
+  int j; int sub[6];
 
-CHECK_CUDA_ERROR("Entering cudaArrayAtomic");
+  CHECK_CUDA_ERROR("Entering cudaArrayAtomic");
 
-  switch(operation) {
-    case 1: cukern_ArraySetMin<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
-    case 2: cukern_ArraySetMax<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
-    case 3: cukern_ArrayFixNaN<<<128, BLOCKDIM>>>(atomArray[0], val, amd.numel); break;
+  for(j = 0; j < phi.nGPUs; j++) {
+    cudaSetDevice(phi.deviceID[j]);
+    CHECK_CUDA_ERROR("Setting device.");
+
+    switch(operation) {
+      case 1: cukern_ArraySetMin<<<32, BLOCKDIM>>>(phi.devicePtr[j], val, phi.partNumel[j]); break;
+      case 2: cukern_ArraySetMax<<<32, BLOCKDIM>>>(phi.devicePtr[j], val, phi.partNumel[j]); break;
+      case 3: cukern_ArrayFixNaN<<<32, BLOCKDIM>>>(phi.devicePtr[j], val, phi.partNumel[j]); break;
+    }
+   CHECK_CUDA_LAUNCH_ERROR(256, 32, &phi, operation, "array min/max/nan sweeping");
+
   }
-
-CHECK_CUDA_LAUNCH_ERROR(256, 128, &amd, operation, "array min/max/nan sweeping");
 
 }
 

@@ -14,7 +14,7 @@
 #include "cudaCommon.h"
 
 /* THIS FUNCTION
-   cudaFreeRadiation performs a purely local update to energy density of the form
+   //cudaFreeRadiation performs a purely local update to energy density of the form
 
    E = E - dt * beta rho^(2-theta) Pgas^(theta),
 
@@ -43,7 +43,6 @@ __constant__ __device__ double radparam[5];
 #define TWO_MEXPONENT radparam[3]
 #define TFLOOR radparam[4]
 
-
 #define BLOCKDIM 256
 #define GRIDDIM 64
 
@@ -51,19 +50,25 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if ((nrhs != 9) || (nlhs > 1))
      mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 
-  double gam       = (mxGetPr(prhs[8]))[0];
-  double exponent  = (mxGetPr(prhs[8]))[1];
-  double strength  = (mxGetPr(prhs[8]))[2];
-  double minTemp   = (mxGetPr(prhs[8]))[3];
-  int isHydro= ((int)(mxGetPr(prhs[8]))[4]) != 0;
+  double *inParams = mxGetPr(prhs[8]);
 
-  ArrayMetadata amd;
-  double **arrays = getGPUSourcePointers(prhs, &amd, 0, 4);
-  CHECK_CUDA_ERROR("Entering cudaFreeRadiation");
+  double gam      = inParams[0];
+  double exponent = inParams[1];
+  double strength = inParams[2];
+  double minTemp  = inParams[3];
+  int isHydro     = (int)inParams[4] != 0;
 
-  double **dest = NULL;
+  MGArray f[8];
+
+  if( isHydro == false ) {
+    accessMGArrays(prhs, 0, 7, &f[0]);
+  } else {
+    accessMGArrays(prhs, 0, 4, &f[0]);
+  }
+
+  MGArray *dest;
   if(nlhs == 1) {
-    dest = makeGPUDestinationArrays(&amd, plhs, 1);
+    dest = createMGArrays(plhs, 1, &f[0]);
     }
 
   double hostRP[5];
@@ -74,36 +79,44 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   hostRP[4] = minTemp;
   cudaMemcpyToSymbol(radparam, hostRP, 5*sizeof(double), 0, cudaMemcpyHostToDevice);
 
-  switch(isHydro + 2*nlhs) {
-    case 0: {
-      double **B = getGPUSourcePointers(prhs, &amd, 5, 7);
-      cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], B[0], B[1], B[2], amd.numel);
-      free(B);
-      break; }
-    case 1: {
-      cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], amd.numel);
-      break; }
-    case 2: {
-      double **B = getGPUSourcePointers(prhs, &amd, 5, 7);
-      cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], B[0], B[1], B[2], dest[0], amd.numel);
-      free(B);
-      break; }
-    case 3: {
-      cukern_FreeHydroRadiationRate<<<GRIDDIM, BLOCKDIM>>>(arrays[0], arrays[1], arrays[2], arrays[3], arrays[4], dest[0], amd.numel);
-      break; }
+  int j, k;
+  int sub[6];
+  PAR_WARN(f[0])
+  for(j = 0; j < f[0].nGPUs; j++) {
+    calcPartitionExtent(&f[0], j, sub);
+    cudaSetDevice(f[0].deviceID[j]);
+
+    double *ptrs[8];
+    for(k = 0; k < 8; k++) { ptrs[k] = f[k].devicePtr[j]; }
+    // Save some readability below...
+   
+    switch(isHydro + 2*nlhs) {
+      case 0: {
+        cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], f[0].partNumel[j]);
+        break; }
+      case 1: {
+        cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], f[0].partNumel[j]);
+        break; }
+      case 2: {
+        cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], dest->devicePtr[j], f[0].partNumel[j]);
+        break; }
+      case 3: {
+        cukern_FreeHydroRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], dest->devicePtr[j], f[0].partNumel[j]);
+        break; }
     }
+  }
 
-free(arrays);
+if(nlhs == 1) free(dest);
 
-CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
+//CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
 
 }
 
 /* NOTE: This uses an explicit algorithm to perform radiation,
  * i.e. E[t+dt] = E[t] - Lambda[t] dt with radiation rate Lambda
- * This is conditionally stable with a CFL set by dt < E / Lambda
+ * This is conditionally stable with a CFL set by Lambda dt < E
  * 
- * Normally E / Lambda >> [dx / max(Vx)], i.e. cooling time much
+ * Normally E / Lambda >> [dx / (c+max(Vx)) ], i.e. cooling time much
  * longer than advection time, but an implicit algorithm would be
  * wise as it is unconditionally stable. */
 #define PSQUARED px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]
@@ -113,7 +126,7 @@ __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, d
 {
 int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P; double dE; double den; double ep1, ep2;
+double P; double dE; double den;
 
 while(x < numel) {
   den = rho[x];
