@@ -55,15 +55,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   CHECK_CUDA_ERROR("entering cudaSourceScalarPotential");
     
     // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 5);
+    MGArray fluid[6];
+    int worked = accessMGArrays(prhs, 0, 5, fluid);
 
     dim3 gridsize, blocksize;
-    int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+    int3 arraysize; arraysize.x = fluid->dim[0]; arraysize.y = fluid->dim[1]; arraysize.z = fluid->dim[2];
 
     blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
-    gridsize.x = arraysize.x / (blocksize.x - 2); gridsize.x += ((blocksize.x-2) * gridsize.x < amd.dim[0]);
-    gridsize.y = arraysize.y / (blocksize.y - 2); gridsize.y += ((blocksize.y-2) * gridsize.y < amd.dim[1]);
+    gridsize.x = arraysize.x / (blocksize.x - 2); gridsize.x += ((blocksize.x-2) * gridsize.x < fluid->dim[0]);
+    gridsize.y = arraysize.y / (blocksize.y - 2); gridsize.y += ((blocksize.y-2) * gridsize.y < fluid->dim[1]);
     gridsize.z = 1;
 
     double dt = *mxGetPr(prhs[6]);
@@ -79,9 +79,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     lambda[6] = lambda[3]*lambda[5];
 
     cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
-    cukern_applyScalarPotential<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], arraysize);
+    cukern_applyScalarPotential<<<gridsize, blocksize>>>(
+        fluid[0].devicePtr[0],
+        fluid[1].devicePtr[0],
+        fluid[2].devicePtr[0],
+        fluid[3].devicePtr[0],
+        fluid[4].devicePtr[0],
+        fluid[5].devicePtr[0], arraysize);
 
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -1, "applyScalarPotential");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, -1, "applyScalarPotential");
 
 }
 

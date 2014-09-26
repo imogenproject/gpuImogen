@@ -40,17 +40,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
 	// Get source array info and create destination arrays
-	ArrayMetadata amd;
-	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 3);
+        MGArray fluid[4];
+        int worked = accessMGArrays(prhs, 0, 3, &fluid[0]);
 
-	ArrayMetadata xmd;
-	double **xyvec = getGPUSourcePointers(prhs, &xmd, 6, 6);
+        MGArray xyvec;
+        worked     = accessMGArrays(prhs, 6, 6, &xyvec);
 
 	dim3 gridsize, blocksize;
-	int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+	int3 arraysize; arraysize.x = fluid->dim[0]; arraysize.y = fluid->dim[1]; arraysize.z = fluid->dim[2];
 
 	blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
-	gridsize.x = arraysize.x / (blocksize.x); gridsize.x += ((blocksize.x) * gridsize.x < amd.dim[0]);
+	gridsize.x = arraysize.x / (blocksize.x); gridsize.x += ((blocksize.x) * gridsize.x < fluid->dim[0]);
 	gridsize.y = arraysize.z;
 	gridsize.z = 1;
 
@@ -60,13 +60,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	lambda[0] = omega;
 	lambda[1] = dt;
 
-	int hostIntParams[3] = {amd.dim[0], amd.dim[1], amd.dim[2]};
+	int hostIntParams[3] = {fluid->dim[0], fluid->dim[1], fluid->dim[2]};
 
 	cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
 	cudaMemcpyToSymbol(devIntParams, &hostIntParams[0], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
-	cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], xyvec[0]);
 
-	CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, -1, "applyScalarPotential");
+	cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(
+            fluid[0].devicePtr[0],
+            fluid[1].devicePtr[0],
+            fluid[2].devicePtr[0],
+            fluid[3].devicePtr[0],
+            xyvec.devicePtr[0]);
+
+	CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, -1, "applyScalarPotential");
 
 }
 
