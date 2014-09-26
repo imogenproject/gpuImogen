@@ -5,9 +5,9 @@ function relaxingFluid(run, mass, mom, ener, mag, X)
 %   velocities are properly made upwind (See Jin & Xin '95, Ui-Li Pen '04).
 %
 %>< run      data manager object                                                      ImogenManager
-%>< mass     mass density gputag (cell)                                                FluidArray
-%>< mom      momentum density gputag (cell)                                            FluidArray(3)
-%>< ener     energy density gputag (cell)                                              FluidArray
+%>< mass     mass density (cell)                                                FluidArray
+%>< mom      momentum density (cell)                                            FluidArray(3)
+%>< ener     energy density (cell)                                              FluidArray
 %>< mag      magnetic field (face)                                                    MagnetArray(3)
 %>> X        vector index of current fluxing direction (1,2,or 3)                     int
     %--- Initialize ---%
