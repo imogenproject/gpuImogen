@@ -24,208 +24,265 @@ __global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz
 
 __global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz)
 {
-//int myx = threadIdx.x + BDIM*blockIdx.x;
-//int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-//int myaddr = myx + nx*myy;
+	//int myx = threadIdx.x + BDIM*blockIdx.x;
+	//int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	//int myaddr = myx + nx*myy;
 
-//if((myx < nx) && (myy < ny)) dst[myaddr] = src[myaddr];
-return;
+	//if((myx < nx) && (myy < ny)) dst[myaddr] = src[myaddr];
+	return;
 
 }
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-  dim3 blocksize; blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-  dim3 gridsize;
+	dim3 blocksize; blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+	dim3 gridsize;
 
-  if((nlhs != 0) || (nrhs != 2)) { mexErrMsgTxt("cudaArrayRotate2 operator is cudaArrayRotate2(array, dir)\n"); }
-  CHECK_CUDA_ERROR("entering cudaArrayRotate");
-
-  MGArray src;
-  int worked = accessMGArrays(prhs, 0, 0, &src);
-  PAR_WARN(src)
-  MGArray copy = src;
-  MGArray *clone;
-
-  int indExchange = (int)*mxGetPr(prhs[1]);
-  int i, sub[6];
-  switch(src.dim[2] > 1 ? 3 : 2) { /* on # dimensions */
-    case 3:
-      if(indExchange == 2) {
-        gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
-        gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
-
-        blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-
-	// Transpose X and Y
-        copy.dim[0] = src.dim[1];
-        copy.dim[1] = src.dim[0];
-        // Recalculate the partition sizes
-	for(i = 0; i < copy.nGPUs; i++) {
-            calcPartitionExtent(&copy, i, sub);
-            copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+        if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotate2(GPU array, dir to transpose with X)"); }
+        int makeNew = 0;
+        switch(nlhs) {
+            case 0: makeNew = 0; break;
+            case 1: makeNew = 1; break;
+            default: mexErrMsgTxt("cudaArrayRotate must return zero (alters input) or one (returns new) arguments."); break;
         }
-	// Allocate new memory
-	clone = allocMGArrays(1, &copy);
-        // Overwrite the original tag
-        serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+	CHECK_CUDA_ERROR("entering cudaArrayRotate2");
 
-	for(i = 0; i < copy.nGPUs; i++) {
-            cudaSetDevice(copy.deviceID[i]);
-            CHECK_CUDA_ERROR("cudaSetDevice()");
-            cukern_ArrayExchangeY<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1], src.dim[2]);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
-            cudaFree(src.devicePtr[i]);
-        }
-	free(clone);
-        }
-      if(indExchange == 3) {
-        gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
-        gridsize.y = src.dim[2] / BDIM; if(gridsize.y*BDIM < src.dim[2]) gridsize.y++;
+	MGArray src;
+	int worked = accessMGArrays(prhs, 0, 0, &src);
 
-        blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+	/* This function will make the partition direction track the transposition of indices
+	 * Such that if partitioning direction is X and a Y transpose is done, partition is in Y.
+	 * The full matrix
+	 * transpose =  XY | XZ | YZ |
+	 *            +----+----+----+
+	 * Part.    X | Y  | Z  | X  |
+	 * initial  Y | X  | Y  | Z  | <- Output array will have partition in this direction
+	 * direct   Z | Z  | X  | Y  |
+	 */
 
-        // Transpose X and Z
-        copy.dim[0] = src.dim[2];
-        copy.dim[2] = src.dim[0];
-        // Recalculate the partition sizes
-        for(i = 0; i < copy.nGPUs; i++) {
-            calcPartitionExtent(&copy, i, sub);
-            copy.partNumel[i] = sub[3]*sub[4]*sub[5];
-        }
-        // Allocate new memory
-        clone = allocMGArrays(1, &copy);
-        // Overwrite the original tag
-        serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+	MGArray copy = src;
+	MGArray *clone;
 
-        for(i = 0; i < copy.nGPUs; i++) {
-            cudaSetDevice(copy.deviceID[i]);
-            CHECK_CUDA_ERROR("cudaSetDevice()");
-            cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1], src.dim[2]);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
-            cudaFree(src.devicePtr[i]);
-        }
+	int indExchange = (int)*mxGetPr(prhs[1]);
+	int i, sub[6];
 
-	free(clone);
-        }
-      break;
-    case 2:
-      gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
-      gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
+	switch(src.dim[2] > 1 ? 3 : 2) { /* on # dimensions */
+	case 3: // x/y/z array, exchanging x and y
+		if(indExchange == 2) {
+			gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+			gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
 
-      blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
-      // Transpose X and Y
-      copy.dim[0] = src.dim[1];
-      copy.dim[1] = src.dim[0];
-      // Recalculate the partition sizes
-      for(i = 0; i < copy.nGPUs; i++) {
-          calcPartitionExtent(&copy, i, sub);
-          copy.partNumel[i] = sub[3]*sub[4]*sub[5];
-      }
-      // Allocate new memory
-      clone = allocMGArrays(1, &copy);
-      // Overwrite the original tag
-      serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+			// Transpose X and Y sizes
+			copy.dim[0] = src.dim[1];
+			copy.dim[1] = src.dim[0];
+			// Flip the partition direction if appropriate
+			if(copy.partitionDir == PARTITION_X) {
+				copy.partitionDir = PARTITION_Y;
+			} else if(copy.partitionDir == PARTITION_Y) {
+				copy.partitionDir = PARTITION_X;
+			}
 
-      for(i = 0; i < copy.nGPUs; i++) {
-          cudaSetDevice(copy.deviceID[i]);
-          CHECK_CUDA_ERROR("cudaSetDevice()");
-          cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], src.dim[0], src.dim[1]);
-          CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
-          cudaFree(src.devicePtr[i]);
-      }
-      free(clone);
+			// Recalculate the partition sizes
+			for(i = 0; i < copy.nGPUs; i++) {
+				calcPartitionExtent(&copy, i, sub);
+				copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+			}
 
-      break;      
-    }
+			// Setup the new array: Either create new or overwrite original input tag
+                        if(makeNew) {
+                            clone = createMGArrays(plhs, 1, &copy);
+                        } else { 
+                            clone = allocMGArrays(1, &copy);
+                            serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+                        }
+
+			for(i = 0; i < copy.nGPUs; i++) {
+				cudaSetDevice(copy.deviceID[i]);
+				CHECK_CUDA_ERROR("cudaSetDevice()");
+                                calcPartitionExtent(&src, i, sub);
+				cukern_ArrayExchangeY<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], sub[3],sub[4],sub[5]);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+                                if(makeNew == false) cudaFree(src.devicePtr[i]);
+				CHECK_CUDA_ERROR("cudaFree");
+			}
+			free(clone);
+		}
+		if(indExchange == 3) {
+			gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+			gridsize.y = src.dim[2] / BDIM; if(gridsize.y*BDIM < src.dim[2]) gridsize.y++;
+
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+			// Transpose X and Z
+			copy.dim[0] = src.dim[2];
+			copy.dim[2] = src.dim[0];
+                        // Flip the partition direction if appropriate
+                        if(copy.partitionDir == PARTITION_X) {
+                                copy.partitionDir = PARTITION_Z;
+                        } else if(copy.partitionDir == PARTITION_Z) {
+                                copy.partitionDir = PARTITION_X;
+                        }
+
+			// Recalculate the partition sizes
+			for(i = 0; i < copy.nGPUs; i++) {
+				calcPartitionExtent(&copy, i, sub);
+				copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+			}
+                        // Setup the new array: Either create new or overwrite original input tag
+                        if(makeNew) {
+                            clone = createMGArrays(plhs, 1, &copy);
+                        } else {
+                            clone = allocMGArrays(1, &copy);
+                            serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+                        }
+
+			for(i = 0; i < copy.nGPUs; i++) {
+				cudaSetDevice(copy.deviceID[i]);
+				CHECK_CUDA_ERROR("cudaSetDevice()");
+                                calcPartitionExtent(&src, i, sub);
+				cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], sub[3], sub[4], sub[5]);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+				if(makeNew == false) cudaFree(src.devicePtr[i]);
+                                CHECK_CUDA_ERROR("cudaFree()");
+			}
+
+			free(clone);
+		}
+		break;
+	case 2:
+		gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
+		gridsize.y = src.dim[1] / BDIM; if(gridsize.y*BDIM < src.dim[1]) gridsize.y++;
+
+		blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+		// Transpose X and Y
+		copy.dim[0] = src.dim[1];
+		copy.dim[1] = src.dim[0];
+                // Flip the partition direction if appropriate
+                if(copy.partitionDir == PARTITION_X) {
+                        copy.partitionDir = PARTITION_Y;
+                } else if(copy.partitionDir == PARTITION_Y) {
+                        copy.partitionDir = PARTITION_X;
+                }
+
+		// Recalculate the partition sizes
+		for(i = 0; i < copy.nGPUs; i++) {
+			calcPartitionExtent(&copy, i, sub);
+			copy.partNumel[i] = sub[3]*sub[4]*sub[5];
+		}
+
+                // Setup the new array: Either create new or overwrite original input tag
+                if(makeNew) {
+                    clone = createMGArrays(plhs, 1, &copy);
+                } else {
+                    clone = allocMGArrays(1, &copy);
+                    serializeMGArrayToTag(clone, (int64_t *)mxGetData(prhs[0]));
+                }
+
+		for(i = 0; i < copy.nGPUs; i++) {
+			cudaSetDevice(copy.deviceID[i]);
+			CHECK_CUDA_ERROR("cudaSetDevice()");
+                        calcPartitionExtent(&src, i, sub);
+			cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], clone->devicePtr[i], sub[3], sub[4]);
+			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+			if(makeNew == false) cudaFree(src.devicePtr[i]);
+                        CHECK_CUDA_ERROR("cudaFree()");
+		}
+		free(clone);
+
+		break;
+	}
+
+
 
 
 }
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
 {
-__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM];
 
-int myx = threadIdx.x + BDIM*blockIdx.x;
-int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-int myAddr = myx + nx*myy;
+	int myx = threadIdx.x + BDIM*blockIdx.x;
+	int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	int myAddr = myx + nx*myy;
 
-if((myx < nx) && (myy < ny)) tmp[threadIdx.y][threadIdx.x] = src[myAddr];
+	if((myx < nx) && (myy < ny)) tmp[threadIdx.y][threadIdx.x] = src[myAddr];
 
-__syncthreads();
+	__syncthreads();
 
-//myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-myAddr = myy + threadIdx.x - threadIdx.y;
-//myy = threadIdx.y + BDIM*blockIdx.x;
-myy  = myx + threadIdx.y - threadIdx.x;
-myx = myAddr;
+	//myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	myAddr = myy + threadIdx.x - threadIdx.y;
+	//myy = threadIdx.y + BDIM*blockIdx.x;
+	myy  = myx + threadIdx.y - threadIdx.x;
+	myx = myAddr;
 
-myAddr = myx + ny*myy;
+	myAddr = myx + ny*myy;
 
-if((myx < ny) && (myy < nx)) dst[myAddr] = tmp[threadIdx.x][threadIdx.y];
+	if((myx < ny) && (myy < nx)) dst[myAddr] = tmp[threadIdx.x][threadIdx.y];
 
 }
 
 __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, int nz)
 {
 
-__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM];
 
-int myx = threadIdx.x + BDIM*blockIdx.x;
-int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-int mySrcAddr = myx + nx*myy;
-bool doRead = 0;
-bool doWrite = 0;
+	int myx = threadIdx.x + BDIM*blockIdx.x;
+	int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	int mySrcAddr = myx + nx*myy;
+	bool doRead = 0;
+	bool doWrite = 0;
 
-if((myx < nx) && (myy < ny)) doRead = 1; 
+	if((myx < nx) && (myy < ny)) doRead = 1;
 
-myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-myy = threadIdx.y + BDIM*blockIdx.x;
-int myDstAddr = myx + ny*myy;
+	myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	myy = threadIdx.y + BDIM*blockIdx.x;
+	int myDstAddr = myx + ny*myy;
 
-if((myx < ny) && (myy < nx)) doWrite = 1;
+	if((myx < ny) && (myy < nx)) doWrite = 1;
 
-for(myx = 0; myx < nz; myx++) {
-    if(doRead) tmp[threadIdx.y][threadIdx.x] = src[mySrcAddr];
-    mySrcAddr += nx*ny;
-    __syncthreads();
+	for(myx = 0; myx < nz; myx++) {
+		if(doRead) tmp[threadIdx.y][threadIdx.x] = src[mySrcAddr];
+		mySrcAddr += nx*ny;
+		__syncthreads();
 
-    if(doWrite) dst[myDstAddr] = tmp[threadIdx.x][threadIdx.y];
-    myDstAddr += nx*ny;
-    __syncthreads();
-    }
+		if(doWrite) dst[myDstAddr] = tmp[threadIdx.x][threadIdx.y];
+		myDstAddr += nx*ny;
+		__syncthreads();
+	}
 
 }
 
 __global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, int nz)
 {
-__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM];
 
-int myx = threadIdx.x + BDIM*blockIdx.x;
-int myz = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-int mySrcAddr = myx + nx*ny*myz;
-bool doRead = 0;
-bool doWrite = 0;
+	int myx = threadIdx.x + BDIM*blockIdx.x;
+	int myz = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	int mySrcAddr = myx + nx*ny*myz;
+	bool doRead = 0;
+	bool doWrite = 0;
 
-if((myx < nx) && (myz < nz)) doRead = 1;
+	if((myx < nx) && (myz < nz)) doRead = 1;
 
-myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-myz = threadIdx.y + BDIM*blockIdx.x;
-int myDstAddr = myx + nz*ny*myz;
+	myx = threadIdx.x + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
+	myz = threadIdx.y + BDIM*blockIdx.x;
+	int myDstAddr = myx + nz*ny*myz;
 
-if((myx < nz) && (myz < nx)) doWrite = 1;
+	if((myx < nz) && (myz < nx)) doWrite = 1;
 
-for(myx = 0; myx < ny; myx++) {
-    if(doRead) tmp[threadIdx.y][threadIdx.x] = src[mySrcAddr];
-    mySrcAddr += nx;
-    __syncthreads();
+	for(myx = 0; myx < ny; myx++) {
+		if(doRead) tmp[threadIdx.y][threadIdx.x] = src[mySrcAddr];
+		mySrcAddr += nx;
+		__syncthreads();
 
-    if(doWrite) dst[myDstAddr] = tmp[threadIdx.x][threadIdx.y];
-    myDstAddr += nz;
-    __syncthreads();
-    }
+		if(doWrite) dst[myDstAddr] = tmp[threadIdx.x][threadIdx.y];
+		myDstAddr += nz;
+		__syncthreads();
+	}
 
 
 }

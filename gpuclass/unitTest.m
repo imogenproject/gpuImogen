@@ -2,6 +2,8 @@ function result = unitTest(n2d, max2d, n3d, max3d, funcList)
 
 disp('### Beginning GPU functional tests ###');
 disp('### Debug-if-error is set.');
+disp('### GPU Manager partitioning setup:');
+GPUManager.getInstance()
 dbstop if error
 
 if(nargin < 4)
@@ -31,7 +33,7 @@ for F = 1:nFuncs;
     targfunc = @noSuchThing; % Default to failure
     if strcmp(funcList{F}, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
     if strcmp(funcList{F}, 'cudaArrayRotate'); targfunc = @testCudaArrayRotate; end
-    if strcmp(funcList{F}, 'cudaArrayRotate2'); targfunc = @testCuda; end
+    if strcmp(funcList{F}, 'cudaArrayRotate2'); targfunc = @testCudaArrayRotate2; end
     if strcmp(funcList{F}, 'cudaFluidTVD'); targfunc = @testCudaFluidTVD; end
     if strcmp(funcList{F}, 'cudaFluidW'); targfunc = @testCudaFluidW; end
     if strcmp(funcList{F}, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
@@ -123,8 +125,21 @@ function fail = testCudaArrayRotate(res)
 end
 
 function fail = testCudaArrayRotate2(res)
-fail = -1;
-%no
+    fail = 0;
+    X = rand(res);
+    Xg = GPU_Type(X);
+    Yg = GPU_Type(cudaArrayRotate2(Xg,2));
+    Yg.array(1); % Test that we can still access it without barfing
+    Xp = permute(X, [2 1 3]);
+    if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
+    clear Yg;
+
+    if res(3) > 1
+        Yg = GPU_Type(cudaArrayRotate2(Xg,3));
+        Xp = permute(X, [3 2 1]);
+        if any(any(any(Yg.array ~= Xp))); disp('   !!! Test failed: XZ transpose !!!'); fail = 1; end
+     end
+
 end
 
 function fail = testCudaFluidTVD(res)
@@ -167,6 +182,7 @@ function fail = testCudaWStep(res)
 end
 
 function fail = testCudaFreeRadiation(res)
+    fail = 0;
     rho = 2 - 1.8*rand(res); rhod = GPU_Type(rho);
     px = 2*rand(res); pxd = GPU_Type(px);
     py = 3*rand(res); pyd = GPU_Type(py);
@@ -176,40 +192,60 @@ function fail = testCudaFreeRadiation(res)
     bz = rand(res);   bzd = GPU_Type(bz); % The del.b constraint doesn't matter, this just calculates |B|^2 to subtract it
 
     T = .5*(px.^2+py.^2+pz.^2) ./ rho;
-    B = .5*(bx.^2+by.^2+bz.^2) / 2;
+    B = .5*(bx.^2+by.^2+bz.^2);
 
     Ehydro = T + .5+.25*rand(res); Ehydrod = GPU_Type(Ehydro);
     Emhd = Ehydro + B;             Emhdd = GPU_Type(Emhd);
 
     thtest = .5;
+    gm1 = 2/3;
+    Tmin = 0.2;
 
-    % Test HD case
-    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 .5 1 0 1]));
-    rtrue = (rho.^(2-thtest)) .* (Ehydro-T).^(thtest);
+    % Test HD radiation rate
+    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest 1 0 1]));
+    rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
 
-    max(rtrue(:)-rtest.array(:))
-
-    tau = .01*.5/max(rtest.array(:));
-
-    cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 .1 tau .2 1]);
-    dE = tau*(rho.^(2-thtest)).*(Ehydro-T).^thtest;
-    dE( (Ehydro-T) < .2*rho ) = 0;
-    
-    max(Ehydro(:) - dE(:) - Ehydrod.array(:))
-
-    % Test MHD case
-    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 .5 1 0 0]));
-    rtrue = (rho.^(2-thtest)) .* (Emhd-T-B).^(thtest);
-
-    max(rtrue(:)-rtest.array(:))
+    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12; fail = 1; end
 
     tau = .01*.5/max(rtest.array(:));
 
-    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 .1 tau .2 0]);
-    dE = tau*(rho.^(2-thtest)).*(Emhd-T-B).^thtest;
-    dE( (Emhd-T-B) < .2*rho ) = 0;
-    
-    max(Emhd(:) - dE(:) - Emhdd.array(:))
+    % Test HD radiation sinking
+    cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
+    P0 = gm1*(Ehydro - T);
+
+    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
+    COLD = (P0 < Tmin*rho);
+    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
+
+    dE(COLD) = 0;
+    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
+
+    Enew = Ehydro - dE;
+
+    if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12; fail = 1; end
+
+    % Test MHD radiation rate
+    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest 1 0 0]));
+    rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
+
+    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12; fail = 1; end
+
+    % Test MHD radiation sinking
+    tau = .01*.5/max(rtest.array(:));
+
+    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau .2 0]);
+    P0 = gm1*(Emhd - T - B);
+
+    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
+    COLD = (P0 < Tmin*rho);
+    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
+
+    % No radiation below critical temp
+    dE(COLD) = 0;
+    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
+
+    Enew = Emhd - dE;
+    if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12 fail = 1; end
      %mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 end
 
@@ -456,7 +492,7 @@ end
 end
 
 function fail = testCudaSourceScalarPotential(res)
-fail = -1;
+fail = 0;
 
 rho = rand(res);
 px = rand(res);
@@ -500,10 +536,10 @@ b = max(py(:) - pyD.array(:));
 c = max(pz(:) - pzD.array(:));
 d = max(E(:) - ED.array(:));
 
-n = [a, b, c, d];
+n = [a, b, c, d]
 if max(abs(n)) < 1e-10;
     fail = 0;
-else fail = -1;
+else fail = 1;
 end;
 end
 

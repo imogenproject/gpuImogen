@@ -1,32 +1,32 @@
-cudaAccretingStar.cu		| DEAD (used by source)		| S 
-cudaAdvect.cu			| DEAD				| 
-cudaArrayAtomic.cu		| BUILDS			| E
-cudaArrayRotate.cu		| SHIM				| E
-cudaArrayRotate2.cu		| BUILDS			| E
+cudaAccretingStar.cu		| dead (used by source)		| S 
+cudaAdvect.cu			| dead				| 
+cudaArrayAtomic.cu		| SUCCESSFULLY FUZZED		| E
+cudaArrayRotate.cu		| shim				| E
+cudaArrayRotate2.cu		| SUCCESSFULLY FUZZED		| E
 cudaBasicOperations.cu		| WORKSFORME			| E
-cudaCommon.cu			| WORKSFORME			| E
-cudaFluidStep.cu		| SHIM				| E
-cudaFreeRadiation.cu		| BUILDS			| S
-cudaFwdAverage.cu		| DEAD (MHD-ONLY)		| M
-cudaFwdDifference.cu		| DEAD (MHD-ONLY)		| M
-cudaHaloExchange.cu		| SHIM				| P
-cudaMagNew.cu			| DEAD (MHD-ONLY)		| M
-cudaMagPrep.cu			| DEAD (MHD-ONLY)		| M
-cudaMagTVD.cu			| DEAD (MHD-ONLY)		| M
-cudaMagW.cu			| DEAD (MHD-ONLY)		| M
-cudaMHDKernels.cu		| DEAD (MHD-ONLY)		| M
-cudaSoundspeed.cu		| BUILDS			| E
-cudaSourceRotatingFrame.cu	| SHIM (called by source)	| S
-cudaSourceScalarPotential.cu	| SHIM (called by source)	| S
-cudaStatics.cu			| SHIM				| Nontrivial BCs
-directionalMaxFinder.cu		| SHIM (see fixme)		| E
-freezeAndPtot.cu		| SHIM				| E
+cudaCommon.cu			| 				| E
+cudaFluidStep.cu		| shim				| E
+cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
+cudaFwdAverage.cu		| dead (MHD-ONLY)		| M
+cudaFwdDifference.cu		| dead (MHD-ONLY)		| M
+cudaHaloExchange.cu		| shim				| P
+cudaMagNew.cu			| dead (MHD-ONLY)		| M
+cudaMagPrep.cu			| dead (MHD-ONLY)		| M
+cudaMagTVD.cu			| dead (MHD-ONLY)		| M
+cudaMagW.cu			| dead (MHD-ONLY)		| M
+cudaMHDKernels.cu		| dead (MHD-ONLY)		| M
+cudaSoundspeed.cu		| SUCCESSFULLY FUZZED		| E
+cudaSourceRotatingFrame.cu	| shim (called by source)	| S
+cudaSourceScalarPotential.cu	| Works (I think)		| S
+cudaStatics.cu			| shim				| Nontrivial BCs
+directionalMaxFinder.cu		| Almost works (see fixme)	| E
+freezeAndPtot.cu		| shim				| E
 
 Statuses:
 OBSOLETE:   Not needed by new toolkit
-DEAD:       No porting work done
-SHIM:       New toolkit has been slipped in but assumes single-device and MD will spectacularly fail
-BUILDS:     It compiled but hasn't been tested or anything. Error checks probably disabled
+dead:       No porting work done
+shim:       New toolkit has been slipped in but assumes single-device and MD will spectacularly fail
+builds:     It compiled but hasn't been tested or anything. Error checks probably disabled
 WORKSFORME: Looks like it works but not verified or such
 VERIFIED:   Systematically tested and fuzzed
 
@@ -39,14 +39,14 @@ S = source terms
 These I think are never used so they're dead last priority:
 cudaFluidTVD.cu			| OBSOLETE
 cudaFluidW.cu			| OBSOLETE
-cudaPointPotentials.cu		| DEAD (compact objects only)
-cudaSetMirror.cu		| DEAD (OBSOLETE?)
-cudaShift.cu			| DEAD (OBSOLETE?)
-cudaSourceAntimach.cu		| DEAD (OBSOLETE?)
-cudaSourceConstantG.cu		| DEAD (NEVER USED EVEN ONCE?)
-cudaSourceForceTerms.cu		| DEAD (never used?)
-cudaSourceRotatingFrame2.cu	| DEAD (never used?)
-freezeAndPtot_new.cu		| DEAD
+cudaPointPotentials.cu		| dead (compact objects only)
+cudaSetMirror.cu		| dead (OBSOLETE?)
+cudaShift.cu			| dead (OBSOLETE?)
+cudaSourceAntimach.cu		| dead (OBSOLETE?)
+cudaSourceConstantG.cu		| dead (NEVER USED EVEN ONCE?)
+cudaSourceForceTerms.cu		| dead (never used?)
+cudaSourceRotatingFrame2.cu	| dead (never used?)
+freezeAndPtot_new.cu		| dead
 GPU_ctrl.cu			| ~~ Obsolete			| 
 GPU_cudamemcpy.cu		| OBSOLETE			| 
 GPU_exit.cu			| OBSOLETE			| 

@@ -81,7 +81,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   int j, k;
   int sub[6];
-  PAR_WARN(f[0])
   for(j = 0; j < f[0].nGPUs; j++) {
     calcPartitionExtent(&f[0], j, sub);
     cudaSetDevice(f[0].deviceID[j]);
@@ -151,8 +150,9 @@ double P, dE, den;
 while(x < numel) {
   den = rho[x];
   P = GAMMA_M1*(E[x] - (  (PSQUARED)/den + (BSQUARED))/2.0); // gas pressure
-  dE = STRENGTH*pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
-  if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; }
+  dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT);
+  if(P > den*TFLOOR) {
+  if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
 
   x += BLOCKDIM*GRIDDIM;
   }
