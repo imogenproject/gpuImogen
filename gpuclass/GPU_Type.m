@@ -23,7 +23,7 @@ classdef GPU_Type < handle
     properties (SetAccess = private, GetAccess = public)
         GPU_MemPtr; % A 5x1 array of int64_ts:
                     % x[1:5] = [gpu memory pointer, # of dimensions, Nx,
-                    % Ny, Nz]. Defaults to [0 0 0 0 0] if not initialized.
+                    % Ny, Nz]. Defaults to [0 0 0 0 0 0] if not initialized.
         asize;      % The size of the array. Posesses 3 elements.
         numdims;    % integer, 2 or 3 depending on how many nonzero extents exist
                     % This is for compatibility with matlab,
@@ -93,84 +93,50 @@ classdef GPU_Type < handle
         % Cookie-cutter operations for basic math interpertation
         % Warning, these are very much suboptimal due to excessive memory BW use        
         function y = plus(a, b);
-            y = GPU_Type(cudaBasicOperations(a, b, 1)); return;
-
-%            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 1)); return;  end
-%            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 1)); return; end;
-%            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 1)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 1));
         end
 
         function y = minus(a,b)
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-            y = GPU_Type(cudaBasicOperations(q, r, 2)); return;
-
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 2)); return; end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 2)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 2)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 2));
         end
 
         function y = mtimes(a,b); y = times(a,b); end
         function y = times(a,b)
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-            y = GPU_Type(cudaBasicOperations(q, r, 3)); return;
-
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 3)); return; end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 3)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 3)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 3));
         end
         function y = rdivide(a,b)
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-            y = GPU_Type(cudaBasicOperations(q, r, 4)); return;
-
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 4)); return; end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 4)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 4)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 4));
         end
 
         function y = min(a,b)
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-            y = GPU_Type(cudaBasicOperations(q, r, 5)); return;
-
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 5)); return; end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 5)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 5)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 5));
         end
 
         function y = max(a,b)
-            if isa(a, 'GPU_Type'); q = a.GPU_MemPtr; else; q = a; end
-            if isa(b, 'GPU_Type'); r = b.GPU_MemPtr; else; r = b; end
-            y = GPU_Type(cudaBasicOperations(q, r, 6)); return;
-
-            if isa(a, 'GPU_Type') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 6)); return; end
-            if isa(a, 'GPU_Type') && isa(b, 'double'); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b, 6)); return; end;
-            if isa(a, 'double') && isa(b, 'GPU_Type'); y = GPU_Type(cudaBasicOperations(a, b.GPU_MemPtr, 6)); return; end;
+            y = GPU_Type(cudaBasicOperations(a, b, 6));
         end
 
         % This is pretty much a hack, in place until we do the magnetic operations properly.
-        function y = harmonicmean(a, b); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr, b.GPU_MemPtr, 7)); return; end
+        function y = harmonicmean(a, b); y = GPU_Type(cudaBasicOperations(a, b, 7)); end
 
-        function y = sqrt(a); y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,1)); return; end
-        function y = log(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,2)); return; end
-        function y = exp(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,3)); return; end
-        function y = sin(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,4)); return; end
-        function y = cos(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,5)); return; end
-        function y = tan(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,6)); return; end
-        function y = asin(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,7)); return; end
-        function y = acos(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,8)); return; end
-        function y = atan(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,9)); return; end
-        function y = sinh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,10)); return; end
-        function y = cosh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,11)); return; end
-        function y = tanh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,12)); return; end
-        function y = asinh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,13)); return; end
-        function y = acosh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,14)); return; end
-        function y = atanh(a);  y = GPU_Type(cudaBasicOperations(a.GPU_MemPtr,15)); return; end
+        function y = sqrt(a); y = GPU_Type(cudaBasicOperations(a,1)); end
+        function y = log(a);  y = GPU_Type(cudaBasicOperations(a,2)); end
+        function y = exp(a);  y = GPU_Type(cudaBasicOperations(a,3)); end
+        function y = sin(a);  y = GPU_Type(cudaBasicOperations(a,4)); end
+        function y = cos(a);  y = GPU_Type(cudaBasicOperations(a,5)); end
+        function y = tan(a);  y = GPU_Type(cudaBasicOperations(a,6)); end
+        function y = asin(a);  y = GPU_Type(cudaBasicOperations(a,7)); end
+        function y = acos(a);  y = GPU_Type(cudaBasicOperations(a,8)); end
+        function y = atan(a);  y = GPU_Type(cudaBasicOperations(a,9)); end
+        function y = sinh(a);  y = GPU_Type(cudaBasicOperations(a,10)); end
+        function y = cosh(a);  y = GPU_Type(cudaBasicOperations(a,11)); end
+        function y = tanh(a);  y = GPU_Type(cudaBasicOperations(a,12)); end
+        function y = asinh(a);  y = GPU_Type(cudaBasicOperations(a,13)); end
+        function y = acosh(a);  y = GPU_Type(cudaBasicOperations(a,14)); end
+        function y = atanh(a);  y = GPU_Type(cudaBasicOperations(a,15)); end
 
-        function y = transpose(a); y = GPU_Type(cudaArrayRotate(a.GPU_MemPtr,2)); return; end
-        function y = Ztranspose(a); y = GPU_Type(cudaArrayRotate(a.GPU_MemPtr,3)); return; end
+        function y = transpose(a); y = GPU_Type(cudaArrayRotate2(a,2)); end
+        function y = Ztranspose(a); y = GPU_Type(cudaArrayRotate2(a,3)); end
 
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
@@ -201,7 +167,7 @@ classdef GPU_Type < handle
                 obj.asize     = arrin.asize;
                 obj.numdims   = arrin.numdims;
 
-                obj.GPU_MemPtr = GPU_clone(arrin.GPU_MemPtr);
+                obj.GPU_MemPtr = GPU_clone(arrin);
             elseif (isa(arrin, 'int64') == 1)
                 % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
                 obj.allocated = true;
