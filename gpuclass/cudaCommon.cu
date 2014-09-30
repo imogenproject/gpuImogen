@@ -41,7 +41,11 @@ int nDevs        = x[5];
 // Some basic does-this-make-sense
 if(nDevs < 1) return false;
 if(nDevs > MAX_GPUS_USED) return false;
-if(halo < 0) return false;
+if(halo < 0) { // check it is sane to clone
+	if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
+
+	if(x[partitionDir-1] != 1) return false;
+}
 if((partitionDir < 1) || (partitionDir > 3)) return false;
 
 // Require there be exactly the storage required
@@ -63,7 +67,20 @@ return true;
 // Fills sub with [x0 y0 z0 nx ny nz] of partition P of multi-GPU array m
 void calcPartitionExtent(MGArray *m, int P, int *sub)
 {
-if(P >= m->nGPUs) mexErrMsgTxt("Fatal: request for partition # > # of GPUs used");
+if(P >= m->nGPUs) {
+	char bugstring[256];
+	sprintf(bugstring, "Fatal: Requested partition %i but only %i GPUs in use.", P, m->nGPUs);
+	mexErrMsgTxt(bugstring);
+}
+
+// If the array is marked as cloned, the "partition" is simply the whole array
+if(m->haloSize == PARTITION_CLONED) {
+	sub[0] = sub[1] = sub[2] = 0;
+	sub[3] = m->dim[0];
+	sub[4] = m->dim[1];
+	sub[5] = m->dim[2];
+	return;
+}
 
 int direct = m->partitionDir - 1; // zero-indexed direction
 
@@ -127,32 +144,34 @@ return (int64_t *)mxGetData(tag);
 // SERDES routines
 void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
-int k;
+int i;
 mg->numel = 1;
 
-for(k = 0; k < 3; k++) {
-    mg->dim[k] = tag[k];
-    mg->numel *= mg->dim[k];
-    }
+mg->dim[0] = tag[GPU_TAG_DIM0];
+mg->numel *= mg->dim[0];
+mg->dim[1] = tag[GPU_TAG_DIM1];
+mg->numel *= mg->dim[1];
+mg->dim[2] = tag[GPU_TAG_DIM2];
+mg->numel *= mg->dim[2];
 
-mg->haloSize     = tag[3];
-mg->nGPUs        = tag[4];
-mg->partitionDir = tag[5];
+mg->haloSize     = tag[GPU_TAG_HALO];
+mg->partitionDir = tag[GPU_TAG_PARTDIR];
+mg->nGPUs        = tag[GPU_TAG_NGPUS];
 
 int sub[6];
 
 tag += 6;
-for(k = 0; k < mg->nGPUs; k++) {
-    mg->deviceID[k]  = (int)tag[2*k];
-    mg->devicePtr[k] = (double *)tag[2*k+1];
+for(i = 0; i < mg->nGPUs; i++) {
+    mg->deviceID[i]  = (int)tag[2*i];
+    mg->devicePtr[i] = (double *)tag[2*i+1];
     // Many elementwise funcs only need numel, so avoid having to do this every time
-    calcPartitionExtent(mg, k, sub);
-    mg->partNumel[k] = sub[3]*sub[4]*sub[5];
+    calcPartitionExtent(mg, i, sub);
+    mg->partNumel[i] = sub[3]*sub[4]*sub[5];
     }
-for(; k < MAX_GPUS_USED; k++) {
-    mg->deviceID[k]  = -1;
-    mg->devicePtr[k] = 0x0;
-    mg->partNumel[k] = 0;
+for(; i < MAX_GPUS_USED; i++) {
+    mg->deviceID[i]  = -1;
+    mg->devicePtr[i] = 0x0;
+    mg->partNumel[i] = 0;
     }
 
 return;
@@ -175,16 +194,16 @@ return;
 */
 void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 {
-tag[0] = mg->dim[0];
-tag[1] = mg->dim[1];
-tag[2] = mg->dim[2];
-tag[3] = mg->haloSize;
-tag[4] = mg->partitionDir;
-tag[5] = mg->nGPUs;
-int k;
-for(k = 0; k < mg->nGPUs; k++) {
-    tag[6+2*k]   = (int64_t)mg->deviceID[k];
-    tag[6+2*k+1] = (int64_t)mg->devicePtr[k];
+tag[GPU_TAG_DIM0] = mg->dim[0];
+tag[GPU_TAG_DIM1] = mg->dim[1];
+tag[GPU_TAG_DIM2] = mg->dim[2];
+tag[GPU_TAG_HALO] = mg->haloSize;
+tag[GPU_TAG_PARTDIR] = mg->partitionDir;
+tag[GPU_TAG_NGPUS] = mg->nGPUs;
+int i;
+for(i = 0; i < mg->nGPUs; i++) {
+    tag[6+2*i]   = (int64_t)mg->deviceID[i];
+    tag[6+2*i+1] = (int64_t)mg->devicePtr[i];
     }
 
 return;
@@ -208,21 +227,29 @@ return 0;
 
 MGArray *allocMGArrays(int N, MGArray *skeleton)
 {
-
 // Do some preliminaries,
 MGArray *m = (MGArray *)malloc(N*sizeof(MGArray));
 
 int i;
 int j;
 
+int sub[6];
+
 // clone skeleton,
 for(i = 0; i < N; i++) {
-    m[i] = *skeleton;
+    m[i]       = *skeleton;
+    // but all "derived" qualities need to be reset
+    m[i].numel = m[i].dim[0]*m[i].dim[1]*m[i].dim[2];
 
     // allocate new memory
     for(j = 0; j < skeleton->nGPUs; j++) {
         cudaSetDevice(m[i].deviceID[j]);
         m[i].devicePtr[j] = 0x0;
+
+        // Check this, because the user may have merely set .haloSize = PARTITION_CLONED
+        calcPartitionExtent(m+i, j, sub);
+        m[i].partNumel[j] = sub[3]*sub[4]*sub[5];
+
         cudaMalloc((void **)&m[i].devicePtr[j], m[i].partNumel[j]*sizeof(double));
         CHECK_CUDA_ERROR("createMGArrays: malloc");
     }
@@ -251,6 +278,127 @@ for(i = 0; i < N; i++) {
 return m;
 }
 
+template<MGAReductionOperator OP>
+__global__ void cudaClonedReducer(double *a, double *b, int numel);
+template<MGAReductionOperator OP>
+__global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d, int numel);
+
+// Reduce a cloned array in the cloned direction via (sum, product, max, min)
+// Then emits the result back to the input arrays
+// so if *a is { [x] [y] [z] } on 3 devices,
+// this would end with *a = { [w] [w] [w] } where w is the reduction of [x y z].
+// if target is not null, puts the output data in target instead
+int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
+{
+	if(a->haloSize != PARTITION_CLONED) return 0;
+	// Copying shit over and then reducing gains us nothing over letting UVA handle
+	// it transparently, so we're just gonna run with it.
+	int i;
+
+	dim3 gridsize; gridsize.x = 32; gridsize.y = gridsize.z = 1;
+	dim3 blocksize; blocksize.x = 256; blocksize.y = blocksize.z = 1;
+
+	switch(a->nGPUs) {
+	case 1: break; // nofin to do
+	case 2: // single reduce
+		cudaSetDevice(a->deviceID[0]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		switch(op) {
+		case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+		case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+		case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+		case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+		}
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 2 GPUs");
+		break;
+	case 3: // two reduces, serially
+		cudaSetDevice(a->deviceID[0]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		switch(op) {
+				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+				}
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, first call");
+		cudaSetDevice(a->deviceID[0]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		switch(op) {
+				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
+				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
+				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
+				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
+				}
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, second call");
+		break;
+	case 4: // three reduces, 2 parallel then 1 more
+		cudaSetDevice(a->deviceID[0]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		switch(op) {
+				case OP_SUM: cudaClonedReducerQuad<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
+				case OP_PROD: cudaClonedReducerQuad<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
+				case OP_MAX: cudaClonedReducerQuad<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
+				case OP_MIN: cudaClonedReducerQuad<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
+				}
+
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 4 GPUs using quadreducer");
+		break;
+	default: return -1;
+	}
+
+	// Now drop the result back to the other cloned partitions
+	for(i = 1; i < a->nGPUs; i++) {
+		cudaMemcpy((void *)a->devicePtr[i], (void *)a->devicePtr[0], a->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+		CHECK_CUDA_ERROR("Copying after cloned partition reduce.");
+	}
+
+
+	return 0;
+}
+
+template<MGAReductionOperator OP>
+__global__ void cudaClonedReducer(double *a, double *b, int numel)
+{
+	int i = threadIdx.x + blockIdx.x*blockDim.x;
+	int step_i = blockDim.x*gridDim.x;
+
+	for(; i < numel; i+= step_i) {
+		switch(OP) {
+		case OP_SUM: { a[i] += b[i]; } break;
+		case OP_PROD: { a[i] *= b[i]; } break;
+		case OP_MAX: {a[i] = (a[i] > b[i]) ? a[i] : b[i]; } break;
+		case OP_MIN: {a[i] = (a[i] < b[i]) ? a[i] : b[i]; } break;
+		}
+	}
+}
+
+template<MGAReductionOperator OP>
+__global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d, int numel)
+{
+	int i = threadIdx.x + blockIdx.x*blockDim.x;
+	int step_i = blockDim.x*gridDim.x;
+
+	double u, v, w, x;
+
+	for(; i < numel; i+= step_i) {
+		u = a[i]; v = b[i];
+		w = c[i]; x = d[i];
+
+		switch(OP) {
+		case OP_SUM: { a[i] = u + v + w + x; } break;
+		case OP_PROD: { a[i] = u*v*w*x; } break;
+		case OP_MAX: {
+			u = (u > v) ? u : v;
+			w = (w > x) ? w : x;
+			a[i] = (u > w) ? u : w; } break;
+		case OP_MIN: {
+			u = (u < v) ? u : v;
+			w = (w < x) ? w : x;
+			a[i] = (u < w) ? u : w; } break;
+		}
+	}
+}
+
 // Necessary when non-point operations have been performed in the partition direction
 void exchangeMGArrayHalos(MGArray *a, int n)
 {
@@ -258,6 +406,9 @@ int i, j;
 dim3 blocksize, gridsize;
 
 for(i = 0; i < n; i++) {
+	// Skip this if it's a cloned partition
+	if(a->haloSize == PARTITION_CLONED) { a++; continue; }
+
     for(j = 0; j < a->nGPUs-1; j++) {
         switch(a->partitionDir) {
             case 1: {

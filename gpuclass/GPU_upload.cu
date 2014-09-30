@@ -58,6 +58,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
   }
 
+
+
   double *hmem = mxGetPr(prhs[0]);
   int nd = mxGetNumberOfDimensions(prhs[0]);
   if(nd > 3) mexErrMsgTxt("Array dimensionality > 3 unsupported.");
@@ -65,6 +67,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int i;
   for(i = 0; i < nd; i++) { m.dim[i] = idims[i]; }
   for(;      i < 3; i++) { m.dim[i] = 1; }
+
+  // If the size in the partition direction is 1, clone it instead
+  // calcPartitionExtent will take care of this for us
+  if(m.dim[m.partitionDir-1] == 1) m.haloSize = PARTITION_CLONED;
 
   m.numel = m.dim[0]*m.dim[1]*m.dim[2];
   int sub[6];
@@ -82,7 +88,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   for(i = 0; i < m.nGPUs; i++) {
     calcPartitionExtent(dest, i, &sub[0]);
-    gmem = (double *)realloc((void *)gmem, sub[3]*sub[4]*sub[5]*sizeof(double));
+    gmem = (double *)realloc((void *)gmem, m.partNumel[i]*sizeof(double));
     
     // Copy the partition out of the full host array
     for(w = sub[2]; w < sub[2]+sub[5]; w++)
@@ -98,7 +104,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     cudaError_t fail;// = cudaMalloc((void **)&m.devicePtr[i],  sub[3]*sub[4]*sub[5]*sizeof(double));
   //  if(fail == cudaErrorMemoryAllocation) mexErrMsgTxt("GPU_upload: H2D, error attempting to allocate memory (cudaErrorMemoryAllocation). We've been had.");
 
-    fail = cudaMemcpy((void *)dest->devicePtr[i], (void *)gmem, sub[3]*sub[4]*sub[5]*sizeof(double), cudaMemcpyHostToDevice);
+    fail = cudaMemcpy((void *)dest->devicePtr[i], (void *)gmem, m.partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
     if(fail != cudaSuccess) mexErrMsgTxt("GPU_upload: H2D, Copy to device failed.");
   }
 

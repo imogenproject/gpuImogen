@@ -51,6 +51,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int64_t iT, iS;
   double *gmem = NULL;
 
+  if(m.haloSize == PARTITION_CLONED) {
+    cudaSetDevice(m.deviceID[0]);
+    CHECK_CUDA_ERROR("cudaSetDevice()");
+    cudaError_t fail = cudaMemcpy((void *)result, (void *)m.devicePtr[0], m.numel*sizeof(double), cudaMemcpyDeviceToHost);
+    CHECK_CUDA_ERROR("GPU_download to host.");
+    return;
+  }
+
   for(i = 0; i < m.nGPUs; i++) {
     // Get this partition's extent
     calcPartitionExtent(&m, i, &sub[0]);
