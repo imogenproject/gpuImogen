@@ -37,10 +37,25 @@ typedef struct {
         double *cFreeze;
         } fluidVarPtrs;
 
+// warning: reduceClonedMGArray is hardcoded with the reduction algo for a max of 4 devices because lazy
 #define MAX_GPUS_USED 4
 #define PARTITION_X 1
 #define PARTITION_Y 2
 #define PARTITION_Z 3
+
+#define GPU_TAG_DIM0 0
+#define GPU_TAG_DIM1 1
+#define GPU_TAG_DIM2 2
+#define GPU_TAG_HALO 3
+#define GPU_TAG_PARTDIR 4
+#define GPU_TAG_NGPUS 5
+
+typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
+
+// If the haloSize parameter is set to this,
+// then each gpu has a *.dims[] size array
+// This occurs if e.g. a reduction occurs along the partition direction
+#define PARTITION_CLONED -1
 
 typedef struct {
     int dim[3];
@@ -65,6 +80,8 @@ void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 int      accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
 MGArray *allocMGArrays(int N, MGArray *skeleton);
 MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
+
+int reduceClonedMGArray(MGArray *a, MGAReductionOperator op);
 
 void exchangeMGArrayHalos(MGArray *a, int n);
 __global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h);
