@@ -98,7 +98,7 @@ switch(nrhs) {
     dim3 blocksize, gridsize;
     blocksize.x = 256; blocksize.y = blocksize.z = 1;
 
-    gridsize.x = 64;
+    gridsize.x = 32; // 8K threads out to keep it occupied
     gridsize.y = gridsize.z =1;
 
     // Allocate nGPUs * gridsize) elements of pinned memory
@@ -118,6 +118,7 @@ switch(nrhs) {
     dims[1] = 1;
     plhs[0] = mxCreateNumericArray (2, dims, mxDOUBLE_CLASS, mxREAL);
 
+    // Since we get only 32*nGPUs elements back, not worth another kernel invocation
     double *d = mxGetPr(plhs[0]);
     d[0] = *blkA;
     for(i = 1; i < a.nGPUs*gridsize.x; i++) { if(blkA[i] > *d) *d = blkA[i]; }
