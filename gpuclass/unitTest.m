@@ -536,7 +536,7 @@ b = max(py(:) - pyD.array(:));
 c = max(pz(:) - pzD.array(:));
 d = max(E(:) - ED.array(:));
 
-n = [a, b, c, d]
+n = [a, b, c, d];
 if max(abs(n)) < 1e-10;
     fail = 0;
 else fail = 1;
@@ -585,7 +585,7 @@ function fail = testFreezeAndPtot(res)
     cf = GPU_Type(cdev);
     fail = 0;
     if max(max(max(abs(pd.array - ptot)))) > 1e-10; disp('   !!! Test failed: P !!!'); fail = 1; end
-    if max(max(abs(squeeze(cf.array) - squeeze(freeze)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; end
+    if max(max(abs(cf.array(:) - freeze(:)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; end
 
 end
 
