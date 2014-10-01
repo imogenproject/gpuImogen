@@ -77,7 +77,7 @@ end
 
 function R = randomResolution(dim, nmax)
     R = round(nmax*rand(1,3));
-    R(R < 2) = 2;
+    R(R < 6) = 6;
     if dim < 3; R(3) = 1; end
 end
 
