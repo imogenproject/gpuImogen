@@ -56,19 +56,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     CHECK_CUDA_ERROR("entering cudaMagTVD");
 
     // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 2);
-
-    double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
+    MGArray src[3];
+    int worked = accessMGArrays(prhs, 0, 2, src);
+    MGArray *dst = createMGArrays(plhs, 1, src);
 
     // Establish launch dimensions & a few other parameters
     double lambda     = *mxGetPr(prhs[3]);
     int fluxDirection = (int)*mxGetPr(prhs[4]);
 
     int3 arraySize;
-    arraySize.x = amd.dim[0];
-    amd.ndims > 1 ? arraySize.y = amd.dim[1] : arraySize.y = 1;
-    amd.ndims > 2 ? arraySize.z = amd.dim[2] : arraySize.z = 1;
+    arraySize.x = src->dim[0];
+    arraySize.y = src->dim[1];
+    arraySize.z = src->dim[2];
 
     dim3 blocksize, gridsize;
     gridsize.z = 1; blocksize.z = 1;
@@ -82,15 +81,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cudaMalloc(&cf, arraySize.y*arraySize.z*sizeof(double));
             CHECK_CUDA_ERROR("magnetic cfreeze allocate");
   
-            cukern_advectFreezeSpeedX<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+            cukern_advectFreezeSpeedX<<<gridsize, blocksize>>>(src[2].devicePtr[0], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic calculate cfreeze X dir");
 
             blocksize.x = 24; blocksize.y = 16;
             gridsize.x = (int)ceil(arraySize.x / 18.0);
             gridsize.y = (int)ceil((double)arraySize.y / (double)blocksize.y);
 
-            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD X step");
+            cukern_magnetTVDstep_uniformX<<<gridsize , blocksize>>>(src[0].devicePtr[0], src[2].devicePtr[0], cf, src[1].devicePtr[0], dst->devicePtr[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic TVD X step");
 
             cudaFree(cf);
             break;
@@ -101,15 +100,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cudaMalloc(&cf, arraySize.x*arraySize.z*sizeof(double));
             CHECK_CUDA_ERROR("magnetic cfreeze allocate.");
 
-            cukern_advectFreezeSpeedY<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+            cukern_advectFreezeSpeedY<<<gridsize, blocksize>>>(src[2].devicePtr[0], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic calculate cfreeze X dir");
 
             blocksize.x = 16; blocksize.y = 24;
             gridsize.x = (int)ceil(arraySize.x / 16.0);
             gridsize.y = (int)ceil(arraySize.y / 18.0);
 
-            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD Y step");
+            cukern_magnetTVDstep_uniformY<<<gridsize , blocksize>>>(src[0].devicePtr[0], src[2].devicePtr[0], cf, src[1].devicePtr[0], dst->devicePtr[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic TVD Y step");
 
             cudaFree(cf);
             break;
@@ -121,19 +120,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cudaMalloc(&cf, arraySize.x*arraySize.y*sizeof(double));
             CHECK_CUDA_ERROR("magnetic cfreeze allocate");
 
-            cukern_advectFreezeSpeedZ<<<gridsize, blocksize>>>(srcs[2], cf, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic calculate cfreeze X dir");
+            cukern_advectFreezeSpeedZ<<<gridsize, blocksize>>>(src[2].devicePtr[0], cf, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic calculate cfreeze X dir");
 
             blocksize.x = 24; blocksize.y = 16;
             gridsize.x = (int)ceil(arraySize.z / 18.0);
             gridsize.y = (int)ceil((double)arraySize.x / (double)blocksize.y);
 
-            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(srcs[0], srcs[2], cf, srcs[1], dest[0], lambda, arraySize);
-            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, fluxDirection, "magnetic TVD Y step");
+            cukern_magnetTVDstep_uniformZ<<<gridsize , blocksize>>>(src[0].devicePtr[0], src[2].devicePtr[0], cf, src[1].devicePtr[0], dst->devicePtr[0], lambda, arraySize);
+            CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, fluxDirection, "magnetic TVD Y step");
 
             cudaFree(cf);
             break;
         }
+
+    free(dst);
 
 }
 
@@ -293,6 +294,7 @@ __global__ void cukern_magnetTVDstep_uniformX(double *bW, double *velGrid, doubl
 /* Declare any arrays to be used for storage/differentiation similarly. */
 __shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
 __shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double fluxB[TILEDIM_X * TILEDIM_Y + 2];
 
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
 int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
@@ -327,20 +329,17 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     __syncthreads();
     deriv[tileAddr] = (flux[tileAddr] - flux[tileAddr-1])/2.0;
     __syncthreads();
-    flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
-    __syncthreads();
 
-    // Pick the upwind one now
-    if(v0 > 0) {
-      deriv[tileAddr] = flux[tileAddr];
+    if(v0 > 0) { 
+        fluxB[tileAddr] = flux[tileAddr] + LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     } else {
-      deriv[tileAddr] = flux[tileAddr+1];
+        fluxB[tileAddr] = flux[tileAddr+1]+LIMITERFUNC(deriv[tileAddr+1],deriv[tileAddr+2]); 
     }
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
-        fluxout[globAddr] = deriv[tileAddr-1];
+        mag[globAddr]     = mag[globAddr] - lambda*(fluxB[tileAddr] - fluxB[tileAddr-1]);
+        fluxout[globAddr] = fluxB[tileAddr-1];
         }
 
     __syncthreads();
@@ -385,6 +384,7 @@ __global__ void cukern_magnetTVDstep_uniformY(double *bW, double *velGrid, doubl
 /* Declare any arrays to be used for storage/differentiation similarly. */
 __shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
 __shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double fluxB[TILEDIM_X * TILEDIM_Y + 2];
 
 FINITEDIFFY_PREAMBLE
 
@@ -424,17 +424,16 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     __syncthreads();
 
-    // Pick the upwind one now
     if(v0 > 0) {
-      deriv[tileAddr] = flux[tileAddr];
+        fluxB[tileAddr] = flux[tileAddr] + LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     } else {
-      deriv[tileAddr] = flux[tileAddr+1];
+        fluxB[tileAddr] = flux[tileAddr+1]+LIMITERFUNC(deriv[tileAddr+1],deriv[tileAddr+2]);
     }
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
-        fluxout[globAddr] = deriv[tileAddr-1];
+        mag[globAddr]     = mag[globAddr] - lambda*(fluxB[tileAddr] - fluxB[tileAddr-1]);
+        fluxout[globAddr] = fluxB[tileAddr-1];
         }
 
     __syncthreads();
@@ -479,6 +478,7 @@ __global__ void cukern_magnetTVDstep_uniformZ(double *bW, double *velGrid, doubl
 /* Declare any arrays to be used for storage/differentiation similarly. */
 __shared__ double flux [TILEDIM_X * TILEDIM_Y + 2];
 __shared__ double deriv[TILEDIM_X * TILEDIM_Y + 2];
+__shared__ double fluxB[TILEDIM_X * TILEDIM_Y + 2];
 
 /* Our assumption implicitly is that differencing occurs in the X direction in the local tile */
 int tileAddr = threadIdx.x + TILEDIM_X*threadIdx.y + 1;
@@ -516,17 +516,16 @@ for(z = 0; z < ORTHOG_DIMENSION; z++) {
     flux[tileAddr] += LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     __syncthreads();
 
-    // Pick the upwind one now
     if(v0 > 0) {
-      deriv[tileAddr] = flux[tileAddr];
+        fluxB[tileAddr] = flux[tileAddr] + LIMITERFUNC(deriv[tileAddr],deriv[tileAddr+1]);
     } else {
-      deriv[tileAddr] = flux[tileAddr+1];
+        fluxB[tileAddr] = flux[tileAddr+1]+LIMITERFUNC(deriv[tileAddr+1],deriv[tileAddr+2]);
     }
     __syncthreads();
 
     if(ITakeDerivative) {
-        mag[globAddr]     = mag[globAddr] - lambda*(deriv[tileAddr] - deriv[tileAddr-1]);
-        fluxout[globAddr] = deriv[tileAddr-1];
+        mag[globAddr]     = mag[globAddr] - lambda*(fluxB[tileAddr] - fluxB[tileAddr-1]);
+        fluxout[globAddr] = fluxB[tileAddr-1];
         }
 
     __syncthreads();

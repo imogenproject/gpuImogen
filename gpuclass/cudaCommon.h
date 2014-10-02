@@ -24,6 +24,8 @@
 #define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
 checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
 #define CHECK_CUDA_ERROR(astring) checkCudaError(astring, __FILE__, __LINE__)
+void dropMexError(char *excuse, char *infile, int atline);
+#define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
 
 #define PAR_WARN(x) if(x.nGPUs > 1) mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK");
 
@@ -80,6 +82,8 @@ void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 int      accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
 MGArray *allocMGArrays(int N, MGArray *skeleton);
 MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
+// Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
+void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
 int reduceClonedMGArray(MGArray *a, MGAReductionOperator op);
 

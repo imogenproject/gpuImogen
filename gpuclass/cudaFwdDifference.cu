@@ -39,44 +39,47 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   CHECK_CUDA_ERROR("entering cudaFwdDifference");
 
     // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 1);
+    MGArray src[2];
+    int worked = accessMGArrays(prhs, 0, 1, src);
 
     // Establish launch dimensions & a few other parameters
     int direction = (int)*mxGetPr(prhs[2]);
     double lambda = *mxGetPr(prhs[3]);
 
     int3 arraySize;
-    arraySize.x = amd.dim[0];
-    amd.ndims > 1 ? arraySize.y = amd.dim[1] : arraySize.y = 1;
-    amd.ndims > 2 ? arraySize.z = amd.dim[2] : arraySize.z = 1;
+    arraySize.x = src->dim[0];
+    arraySize.y = src->dim[1];
+    arraySize.z = src->dim[2];
 
     dim3 blocksize, gridsize;
     blocksize.z = 1;
     gridsize.z = 1;
+
+    cudaSetDevice(src->deviceID[0]);
+    CHECK_CUDA_ERROR("cudaSetDevice()");
 
     // Interpolate the grid-aligned velocity
     switch(direction) {
         case 1:
             blocksize.x = 128; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.y; gridsize.y = arraySize.z;
-            cukern_ForwardDifferenceX<<<gridsize, blocksize>>>(srcs[0], srcs[1], arraySize.x, lambda);
+            cukern_ForwardDifferenceX<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, lambda);
             break;
         case 2:
             blocksize.x = 64; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.z;
-            cukern_ForwardDifferenceY<<<gridsize, blocksize>>>(srcs[0], srcs[1], arraySize.x, arraySize.y, lambda);
+            cukern_ForwardDifferenceY<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.y, lambda);
             break;
         case 3:
             blocksize.x = 64; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.y;
-            cukern_ForwardDifferenceZ<<<gridsize, blocksize>>>(srcs[0], srcs[1], arraySize.x, arraySize.z, lambda);
+            cukern_ForwardDifferenceZ<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.z, lambda);
             break;
         }
 
-CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, direction, "Backwards averaging");
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, src, direction, "Backwards averaging");
 
 }
 

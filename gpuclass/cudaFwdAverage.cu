@@ -32,22 +32,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     CHECK_CUDA_ERROR("entering cudaFwdAverage");
 
-    // Get source array info and create destination arrays
-    ArrayMetadata amd;
-    double **srcs = getGPUSourcePointers(prhs, &amd, 0, 0);
-    double **dest = makeGPUDestinationArrays(&amd, plhs, 1);
+    MGArray in;
+    int worked = accessMGArrays(prhs, 0, 0, &in);
+    MGArray *out = createMGArrays(plhs, 1, &in);
 
     // Establish launch dimensions & a few other parameters
     int direction = (int)*mxGetPr(prhs[1]);
 
     int3 arraySize;
-    arraySize.x = amd.dim[0];
-    amd.ndims > 1 ? arraySize.y = amd.dim[1] : arraySize.y = 1;
-    amd.ndims > 2 ? arraySize.z = amd.dim[2] : arraySize.z = 1;
+    arraySize.x = in.dim[0];
+    arraySize.y = in.dim[1];
+    arraySize.z = in.dim[2];
 
     dim3 blocksize, gridsize;
     blocksize.z = 1;
     gridsize.z = 1;
+
+    cudaSetDevice(in.deviceID[0]);
+    CHECK_CUDA_ERROR("cudaSetDevice()");
 
     // Interpolate the grid-aligned velocity
     switch(direction) {
@@ -58,7 +60,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //            cukern_fwdAverageX<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
             blocksize.x = 128; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.y; gridsize.y = arraySize.z;
-            cukern_ForwardAverageX<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize.x);
+            cukern_ForwardAverageX<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x);
             break;
         case 2:
 //            blocksize.x = 8; blocksize.y = 18;
@@ -68,7 +70,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             blocksize.x = 64; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.z;
-            cukern_ForwardAverageY<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize.x, arraySize.y);
+            cukern_ForwardAverageY<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x, arraySize.y);
             break;
         case 3:
 //            blocksize.x = 18; blocksize.y = 8;
@@ -78,11 +80,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
               blocksize.x = 64; blocksize.y = blocksize.z = 1;
               gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
               gridsize.y = arraySize.y;
-              cukern_ForwardAverageZ<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize.x, arraySize.z);
+              cukern_ForwardAverageZ<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x, arraySize.z);
             break;
         }
 
-CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &amd, direction, "Forward averaging");
+    free(out);
+
+    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &in, direction, "Forward averaging");
 
 }
 

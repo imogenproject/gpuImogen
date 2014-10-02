@@ -278,6 +278,12 @@ for(i = 0; i < N; i++) {
 return m;
 }
 
+void pullMGAPointers( MGArray *m, int N, int i, double **dst)
+{
+	int x;
+	for(x = 0; x < N; x++) { dst[x] = m[x].devicePtr[i]; }
+}
+
 template<MGAReductionOperator OP>
 __global__ void cudaClonedReducer(double *a, double *b, int numel);
 template<MGAReductionOperator OP>
@@ -455,6 +461,8 @@ for(i = 0; i < n; i++) {
 
 }
 
+// The Z halo exchange function is simply done by a pair of memcopies
+
 // expect invocation with [h BLKy 1] threads and [ny/BLKy 1 1].rp blocks
 __global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h)
 {
@@ -496,154 +504,9 @@ for(i = 0; i < h; i++) {
 
 }
 
-// This is more easily done with a simple memcpy
-//__global__ void cudaMGHaloSyncZ(double *L, double *R, int nx, int ny, int nz, int h)
-
 /* Given a list of indices into the global array, returns a * to a new array listing only */
 // that subset which exists on partition i of the given MGArray.
 //int partitionIndexTranslate(void)
-
-
-/********************************************************************/
-/* Below this line is almost all obsolete ***************************/
-/********************************************************************/
-
-/* Helper function;
-   If it's passed a 5x1 mxINT64 it passes through,
-   If it's passed a class with classname "GPU_Type" it returns the GPU_MemPtr property's array */
-void getTagFromGPUType(const mxArray *gputype, int64_t *rettag)
-{
-mxClassID dtype = mxGetClassID(gputype);
-
-/* Handle gpu tags straight off */
-if(dtype == mxINT64_CLASS) {
-  int64_t *x = (int64_t *)mxGetData(gputype);
-  int j;
-  for(j = 0; j < 5; j++) rettag[j] = x[j];
-  return;
-  }
-
-mxArray *tag;
-
-const char *cname = mxGetClassName(gputype);
-
-/* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
-if(strcmp(cname, "GPU_Type") == 0) {
-  tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
-  } else { /* Assume it's an ImogenArray or descendent and retreive the gputag property */
-  tag = mxGetProperty(gputype, 0, "gputag");
-  }
-
-/* We made a fair effort. There is no dishonor in surrendering now. */
-if(tag == NULL) {
-  mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag, GPU_Type class, or Imogen array");
-  }
-
-/* Copy data out */
-int64_t *t = (int64_t *)mxGetData(tag);
-int j; for(j = 0; j < 5; j++) rettag[j] = t[j]; 
-
-}
-
-void arrayMetadataToTag(ArrayMetadata *meta, int64_t *tag)
-{
-if(meta == NULL) {
-  mexErrMsgTxt("arrayMetadataToTag: Fatal: meta was null");
-  }
-if(tag == NULL) {
-  mexErrMsgTxt("arrayMetadataToTag: Fatal: tag was null");
-  }
-
-/* tag[0] = original pointer; */
-tag[1] = meta->ndims;
-tag[2] = meta->dim[0];
-tag[3] = meta->dim[1];
-tag[4] = meta->dim[2];
-
-return;
-}
-
-/* Given the RHS, an array to return array size, and the set of array indexes to take *s from */
-double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg)
-{
-
-  double **gpuPointers = (double **)malloc((1+toarg-fromarg) * sizeof(double *));
-  int iter;
-
-  int64_t tag[5]; getTagFromGPUType(prhs[fromarg], &tag[0]);
-/*  printf("tag: %li %li %li %li %li\n", tag[0], tag[1], tag[2], tag[3], tag[4]);*/
-
-  for(iter = 0; iter < 3; iter++) { metaReturn->dim[iter] = (int)tag[2+iter]; } // copy metadata out of first gpu*
-  metaReturn->numel = metaReturn->dim[0]*metaReturn->dim[1]*metaReturn->dim[2];
-  metaReturn->ndims = tag[1];
-
-  for(iter = fromarg; iter <= toarg; iter++) {
-    getTagFromGPUType(prhs[iter], &tag[0]);
-    gpuPointers[iter-fromarg] = (double *)tag[0];
-  }
-
-return gpuPointers;
-}
-
-/* Creates destination array that the kernels write to; Returns the GPU memory pointer, and assigns the LHS it's passed */
-double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany)
-{
-
-double **rvals = (double **)malloc(howmany*sizeof(double *));
-
-int i;
-mwSize dims[2]; dims[0] = 5; dims[1] = 1;
-
-int64_t *rv;
-
-for(i = 0; i < howmany; i++) {
-  retArray[i] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
-  rv = (int64_t *)mxGetData(retArray[i]);
-
-  cudaError_t fail = cudaMalloc((void **)&rv[0], amdRef->numel*sizeof(double));
-  if(fail != cudaSuccess) {
-    CHECK_CUDA_ERROR("In makeGPUDestinationArrays: malloc failed and I am sad.");
-    }
-
-  rv[1] = amdRef->ndims;
-  rv[2] = amdRef->dim[0];
-  rv[3] = amdRef->dim[1];
-  rv[4] = amdRef->dim[2];
-  rvals[i] = (double *)rv[0];
-  }
-
-//size_t tot,fre;
-
-//cuMemGetInfo(&fre, &tot);
-//printf("Now free: %u\n", fre);
-
-return rvals;
-
-}
-
-// Takes the array at prhs[target] and overwrites its gputag with one matching newdims
-// and returns the pointer to the new array
-// You must have previously fetched the original memory pointer or it will be lost
-double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims)
-{
-mxClassID dtype = mxGetClassID(prhs[target]);
-if(dtype != mxINT64_CLASS) mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag.");
-
-
-double *ret;
-cudaError_t fail = cudaMalloc((void **)&ret, newdims[0]*newdims[1]*newdims[2]*sizeof(double));
-if(fail != cudaSuccess) {
-  printf("On array replace: %s\n", cudaGetErrorString(fail));
-  CHECK_CUDA_ERROR("In replaceGPUArray: malloc failed and I am sad.");
-  }
-
-int64_t *tag = (int64_t *)mxGetData(prhs[target]);
-tag[0] = (int64_t)ret;
-if(newdims[2] > 1) { tag[1] = 3; } else { if(newdims[1] > 1) { tag[1] = 2; } else { tag[1] = 1; } }
-tag[2] = newdims[0]; tag[3] = newdims[1]; tag[4] = newdims[2];
-
-return ret;
-}
 
 // Just grab in.fieldA.fieldB
 // Or in.fieldA if fieldB is blank
@@ -764,6 +627,18 @@ if(epicFail == cudaSuccess) return;
 
 printf("cudaCheckError was non-success when polled at %s (%s:%i): %s -> %s\n", where, fname, lname, errorName(epicFail), cudaGetErrorString(epicFail));
 mexErrMsgTxt("Forcing stop due to CUDA error");
+}
+
+void dropMexError(char *excuse, char *infile, int atline)
+{
+char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
+
+sprintf(turd, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
+
+mexErrMsgTxt(turd);
+
+free(turd);
+
 }
 
 void printdim3(char *name, dim3 dim)

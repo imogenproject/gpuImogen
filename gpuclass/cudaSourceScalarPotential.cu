@@ -59,13 +59,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     int worked = accessMGArrays(prhs, 0, 5, fluid);
 
     dim3 gridsize, blocksize;
-    int3 arraysize; arraysize.x = fluid->dim[0]; arraysize.y = fluid->dim[1]; arraysize.z = fluid->dim[2];
+    int3 arraysize;
+    int i, sub[6];
 
-    blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
-    gridsize.x = arraysize.x / (blocksize.x - 2); gridsize.x += ((blocksize.x-2) * gridsize.x < fluid->dim[0]);
-    gridsize.y = arraysize.y / (blocksize.y - 2); gridsize.y += ((blocksize.y-2) * gridsize.y < fluid->dim[1]);
-    gridsize.z = 1;
-
+    // Each partition uses the same common parameters
     double dt = *mxGetPr(prhs[6]);
     double *dx = mxGetPr(prhs[7]);    
     double lambda[7];
@@ -78,16 +75,31 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     lambda[5] = 1.0/(lambda[4] - lambda[3]); /* 1/(rho_g - rho_c) */
     lambda[6] = lambda[3]*lambda[5];
 
+    // Good guy cuda takes care of putting this on all the contexts for us
     cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
-    cukern_applyScalarPotential<<<gridsize, blocksize>>>(
-        fluid[0].devicePtr[0],
-        fluid[1].devicePtr[0],
-        fluid[2].devicePtr[0],
-        fluid[3].devicePtr[0],
-        fluid[4].devicePtr[0],
-        fluid[5].devicePtr[0], arraysize);
 
-    CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, -1, "applyScalarPotential");
+    // Iterate over all partitions, and here we GO!
+    for(i = 0; i < fluid->nGPUs; i++) {
+        calcPartitionExtent(fluid, i, sub);
+        cudaSetDevice(fluid->deviceID[i]);
+        CHECK_CUDA_ERROR("cudaSetDevice()");
+
+        arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
+
+        blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
+        gridsize.x = arraysize.x / (blocksize.x - 2); gridsize.x += ((blocksize.x-2) * gridsize.x < arraysize.x);
+        gridsize.y = arraysize.y / (blocksize.y - 2); gridsize.y += ((blocksize.y-2) * gridsize.y < arraysize.y);
+        gridsize.z = 1;
+
+        cukern_applyScalarPotential<<<gridsize, blocksize>>>(
+            fluid[0].devicePtr[i],
+            fluid[1].devicePtr[i],
+            fluid[2].devicePtr[i],
+            fluid[3].devicePtr[i],
+            fluid[4].devicePtr[i],
+            fluid[5].devicePtr[i], arraysize);
+        CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");
+    }
 
 }
 

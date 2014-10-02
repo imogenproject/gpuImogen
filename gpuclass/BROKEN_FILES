@@ -1,32 +1,29 @@
-cudaAccretingStar.cu		| dead (used by source)		| S 
-cudaAdvect.cu			| dead				| 
+cudaAccretingStar.cu		| builds 			| S 
 cudaArrayAtomic.cu		| SUCCESSFULLY FUZZED		| E
-cudaArrayRotate.cu		| shim				| E
 cudaArrayRotate2.cu		| SUCCESSFULLY FUZZED		| E
 cudaBasicOperations.cu		| WORKSFORME			| E
 cudaCommon.cu			| 				| E
 cudaFluidStep.cu		| shim				| E
 cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
-cudaFwdAverage.cu		| dead (MHD-ONLY)		| M
-cudaFwdDifference.cu		| dead (MHD-ONLY)		| M
+cudaFwdAverage.cu		| builds 			| M
+cudaFwdDifference.cu		| builds			| M
 cudaHaloExchange.cu		| shim				| P
-cudaMagNew.cu			| dead (MHD-ONLY)		| M
-cudaMagPrep.cu			| dead (MHD-ONLY)		| M
-cudaMagTVD.cu			| dead (MHD-ONLY)		| M
-cudaMagW.cu			| dead (MHD-ONLY)		| M
-cudaMHDKernels.cu		| dead (MHD-ONLY)		| M
+cudaMagPrep.cu			| builds 			| M
+cudaMagTVD.cu			| builds			| M
+cudaMagW.cu			| builds			| M
+cudaMHDKernels.cu		| builds, probably boned anyway	| M
 cudaSoundspeed.cu		| SUCCESSFULLY FUZZED		| E
-cudaSourceRotatingFrame.cu	| shim (called by source)	| S
+cudaSourceRotatingFrame.cu	| shim				| S
 cudaSourceScalarPotential.cu	| Works (I think)		| S
 cudaStatics.cu			| shim				| Nontrivial BCs
-directionalMaxFinder.cu		| Almost works (see fixme)	| E
-freezeAndPtot.cu		| shim				| E
+directionalMaxFinder.cu		| 2/3 work 			| E
+freezeAndPtot.cu		| SUCCESSFULLY FUZZED		| E
 
 Statuses:
 OBSOLETE:   Not needed by new toolkit
 dead:       No porting work done
+builds:     A shim is theoretically present but it only builds, isn't tested
 shim:       New toolkit has been slipped in but assumes single-device and MD will spectacularly fail
-builds:     It compiled but hasn't been tested or anything. Error checks probably disabled
 WORKSFORME: Looks like it works but not verified or such
 VERIFIED:   Systematically tested and fuzzed
 
@@ -37,6 +34,9 @@ P = parallel operation
 S = source terms
 
 These I think are never used so they're dead last priority:
+cudaAdvect.cu			| dead (was never alive)	| 
+cudaMagNew.cu			| dead (MHD-ONLY)		| M
+cudaArrayRotate.cu		| shim, OBSOLETE		| E
 cudaFluidTVD.cu			| OBSOLETE
 cudaFluidW.cu			| OBSOLETE
 cudaPointPotentials.cu		| dead (compact objects only)

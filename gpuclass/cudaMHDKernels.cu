@@ -39,87 +39,106 @@ __global__ void cukern_PerformFlux(double *array0, double *Cfreeze, double *flux
 #define BLOCKWIDTH 256
 #define THREADLOOPS 1
 
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Determine appropriate number of arguments for RHS
   if (nrhs < 2) mexErrMsgTxt("Require at least (computation type, input argument)");
   int operation = (int)*mxGetPr(prhs[0]);
 
   dim3 blocksize; blocksize.x = BLOCKWIDTH; blocksize.y = blocksize.z = 1;
-  ArrayMetadata amd;
   dim3 gridsize;
 
   // Select the appropriate kernel to invoke
   if((operation == OP_SOUNDSPEED) || (operation == OP_GASPRESSURE) || (operation == OP_TOTALPRESSURE)) {
     if( (nlhs != 1) || (nrhs != 10)) { mexErrMsgTxt("Soundspeed operator is Cs = cudaMHDKernels(1, rho, E, px, py, pz, bx, by, bz, gamma)"); }
     double gam = *mxGetPr(prhs[9]);
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 8);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
+    MGArray fluid[8];
+    int worked   = accessMGArrays(prhs, 1, 8, fluid);
+    MGArray *dst = createMGArrays(plhs, 1, fluid);
+
+    gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
+
+    double *srcs[8]; pullMGAPointers(fluid, 8, 0, srcs);
+
 //printf("%i %i %i %i %i %i\n", blocksize.x, blocksize.y, blocksize.z, gridsize.x, gridsize.y, gridsize.z);
     switch(operation) {
-      case OP_SOUNDSPEED:       cukern_Soundspeed<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], gam, amd.numel); break;
-      case OP_GASPRESSURE:     cukern_GasPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], gam, amd.numel); break;
-      case OP_TOTALPRESSURE: cukern_TotalPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], gam, amd.numel); break;
+      case OP_SOUNDSPEED:       cukern_Soundspeed<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], dst->devicePtr[0], gam, fluid->numel); break;
+      case OP_GASPRESSURE:     cukern_GasPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], dst->devicePtr[0], gam, fluid->numel); break;
+      case OP_TOTALPRESSURE: cukern_TotalPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], dst->devicePtr[0], gam, fluid->numel); break;
     }
-    free(destPtr);
+
+    free(dst);
 
   } else if((operation == OP_MAGPRESSURE)) {
     if( (nlhs != 1) || (nrhs != 4)) { mexErrMsgTxt("Magnetic pressure operator is Pm = cudaMHDKernels(4, bx, by, bz)"); }
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 3);
+    MGArray mag[3];
+    int worked = accessMGArrays(prhs, 1, 3, mag);
+    MGArray *Pmag = createMGArrays(plhs, 1, mag);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
+    gridsize.x = mag->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < mag->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 
-    cukern_MagneticPressure<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], destPtr[0], amd.numel);
-    free(destPtr); free(srcs);
+    cukern_MagneticPressure<<<gridsize, blocksize>>>(mag[0].devicePtr[0], mag[1].devicePtr[0], mag[2].devicePtr[0], Pmag->devicePtr[0], mag->numel);
+
+    free(Pmag);
 
   } else if((operation == OP_TOTALANDSND)) {
     if( (nlhs != 2) || (nrhs != 10)) { mexErrMsgTxt("Soundspeed operator is [Ptot Cs] = cudaMHDKernels(5, rho, E, px, py, pz, bx, by, bz, gamma)"); }
     double gam = *mxGetPr(prhs[9]);
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 8);
+    MGArray fluid[8];
+    int worked = accessMGArrays(prhs, 1, 8, fluid);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
-    gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
+    gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
+    gridsize.y = gridsize.z = 1;
+    MGArray *out = createMGArrays(plhs, 2, fluid);
 
-    cukern_TotalAndSound<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], destPtr[0], destPtr[1], gam, amd.numel);
-    free(destPtr); free(srcs);
+    double *srcs[8]; pullMGAPointers(fluid, 8, 0, srcs);
+    cukern_TotalAndSound<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], out[0].devicePtr[0], out[1].devicePtr[0], gam, fluid->numel);
+    free(out);
+
   } else if ((operation == OP_WARRAYS)) {
     if( (nlhs != 5) || (nrhs != 12)) { mexErrMsgTxt("solving W operator is [rhoW enerW pxW pyW pzW] = cudaMHDKernels(6, rho, E, px, py, pz, bx, by, bz, P, cFreeze, direction)"); }
     int dir = (int)*mxGetPr(prhs[11]);
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 10);
+    MGArray fluid[10];
+    int worked = accessMGArrays(prhs, 1, 10, fluid);
+    MGArray *Wout = createMGArrays(plhs, 5, fluid);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
+    gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 5);
 
-    cukern_CalcWArrays<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], destPtr[0], destPtr[1], destPtr[2], destPtr[3], destPtr[4], dir, amd.numel);
-    free(destPtr); free(srcs);
+    double *srcs[10]; pullMGAPointers(fluid, 10, 0, srcs);
+    double *dst[5]; pullMGAPointers(Wout, 5, 0, dst);
+    cukern_CalcWArrays<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], srcs[8], srcs[9], dst[0], dst[1], dst[2], dst[3], dst[4], dir, fluid->numel);
+
+    free(Wout);
   } else if ((operation == OP_RELAXINGFLUX)) {
     if( (nlhs != 1) || (nrhs != 8)) { mexErrMsgTxt("relaxing flux operator is fluxed = cudaMHDKernels(7, old, tempfreeze, right, right_shifted, left, left_shifted, lambda)"); }
     double lambda = *mxGetPr(prhs[7]);
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 6);
+    MGArray fluid[6];
+    int worked = accessMGArrays(prhs, 1, 6, fluid);
+    MGArray *dst = createMGArrays(plhs, 1, fluid);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
+    gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 1);
 
-    cukern_PerformFlux<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], destPtr[0], lambda, amd.numel);
-    free(destPtr); free(srcs);
+    double *srcs[6]; pullMGAPointers(fluid, 6, 0, srcs);
+
+    cukern_PerformFlux<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], dst->devicePtr[0], lambda, fluid->numel);
+    free(dst);
+
   } else if ((operation == OP_SEPERATELRFLUX)) {
     if ((nlhs != 2) || (nrhs != 3)) { mexErrMsgTxt("flux seperation operator is [Fl Fr] = cudaMHDKernels(8, array, wArray)"); }
-    double **srcs = getGPUSourcePointers(prhs, &amd, 1, 2);
+    MGArray in[2];
+    int worked = accessMGArrays(prhs, 1, 2, in);
+    MGArray *out = createMGArrays(plhs, 2, in);
 
-    gridsize.x = amd.numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < amd.numel) gridsize.x++;
+    gridsize.x = in->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < in->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
-    double **destPtr = makeGPUDestinationArrays(&amd, plhs, 2);
 
-    cukern_SeperateLRFlux<<<gridsize, blocksize>>>(srcs[0], srcs[1], destPtr[0], destPtr[1], amd.numel);
-    free(destPtr); free(srcs);
+    cukern_SeperateLRFlux<<<gridsize, blocksize>>>(in[0].devicePtr[0], in[1].devicePtr[0], out[0].devicePtr[0], out[1].devicePtr[0], in->numel);
+    free(out);
+
   }
 
 }
