@@ -88,7 +88,7 @@ template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel);
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel, int launchNo);
 
 template <unsigned int PCswitch>
 __global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
@@ -108,7 +108,8 @@ __global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, 
 #define YBLOCKS 4
 #define FREEZE_NY 4
 
-__constant__ __device__ double *inputPointers[9];
+#define PTRS_PER_KERN 10
+__constant__ __device__ double *inputPointers[PTRS_PER_KERN*MAX_GPUS_USED];
 __constant__ __device__ double fluidQtys[8];
 
 //#define LIMITERFUNC fluxLimiter_Zero
@@ -143,12 +144,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray fluid[5], mag[3], PC[2];
 	int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+	// The sanity checker tended to barf on the 6 [allzeros] that represent "no array" before.
 	if(hydroOnly == false) worked = accessMGArrays(prhs, 5, 7, &mag[0]);
 	worked = accessMGArrays(prhs, 8, 9, &PC[0]);
 
 	double lambda     = *mxGetPr(prhs[10]);
-
-	PAR_WARN(fluid[0])
 
 	double *thermo = mxGetPr(prhs[12]);
 	double gamma = thermo[0];
@@ -171,8 +171,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
 
-	cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
-
 	dim3 arraySize;
 	arraySize.x = fluid[0].dim[0];
 	arraySize.y = fluid[0].dim[1];
@@ -185,12 +183,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *wStepValues[fluid->nGPUs];
 
 	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
-	int i, sub[6];
-	double *hostptrs[10];
-	for(i = 0; i < 5; i++) hostptrs[i] = fluid[i].devicePtr[0];
-	for(i = 0; i < 3; i++) hostptrs[5+i]= mag[i].devicePtr[0];
-	for(i = 0; i < 2; i++) hostptrs[8+i]= PC[i].devicePtr[0];
-	cudaMemcpyToSymbol(inputPointers,  hostptrs, 9*sizeof(double *), 0, cudaMemcpyHostToDevice);
+	int i, j, sub[6];
+	double *hostptrs[PTRS_PER_KERN*MAX_GPUS_USED];
+	for(j = 0; j < fluid->nGPUs; j++) {
+		for(i = 0; i < 5; i++) hostptrs[PTRS_PER_KERN*j+  i] = fluid[i].devicePtr[j];
+		for(i = 0; i < 3; i++) hostptrs[PTRS_PER_KERN*j+5+i] =   mag[i].devicePtr[j];
+		for(i = 0; i < 2; i++) hostptrs[PTRS_PER_KERN*j+8+i] =    PC[i].devicePtr[j];
+	}
+
+	for(j = 0; j < fluid->nGPUs; j++) {
+		cudaSetDevice(fluid->deviceID[j]);
+		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol(inputPointers, hostptrs, PTRS_PER_KERN*MAX_GPUS_USED*sizeof(double), 0, cudaMemcpyHostToDevice);
+
+	}
 
 	if(hydroOnly == 1) {
 		// Switches between various prediction steps
@@ -255,14 +261,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				gridsize.y = sub[5];
 
 				// Fire off the fluid update step
-				cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+				cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i], i);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_HLLC_step prediction step");
 
 				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_PressureSolverHydro");
 
-				cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_step prediction step");
+				cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i], i);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_HLLC_step prediction step");
 
 				// Release the memory taken for this step
 				cudaFree(wStepValues[i]);
@@ -270,7 +276,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			}
 
 			if(fluid->partitionDir == PARTITION_X) exchangeMGArrayHalos(fluid, 5);
-
+			CHECK_CUDA_ERROR("after exchange halos");
 		} break;
 		}
 		// We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
@@ -292,8 +298,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
 	}
-
-	cudaFree(wStepValues);
 
 }
 
@@ -463,7 +467,7 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 #define HLL_RIGHT 2
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel)
+__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel, int launchNo)
 {
 	// Create center, look-left and look-right indexes
 	int IC = threadIdx.x;
@@ -504,9 +508,9 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 
 		if(PCswitch == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Ale = Are = inputPointers[0][x0]; /* load rho */
-			Bre = inputPointers[2][x0]; /* load px */
-			Cle = Cre = inputPointers[8][x0]; /* load pressure */
+			Ale = Are = inputPointers[0+PTRS_PER_KERN*launchNo][x0]; /* load rho */
+			Bre =       inputPointers[2+PTRS_PER_KERN*launchNo][x0]; /* load px */
+			Cle = Cre = inputPointers[8+PTRS_PER_KERN*launchNo][x0]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 			Bre = Ble;
 		} else {
@@ -617,9 +621,10 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 				Qstore[x0                  ] = Ale + lambda * shblk[IC + BOS2];
 				Qstore[x0 + 2*devArrayNumel] = Ale*Ble + lambda * shblk[IC + BOS4];
 			} else {
-				inputPointers[0][x0] += lambda * shblk[IC + BOS2];
-				inputPointers[2][x0] += lambda * shblk[IC + BOS4];
+				inputPointers[PTRS_PER_KERN*launchNo+0][x0] += lambda * shblk[IC + BOS2];
+				inputPointers[PTRS_PER_KERN*launchNo+2][x0] += lambda * shblk[IC + BOS4];
 			}
+
 		}
 
 		__syncthreads();
@@ -627,8 +632,8 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 		// Now go back and do the whole thing again for y momentum, z momentum and energy
 		if(PCswitch == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Fa =  inputPointers[3][x0]; /* load py */
-			Utilde = inputPointers[4][x0]; /* load pz */
+			Fa =     inputPointers[3+PTRS_PER_KERN*launchNo][x0]; /* load py */
+			Utilde = inputPointers[4+PTRS_PER_KERN*launchNo][x0]; /* load pz */
 		} else {
 			/* If making correction, perform 1st order MUSCL reconstruction */
 			Fa = Qstore[x0 + 3*devArrayNumel]; /* load py */
@@ -713,13 +718,13 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 
 		if(thisThreadDelivers) {
 			if(PCswitch == RK_PREDICT) {
-				Qstore[x0 +   devArrayNumel] = inputPointers[1][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qstore[x0 + 3*devArrayNumel] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qstore[x0 + 4*devArrayNumel] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				Qstore[x0 +   devArrayNumel] = inputPointers[1+PTRS_PER_KERN*launchNo][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				Qstore[x0 + 3*devArrayNumel] = Fa                              + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				Qstore[x0 + 4*devArrayNumel] = Utilde                          + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			} else {
-				inputPointers[1][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				inputPointers[3][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				inputPointers[4][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				inputPointers[1+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				inputPointers[3+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				inputPointers[4+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			}
 		}
 		x0 += blockDim.y*nx;

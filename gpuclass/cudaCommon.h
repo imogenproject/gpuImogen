@@ -27,7 +27,7 @@ checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string
 void dropMexError(char *excuse, char *infile, int atline);
 #define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
 
-#define PAR_WARN(x) if(x.nGPUs > 1) mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK");
+#define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK"); }
 
 typedef struct {
         double *fluidIn[5];

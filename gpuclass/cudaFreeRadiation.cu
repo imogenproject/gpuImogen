@@ -47,67 +47,71 @@ __constant__ __device__ double radparam[5];
 #define GRIDDIM 64
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if ((nrhs != 9) || (nlhs > 1))
-     mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
+	if ((nrhs != 9) || (nlhs > 1))
+		mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 
-  double *inParams = mxGetPr(prhs[8]);
+	double *inParams = mxGetPr(prhs[8]);
 
-  double gam      = inParams[0];
-  double exponent = inParams[1];
-  double strength = inParams[2];
-  double minTemp  = inParams[3];
-  int isHydro     = (int)inParams[4] != 0;
+	double gam      = inParams[0];
+	double exponent = inParams[1];
+	double strength = inParams[2];
+	double minTemp  = inParams[3];
+	int isHydro     = (int)inParams[4] != 0;
 
-  MGArray f[8];
+	MGArray f[8];
 
-  if( isHydro == false ) {
-    accessMGArrays(prhs, 0, 7, &f[0]);
-  } else {
-    accessMGArrays(prhs, 0, 4, &f[0]);
-  }
+	if( isHydro == false ) {
+		accessMGArrays(prhs, 0, 7, &f[0]);
+	} else {
+		accessMGArrays(prhs, 0, 4, &f[0]);
+	}
 
-  MGArray *dest;
-  if(nlhs == 1) {
-    dest = createMGArrays(plhs, 1, &f[0]);
-    }
+	MGArray *dest;
+	if(nlhs == 1) {
+		dest = createMGArrays(plhs, 1, &f[0]);
+	}
 
-  double hostRP[5];
-  hostRP[0] = gam-1.0;
-  hostRP[1] = strength;
-  hostRP[2] = exponent;
-  hostRP[3] = 2.0 - exponent;
-  hostRP[4] = minTemp;
-  cudaMemcpyToSymbol(radparam, hostRP, 5*sizeof(double), 0, cudaMemcpyHostToDevice);
+	double hostRP[5];
+	hostRP[0] = gam-1.0;
+	hostRP[1] = strength;
+	hostRP[2] = exponent;
+	hostRP[3] = 2.0 - exponent;
+	hostRP[4] = minTemp;
 
-  int j, k;
-  int sub[6];
-  for(j = 0; j < f[0].nGPUs; j++) {
-    calcPartitionExtent(&f[0], j, sub);
-    cudaSetDevice(f[0].deviceID[j]);
+	int j, k;
+	for(j = 0; j < f->nGPUs; j++) {
+		cudaSetDevice(f->deviceID[j]);
+		cudaMemcpyToSymbol(radparam, hostRP, 5*sizeof(double), 0, cudaMemcpyHostToDevice);
+	}
 
-    double *ptrs[8];
-    for(k = 0; k < 8; k++) { ptrs[k] = f[k].devicePtr[j]; }
-    // Save some readability below...
-   
-    switch(isHydro + 2*nlhs) {
-      case 0: {
-        cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], f[0].partNumel[j]);
-        break; }
-      case 1: {
-        cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], f[0].partNumel[j]);
-        break; }
-      case 2: {
-        cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], dest->devicePtr[j], f[0].partNumel[j]);
-        break; }
-      case 3: {
-        cukern_FreeHydroRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], dest->devicePtr[j], f[0].partNumel[j]);
-        break; }
-    }
-  }
+	int sub[6];
+	for(j = 0; j < f[0].nGPUs; j++) {
+		calcPartitionExtent(&f[0], j, sub);
+		cudaSetDevice(f[0].deviceID[j]);
 
-if(nlhs == 1) free(dest);
+		double *ptrs[8];
+		for(k = 0; k < 8; k++) { ptrs[k] = f[k].devicePtr[j]; }
+		// Save some readability below...
 
-//CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
+		switch(isHydro + 2*nlhs) {
+		case 0: {
+			cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], f[0].partNumel[j]);
+			break; }
+		case 1: {
+			cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], f[0].partNumel[j]);
+			break; }
+		case 2: {
+			cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], dest->devicePtr[j], f[0].partNumel[j]);
+			break; }
+		case 3: {
+			cukern_FreeHydroRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], dest->devicePtr[j], f[0].partNumel[j]);
+			break; }
+		}
+	}
+
+	if(nlhs == 1) free(dest);
+
+	//CHECK_CUDA_LAUNCH_ERROR(BLOCKDIM, GRIDDIM, &amd, 666, "cudaFreeGasRadiation");
 
 }
 
@@ -123,68 +127,68 @@ if(nlhs == 1) free(dest);
 
 __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, double *pz, double *E, int numel)
 {
-int x = threadIdx.x + BLOCKDIM*blockIdx.x;
+	int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P; double dE; double den;
+	double P; double dE; double den;
 
-while(x < numel) {
-  den = rho[x];
-  P = GAMMA_M1*(E[x] - (PSQUARED)/(2*den)); // gas pressure
+	while(x < numel) {
+		den = rho[x];
+		P = GAMMA_M1*(E[x] - (PSQUARED)/(2*den)); // gas pressure
 
-  dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
-  if(P > den*TFLOOR) {
-  if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
+		dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
+		if(P > den*TFLOOR) {
+			if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
 
-  x += BLOCKDIM*GRIDDIM;
-  }
+		x += BLOCKDIM*GRIDDIM;
+	}
 
 }
 
 // STRENGTH = beta*dt
 __global__ void cukern_FreeMHDRadiation(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, int numel)
 {
-int x = threadIdx.x + BLOCKDIM*blockIdx.x;
+	int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P, dE, den;
+	double P, dE, den;
 
-while(x < numel) {
-  den = rho[x];
-  P = GAMMA_M1*(E[x] - (  (PSQUARED)/den + (BSQUARED))/2.0); // gas pressure
-  dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT);
-  if(P > den*TFLOOR) {
-  if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
+	while(x < numel) {
+		den = rho[x];
+		P = GAMMA_M1*(E[x] - (  (PSQUARED)/den + (BSQUARED))/2.0); // gas pressure
+		dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT);
+		if(P > den*TFLOOR) {
+			if(P - (GAMMA_M1 * dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
 
-  x += BLOCKDIM*GRIDDIM;
-  }
+		x += BLOCKDIM*GRIDDIM;
+	}
 
 }
 
 /* These functions return the instantaneous rate, strictly the first derivative e_t */
 __global__ void cukern_FreeHydroRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *radrate, int numel)
 {
-int x = threadIdx.x + BLOCKDIM*blockIdx.x;
+	int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P;
-while(x < numel) {
-  P = GAMMA_M1*(E[x] - (PSQUARED)/(2*rho[x])); // gas pressure
-  radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
+	double P;
+	while(x < numel) {
+		P = GAMMA_M1*(E[x] - (PSQUARED)/(2*rho[x])); // gas pressure
+		radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
 
-  x += BLOCKDIM*GRIDDIM;
-  }
+		x += BLOCKDIM*GRIDDIM;
+	}
 
 }
 
 __global__ void cukern_FreeMHDRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, double *radrate, int numel)
 {
-int x = threadIdx.x + BLOCKDIM*blockIdx.x;
+	int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-double P;
-while(x < numel) {
-  P = GAMMA_M1*(E[x] - (  (PSQUARED)/rho[x] + (BSQUARED))/2.0); // gas pressure
-  radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
+	double P;
+	while(x < numel) {
+		P = GAMMA_M1*(E[x] - (  (PSQUARED)/rho[x] + (BSQUARED))/2.0); // gas pressure
+		radrate[x] = pow(rho[x], TWO_MEXPONENT)*pow(P, EXPONENT);
 
-  x += BLOCKDIM*GRIDDIM;
-  }
+		x += BLOCKDIM*GRIDDIM;
+	}
 
 }
 

@@ -16,8 +16,9 @@
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // wrapper for cudaFree().
-  if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt("GPU_free: syntax is GPU_free(arbitrarily many GPU_Types or gpu tags)");
+  if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt("GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");
 
+  CHECK_CUDA_ERROR("Entering GPU_free()");
   MGArray t[nrhs];
 
   int worked = accessMGArrays(prhs, 0, nrhs-1, &t[0]);
@@ -27,7 +28,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   for(i = 0; i < nrhs; i++) {
     for(j = 0; j < t[i].nGPUs; j++) {
       cudaSetDevice(t[i].deviceID[j]);
-      CHECK_CUDA_ERROR("Before GPU_free()");
+      CHECK_CUDA_ERROR("cudaSetDevice()");
       cudaError_t result = cudaFree(t[i].devicePtr[j]);
       CHECK_CUDA_ERROR("After GPU_free()");
     }

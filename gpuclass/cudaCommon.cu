@@ -304,20 +304,27 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 	dim3 gridsize; gridsize.x = 32; gridsize.y = gridsize.z = 1;
 	dim3 blocksize; blocksize.x = 256; blocksize.y = blocksize.z = 1;
 
+	cudaError_t crap = cudaSuccess;
+
 	switch(a->nGPUs) {
 	case 1: break; // nofin to do
-	case 2: // single reduce
+	case 2: // reduce(A,B)->A
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
+		double *B;
+		crap = cudaMalloc((void **)&B, a->numel*sizeof(double));
+		CHECK_CUDA_ERROR("cudaMalloc()");
+		crap = cudaMemcpy((void *)B, (void*)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+
 		switch(op) {
-		case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-		case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-		case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-		case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+		case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
+		case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
+		case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
+		case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
 		}
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 2 GPUs");
 		break;
-	case 3: // two reduces, serially
+	case 3: // reduce(A,B)->A; reduce(A, C)->C
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		switch(op) {
@@ -337,7 +344,7 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 				}
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, second call");
 		break;
-	case 4: // three reduces, 2 parallel then 1 more
+	case 4: // {reduce(A,B)->A, reduce(C,D)->C}; reduce(A,C)->A
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		switch(op) {

@@ -23,13 +23,14 @@ PAR_LIBS = -lpgw -lmpi
 ###############################################################################
 all: base fluids parallel lambda
 	echo "Finished compiling GPU support."
+	rm -f *cpp
 
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
 base: GPU_free GPU_upload GPU_clone GPU_download GPU_memavail cudaBasicOperations
 
-fluids: cudaArrayRotate cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar

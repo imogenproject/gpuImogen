@@ -82,11 +82,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	hostgf[4] = (*mxGetPr(prhs[10]))*(*mxGetPr(prhs[10])); // min c_s squared ;
 	hostgf[5] = (ALFVEN_CSQ_FACTOR - .5*gam*(gam-1.0));
 
-	cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
-	CHECK_CUDA_ERROR("cfreeze symbol upload");
-
 	int i;
 	int sub[6];
+
+	for(i = 0; i < fluid->nGPUs; i++) {
+		cudaSetDevice(fluid->deviceID[i]);
+		cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
+		CHECK_CUDA_ERROR("cfreeze symbol upload");
+	}
 
 	if(ispurehydro) {
 		for(i = 0; i < fluid->nGPUs; i++) {
