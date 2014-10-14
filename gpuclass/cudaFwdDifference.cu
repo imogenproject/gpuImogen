@@ -63,19 +63,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         case 1:
             blocksize.x = 128; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.y; gridsize.y = arraySize.z;
-            cukern_ForwardDifferenceX<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, lambda);
+            cukern_ForwardDifferenceX<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[0], arraySize.x, lambda);
             break;
         case 2:
             blocksize.x = 64; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.z;
-            cukern_ForwardDifferenceY<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.y, lambda);
+            cukern_ForwardDifferenceY<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[0], arraySize.x, arraySize.y, lambda);
             break;
         case 3:
             blocksize.x = 64; blocksize.y = blocksize.z = 1;
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.y;
-            cukern_ForwardDifferenceZ<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.z, lambda);
+            cukern_ForwardDifferenceZ<<<gridsize, blocksize>>>(src[0].devicePtr[0], src[1].devicePtr[0], arraySize.x, arraySize.z, lambda);
             break;
         }
 
