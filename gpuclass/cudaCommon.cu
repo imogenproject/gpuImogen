@@ -306,12 +306,13 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 
 	cudaError_t crap = cudaSuccess;
 
+	double *B; double *C; double *D;
+
 	switch(a->nGPUs) {
 	case 1: break; // nofin to do
 	case 2: // reduce(A,B)->A
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
-		double *B;
 		crap = cudaMalloc((void **)&B, a->numel*sizeof(double));
 		CHECK_CUDA_ERROR("cudaMalloc()");
 		crap = cudaMemcpy((void *)B, (void*)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
@@ -323,30 +324,46 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 		case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
 		}
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 2 GPUs");
+		crap = cudaFree(B);
+		CHECK_CUDA_ERROR("cudaFree()");
 		break;
 	case 3: // reduce(A,B)->A; reduce(A, C)->C
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
+		crap = cudaMalloc((void **)&B, a->numel*sizeof(double));
+		CHECK_CUDA_ERROR("cuda malloc");
+		crap = cudaMalloc((void **)&C, a->numel*sizeof(double));
+		CHECK_CUDA_ERROR("cuda malloc");
+
+		cudaMemcpy((void *)B, (void *)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy((void *)C, (void *)a->devicePtr[2], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+
 		switch(op) {
-				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
-				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->partNumel[0]); break;
+				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
+				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0],B, a->partNumel[0]); break;
+				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
+				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
 				}
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, first call");
-		cudaSetDevice(a->deviceID[0]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
 		switch(op) {
-				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
-				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
-				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
-				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[2], a->partNumel[0]); break;
+				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
+				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
+				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
+				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
 				}
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, second call");
+
+		cudaFree(B);
+		CHECK_CUDA_ERROR("cudaFree");
+		cudaFree(C);
+		CHECK_CUDA_ERROR("cudaFree");
 		break;
 	case 4: // {reduce(A,B)->A, reduce(C,D)->C}; reduce(A,C)->A
+// FIXME: This is broken right now...
+		mexErrMsgTxt("This is broken soz.");
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
+		crap = cudaMalloc((void **)&B ,a->partNumel[0]);
 		switch(op) {
 				case OP_SUM: cudaClonedReducerQuad<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
 				case OP_PROD: cudaClonedReducerQuad<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
@@ -470,6 +487,7 @@ for(i = 0; i < n; i++) {
 
 // The Z halo exchange function is simply done by a pair of memcopies
 
+//FIXME: this obviously requires knowing nx on both sides, goddamnit
 // expect invocation with [h BLKy 1] threads and [ny/BLKy 1 1].rp blocks
 __global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h)
 {
@@ -492,6 +510,7 @@ for(i = 0; i < nz; i++) {
 
 }
 
+// FIXME: And this ny on both sides, also goddamnit.
 /* Expect invocation with [BLKx BLKz 1] threads and [nx/BLKx nz/BLKz 1].rp blocks */
 __global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h)
 {
@@ -606,6 +625,7 @@ if(E == cudaSuccess) return;
 
 printf("Caught CUDA error at %s:%i: error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
 printf("Code's description of what it just did: %s\n", srcname);
+printf("Rx'd integer: %i\n", i);
 
 if(a == NULL) {
   printf("No MGArray passed.\n");
