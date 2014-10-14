@@ -1,9 +1,9 @@
-cudaAccretingStar.cu		| builds 			| S 
+cudaAccretingStar.cu		| builds 			| S USES __constant_ will barf on multidevice
 cudaArrayAtomic.cu		| SUCCESSFULLY FUZZED		| E
 cudaArrayRotate2.cu		| SUCCESSFULLY FUZZED		| E
 cudaBasicOperations.cu		| WORKSFORME			| E
 cudaCommon.cu			| 				| E
-cudaFluidStep.cu		| shim				| E
+cudaFluidStep.cu		| builds. cuda halo xchg broken | E
 cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
 cudaFwdAverage.cu		| builds 			| M
 cudaFwdDifference.cu		| builds			| M
@@ -15,7 +15,7 @@ cudaMHDKernels.cu		| builds, probably boned anyway	| M
 cudaSoundspeed.cu		| SUCCESSFULLY FUZZED		| E
 cudaSourceRotatingFrame.cu	| shim				| S
 cudaSourceScalarPotential.cu	| Works (I think)		| S
-cudaStatics.cu			| shim				| Nontrivial BCs
+cudaStatics.cu			| All but statics works?	| Nontrivial BCs
 directionalMaxFinder.cu		| 2/3 work 			| E
 freezeAndPtot.cu		| SUCCESSFULLY FUZZED		| E
 
