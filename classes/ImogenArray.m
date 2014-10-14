@@ -238,7 +238,7 @@ classdef ImogenArray < handle
 % array assignment (set.array).
         function applyBoundaryConditions(obj, direction)
         %    if numel(obj.boundaryData.staticsData) > 0
-                cudaStatics(obj, 8, direction);
+               cudaStatics(obj, 8, direction);
         %    end
         end
 

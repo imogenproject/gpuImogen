@@ -59,6 +59,7 @@ classdef GPU_Type < handle
         function result = get.array(obj)
             % Return blank if not allocated, or dump the GPU array to CPU if we are
             if obj.allocated == false; result = []; return; end
+            
             result = GPU_download(obj.GPU_MemPtr);
         end
 
@@ -70,8 +71,8 @@ classdef GPU_Type < handle
         % This hopefully avoids the slowness of the set.array function
         function flushTag(obj)
             q = double(obj.GPU_MemPtr);
-            obj.numdims = q(2);
-            obj.asize = q(3:5)';    
+            obj.numdims = 3; if obj.asize(3) == 1; obj.numdims = 2; end
+            obj.asize = q(1:3)';
         end
 
         function result = size(obj, dimno)
