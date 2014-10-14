@@ -12,6 +12,8 @@ flow.ener = zeros(size(r));
 
 if v0 == 0
     flow.rho = rho0*ones(size(r));
+    flow.mom = zeros(size(r));
+    flow.press = k*rho0^(5/3)*ones(size(r));
     flow.ener = 1.5*k*rho0^(5/3)*ones(size(r));
     return;
 end
@@ -33,6 +35,6 @@ end
 
 flow.ener = .5*flow.rho.*flow.v.^2 + 1.5*k*flow.rho.^(5/3);
 flow.mom = flow.rho .* flow.v;
-flow.press = 1.5*k*flow.rho.^(5/3);
+flow.press = k*flow.rho.^(5/3);
 
 end
