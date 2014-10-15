@@ -88,7 +88,7 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 int reduceClonedMGArray(MGArray *a, MGAReductionOperator op);
 
 void exchangeMGArrayHalos(MGArray *a, int n);
-__global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h);
+__global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
 __global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h);
 
 typedef struct {

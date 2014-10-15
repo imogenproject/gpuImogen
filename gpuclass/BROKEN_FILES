@@ -3,7 +3,7 @@ cudaArrayAtomic.cu		| SUCCESSFULLY FUZZED		| E
 cudaArrayRotate2.cu		| SUCCESSFULLY FUZZED		| E
 cudaBasicOperations.cu		| WORKSFORME			| E
 cudaCommon.cu			| 				| E
-cudaFluidStep.cu		| builds. cuda halo xchg broken | E
+cudaFluidStep.cu		| multi-device parallel works n | E
 cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
 cudaFwdAverage.cu		| builds 			| M
 cudaFwdDifference.cu		| builds			| M
@@ -15,7 +15,7 @@ cudaMHDKernels.cu		| builds, probably boned anyway	| M
 cudaSoundspeed.cu		| SUCCESSFULLY FUZZED		| E
 cudaSourceRotatingFrame.cu	| shim				| S
 cudaSourceScalarPotential.cu	| Works (I think)		| S
-cudaStatics.cu			| All but statics works?	| Nontrivial BCs
+cudaStatics.cu			| All but statics works I think	| Nontrivial BCs
 directionalMaxFinder.cu		| 2/3 work 			| E
 freezeAndPtot.cu		| SUCCESSFULLY FUZZED		| E
 

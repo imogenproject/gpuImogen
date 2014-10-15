@@ -432,47 +432,56 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 // Necessary when non-point operations have been performed in the partition direction
 void exchangeMGArrayHalos(MGArray *a, int n)
 {
-int i, j;
+int i, j, jn;
 dim3 blocksize, gridsize;
 
 for(i = 0; i < n; i++) {
 	// Skip this if it's a cloned partition
 	if(a->haloSize == PARTITION_CLONED) { a++; continue; }
+	// Or there's only one partition to begin with
+	if(a->nGPUs == 1) { a++; continue; }
 
-    for(j = 0; j < a->nGPUs-1; j++) {
+    for(j = 0; j < a->nGPUs; j++) {
+    	jn = (j+1) % a->nGPUs;
+
+    	int subL[6], subR[6];
+    	calcPartitionExtent(a, j, subL);
+    	calcPartitionExtent(a, jn, subR);
+
         switch(a->partitionDir) {
             case 1: {
                 cudaSetDevice(a->deviceID[j]);
                 blocksize.x = a->haloSize;
                 blocksize.y = SYNCBLOCK;
-                blocksize.z = 1;
+                blocksize.z = (subL[5] > 1) ? 8 : 1;
+
                 gridsize.x  = a->dim[1]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[1]);
-                gridsize.y = gridsize.z = 1;
-                cudaMGHaloSyncX<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[j+1], a->dim[0], a->dim[1], a->dim[2], a->haloSize);
+                gridsize.y  = 1; gridsize.z = 1;
+                cudaMGHaloSyncX<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subR[3], subL[4], subL[5], a->haloSize);
             } break;
             case 2: {
                 cudaSetDevice(a->deviceID[j]);
                 blocksize.x = blocksize.y = SYNCBLOCK;
                 blocksize.z = 1;
-                gridsize.x = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
-                gridsize.y = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
-                cudaMGHaloSyncY<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[j+1], a->dim[0], a->dim[1], a->dim[2], a->haloSize);
+                gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
+                gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
+
+                cudaMGHaloSyncY<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], a->dim[0], a->dim[1], a->dim[2], a->haloSize);
             } break;
             case 3: {
-                int sub[6];
-                calcPartitionExtent(a, j, sub);
+
                 size_t halotile = a->dim[0]*a->dim[1];
                 size_t byteblock = halotile*a->haloSize*sizeof(double);
 
-                size_t L_halo = (sub[5] - a->haloSize)*halotile;
-                size_t L_src  = (sub[5]-2*a->haloSize)*halotile;
+                size_t L_halo = (subL[5] - a->haloSize)*halotile;
+                size_t L_src  = (subL[5]-2*a->haloSize)*halotile;
 
 		// Fill right halo with left's source
-                cudaMemcpy((void *)a->devicePtr[j+1],
+                cudaMemcpy((void *)a->devicePtr[jn],
                            (void *)(a->devicePtr[j] + L_src), byteblock, cudaMemcpyDeviceToDevice);
                 // Fill left halo with right's source
                 cudaMemcpy((void *)(a->devicePtr[j] + L_halo),
-                           (void *)(a->devicePtr[j+1]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
+                           (void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
 
             } break;
 
@@ -487,26 +496,41 @@ for(i = 0; i < n; i++) {
 
 // The Z halo exchange function is simply done by a pair of memcopies
 
-//FIXME: this obviously requires knowing nx on both sides, goddamnit
-// expect invocation with [h BLKy 1] threads and [ny/BLKy 1 1].rp blocks
-__global__ void cudaMGHaloSyncX(double *L, double *R, int nx, int ny, int nz, int h)
+/* expect invocation with [h BLKy A] threads and [ny/BLKy B 1].rp blocks with "arbitrary" A and B
+ * given thread index t.[xyz] block index b.[xyz] and grid size g.[xyz], then consider:
+ * x0 = nxL - 2*h + t.x; x1 = t.x; x1 = t.x;
+ * y0 = t.y + BLKy*b.y; z0 = t.z + A*b.y
+ * copy from L[x0 + nxL*(y0 + ny*z0)] to R[x1 + nxR*(y0 + ny*z0)]
+ * copy from R[x1 + h + nxR*(y0 + ny*z0)] to L[x0 + h + nxL*(y0 + ny*z0)]
+ *
+ * Extract common subfactors: jump L < L + nxL*(y0 + ny*z0) + x0, R < R + nxR*(y0 + ny*z0) + x1,
+ * check y0 < ny, then equations simplify to
+ * iterate (k = z0; k < nz; k+=blockIdx.z*blockDim.z)
+ *    copy from L[0] to R[0]
+ *    copy from R[h] to L[h]
+ *    L += nxL*ny*g.y; R =+ nxR*ny*g.y;
+
+ */
+__global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h)
 {
-int xL = nx - h + threadIdx.x;
-int xR = threadIdx.x;
+	int y0 = threadIdx.y + blockDim.y*blockIdx.x;
+	if(y0 >= ny) return;
+	int z0 = threadIdx.z + blockDim.z*blockIdx.y;
 
-int jmp = nx*(threadIdx.y + blockIdx.x*blockDim.x);
-if(jmp >= nx*ny) return;
+	int x0 = nxL - 2*h + threadIdx.x;
+	int x1 = threadIdx.x;
 
-L += jmp;
-R += jmp;
-jmp = nx*ny;
+	L += nxL*(y0 + ny*z0) + x0;
+	R += nxR*(y0 + ny*z0) + x1;
 
-int i;
-for(i = 0; i < nz; i++) {
-    L[jmp+xL] = R[jmp+xR+3];
-    R[jmp+xR] = L[jmp+xL-3];
-    L += jmp; R += jmp;
-}
+	int k;
+	int hz = blockDim.z*gridDim.y;
+	for(k = z0; k < nz; k+= hz) {
+		*R   = *L;
+		L[h] = R[h];
+		L   += nxL*ny*hz;
+		R   += nxR*ny*hz;
+	}
 
 }
 

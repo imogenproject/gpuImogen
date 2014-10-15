@@ -234,39 +234,33 @@ void *getBCKernel(int X)
 void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 {
 	dim3 blockdim, griddim;
-
-
-
 	void (* bckernel)(double *, int, int, int);
-
-
-
 	int i, sub[6];
 
 	switch(direction) {
-			case 1: { blockdim.x = 3; blockdim.y = 16; blockdim.z = 8; } break;
-			case 2: { blockdim.x = 16; blockdim.y = 1; blockdim.z = 16; } break;
-			case 3: { blockdim.x = 16; blockdim.y = 16; blockdim.z = 1; } break;
-			}
+	case 1: { blockdim.x = 3; blockdim.y = 16; blockdim.z = 8; } break;
+	case 2: { blockdim.x = 16; blockdim.y = 1; blockdim.z = 16; } break;
+	case 3: { blockdim.x = 16; blockdim.y = 16; blockdim.z = 1; } break;
+	}
 
 	// This is the easy case; We just have to apply a left-side condition to the leftmost partition and a
 	// right-side condition to the rightmost partition and we're done
 	if(direction == phi->partitionDir) {
 		switch(direction) {
-				case 1: {
-					griddim.x = phi->dim[1] / blockdim.y; griddim.x += (griddim.x*blockdim.y < phi->dim[1]);
-					griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
-				} break;
-				case 2: {
-					griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
-					griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
-				} break;
-				case 3: {
-					griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
-					griddim.y = phi->dim[1] / blockdim.y; griddim.y += (griddim.y*blockdim.y < phi->dim[1]);
-				} break;
-				}
-		i = (side == 0) ? 0 : phi->nGPUs;
+		case 1: {
+			griddim.x = phi->dim[1] / blockdim.y; griddim.x += (griddim.x*blockdim.y < phi->dim[1]);
+			griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
+		} break;
+		case 2: {
+			griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
+			griddim.y = phi->dim[2] / blockdim.z; griddim.y += (griddim.y*blockdim.z < phi->dim[2]);
+		} break;
+		case 3: {
+			griddim.x = phi->dim[0] / blockdim.x; griddim.x += (griddim.x*blockdim.x < phi->dim[0]);
+			griddim.y = phi->dim[1] / blockdim.y; griddim.y += (griddim.y*blockdim.y < phi->dim[1]);
+		} break;
+		}
+		i = (side == 0) ? 0 : (phi->nGPUs - 1);
 		cudaSetDevice(phi->deviceID[i]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 
@@ -274,8 +268,10 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 		//if((void *)bckernel == NULL) mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet.");
 
 		//bckernel<<<griddim, blockdim>>>(phi->devicePtr[i], phi->dim[0], phi->dim[1], phi->dim[2]);
-		callBCKernel(griddim, blockdim, phi->devicePtr[i], phi->dim[0], phi->dim[1], phi->dim[2], sas + 4*side + 8*(direction-1));
-	    CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
+		calcPartitionExtent(phi, i, sub);
+
+		callBCKernel(griddim, blockdim, phi->devicePtr[i], sub[3], sub[4], sub[5], sas + 4*side + 8*(direction-1));
+		CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
 	} else {
 		// If the BC isn't on a face that's aimed in the partitioned direction,
 		// we have to loop and apply it to all partitions.
@@ -283,19 +279,19 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 			calcPartitionExtent(phi, i, sub);
 			// Set the launch size based on partition extent
 			switch(direction) {
-					case 1: {
-						griddim.x = sub[4] / blockdim.y; griddim.x += (griddim.x*blockdim.y < sub[4]);
-						griddim.y = sub[5] / blockdim.z; griddim.y += (griddim.y*blockdim.z < sub[5]);
-					} break;
-					case 2: {
-						griddim.x = sub[3] / blockdim.x; griddim.x += (griddim.x*blockdim.x < sub[3]);
-						griddim.y = sub[5] / blockdim.z; griddim.y += (griddim.y*blockdim.z < sub[5]);
-					} break;
-					case 3: {
-						griddim.x = sub[3] / blockdim.x; griddim.x += (griddim.x*blockdim.x < sub[3]);
-						griddim.y = sub[4] / blockdim.y; griddim.y += (griddim.y*blockdim.y < sub[4]);
-					} break;
-					}
+			case 1: {
+				griddim.x = sub[4] / blockdim.y; griddim.x += (griddim.x*blockdim.y < sub[4]);
+				griddim.y = sub[5] / blockdim.z; griddim.y += (griddim.y*blockdim.z < sub[5]);
+			} break;
+			case 2: {
+				griddim.x = sub[3] / blockdim.x; griddim.x += (griddim.x*blockdim.x < sub[3]);
+				griddim.y = sub[5] / blockdim.z; griddim.y += (griddim.y*blockdim.z < sub[5]);
+			} break;
+			case 3: {
+				griddim.x = sub[3] / blockdim.x; griddim.x += (griddim.x*blockdim.x < sub[3]);
+				griddim.y = sub[4] / blockdim.y; griddim.y += (griddim.y*blockdim.y < sub[4]);
+			} break;
+			}
 			// And fire it off, boom boom boomity boom.
 			cudaSetDevice(phi->deviceID[i]);
 			CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -306,7 +302,7 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 			callBCKernel(griddim, blockdim, phi->devicePtr[i], sub[3], sub[4], sub[5], sas + 4*side + 8*(direction-1));
 
 			//bckernel<<<griddim, blockdim>>>(phi->devicePtr[i], sub[3], sub[4], sub[5]);
-		    CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 4*side + 8*(direction-1), "In setBoundarySAS; integer -> cukern table index");
+			CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 4*side + 8*(direction-1), "In setBoundarySAS; integer -> cukern table index");
 		}
 
 	}
