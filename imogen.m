@@ -41,7 +41,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     mpi_barrier();
     run.save.logPrint('Creating simulation arrays...\n');
-    mf0 = GPU_memavail();
+%    mf0 = GPU_memavail();
 
     if RESTARTING
         % If reloading from time-evolved point,
@@ -79,9 +79,10 @@ function outdirectory = imogen(srcData, resumeinfo)
         end
      end
 
-    mf1 = GPU_memavail();
+%    mf1 = GPU_memavail();
     asize = mass.gridSize();
-    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), (mf0-mf1)/1048576,asize(1), asize(2), asize(3) ) );
+% FIXME: re-do this but since we use multiple GPUs now it's not so trivial
+%    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), (mf0-mf1)/1048576,asize(1), asize(2), asize(3) ) );
 
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
