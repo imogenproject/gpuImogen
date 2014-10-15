@@ -28,7 +28,7 @@ all: base fluids parallel lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_memavail cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl cudaBasicOperations
 
 fluids: cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
