@@ -570,13 +570,24 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 		Utilde = (Ale*Ble + Are*Bre)/(Ale+Are);
 
 		/* Get Roe-average sonic speed and take our S_+- estimate for HLL */
-		Sleft  = sqrt(FLUID_GAMMA*Cle);
+		/*Sleft  = sqrt(FLUID_GAMMA*Cle);
 		Sright = sqrt(FLUID_GAMMA*Cre);
 		Atilde = (Sleft+Sright)/(Ale+Are);
 		Sleft  = Utilde - Atilde;
-		Sright = Utilde + Atilde;
+		Sright = Utilde + Atilde; */
 		// 48 regs
 
+		/* This change implements the Batten Et Al correction to assure positivity */
+		Sleft  = Ale*Are;
+		Atilde = sqrt(FLUID_GAMMA*(Cle*Are+Cre*Ale)/((Ale+Are)*Sleft)); // Roe-averaged soundspeed
+		//Atilde = (Sleft+Sright)/(Ale+Are); // Roe averaged soundspeed
+
+		double Uroe = Utilde - Atilde;
+		double Uson = Ale - sqrt(FLUID_GAMMA*Cle)/Ale;
+		Sleft       = (Uson < Uroe) ? Uson : Uroe;
+		       Uroe = Utilde + Atilde;
+		       Uson = Are + sqrt(FLUID_GAMMA*Cre)/Are;
+		Sright      = (Uson > Uroe) ? Uson : Uroe;
 
 		// Load non-square-rooted density back up down here after using Ale/Are as sqrt(rho) scratchpad
 		Ale = shblk[IC + BOS1]; Are = shblk[IR + BOS0];
