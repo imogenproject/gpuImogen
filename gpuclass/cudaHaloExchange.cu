@@ -18,6 +18,9 @@
 /* THIS ROUTINE
    This routine interfaces with the parallel gateway halo routines
    */
+void haloTransfer(MGArray *phi, double *hostmem, int haloDir, int oneIffLeft, int oneIffToHost);
+void memBlockCopy(double *S, dim3 sDim, dim3 sOffset, double *D, dim3 dDim, dim3 dOffset, dim3 num2cpy);
+__global__ void cukern_MemBlockCopy(double *S, dim3 sDim, double *D, dim3 dDim, dim3 num2cpy);
 
 /* X halo routines */
 /* These are the suck; We have to grab 24-byte wide chunks en masse */
@@ -42,8 +45,10 @@ __global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int n
 
 pParallelTopology topoStructureToC(const mxArray *prhs);
 
+
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-/* Functional form:
+	/* Functional form:
     cudaHaloExchange(arraytag, [orientation 3x1], dimension_to_exchange, parallel topology information)
 
     1. get neighbors from halo library in dimension_to_exchange direction
@@ -52,320 +57,225 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     4. Aquire some host-pinned memory and dump to that
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
-*/
-  if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, circularity\n");
-  if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
+	 */
+	if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, circularity\n");
+	if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
 
-  CHECK_CUDA_ERROR("entering cudaHaloExchange");
+	CHECK_CUDA_ERROR("entering cudaHaloExchange");
 
-  int xchg = (int)*mxGetPr(prhs[2]) - 1;
-  int orient[3];
+	int xchg = (int)*mxGetPr(prhs[2]) - 1;
+	int orient[3];
 
-  pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
+	pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
 
-  if(parallelTopo->nproc[xchg] == 1) return;
-  // Do not waste time if we can't possibly have any work to do
+	if(parallelTopo->nproc[xchg] == 1) return;
+	// Do not waste time if we can't possibly have any work to do
 
-  MGArray phi;
-  int worked = accessMGArrays(prhs, 0, 0, &phi);
+	MGArray phi;
+	int worked = accessMGArrays(prhs, 0, 0, &phi);
 
-  int ctr;
-  for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
-//printf("orient: %i %i %i\n", orient[0], orient[1], orient[2]); fflush(stdout);
+	int ctr;
+	for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
 
-  int memDimension = orient[xchg]-1; // The actual in-memory direction we're gonna be exchanging
- 
-  // get # of transverse elements, *3 deep for halo
-  int numToExchange = 3 * phi.numel / phi.dim[memDimension];
-//printf("numel: %i, dim[dimension]: %i; #2xchg: %i\n", amd.numel, amd.dim[memDimension], numToExchange);
+	int memDimension = orient[xchg]-1; // The actual in-memory direction we're gonna be exchanging
 
-  cudaError_t fail = cudaGetLastError(); // Clear the error register
-  double *pinnedMem[4];
-  double *devPMptr[4];
+	CHECK_CUDA_ERROR("Entering cudaHaloExchange");
+	cudaError_t fail;
 
-  if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
-  if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
+	if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
+	if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
 
-  /* Be told if the left and right sides of the dimension are circular or not */
-  double *interior = mxGetPr(prhs[4]);
-  int leftCircular  = (int)interior[2*memDimension];
-  int rightCircular = (int)interior[2*memDimension+1];
+	double *ptrHalo;
 
-#ifdef NO_PINNEDMEM
-  for(ctr = 0; ctr < 4; ctr++) {
-    pinnedMem[ctr] = (double *)malloc(numToExchange * sizeof(double));
-    fail = cudaMalloc((double **)&devPMptr[ctr], numToExchange * sizeof(double));
-    CHECK_CUDA_ERROR("cudaHaloExchange memory alloc w/o pinned memory");
-    }
-#else 
-  for(ctr = 0; ctr < 4; ctr++) {
-    fail = cudaHostAlloc(&pinnedMem[ctr], numToExchange * sizeof(double), cudaHostAllocDefault);
-    CHECK_CUDA_ERROR("cudahaloExchange pinned memory alloc");
-    fail = cudaHostGetDevicePointer((void **)&devPMptr[ctr], (void *)pinnedMem[ctr], 0);
-    }
-#endif
+	/* Be told if the left and right sides of the dimension are circular or not */
+	double *interior = mxGetPr(prhs[4]);
+	int leftCircular  = (int)interior[2*memDimension];
+	int rightCircular = (int)interior[2*memDimension+1];
 
-  if(fail != cudaSuccess) { dim3 f; CHECK_CUDA_LAUNCH_ERROR(f, f, &phi, ctr, "cudaHaloExchange.malloc"); }
+	// get # of transverse elements, *3 deep for halo
+	int numToExchange = 3 * phi.numel / phi.dim[memDimension];
 
-  MPI_Comm commune = MPI_Comm_f2c(parallelTopo->comm);
+	fail = cudaMallocHost((void **)&ptrHalo, 4*numToExchange*sizeof(double));
+	CHECK_CUDA_ERROR("cudaHostAlloc");
 
-  switch(memDimension) {
-    case 0: { /* X halo arrangement */
-      dim3 gridsize; gridsize.x = phi.dim[1]; gridsize.y = phi.dim[2]; gridsize.z = 1;
-      dim3 blocksize; blocksize.x = 3; blocksize.y = 1; blocksize.z = 1; // This is horrible.
+	MPI_Comm commune = MPI_Comm_f2c(parallelTopo->comm);
 
-      cukern_HaloXToLinearL<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[0], phi.dim[0]);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.X_left_read");
-      cukern_HaloXToLinearR<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[1], phi.dim[0]);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.X_right_read");
+	int delta = numToExchange;
 
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      CHECK_CUDA_ERROR("cudaHaloExchange X, NO_PINNEDMEM, D2H");
-      #endif 
-      cudaDeviceSynchronize(); 
-      parallel_exchange_dim_contig(parallelTopo, 0, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
-MPI_Barrier(MPI_COMM_WORLD);
-cudaDeviceSynchronize();
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      CHECK_CUDA_ERROR("cudaHaloExchange X, NO_PINNEDMEM, H2D");
-      #endif
+	if(leftCircular)  haloTransfer(&phi, ptrHalo, orient[xchg], 1, 1);
+	if(rightCircular) haloTransfer(&phi, ptrHalo + delta, orient[xchg], 0, 1);
+	// synchronize to make sure host sees what was uploaded
+	int i;
+	for(i = 0; i < phi.nGPUs; i++) {
+		cudaSetDevice(phi.deviceID[i]);
+		cudaDeviceSynchronize();
+	}
+	parallel_exchange_dim_contig(parallelTopo, 0, (void*)ptrHalo,
+			(void*)(ptrHalo + delta),\
+			(void*)(ptrHalo+2*delta),\
+			(void*)(ptrHalo+3*delta), numToExchange, MPI_DOUBLE);
+	MPI_Barrier(MPI_COMM_WORLD);
+	if(leftCircular)  haloTransfer(&phi, ptrHalo + 2*delta, orient[xchg], 1, 0);
+	if(rightCircular) haloTransfer(&phi, ptrHalo + 3*delta, orient[xchg], 0, 0);
+    // don't cuda synchronize here since future kernel calls are synchronous w.r.t. other kernel calls & memcopies
 
-cudaDeviceSynchronize();
-
-      if(leftCircular) {
-        cukern_LinearToHaloXL<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[2], phi.dim[0]);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.X_left_write");
-        }
-      if(rightCircular) {
-        cukern_LinearToHaloXR<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[3], phi.dim[0]);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.X_right_write");
-        }
-      }; break;
-
-    case 1: { /* Y halo arrangement */
-      dim3 blocksize; blocksize.x = 256; blocksize.y = 1; blocksize.z = 1;
-      dim3 gridsize; gridsize.x = phi.dim[0]/256; gridsize.y = phi.dim[2]; gridsize.z = 1;
-      gridsize.x += gridsize.x*256 < phi.dim[0] ? 1 : 0;
-
-      cukern_HaloYToLinearL<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[0], phi.dim[0], phi.dim[1]);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Y_left_read");
-      cukern_HaloYToLinearR<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[1], phi.dim[0], phi.dim[1]);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Y_right_read");
-
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      CHECK_CUDA_ERROR("cudaHaloExchange Y, NO_PINNEDMEM, D2H");
-      #endif
-
-      cudaDeviceSynchronize();
-      parallel_exchange_dim_contig(parallelTopo, 1, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
-
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      CHECK_CUDA_ERROR("cudaHaloExchange Y, NO_PINNEDMEM, H2D");
-      #endif
-
-      if(leftCircular) {
-        cukern_LinearToHaloYL<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[2], phi.dim[0], phi.dim[1]);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Y_left_write");
-        }
-      if(rightCircular) {
-        cukern_LinearToHaloYR<<<gridsize, blocksize>>>(phi.devicePtr[0], devPMptr[3], phi.dim[0], phi.dim[1]);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Y_right_write");
-        }
-      }; break;
-
-    case 2: { /* Z halo arrangement */
-      dim3 gridsize, blocksize;
-      cudaMemcpy(pinnedMem[0], phi.devicePtr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Z_left_readmemcpy");
-      cudaMemcpy(pinnedMem[1], &phi.devicePtr[0][phi.numel - numToExchange], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Z_right_readmemcpy");
-
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(pinnedMem[0], devPMptr[0], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      cudaMemcpy(pinnedMem[1], devPMptr[1], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-      CHECK_CUDA_ERROR("cudaHaloExchange Z, NO_PINNEDMEM, D2H");
-      #endif
-
-      cudaDeviceSynchronize();
-      parallel_exchange_dim_contig(parallelTopo, 2, pinnedMem[0], pinnedMem[1], pinnedMem[2], pinnedMem[3], numToExchange, MPI_DOUBLE);
-
-      #ifdef NO_PINNEDMEM
-      cudaMemcpy(devPMptr[2], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      cudaMemcpy(devPMptr[3], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-      CHECK_CUDA_ERROR("cudaHaloExchange Z, NO_PINNEDMEM, H2D");
-      #endif
-
-      if(leftCircular) {
-        cudaMemcpy(phi.devicePtr[0], pinnedMem[2], numToExchange*sizeof(double), cudaMemcpyHostToDevice);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Z_left_writememcpy");
-        }
-      if(rightCircular) {
-        cudaMemcpy(&phi.devicePtr[0][phi.numel - numToExchange], pinnedMem[3], numToExchange*sizeof(double), cudaMemcpyDeviceToHost);
-        CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, &phi, 0, "cudaHaloExchange.Z_right_writememcpy");
-        }
-      }; break;
-    }
-
-#ifdef NO_PINNEDMEM
-  for(ctr = 0; ctr < 4; ctr++) {
-    free(pinnedMem[ctr]);
-    cudaFree(devPMptr[ctr]);
-    }
-#else
-  for(ctr = 0; ctr < 4; ctr++) cudaFreeHost(pinnedMem[ctr]);
-#endif
-
-cudaError_t epicFail = cudaDeviceSynchronize();
-CHECK_CUDA_ERROR("cudaHaloExchange: post exchange device sync");
-/*if(epicFail != cudaSuccess) CHECK_CUDA_LAUNCH_ERROR(epicFail, 256, 128, &amd, memDimension, "halo exchange");*/
-
-free(parallelTopo);
+	free(parallelTopo);
+	cudaFreeHost((void **)ptrHalo);
 }
 
-/* X halo routines */
-/* These are the suck; We have to grab 24-byte wide chunks en masse */
-/* Fork ny by nz threads to do the job */
-/* We trust the optimizing compiler to clean up the first two lines of sanity-maintainence for us */
 
-/* Copies mainarray(3:5,:,:) to linarray, indexed from 0 */
-__global__ void cukern_HaloXToLinearL(double *mainarray, double *linarray, int nx)
+
+void haloTransfer(MGArray *phi, double *hostmem, int haloDir, int oneIffLeft, int oneIffToHost)
 {
-int myx = threadIdx.x; int myy = blockIdx.x; int myz = blockIdx.y;
-int ny = gridDim.x;
+	int part[6];
+	dim3 gpudim, gpuoffset, halodim, halooffset, copysize;
 
-int addr = (myx + 3) + (myy + myz*ny)*nx;
-int linAddr = myx + 3*(myy + ny*myz);
+	double *gpuPointer;
+	// haloDirection is given (1=x, 2=y, 3=z)
+	// phi->partitionDir gives partition direction (1=x, 2=y, 3=z)
+	// The directions which are not among the two above are spanning
+	if(haloDir == phi->partitionDir) {
+		if(oneIffLeft) {
+			// Get the least-positive partition & access it
+			cudaSetDevice(phi->deviceID[0]);
+			gpuPointer = phi->devicePtr[0];
+			calcPartitionExtent(phi, 0, part);
+		} else {
+			// Get the most-positive partition & access it
+			cudaSetDevice(phi->deviceID[phi->nGPUs-1]);
+			gpuPointer = phi->devicePtr[phi->nGPUs-1];
+			calcPartitionExtent(phi, phi->nGPUs-1, part);
+		}
+		gpudim.x = part[3]; gpudim.y = part[4]; gpudim.z = part[5];
+		copysize = gpudim;
+		gpuoffset.x = 0; gpuoffset.y = 0; gpuoffset.z = 0;
+		// At this point it would attempt to copy the entire array
 
-linarray[linAddr] = mainarray[addr];
-}
+		// By default believe that the halo array matches the full array
+		halooffset = gpuoffset;
+		halodim = gpudim;
 
-/* Copies mainarray( (nx-6):(nx-4), :,:) to linarray, indexed from 0 */
-__global__ void cukern_HaloXToLinearR(double *mainarray, double *linarray, int nx)
-{
-int myx = threadIdx.x; int myy = blockIdx.x; int myz = blockIdx.y;
-int ny = gridDim.x; 
+		switch(haloDir + 3*oneIffLeft + 6*oneIffToHost) {
+		case 1: gpuoffset.x = gpudim.x - 3; halodim.x = copysize.x = 3; break; // x, right, upload to gpu
+		case 2: gpuoffset.y = gpudim.y - 3; halodim.y = copysize.y = 3; break; // y, right, upload to gpu
+		case 3: gpuoffset.z = gpudim.z - 3; halodim.z = copysize.z = 3; break; // z, right, upload to gpu
+		case 4: gpuoffset.x = 0;            halodim.x = copysize.x = 3; break; // x, left, upload to gpu
+		case 5: gpuoffset.y = 0;            halodim.y = copysize.y = 3; break; // y, left, upload to gpu
+		case 6: gpuoffset.z = 0;            halodim.z = copysize.z = 3; break; // z, left, upload to gpu
 
-int addr = (nx - 6 + myx) + (myy + myz*ny)*nx;
-int linAddr = myx + 3*(myy + ny * myz);
+		case 7: gpuoffset.x = gpudim.x - 6; halodim.x = copysize.x = 3; break; // x, right, read to host
+		case 8: gpuoffset.y = gpudim.y - 6; halodim.y = copysize.y = 3; break; // y, right, read to host
+		case 9: gpuoffset.z = gpudim.z - 6; halodim.z = copysize.z = 3; break; // z, right, read to host
+		case 10: gpuoffset.x = 3;           halodim.x = copysize.x = 3; break; // x, left, read to host
+		case 11: gpuoffset.y = 3;           halodim.y = copysize.y = 3; break; // y, left, read to host
+		case 12: gpuoffset.z = 3;           halodim.z = copysize.z = 3; break; // z, left, read to host
+		}
 
-linarray[linAddr] = mainarray[addr];
-}
+		if(oneIffToHost) {
+			memBlockCopy(gpuPointer, gpudim, gpuoffset, hostmem, halodim, halooffset, copysize);
+		} else {
+			memBlockCopy(hostmem, halodim, halooffset, gpuPointer, gpudim, gpuoffset, copysize);
+		}
 
-/* Copies linarray to mainarray(0:2,:,:) */
-__global__ void cukern_LinearToHaloXL(double *mainarray, double *linarray, int nx)
-{
-int myx = threadIdx.x; int myy = blockIdx.x; int myz = blockIdx.y;
-int ny = gridDim.x;
+	} else {
+		int i;
+		for(i = 0; i < phi->nGPUs; i++) {
+			cudaSetDevice(phi->deviceID[i]);
+			gpuPointer = phi->devicePtr[i];
+			calcPartitionExtent(phi, 0, part);
 
-int addr = (myx) + (myy + myz*ny)*nx;
-int linAddr = myx + 3*(myy + ny * myz);
+			// set the GPU dimension; This is always correct
+			gpudim.x = part[3]; gpudim.y = part[4]; gpudim.z = part[5];
 
-mainarray[addr] = linarray[linAddr];
-}
+			// Default to a dimension-spanning copy in all dimensions
+			copysize = gpudim;
 
-/* Copies linarray to mainarray((nx-3):(nx-1),:,:) */
-__global__ void cukern_LinearToHaloXR(double *mainarray, double *linarray, int nx)
-{
-int myx = threadIdx.x; int myy = blockIdx.x; int myz = blockIdx.y;
-int ny = gridDim.x;
+			// With zero gpu or halo offset
+			gpuoffset.x = 0; gpuoffset.y = 0; gpuoffset.z = 0;
+			halooffset = gpuoffset; // zero!
 
+			// Host array size is the unpartitioned size of the array
+			halodim.x = phi->dim[0]; halodim.y = phi->dim[1]; halodim.z = phi->dim[2];
 
-int addr = (nx - 3 + myx) + (myy + myz*ny)*nx;
-int linAddr = myx + 3*(myy + ny * myz);
+			// Calculate how much to trim due to MGArray's partitioning halo
+			int trimleft = 0, trimright = 0;
+			if(i > 0) trimleft = phi->haloSize;
+			if(i < phi->nGPUs-1) trimright = phi->haloSize;
 
-mainarray[addr] = linarray[linAddr];
-}
+			switch(haloDir + 3*oneIffLeft + 6*oneIffToHost) {
+			case 1: gpuoffset.x = gpudim.x - 3; halodim.x = copysize.x = 3; break; // x, right, upload to gpu
+			case 2: gpuoffset.y = gpudim.y - 3; halodim.y = copysize.y = 3; break; // y, right, upload to gpu
+			case 3: gpuoffset.z = gpudim.z - 3; halodim.z = copysize.z = 3; break; // z, right, upload to gpu
+			case 4: gpuoffset.x = 0;            halodim.x = copysize.x = 3; break; // x, left, upload to gpu
+			case 5: gpuoffset.y = 0;            halodim.y = copysize.y = 3; break; // y, left, upload to gpu
+			case 6: gpuoffset.z = 0;            halodim.z = copysize.z = 3; break; // z, left, upload to gpu
 
-/* Y halo routines */
-/* We grab an X-Z plane, making it easy to copy N linear strips of memory */
-/* Fork off nz by 3 blocks to do the job */
+			case 7: gpuoffset.x = gpudim.x - 6; halodim.x = copysize.x = 3; break; // x, right, read to host
+			case 8: gpuoffset.y = gpudim.y - 6; halodim.y = copysize.y = 3; break; // y, right, read to host
+			case 9: gpuoffset.z = gpudim.z - 6; halodim.z = copysize.z = 3; break; // z, right, read to host
+			case 10: gpuoffset.x = 3;           halodim.x = copysize.x = 3; break; // x, left, read to host
+			case 11: gpuoffset.y = 3;           halodim.y = copysize.y = 3; break; // y, left, read to host
+			case 12: gpuoffset.z = 3;           halodim.z = copysize.z = 3; break; // z, left, read to host
+			}
 
-/* Fork enough threads to cover the X direction , and ny blocks in the y dir  */
-__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx, int ny)
-{
-int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myz = blockIdx.y;
-int nz = gridDim.y;
+			// reset the offsets and dimensions in the nonspanning direction
+			switch(phi->partitionDir) {
+			case PARTITION_X: gpuoffset.x = trimleft; halooffset.x = part[0]+trimleft; copysize.x -= (trimleft+trimright); break;
+			case PARTITION_Y: gpuoffset.y = trimleft; halooffset.y = part[1]+trimleft; copysize.y -= (trimleft+trimright); break;
+			case PARTITION_Z: gpuoffset.z = trimleft; halooffset.z = part[2]+trimleft; copysize.z -= (trimleft+trimright); break;
+			}
 
-if(myx >= nx) return;
-
-int addr = myx + nx*ny*myz + 3*nx;
-int linAddr = myx + nx*myz;
-
-int ctz;
-for(ctz = 0; ctz < 3; ctz++) {
-  linarray[linAddr] = mainarray[addr];
-  addr += nx;
-  linAddr += nx*nz;
-  }
-}
-
-__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx, int ny)
-{
-int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myz = blockIdx.y;
-int nz = gridDim.y;
-
-if(myx >= nx) return; 
-
-int addr = myx + nx*ny*myz;
-int linAddr = myx + nx*myz;
-
-int ctz;
-for(ctz = 0; ctz < 3; ctz++) {
-  mainarray[addr] = linarray[linAddr];
-  addr += nx;
-  linAddr += nx*nz;
-  }
+			if(oneIffToHost) {
+				memBlockCopy(gpuPointer, gpudim, gpuoffset, hostmem, halodim, halooffset, copysize);
+			} else {
+				memBlockCopy(hostmem, halodim, halooffset, gpuPointer, gpudim, gpuoffset, copysize);
+			}
+		}
+	}
 
 }
 
-__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int ny)
+// Copy from (S)ource, which is a 3d array sDim in size,
+// from addresses of block (sOffset) to (sOffset+num2cpy - <1,1,1>) inclusive
+// to (D)estination, of size dDim, at locations (dOffset) to (dOffset+num2cpy-<1,1,1>) inclusive
+void memBlockCopy(double *S, dim3 sDim, dim3 sOffset, double *D, dim3 dDim, dim3 dOffset, dim3 num2cpy)
 {
-int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myz = blockIdx.y;
-int nz = gridDim.y;
+	// Move the pointer to the offset 3d address
+	S = S + sOffset.x + sDim.x*(sOffset.y + sDim.y*sOffset.z);
+	D = D + dOffset.x + dDim.x*(dOffset.y + dDim.y*dOffset.z);
+	dim3 blocksize, gridsize;
 
-if(myx >= nx) return;
+	blocksize.x = (num2cpy.x > 8) ? 8 : num2cpy.x;
+	blocksize.y = (blocksize.x < 8) ? 16 : 8;
+	blocksize.z = (num2cpy.z < 8) ? 1 : 4;
 
-int addr = myx + nx*ny*myz + (ny-6)*nx;
-int linAddr = myx + nx*myz;
+	gridsize.x = num2cpy.x / blocksize.x; gridsize.x += (gridsize.x*blocksize.x < num2cpy.x);
+	gridsize.y = num2cpy.y / blocksize.y; gridsize.y += (gridsize.y*blocksize.y < num2cpy.y);
+	gridsize.z = 1;
 
-int ctz;
-for(ctz = 0; ctz < 3; ctz++) {
-  linarray[linAddr] = mainarray[addr];
-  addr += nx;
-  linAddr += nx*nz;
-  }
-
-
+	cukern_MemBlockCopy<<<gridsize, blocksize>>>(S, sDim, D, dDim, num2cpy);
+	CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, NULL, -1, "in mem block copy");
 }
 
-__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int ny)
+// The invocation translates both S and D from their allocated values to the lowest-index point of the copy
+// (geometrically, "the lower left corner") so we need only the dimensions & extent of copy
+__global__ void cukern_MemBlockCopy(double *S, dim3 sDim, double *D, dim3 dDim, dim3 num2cpy)
 {
-int myx = threadIdx.x + blockDim.x * blockIdx.x;
-int myz = blockIdx.y;
-int nz = gridDim.y;
+	unsigned int x, y, z;
 
-if(myx >= nx) return;
+	x = threadIdx.x + blockIdx.x*blockDim.x;
+	y = threadIdx.y + blockIdx.y*blockDim.y;
+	z = threadIdx.z;
 
-int addr = myx + nx*ny*myz + (ny-3)*nx;
-int linAddr = myx + nx*myz;
+	if(x >= num2cpy.x) return;
+	if(y >= num2cpy.y) return;
 
-int ctz;
-for(ctz = 0; ctz < 3; ctz++) {
-  mainarray[addr] = linarray[linAddr];
-  addr += nx;
-  linAddr += nx*nz;
-  }
+	// Translate to our first point
+	S += x + sDim.x*(y + sDim.y*z);
+	D += x + dDim.x*(y + dDim.y*z);
+
+	for( ; z < num2cpy.z; z+= blockDim.z)
+		D[dDim.x*dDim.y*z] = S[sDim.x*sDim.y*z];
 
 }
 

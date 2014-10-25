@@ -7,7 +7,7 @@ cudaFluidStep.cu		| multi-device parallel works n | E
 cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
 cudaFwdAverage.cu		| builds 			| M
 cudaFwdDifference.cu		| builds			| M
-cudaHaloExchange.cu		| shim				| P
+cudaHaloExchange.cu		| seems to work...		| P
 cudaMagPrep.cu			| builds 			| M
 cudaMagTVD.cu			| builds			| M
 cudaMagW.cu			| builds			| M
