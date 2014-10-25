@@ -81,6 +81,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		int nDevices;
 		cudaGetDeviceCount(&nDevices);
 
+		cudaError_t goofed;
+
 		// turn it on/off if given to
 		if(nrhs > 1) {
 			mxArray *getGM[1];
@@ -98,6 +100,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 						cudaSetDevice(u);
 						if(doit == 1) cudaDeviceEnablePeerAccess(v, 0);
 						if(doit == 0) cudaDeviceDisablePeerAccess(v);
+
+						goofed = cudaGetLastError();
+						if(goofed == cudaErrorPeerAccessAlreadyEnabled) {
+							printf("Oops: Peer access apparently already on. Returning...\n");
+							return;
+						}
+						if(goofed == cudaErrorPeerAccessNotEnabled) {
+							printf("Oops: Peer access already disabled. Returning...\n");
+							return;
+						}
 					}
 				}
 			}
