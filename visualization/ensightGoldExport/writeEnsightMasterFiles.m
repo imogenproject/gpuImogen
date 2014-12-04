@@ -1,4 +1,4 @@
-function writeEnsightMasterFiles(basename, range, frame, timeNormalization)
+function writeEnsightMasterFiles(basename, range, frame, varset, timeNormalization)
 
 CASE = fopen([basename '.case'], 'w');
 
@@ -13,17 +13,31 @@ makeEnsightGeometryFile(frame, basename);
 % prepare variables
 fprintf(CASE, '\nVARIABLE\n');
 
-fprintf(CASE, 'scalar per node: 1 mass %s.mass.****\n', basename);
-fprintf(CASE, 'scalar per node: 1 energy %s.ener.****\n', basename);
-if isfield(frame, 'grav'); if ~isempty(frame.grav)
-    fprintf(CASE, 'scalar per node: 1 grav_potential %s.grav.****\n', basename);
-end; end
+% fixme: There should be a way to interrogate derived quantity tensor types w/o computing them fully...
 
-fprintf(CASE, 'vector per node: 1 momentum %s.mom.****\n', basename);
+for n = 1:numel(varset)
+    % util_DerivedQty returns a [.X .Y .Z] structure for vectors
+    vector = isa(util_DerivedQty(frame, varset{n},0), 'struct');
 
-if ~isempty(frame.magX)
-    fprintf(CASE, 'vector per node: 1 magnet %s.mag.****\n', basename);
+    if vector;
+        fprintf(CASE, 'vector per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});
+    else
+        fprintf(CASE, 'scalar per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});
+    end
 end
+
+%
+%fprintf(CASE, 'scalar per node: 1 mass %s.mass.****\n', basename);
+%fprintf(CASE, 'scalar per node: 1 energy %s.ener.****\n', basename);
+%if isfield(frame, 'grav'); if ~isempty(frame.grav)
+%    fprintf(CASE, 'scalar per node: 1 grav_potential %s.grav.****\n', basename);
+%end; end
+%
+%fprintf(CASE, 'vector per node: 1 momentum %s.mom.****\n', basename);
+%
+%if ~isempty(frame.magX)
+%    fprintf(CASE, 'vector per node: 1 magnet %s.mag.****\n', basename);
+%end
 
 fprintf(CASE, '\nTIME\n');
 fprintf(CASE, 'time set:              1 time_data\n');

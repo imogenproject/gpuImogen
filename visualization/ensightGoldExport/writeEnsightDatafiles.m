@@ -1,22 +1,16 @@
-function exportEnsightDatafiles(basename, frameNo, frame)
+function exportEnsightDatafiles(basename, frameNo, frame, varset)
+% exportEnsightDatafiles(basename, frame #, data frame, {'names','of','vars'})
 % basename: output filename base
-% frameNo:  frame number
+% frame #:  frame number
 % frame: Imogen sx_... savefile structure
 
-makeEnsightScalarFile(sprintf('%s.mass.%04i', basename, frameNo), frame.mass, 'mass');
-makeEnsightScalarFile(sprintf('%s.ener.%04i', basename, frameNo), frame.ener, 'energy');
-
-if isfield(frame,'grav'); if ~isempty(frame.grav)
-    makeEnsightScalarFile(sprintf('%s.grav.%04i', basename, frameNo), frame.grav, 'gravity');
-end; end
-
-makeEnsightVectorFile(sprintf('%s.mom.%04i', basename, frameNo), ...
-                      frame.momX, frame.momY, frame.momZ, 'momentum');
-
-if ~isempty(frame.magX)
-    makeEnsightVectorFile(sprintf('%s.mag.%04i', basename, frameNo), ...
-                          frame.magX, frame.magY, frame.magZ, 'magnetic_field');
+for n = 1:numel(varset)
+    q = util_DerivedQty(frame, varset{n}, 0);
+    if isa(q, 'struct') % var was a vector
+	makeEnsightVectorFile(sprintf('%s.%s.%04i', basename, varset{n}, frameNo), q.X, q.Y, q.Z, varset{n});
+    else
+	makeEnsightScalarFile(sprintf('%s.%s.%04i', basename, varset{n}, frameNo), q, varset{n});
+    end
 end
-
 
 end
