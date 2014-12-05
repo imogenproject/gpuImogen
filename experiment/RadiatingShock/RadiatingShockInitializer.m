@@ -32,6 +32,9 @@ classdef RadiatingShockInitializer < Initializer
         sonicMach;
         alfvenMach; % Set to -1 for hydrodynamic
 
+	machY_boost; % Galiean transform makes everything slide sideways at this mach;
+                     % Prevent HLLC from being a victim of its own success
+
         radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
         radTheta; 
 
@@ -91,10 +94,13 @@ classdef RadiatingShockInitializer < Initializer
             obj.perturbationType = RadiatingShockInitializer.RANDOM;
             obj.randomSeed_spectrumLimit = 64; % 
             obj.seedAmplitude    = 5e-4;
-            
+
+           
             obj.theta            = 0;
             obj.sonicMach        = 3;
             obj.alfvenMach       = -1;
+
+	    obj.machY_boost      = .02*obj.sonicMach;
 
             obj.radTheta = .5;
             obj.radBeta = 1;
@@ -190,6 +196,7 @@ classdef RadiatingShockInitializer < Initializer
         mag(1,:,:,:) = jump.B(1,1);
         mag(2,preshock,:,:) = jump.B(2,1);
 
+
         % Get interpolated values for the flow
         flowValues(:,1) = flowValues(:,1) + Xshock;
         xinterps = vecX*obj.dGrid(1);
@@ -219,6 +226,13 @@ classdef RadiatingShockInitializer < Initializer
         mag(2,coldlayer,:,:) = finstate(6);
         ener(coldlayer,:,:) = finstate(7);
 
+        %----------- BOOST TRANSFORM ---------%
+	dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
+        yboost = mass*dvy;
+
+	ener = ener + (squeeze(mom(2,:,:,:)) + .5*yboost)*dvy;
+	mom(2,:,:,:) = squeeze(mom(2,:,:,:)) + yboost;
+
         %--- Perturb mass density in pre-shock region ---%
         %       Mass density gets perturbed in the pre-shock region just before the shock front
         %       to seed the formation of any instabilities
@@ -231,17 +245,20 @@ classdef RadiatingShockInitializer < Initializer
             switch (obj.perturbationType)
                 % RANDOM Seeds ____________________________________________________________________
                 case RadiatingShockInitializer.RANDOM
-                    phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
-                    amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
+%                    phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
+%                    amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
 
-                    amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
-                    amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
-                    amp(:,1,1) = 0; % no common-mode seed
+%                    amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
+%                    amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
+%                    amp(:,1,1) = 0; % no common-mode seed
 
-                    perturb = zeros(10, obj.grid(2), obj.grid(3));
-                    for xp = 1:size(perturb,1)
-                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
-                    end
+%                    perturb = zeros(10, obj.grid(2), obj.grid(3));
+%                    for xp = 1:size(perturb,1)
+%                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
+%                    end
+junk = obj.seedAmplitude*(rand(size(mass))-.5);
+mass(postshock,:,:) = mass(postshock,:,:) + junk(postshock,:,:);
+
 
                 case RadiatingShockInitializer.COSINE
                     [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
@@ -261,14 +278,14 @@ classdef RadiatingShockInitializer < Initializer
                           'Uknown perturbation type. Aborted run.');
             end
 
-            seeds = seedIndices(mine);
-
-            mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb;
+%            seeds = seedIndices(mine);
+%
+%            mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb;
             % Add seed to mass while maintaining self-consistent momentum/energy
             % This will otherwise take a dump on e.g. a theta=0 shock with
             % a large density fluctuation resulting in negative internal energy
-            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
-            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
+%            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
+%            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
         end
         
         ener = ener/(obj.gamma-1) + ...
