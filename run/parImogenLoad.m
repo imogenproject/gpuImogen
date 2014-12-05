@@ -9,6 +9,12 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     %-- Initialize Imogen directory ---%
     starterRun();
 
+% Uncomment to buy time to attach GDB to parallel runs
+%disp('FIFTEEN SECOND WARNING');
+%pause(10)
+%disp('FIVE SECOND WARNING');
+%pause(5);
+
     %--- Initialize MPI and GPU ---%
     if ~mpi_isinitialized()
         context = parallel_start();
@@ -18,8 +24,11 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
         GIS = GlobalIndexSemantics();
     end
 
-    mpi_barrier();
+    gm = GPUManager.getInstance();
+    gm.init([0 2], 3, 1);
+    GPU_ctrl('peers',1); % Turn on peer sharing
 
+    mpi_barrier();
     % If we're running in parallel, print some bookkeeping stuff just to make
     % sure that everyone is one the same page; Share hashes to make sure that
     % exactly one process is using each GPU.
@@ -41,11 +50,11 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
 
         if strncmp(sysOutput,'fusion.uoregon.edu',18); mygpu=mygpu*2; end % Idiotic hack for my office box
 
-        fprintf('Rank %i/%i on host %s activating host GPU #%i\n', context.rank, context.size, sysOutput(1:(end-1)), mygpu);
-        GPU_ctrl(mygpu);
+%        fprintf('Rank %i/%i on host %s activating host GPU #%i\n', context.rank, context.size, sysOutput(1:(end-1)), mygpu);
+%        GPU_ctrl(mygpu);
     else
-        fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
-        GPU_ctrl(gpuno);
+%        fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
+%        GPU_ctrl(gpuno);
     end
 
     mpi_barrier();
@@ -53,6 +62,7 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);
+
 %    try
         eval(runFile);
 %    catch ME
@@ -68,8 +78,6 @@ function parImogenLoad(runFile, logFile, alias, gpuno)
 %        rethrow(ME);
 %    end
 
-    GPU_ctrl('exit');
     mpi_barrier();
-%    mpi_finalize();
-%    exit;
+    mpi_finalize();
 end
