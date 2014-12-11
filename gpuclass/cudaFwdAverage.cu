@@ -39,11 +39,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Establish launch dimensions & a few other parameters
     int direction = (int)*mxGetPr(prhs[1]);
 
-    int3 arraySize;
-    arraySize.x = in.dim[0];
-    arraySize.y = in.dim[1];
-    arraySize.z = in.dim[2];
-
+    dim3 arraySize = makeDim3(&in.dim[0]);
     dim3 blocksize, gridsize;
     blocksize.z = 1;
     gridsize.z = 1;
@@ -58,7 +54,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //            gridsize.x = arraySize.x / 14; gridsize.x += (14 * gridsize.x < arraySize.x);
 //            gridsize.y = arraySize.y / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
 //            cukern_fwdAverageX<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
-            blocksize.x = 128; blocksize.y = blocksize.z = 1;
+            blocksize = makeDim3(128, 1, 1);
             gridsize.x = arraySize.y; gridsize.y = arraySize.z;
             cukern_ForwardAverageX<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x);
             break;
@@ -67,7 +63,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //            gridsize.x = arraySize.x / 8; gridsize.x += (8 * gridsize.x < arraySize.x);
 //            gridsize.y = arraySize.y / 14; gridsize.y += (14 * gridsize.x < arraySize.y);
 //            cukern_fwdAverageY<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
-            blocksize.x = 64; blocksize.y = blocksize.z = 1;
+            blocksize = makeDim3(64, 1, 1);
             gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
             gridsize.y = arraySize.z;
             cukern_ForwardAverageY<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x, arraySize.y);
@@ -77,7 +73,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 //            gridsize.x = arraySize.z / 14; gridsize.x += (14 * gridsize.x < arraySize.z);
 //            gridsize.y = arraySize.x / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.x);
 //            cukern_fwdAverageZ<<<gridsize, blocksize>>>(srcs[0], dest[0], arraySize);
-              blocksize.x = 64; blocksize.y = blocksize.z = 1;
+              blocksize = makeDim3(64, 1, 1);
               gridsize.x = arraySize.x / 64; gridsize.x += (64*gridsize.x < arraySize.x);
               gridsize.y = arraySize.y;
               cukern_ForwardAverageZ<<<gridsize, blocksize>>>(in.devicePtr[0], out->devicePtr[0], arraySize.x, arraySize.z);

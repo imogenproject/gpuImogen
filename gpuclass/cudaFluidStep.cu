@@ -171,14 +171,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
 
-	dim3 arraySize;
-	arraySize.x = fluid[0].dim[0];
-	arraySize.y = fluid[0].dim[1];
-	arraySize.z = fluid[0].dim[2];
-
-	dim3 blocksize, gridsize;
-
-	blocksize.x = BLOCKLENP4; blocksize.y = YBLOCKS; blocksize.z = 1;
+	dim3 arraySize = makeDim3(&fluid[0].dim[0]);
+	dim3 blocksize = makeDim3(BLOCKLENP4, YBLOCKS, 1);
+	dim3 gridsize;
 
 	double *wStepValues[fluid->nGPUs];
 
@@ -219,33 +214,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
 		} break;
-		case STEPTYPE_HLL: {
-			// Iteratively for each device, setup the launch & hit it
-			for(i = 0; i < fluid->nGPUs; i++) {
-				// Set the device and grab half-step storage for it
-				cudaSetDevice(fluid->deviceID[i]);
-				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], 6*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
-				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
-
-				// Find out the size of the partition
-				calcPartitionExtent(fluid, i, sub);
-				gridsize.x = (sub[3]/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < sub[3]);
-				gridsize.y = sub[5];
-
-				// Fire off the fluid update step
-				cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
-				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-				cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
-
-				// Release the memory taken for this step
-				cudaFree(wStepValues[i]);
-				CHECK_CUDA_ERROR("cudaFree()");
-			}
-		} break;
+		case STEPTYPE_HLL:
 		case STEPTYPE_HLLC: {
 			// Iteratively for each device, setup the launch & hit it
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -261,24 +230,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				gridsize.y = sub[5];
 
 				// Fire off the fluid update step
-				cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i], i);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_HLLC_step prediction step");
-
+				if(steptype == STEPTYPE_HLL)
+				    cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
+				else
+				    cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i], i);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
 				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_PressureSolverHydro");
-
-				cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i], i);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "In cudaFluidStep: cukern_HLLC_step prediction step");
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+				if(steptype == STEPTYPE_HLL)
+				    cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
+				else
+				    cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i], i);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
 
 				// Release the memory taken for this step
 				cudaFree(wStepValues[i]);
 				CHECK_CUDA_ERROR("cudaFree()");
 			}
-
-			if(fluid->partitionDir == PARTITION_X) exchangeMGArrayHalos(fluid, 5);
-			CHECK_CUDA_ERROR("after exchange halos");
 		} break;
 		}
+		if(fluid->partitionDir == PARTITION_X) exchangeMGArrayHalos(fluid, 5);
+		CHECK_CUDA_ERROR("after exchange halos");
+
 		// We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
 		//		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
 	} else {
@@ -565,22 +538,10 @@ __global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, 
 		Cle = Cre; Cre = shblk[IR + BOS4];
 		/* Calculation may now proceed based only on register variables! */
 
-		//48 registers
-		/* Get Roe-average particle x speed */
 		Utilde = (Ale*Ble + Are*Bre)/(Ale+Are);
-
-		/* Get Roe-average sonic speed and take our S_+- estimate for HLL */
-		/*Sleft  = sqrt(FLUID_GAMMA*Cle);
-		Sright = sqrt(FLUID_GAMMA*Cre);
-		Atilde = (Sleft+Sright)/(Ale+Are);
-		Sleft  = Utilde - Atilde;
-		Sright = Utilde + Atilde; */
-		// 48 regs
-
 		/* This change implements the Batten Et Al correction to assure positivity */
 		Sleft  = Ale*Are;
 		Atilde = sqrt(FLUID_GAMMA*(Cle*Are+Cre*Ale)/((Ale+Are)*Sleft)); // Roe-averaged soundspeed
-		//Atilde = (Sleft+Sright)/(Ale+Are); // Roe averaged soundspeed
 
 		double Uroe = Utilde - Atilde;
 		double Uson = Ale - sqrt(FLUID_GAMMA*Cle)/Ale;

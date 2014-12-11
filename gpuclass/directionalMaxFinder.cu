@@ -57,11 +57,8 @@ switch(nrhs) {
 
   for(i = 0; i < in->nGPUs; i++) {
     calcPartitionExtent(in, i, sub);
-    dims.x = sub[3];
-    dims.y = sub[4];
-    dims.z = sub[5];
-
-    blocksize.x = blocksize.y = BLOCKDIM; blocksize.z =1;
+    dims = makeDim3(&sub[3]);
+    blocksize = makeDim3(BLOCKDIM, BLOCKDIM, 1);
 
     switch((int)*mxGetPr(prhs[2])) {
       case 1:

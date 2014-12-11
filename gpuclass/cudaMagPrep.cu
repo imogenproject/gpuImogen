@@ -76,10 +76,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int magDirection = (int)directs[1];
 
 	int3 arraySize;
-	arraySize.x = src->dim[0];
-	arraySize.y = src->dim[1];
-	arraySize.z = src->dim[2];
-
+	arraySize = makeInt3(&src->dim[0]);
 
 	dim3 blocksize, gridsize;
 	blocksize.z = 1;
@@ -93,26 +90,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		// Interpolate the grid-aligned velocity
 		switch(velDirection) {
 		case 1:
-			blocksize.x = 128; blocksize.y = blocksize.z = 1;
+			blocksize = makeDim3(128,1,1);
 			gridsize.x = arraySize.y; // / 16; gridsize.x += (16 * gridsize.x < arraySize.x);
 			gridsize.y = arraySize.z;// / blocksize.y; gridsize.y += (blocksize.y * gridsize.y < arraySize.y);
 			cukern_VelocityBkwdAverage_X<<<gridsize, blocksize>>>(tempVelocity, src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x);
 			break;
 		case 2:
-			blocksize.x = 64; blocksize.y = blocksize.z = 1;
+			blocksize = makeDim3(64,1,1);
 			gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
 			gridsize.y = arraySize.z;
 			cukern_VelocityBkwdAverage_Y<<<gridsize, blocksize>>>(tempVelocity, src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.y);
 			break;
 		case 3:
-			blocksize.x = 64; blocksize.y = blocksize.z = 1;
+			blocksize = makeDim3(64,1,1);
 			gridsize.x = arraySize.x/64; gridsize.x += (gridsize.x*64 < arraySize.x);
 			gridsize.y = arraySize.y;
 			cukern_VelocityBkwdAverage_Z<<<gridsize, blocksize>>>(tempVelocity, src[0].devicePtr[0], src[1].devicePtr[1], arraySize.x, arraySize.z);
 			break;
 		}
 	} else {
-		blocksize.x = 512; blocksize.y = blocksize.z = 1;
+		blocksize = makeDim3(512,1,1);
 		gridsize.x = src->numel / 512; gridsize.x += (gridsize.x * 512 < src->numel); gridsize.y = gridsize.z = 1;
 		cukern_SimpleVelocity<<<gridsize, blocksize>>>(tempVelocity, src[0].devicePtr[0], src[1].devicePtr[1], src->numel);
 	}

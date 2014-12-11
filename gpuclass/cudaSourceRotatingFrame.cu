@@ -49,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	dim3 gridsize, blocksize;
 	int3 arraysize; arraysize.x = fluid->dim[0]; arraysize.y = fluid->dim[1]; arraysize.z = fluid->dim[2];
 
-	blocksize.x = BLOCKDIMX; blocksize.y = BLOCKDIMY; blocksize.z = 1;
+	blocksize = makeDim3(BLOCKDIMX, BLOCKDIMY, 1);
 	gridsize.x = arraysize.x / (blocksize.x); gridsize.x += ((blocksize.x) * gridsize.x < fluid->dim[0]);
 	gridsize.y = arraysize.z;
 	gridsize.z = 1;

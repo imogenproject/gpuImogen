@@ -284,6 +284,18 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst)
 	for(x = 0; x < N; x++) { dst[x] = m[x].devicePtr[i]; }
 }
 
+int3 makeInt3(int x, int y, int z) {
+    int3 a; a.x = x; a.y = y; a.z = z; return a; }
+int3 makeInt3(int *b) {
+    int3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
+dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z) {
+    dim3 a; a.x = x; a.y = y; a.z = z; return a; }
+dim3 makeDim3(unsigned int *b) {
+    dim3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
+dim3 makeDim3(int *b) {
+    dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
+
+
 template<MGAReductionOperator OP>
 __global__ void cudaClonedReducer(double *a, double *b, int numel);
 template<MGAReductionOperator OP>
@@ -306,7 +318,7 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 
 	cudaError_t crap = cudaSuccess;
 
-	double *B; double *C; double *D;
+	double *B; double *C;
 
 	switch(a->nGPUs) {
 	case 1: break; // nofin to do
