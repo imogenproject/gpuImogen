@@ -14,11 +14,9 @@
 #include "cudaCommon.h"
 
 /* THIS FUNCTION
-   //cudaFreeRadiation performs a purely local update to energy density of the form
+   cudaFreeRadiation solves the operator equation
+   d/dt E = -beta rho^2 T^theta
 
-   E = E - dt * beta rho^(2-theta) Pgas^(theta),
-
-   i.e. a sink on the energy term of
 
    Lambda = beta rho^(2-theta) Pgas^(theta)
 
@@ -33,6 +31,7 @@
 __global__ void cukern_FreeHydroRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *radrate, int numel);
 __global__ void cukern_FreeMHDRadiationRate(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, double *radrate, int numel);
 
+template <unsigned int keyvalueOfTheta>
 __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, double *pz, double *E, int numel);
 __global__ void cukern_FreeMHDRadiation(double *rho, double *px, double *py, double *pz, double *E, double *bx, double *by, double *bz, int numel);
 
@@ -45,6 +44,12 @@ __constant__ __device__ double radparam[5];
 
 #define BLOCKDIM 256
 #define GRIDDIM 64
+
+// These and the freeHydroRadiation templating are because of the different
+// integral outcomes when theta is exactly zero (P-independent) or one (logarithm outcome)
+#define KEYVALUE_ZERO 0
+#define KEYVALUE_ONE 1
+#define KEYVALUE_NOT 2
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if ((nrhs != 9) || (nlhs > 1))
@@ -98,7 +103,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			cukern_FreeMHDRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], f[0].partNumel[j]);
 			break; }
 		case 1: {
-			cukern_FreeHydroRadiation<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], f[0].partNumel[j]);
+			cukern_FreeHydroRadiation<KEYVALUE_NOT><<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], f[0].partNumel[j]);
 			break; }
 		case 2: {
 			cukern_FreeMHDRadiationRate<<<GRIDDIM, BLOCKDIM>>>(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], ptrs[5], ptrs[6], ptrs[7], dest->devicePtr[j], f[0].partNumel[j]);
@@ -124,20 +129,42 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
  * wise as it is unconditionally stable. */
 #define PSQUARED px[x]*px[x]+py[x]*py[x]+pz[x]*pz[x]
 #define BSQUARED bx[x]*bx[x]+by[x]*by[x]+bz[x]*bz[x]
-
+template <unsigned int keyvalueOfTheta>
 __global__ void cukern_FreeHydroRadiation(double *rho, double *px, double *py, double *pz, double *E, int numel)
 {
 	int x = threadIdx.x + BLOCKDIM*blockIdx.x;
 
-	double P; double dE; double den;
+	int i;
+	double P, Pf, beta, den;
 
 	while(x < numel) {
 		den = rho[x];
 		P = GAMMA_M1*(E[x] - (PSQUARED)/(2*den)); // gas pressure
 
-		dE = STRENGTH*pow(den, TWO_MEXPONENT)*pow(P, EXPONENT); // amount to be lost
-		if(P > den*TFLOOR) {
-			if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
+		// Do nothing if temperature too low
+		if(P > den*TFLOOR) { 
+		    switch(keyvalueOfTheta) {
+			case KEYVALUE_ZERO: // Special case - analytic: dE = -strength*rho^2 dt
+			    Pf = P - GAMMA_M1*STRENGTH*den*den; break;
+			case KEYVALUE_ONE: // Special case - analytic: dE = -strength rho P dt
+			    Pf = exp(log(P) - GAMMA_M1*STRENGTH*den); break;
+			case KEYVALUE_NOT: // General case - dE/dt = -strength rho^(2-theta) P^theta
+			    beta = .5*STRENGTH*pow(den, TWO_MEXPONENT)*GAMMA_M1;
+			    // Explicit prediction
+			    Pf = P - 2*beta*pow(P, EXPONENT);
+			    // Some newton-raphson to finish it off
+			    for(i = 0; i < 4; i++) {
+				Pf -= (Pf - P + beta*(pow(Pf,EXPONENT) + pow(P, EXPONENT)))/(1+beta*EXPONENT*pow(Pf,EXPONENT-1.0));
+			    }
+		    }
+		Pf = (Pf > den*TFLOOR) ? Pf : den*TFLOOR;
+
+		E[x] += (Pf-P)/GAMMA_M1;
+		
+		}
+		// Cell completely cooled during this timestep
+//		if(P > den*TFLOOR) {
+//			if(P - (GAMMA_M1*dE) < den*TFLOOR) { E[x] -= (P-den*TFLOOR)/GAMMA_M1; } else { E[x] -= dE; } }
 
 		x += BLOCKDIM*GRIDDIM;
 	}
