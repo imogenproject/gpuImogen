@@ -18,8 +18,6 @@ classdef SodShockTubeInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        direction;      % Enumerated spatial orientation of the shock wave       	str
-        shockAngle;     % Angle of the shock axis                                   double
     end %PUBLIC
 
 %===================================================================================================
@@ -28,11 +26,9 @@ classdef SodShockTubeInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
+	pShockNormal;    % Unitary 3-vector <Nx Ny Nz>. Points in this direction from the center
+			 % form the low-density region
     end %PROTECTED
-    
-    
-    
-    
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
@@ -51,10 +47,9 @@ classdef SodShockTubeInitializer < Initializer
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
             
-            obj.shockAngle       = 0;
-            obj.direction        = 'X';
+            obj.normal('X');
             
-            obj.bcMode.x         = ENUM.BCMODE_CONST;
+            obj.bcMode.x         = ENUM.BCMODE_CIRCULAR;%CONST;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             
@@ -68,6 +63,39 @@ classdef SodShockTubeInitializer < Initializer
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
+	function normal(self, X, y, z)
+	    if nargin == 3 % x, y, z scalar numbers passed separately
+	        R = [X(1) y(1) z(1)];
+		if norm(R) < 1e-10; R = [1 0 0]; end % Do not attempt to normalize too-small R
+		R = R / norm(R);
+	    else % Pick coordinate axis directions based only on X if one element, otherwise its a vector
+		if numel(X) == 3;
+		    if norm(X) < 1e-10; X = [1 0 0]; end
+		    R = X / norm(X);
+		else
+			if isa(X, 'char')
+			    switch X
+				case 'X'; R = [1 0 0];
+				case 'Y'; R = [0 1 0];
+				case 'Z'; R = [0 0 1];
+				default; warning('Default at invalid input','Given %s is not {X, Y or Z}: defaulting to X aligned shock', X); R = [1 0 0];
+			    end
+			else
+			    switch X
+				case 1; R = [1 0 0];
+				case 2; R = [0 1 0];
+				case 3; R = [0 0 1];
+			 	default; warning('Default at invalid input','Given %g is not {1, 2, 3}: defaulting to X aligned shock', X); R = [1 0 0];
+			    end
+			end
+		end
+
+	    end
+
+	self.pShockNormal = R;
+
+	end
+
     end%PUBLIC
     
 %===================================================================================================    
@@ -77,40 +105,29 @@ classdef SodShockTubeInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            obj.runCode           = [obj.runCode upper(obj.direction)];
+%            obj.runCode           = [obj.runCode upper(obj.direction)];
             statics               = []; % No statics used in this problem
             potentialField        = [];
             selfGravity           = [];
-            half                  = round(obj.grid/2);
-            indices               = cell(1,3);
-            for i=1:3
-                indices{i} = 1:obj.grid(i);  
-            end
+            half                  = floor(obj.grid/2);
 
-            %--- Set array values ---%
-            mass                  = ones(obj.grid);
-            mom                   = zeros([3, obj.grid]);
-            mag                   = zeros([3, obj.grid]);
-            ener                  = ones(obj.grid) / (obj.gamma - 1);
+	    GIS = GlobalIndexSemantics();
 
-            %--- Set shock array values according to flux direction ---%
-            direct                = {'x', 'y', 'z'};
-            i                     = find(strcmpi(obj.direction, direct), true);
-            j                     = mod(i,2) + 1;
-            
-            for n=1:obj.grid(j)
-                adjacentLen       = -half(j) + n - 1;
-                lowerBound        = floor(half(i) ...
-                                    - adjacentLen*tand(obj.shockAngle));
-                lowerBound        = min(obj.grid(i), max(1, lowerBound));
+	    %--- Compute the conditions for the domains ---%
+	    [X Y Z] = GIS.ndgridSetXYZ();
+	    [X Y Z] = GIS.toCoordinates(half + 1/2, X,Y,Z); % The "index" of the contact is halfway past the midpoint position
+	    NdotX = (obj.pShockNormal(1)*X + obj.pShockNormal(2)*Y + obj.pShockNormal(3)*Z) > 0;
 
-                indices{i}        = lowerBound:obj.grid(i);
-                indices{j}        = n;
+            %--- Set array values to high density condition ---%
+            mass                  = ones(size(X));
+            mom                   = zeros([3 size(X)]);
+            mag                   = zeros([3 size(X)]);
+            ener                  = mass/(obj.gamma - 1);
 
-                mass(indices{:})  = 0.125*mass(indices{:});
-                ener(indices{:})  = 0.1*ener(indices{:});
-            end
-            
+	    %--- Set low density condition ---%
+	    mass(NdotX) = .125*mass(NdotX);
+	    ener(NdotX) = .100*ener(NdotX);
+
             %--- Adjust Cell Spacing ---%
             %       Problem is normalized so that the length from one end to the other of the shock
             %       tube is 1 unit length, no matter what the resolution. If the shock tube is 
@@ -118,32 +135,9 @@ classdef SodShockTubeInitializer < Initializer
             %       shock tube is unit length when cut down the center of tube along the shock
             %       normal.
             obj.dGrid             = 1./obj.grid;
-            
-            if obj.shockAngle > 0
-                angle             = obj.shockAngle;
-                criticalAngle     = atan(obj.grid(j)/obj.grid(i));
-                if angle <= criticalAngle 
-                    scale         = 1/(obj.grid(i)/cosd(angle));
-                else
-                    scale         = 1/(obj.grid(j)/sind(angle));
-                end
-                obj.dGrid(i)      = scale;
-                obj.dGrid(j)      = scale;
-            end
-            
+            % FIXME: This needs to account for angled shocks
             %--- Determine the default slices to save ---%
             if ~obj.saveSlicesSpecified
-                obj.activeSlices.(direct{i}) = true;
-                
-                if obj.shockAngle > 0
-                    switch i+j
-                        case 3     
-                            obj.activeSlices.xy = true;
-                        case 5
-                            obj.activeSlices.yz = true;
-                    end
-                end
-                
                 obj.activeSlices.xyz = true;
             end
             
