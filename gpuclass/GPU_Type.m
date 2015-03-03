@@ -13,7 +13,9 @@ classdef GPU_Type < handle
     end % Public
 
     properties (SetAccess = private, GetAccess = private, Transient= true)
-        allocated; % true if GPU pointer is valid, false at start.
+        allocated; % true if this GPU pointer was actually alloc'd and must be freed-on-quit
+		   % false if it's simply pointed at another GPU_Type
+	maxNumel;  % Indicates linear size of array that can be written
     end % Private
 
     properties (Dependent = true)
@@ -142,10 +144,15 @@ classdef GPU_Type < handle
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
-            obj.GPU_MemPtr = int64([0 0 0 0 0 0]);
+            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0]);
             obj.asize = [0 0 0];
             obj.numdims = 2;
         end
+
+	function createSlabs(obj, N)
+	    B = GPU_makeslab(obj.GPU_MemPtr, N);
+	    obj.GPU_MemPtr = B;
+	end
 
     end % generic methods
 

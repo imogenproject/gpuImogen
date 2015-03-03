@@ -23,20 +23,20 @@ int64_t *x = (int64_t *)mxGetData(tag);
 int tagsize = mxGetNumberOfElements(tag);
 
 // This cannot possibly be valid
-if(tagsize < 6) return false;
+if(tagsize < GPU_TAG_LENGTH) return false;
 
-int nx = x[0];
-int ny = x[1];
-int nz = x[2];
+int nx = x[GPU_TAG_DIM0];
+int ny = x[GPU_TAG_DIM1];
+int nz = x[GPU_TAG_DIM2];
 
 // Null array OK
-if((nx == 0) && (ny == 0) && (nz == 0) && (tagsize == 6)) return true;
+if((nx == 0) && (ny == 0) && (nz == 0) && (tagsize == GPU_TAG_LENGTH)) return true;
 
 if((nx < 0) || (ny < 0) || (nz < 0)) return false;
 
-int halo         = x[3];
-int partitionDir = x[4];
-int nDevs        = x[5];
+int halo         = x[GPU_TAG_HALO];
+int partitionDir = x[GPU_TAG_PARTDIR];
+int nDevs        = x[GPU_TAG_NGPUS];
 
 // Some basic does-this-make-sense
 if(nDevs < 1) return false;
@@ -49,14 +49,14 @@ if(halo < 0) { // check it is sane to clone
 if((partitionDir < 1) || (partitionDir > 3)) return false;
 
 // Require there be exactly the storage required
-int requisiteNumel = 6 + 2*nDevs;
+int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
 if(tagsize != requisiteNumel) return false;
 
 int j;
-x += 6;
+x += GPU_TAG_LENGTH;
 // CUDA device #s are nonnegative, and it is nonsensical that there would be over 16 of them.
 for(j = 0; j < nDevs; j++) {
-    if((x[2*j] < 0) || (x[2*j] >= 16)) {
+    if((x[2*j] < 0) || (x[2*j] >= MAX_GPUS_USED)) {
         return false;
         }
     }
@@ -126,7 +126,7 @@ const char *cname = mxGetClassName(gputype);
 /* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
 if(strcmp(cname, "GPU_Type") == 0) {
   tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
-  } else { /* Assume it's an ImogenArray or descendent and retreive the gputag property */
+  } else { /* Assume it's an ImogenArray or descendant and retrieve the gputag property */
   tag = mxGetProperty(gputype, 0, "gputag");
   }
 
@@ -153,6 +153,7 @@ mg->dim[1] = tag[GPU_TAG_DIM1];
 mg->numel *= mg->dim[1];
 mg->dim[2] = tag[GPU_TAG_DIM2];
 mg->numel *= mg->dim[2];
+mg->numSlabs = tag[GPU_TAG_DIMSLAB];
 
 mg->haloSize     = tag[GPU_TAG_HALO];
 mg->partitionDir = tag[GPU_TAG_PARTDIR];
@@ -160,18 +161,20 @@ mg->nGPUs        = tag[GPU_TAG_NGPUS];
 
 int sub[6];
 
-tag += 6;
+tag += GPU_TAG_LENGTH;
 for(i = 0; i < mg->nGPUs; i++) {
     mg->deviceID[i]  = (int)tag[2*i];
     mg->devicePtr[i] = (double *)tag[2*i+1];
     // Many elementwise funcs only need numel, so avoid having to do this every time
     calcPartitionExtent(mg, i, sub);
     mg->partNumel[i] = sub[3]*sub[4]*sub[5];
+    mg->slabPitch[i] = ROUNDUPTO(mg->partNumel[i]*sizeof(double), 256);
     }
 for(; i < MAX_GPUS_USED; i++) {
     mg->deviceID[i]  = -1;
     mg->devicePtr[i] = 0x0;
     mg->partNumel[i] = 0;
+    mg->slabPitch[i] = 0;
     }
 
 return;
@@ -181,9 +184,10 @@ return;
    [ Nx
      Ny
      Nz
+     Nslabs
      halo size on shared edges
      Direction to parition in [1 = x, 2 = y, 3 = x]
-     N = # of GPU paritions
+     # of GPU paritions being used
      device ID 0
      device memory* 0
      device ID 1
@@ -197,13 +201,14 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 tag[GPU_TAG_DIM0] = mg->dim[0];
 tag[GPU_TAG_DIM1] = mg->dim[1];
 tag[GPU_TAG_DIM2] = mg->dim[2];
+tag[GPU_TAG_DIMSLAB] = mg->numSlabs;
 tag[GPU_TAG_HALO] = mg->haloSize;
 tag[GPU_TAG_PARTDIR] = mg->partitionDir;
 tag[GPU_TAG_NGPUS] = mg->nGPUs;
 int i;
 for(i = 0; i < mg->nGPUs; i++) {
-    tag[6+2*i]   = (int64_t)mg->deviceID[i];
-    tag[6+2*i+1] = (int64_t)mg->devicePtr[i];
+    tag[GPU_TAG_LENGTH+2*i]   = (int64_t)mg->deviceID[i];
+    tag[GPU_TAG_LENGTH+2*i+1] = (int64_t)mg->devicePtr[i];
     }
 
 return;
@@ -235,9 +240,15 @@ int j;
 
 int sub[6];
 
+/* Don't let being passed a slab cause a defective allocation or output */
+int nActualSlabs = skeleton->numSlabs;
+if(nActualSlabs <= 0) nActualSlabs = 1;
+
 // clone skeleton,
 for(i = 0; i < N; i++) {
     m[i]       = *skeleton;
+    m[i].numSlabs = nActualSlabs;
+	
     // but all "derived" qualities need to be reset
     m[i].numel = m[i].dim[0]*m[i].dim[1]*m[i].dim[2];
 
@@ -249,9 +260,16 @@ for(i = 0; i < N; i++) {
         // Check this, because the user may have merely set .haloSize = PARTITION_CLONED
         calcPartitionExtent(m+i, j, sub);
         m[i].partNumel[j] = sub[3]*sub[4]*sub[5];
+        m[i].slabPitch[j] = ROUNDUPTO(m[i].partNumel[j]*sizeof(double), 256);
 
-        cudaMalloc((void **)&m[i].devicePtr[j], m[i].partNumel[j]*sizeof(double));
-        CHECK_CUDA_ERROR("createMGArrays: malloc");
+
+
+        /* Differs if we have slabs... */
+        int64_t num2alloc = m[i].partNumel[j] * sizeof(double);
+        if(m[i].numSlabs > 1) num2alloc = m[i].slabPitch[j];
+
+        cudaMalloc((void **)&m[i].devicePtr[j], num2alloc);
+        CHECK_CUDA_ERROR("createMGArrays: cudaMalloc");
     }
 }
 
@@ -264,7 +282,7 @@ MGArray *m = allocMGArrays(N, skeleton);
 
 int i;
 
-mwSize dims[2]; dims[0] = 6+2*skeleton->nGPUs; dims[1] = 1;
+mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*skeleton->nGPUs; dims[1] = 1;
 int64_t *r;
 
 // create Matlab arrays holding serialized form,
@@ -276,6 +294,17 @@ for(i = 0; i < N; i++) {
 
 // send back the MGArray structs.
 return m;
+}
+
+void returnAnMGArray(mxArray *plhs[], MGArray *m)
+{
+mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*m->nGPUs; dims[1] = 1;
+int64_t *r;
+
+// create Matlab arrays holding serialized form,
+plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
+r = (int64_t *)mxGetData(plhs[0]);
+serializeMGArrayToTag(m, r);
 }
 
 void pullMGAPointers( MGArray *m, int N, int i, double **dst)

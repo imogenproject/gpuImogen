@@ -78,6 +78,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     calcPartitionExtent(&m, i, &sub[0]);
     m.partNumel[i] = sub[3]*sub[4]*sub[5];
   }
+  m.numSlabs = 1;
 
   MGArray *dest = createMGArrays(plhs, 1, &m);
 

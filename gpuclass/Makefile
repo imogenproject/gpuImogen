@@ -8,7 +8,7 @@ GEN_OPTS =
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 #NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
 # To get debuggability & ptxas chatter...
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -Xptxas="-v"
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v"
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -28,9 +28,9 @@ all: base fluids parallel lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_copy cudaBasicOperations
 
-fluids: cudaArrayRotate2 cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotate2 cudaArrayRotateB cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
@@ -50,9 +50,37 @@ cudaCommon.o: cudaCommon.cu cudaCommon.h
 
 ############# GPU CONTROL ROUTINES
 
+GPU_copy.o: GPU_copy.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_copy.cu -o GPU_copy.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_copy.cpp
+GPU_copy: GPU_copy.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx GPU_copy.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+
+GPU_getslab.o: GPU_getslab.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_getslab.cu -o GPU_getslab.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_getslab.cpp
+GPU_getslab: GPU_getslab.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx GPU_getslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+
+GPU_makeslab.o: GPU_makeslab.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_makeslab.cu -o GPU_makeslab.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_makeslab.cpp
+GPU_makeslab: GPU_makeslab.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx GPU_makeslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+GPU_slabs.o: GPU_slabs.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_slabs.cu -o GPU_slabs.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_slabs.cpp
+
+GPU_slabs: GPU_slabs.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx GPU_slabs.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
 GPU_ctrl.o: GPU_ctrl.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda GPU_ctrl.cu -o GPU_ctrl.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_ctrl.cpp
+
 GPU_ctrl: GPU_ctrl.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx GPU_ctrl.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
@@ -97,6 +125,18 @@ cudaArrayRotate.o: cudaArrayRotate.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotate.cu -o cudaArrayRotate.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotate.cpp
 cudaArrayRotate: cudaCommon.o cudaArrayRotate.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+cudaArrayRotateB.o: cudaArrayRotateB.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateB.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotateB.cpp
+cudaArrayRotateB: cudaCommon.o cudaArrayRotateB.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
+
+cudaArrayRotate2_inplace.o: cudaArrayRotate2_inplace.cu
+	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotate2_inplace.cu -o cudaArrayRotate2_inplace.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotate2_inplace.cpp
+cudaArrayRotate2_inplace: cudaCommon.o cudaArrayRotate2_inplace.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 cudaArrayRotate2.o: cudaArrayRotate2.cu
@@ -160,7 +200,7 @@ cudaFluidTVD.o: cudaFluidTVD.cu
 cudaFluidTVD: cudaCommon.o cudaFluidTVD.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
-cudaFluidStep.o: cudaFluidStep.cu
+cudaFluidStep.o: cudaFluidStep.cu debug_inserts.h
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
 	mex $(MEX_OPTS)  -c cudaFluidStep.cpp
 cudaFluidStep: cudaCommon.o cudaFluidStep.o

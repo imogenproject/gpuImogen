@@ -26,6 +26,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int i, j;
 
   for(i = 0; i < nrhs; i++) {
+	  if(t[i].numSlabs < 1) continue; // This is a slab reference and was never actually allocated. Ignore it.
     for(j = 0; j < t[i].nGPUs; j++) {
       cudaSetDevice(t[i].deviceID[j]);
       CHECK_CUDA_ERROR("cudaSetDevice()");

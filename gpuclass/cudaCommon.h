@@ -39,18 +39,24 @@ typedef struct {
         double *cFreeze;
         } fluidVarPtrs;
 
+#define ROUNDUPTO(x, y) ( x + ((x % y == 0) ? 0 : (y - x % y)) )
+
 // warning: reduceClonedMGArray is hardcoded with the reduction algo for a max of 4 devices because lazy
 #define MAX_GPUS_USED 4
 #define PARTITION_X 1
 #define PARTITION_Y 2
 #define PARTITION_Z 3
 
+// Never ever don't use these
+#define GPU_TAG_LENGTH 7
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
-#define GPU_TAG_HALO 3
-#define GPU_TAG_PARTDIR 4
-#define GPU_TAG_NGPUS 5
+#define GPU_TAG_DIMSLAB 3
+#define GPU_TAG_HALO 4
+#define GPU_TAG_PARTDIR 5
+#define GPU_TAG_NGPUS 6
+
 
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
 
@@ -61,7 +67,9 @@ typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
 
 typedef struct {
     int dim[3];
-    int64_t numel;
+    int64_t numel; // = nx ny nz of the global array, not # allocated
+    int numSlabs; // = dim[4] if positive, which zero-indexed slab # if <= 0
+    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition] rounded up to nearest 256
 
     int haloSize;
     int partitionDir;
@@ -82,6 +90,8 @@ void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 int      accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
 MGArray *allocMGArrays(int N, MGArray *skeleton);
 MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
+void returnAnMGArray(mxArray *plhs[], MGArray *m);
+
 // Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
 void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
@@ -103,6 +113,12 @@ void getTagFromGPUType(const mxArray *gputype, int64_t *tag);
 double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
 double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany);
 double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
+
+int3 makeInt3(int x, int y, int z);
+int3 makeInt3(int *b);
+dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z);
+dim3 makeDim3(unsigned int *b);
+dim3 makeDim3(int *b);
 
 mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB);
 double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB);
