@@ -113,9 +113,6 @@ s = { mass, ener, mom(1), mom(2), mom(3) };
 GIS = GlobalIndexSemantics();
 
 for j = 1:5;
-%  FIXME: This is braindead and stupid. Precompute this per array; Consider storing in the gputag.
-%  ec = double([strcmp(s{j}.bcModes{1,dir},'circ'); strcmp(s{j}.bcModes{2,dir},'circ')]);
-
   cudaHaloExchange(s{j}, [1 2 3], dir, GIS.topology, s{j}.bcHaloShare);
 end
 
