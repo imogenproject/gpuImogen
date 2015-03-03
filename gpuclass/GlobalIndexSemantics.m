@@ -28,7 +28,6 @@ classdef GlobalIndexSemantics < handle
 
     properties (SetAccess = private, GetAccess = private)
         localXvector; localYvector; localZvector; circularBCs;
-        
     end
 
     properties (Dependent = true)
@@ -42,13 +41,15 @@ classdef GlobalIndexSemantics < handle
                 obj = instance; return;
             end
 
-            if nargin ~= 2; error('GlobalIndexSemantics(parallelContext, parallelTopology): all args required'); end
-
-            obj.topology = topology;
-            obj.context = context;
+            if nargin < 2;
+                warning('desire GlobalIndexSemantics(parallelContext, parallelTopology): Fudging scalar operation...');
+                [obj.context obj.topology] = fakeParallelStart();
+            else
+                obj.topology = topology;
+                obj.context = context;
+            end
 
             instance = obj;
-
         end
 
         function obj = setup(obj, global_size)
@@ -95,14 +96,36 @@ classdef GlobalIndexSemantics < handle
         end
 
 
+
         % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
-        function [u v w] = toLocalCoords(obj, x, y, z)
+        function [u v w] = toLocalIndices(obj, x, y, z)
             u = []; v = []; w = [];
             if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<=obj.pMySize(1))); end
             if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<=obj.pMySize(2))); end
             if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<=obj.pMySize(3))); end
         end
 
+	function [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0)
+	% [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0) returns (for n = {x, y, z})
+	% (In - I0(n))*h(n) - x0(n), i.e.
+	% I0 is an index offset, h the coordinate spacing and x0 the coordinate offset.
+	% [] for I0 and x0 default to zero; [] for h defaults to 1; scalars are multiplied by [1 1 1]
+
+	if nargin < 3; error('Must receive at least toCoordinates(I0, x)'); end
+	% Throw duct tape at the arguments until glaring deficiencies are covered
+	if numel(I0) ~= 3; I0 = [1 1 1]*I0(1); end
+	if nargin < 4; Iy = []; end
+	if nargin < 5; Iz = []; end
+	if nargin < 6; h = [1 1 1]; end
+	if numel(h) ~= 3; h = [1 1 1]*h(1); end
+	if nargin < 7; x0 = [1 1 1]; end
+	if numel(x0) ~= 3; x0 = [1 1 1]*x0(1); end
+
+	if ~isempty(Ix); x = (Ix - I0(1))*h(1) - x0(1); end
+	if ~isempty(Iy); y = (Iy - I0(2))*h(2) - x0(2); end
+	if ~isempty(Iz); z = (Iz - I0(3))*h(3) - x0(3); end
+
+	end
 
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
         % Renders the 3 edge cells into halo automatically
@@ -160,20 +183,53 @@ classdef GlobalIndexSemantics < handle
 
         % These return the part of ndgrid(1:globalsize(1), ...) that would reside on this node
         % Halo is automatically part of it.
-        function [u v w] = ndgridSetXYZ(obj)
+        function [x y z] = ndgridSetXYZ(obj, offset, scale)
             [u v w] = ndgrid(obj.localXvector, obj.localYvector, obj.localZvector);
+            
+            if nargin > 1; % Lets the user get affine-transformed coordinates conveniently
+                if nargin < 3; scale  = [1 1 1]; end;
+                if nargin < 2; offset = [0 0 0]; end;
+                [x y z] = obj.toCoordinates(offset, u, v, w, scale, [0 0 0]);
+            else
+                x = u; y = v; z = w;
+            end
+            
         end
-
-        function [x y] = ndgridSetXY(obj)
-            [x y] = ndgrid(obj.localXvector, obj.localYvector);
+        
+        function [x y] = ndgridSetXY(obj, offset, scale)
+            [u v] = ndgrid(obj.localXvector, obj.localYvector);
+            
+            if nargin > 1;
+                if nargin < 3; scale  = [1 1]; end;
+                if nargin < 2; offset = [0 0]; end;
+                [x y] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+            else
+                x = u; y = v;
+            end
         end
-
+        
         function [y z] = ndgridSetYZ(obj)
-            [y z] = ndgrid(obj.localYvector, obj.localZvector);
+            [u v] = ndgrid(obj.localYvector, obj.localZvector);
+            
+            if nargin > 1;
+                if nargin < 3; scale  = [1 1]; end;
+                if nargin < 2; offset = [0 0]; end;
+                [y z] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+            else
+                y = u; z = v;
+            end
         end
-
+        
         function [x z] = ndgridSetXZ(obj)
-            [x z] = ndgrid(obj.localXvector, obj.localZvector);
+            [u v] = ndgrid(obj.localXvector, obj.localZvector);
+            
+            if nargin > 1;
+                if nargin < 3; scale  = [1 1]; end;
+                if nargin < 2; offset = [0 0]; end;
+                [x z] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+            else
+                x = u; z = v;
+            end
         end
 
         % These generate a set of ones the size of the part of the global grid residing on this node
