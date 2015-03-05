@@ -1,8 +1,5 @@
-%--- Initialize Imogen directory ---%
-starterRun();
-
 %--- Initialize test ---%
-grid                = [512 512 1];
+grid                = [1024 1024 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 % The centrifuge test provides an effective test for Imogen's rotating frame
@@ -12,37 +9,40 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 % The simulation then proceeds for an adiabatic fluid with index run.gamma
 %
 % This system is inextricably unstable (r^2 w decreases outward when the
-% fluid comes to a stop at r=1) and will show nonaxisymmetric instabilities
-% if run long enough. At 512^2 these reach visible amplitude ~4000 iterations
+% fluid comes to a stop at r=1) but because it is normally 2d, the axisymmetric
+% overturn is prevented 
 run                 = CentrifugeInitializer(grid);
-run.iterMax         = 2000;
+run.iterMax         = 40000;
 
-run.image.interval  = 20;
+run.image.interval  = 100;
 %run.image.speed     = true;
 run.image.mass      = true;
 
 run.activeSlices.xy = true;
 %run.activeSlices.xz = true;
 %run.activeSlices.xyz = false
-run.ppSave.dim2 = 1;
+run.ppSave.dim2 = 10;
 
 run.bcMode.x        = ENUM.BCMODE_CONST;
 run.bcMode.y        = ENUM.BCMODE_CONST;
-run.bcMode.z        = ENUM.BCMODE_CONST;
+run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
 
 run.edgeFraction    = .5; % Sets the radius of the simulation to
 % (1+this) times the size of the centrifuged region
 run.gamma           = 5/3; % Sets the adiabatic index for fluid evolution
 run.omega0          = 1; % Sets the w0 of w(r) = w0 (1-cos(2 pi r)) in the default rotation curve
 run.rho0            = 1; % Sets the density at r >= 1 & the BC for the centrifuge region
-run.cs0             = 1; % Sets soundspeed, may be interpreted as isothermal or adiabatic depending on EoS
-run.polyK           = 1; % Sets k in P = k rho^gamma if using initial adiabatic EoS
+run.P0              = 1;
 run.minMass         = 1e-5; % enforced minimum density
-run.frameRotateOmega = 1; % The rate at which the frame is rotating
-run.eqnOfState      = run.EOS_ADIABATIC; % or EOS_ADIABATIC or EOS_ISODENSITY
+run.frameRotateOmega= 0; % The rate at which the frame is rotating
+run.eqnOfState      = EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
 
 run.pureHydro = true;
-run.cfl = .75;
+run.cfl = .45;
+
+        run.useInSituAnalysis = 1;
+        run.stepsPerInSitu = 10;
+        run.inSituHandle = @AdvectionPlotter;
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';
 run.notes       = '';
