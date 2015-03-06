@@ -18,12 +18,21 @@
 #include "parallel_halo_arrays.h"
 //#include "mpi_common.h"
 
+#ifdef DEBUGMODE
+    #include "debug_inserts.h"
+#endif
+
 #define RK_PREDICT 0
 #define RK_CORRECT 1
 
 #define STEPTYPE_XINJIN 1
 #define STEPTYPE_HLL 2
 #define STEPTYPE_HLLC 3
+
+#define FLUX_X 1
+#define FLUX_Y 2
+#define FLUX_Z 3
+
 
 /* THIS FUNCTION
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -48,7 +57,7 @@ if it were to be generalized.
 The hydro functions solve the same equations with B set to <0,0,0> which simplifies
 and considerably speeds up the process.
 
-*/
+ */
 
 //__device__ void __syncthreads(void);
 
@@ -87,8 +96,10 @@ __global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny);
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel);
 
-template <unsigned int PCswitch>
-__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel, int launchNo);
+template <unsigned int fluxDirection>
+__global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda);
+template <unsigned int fluxDirection>
+__global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda);
 
 template <unsigned int PCswitch>
 __global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
@@ -101,9 +112,9 @@ __global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel);
 __global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
 __global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
 
-#define BLOCKLEN 12
-#define BLOCKLENP2 14
-#define BLOCKLENP4 16
+#define BLOCKLEN 28
+#define BLOCKLENP2 30
+#define BLOCKLENP4 32
 
 #define YBLOCKS 4
 #define FREEZE_NY 4
@@ -133,9 +144,20 @@ __constant__ __device__ double fluidQtys[8];
 #define MHD_PRESS_B   fluidQtys[5]
 #define MHD_CS_B      fluidQtys[6]
 
+__constant__ __device__ int    arrayParams[4];
+#define DEV_NX arrayParams[0]
+#define DEV_NY arrayParams[1]
+#define DEV_NZ arrayParams[2]
+#define DEV_SLABSIZE arrayParams[3]
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+	int wanted_nlhs = 0;
+	#ifdef DEBUGMODE
+		wanted_nlhs = 1;
+	#endif
+	
 	// Input and result
-	if ((nrhs!=14) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
+	if ((nrhs!=14) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
@@ -155,6 +177,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double rhomin= thermo[1];
 
 	int steptype = (int)thermo[2];
+	unsigned int stepdirect= (unsigned int)thermo[3];
 
 	double gamHost[8];
 	gamHost[0] = gamma;
@@ -177,15 +200,31 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	double *wStepValues[fluid->nGPUs];
 
-	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
 	int i, j, sub[6];
+
+	int haParams[4];
+	for(i = 0; i < fluid->nGPUs; i++) {
+		calcPartitionExtent(fluid, i, &sub[0]);
+		haParams[0] = sub[3];
+		haParams[1] = sub[4];
+		haParams[2] = sub[5];
+		/* This is aligned on 256 so we _can_ safely divide by 8
+		 * We _have_  to because the cuda code does (double *) + SLABSIZE
+		 */
+		haParams[3] = fluid->slabPitch[i] / sizeof(double);
+		cudaSetDevice(fluid->deviceID[i]);
+		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
+	}
+
+	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
+	/* FIXME: This is deprecated */
 	double *hostptrs[PTRS_PER_KERN*MAX_GPUS_USED];
 	for(j = 0; j < fluid->nGPUs; j++) {
 		for(i = 0; i < 5; i++) hostptrs[PTRS_PER_KERN*j+  i] = fluid[i].devicePtr[j];
 		for(i = 0; i < 3; i++) hostptrs[PTRS_PER_KERN*j+5+i] =   mag[i].devicePtr[j];
 		for(i = 0; i < 2; i++) hostptrs[PTRS_PER_KERN*j+8+i] =    PC[i].devicePtr[j];
 	}
-
+	/* FIXME: Deprecated, remove once old kernels are ported */
 	for(j = 0; j < fluid->nGPUs; j++) {
 		cudaSetDevice(fluid->deviceID[j]);
 		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
@@ -221,7 +260,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				// Set the device and grab half-step storage for it
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], 6*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
+				int numarrays;
+				#ifdef DEBUGMODE
+				numarrays = 6 + DBG_NUMARRAYS;
+				#else
+				numarrays = 6;
+				#endif
+
+				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
 				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
 
 				// Find out the size of the partition
@@ -231,18 +277,38 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 				// Fire off the fluid update step
 				if(steptype == STEPTYPE_HLL)
-				    cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
-				else
-				    cukern_HLLC_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i], i);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step prediction step");
-				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-				if(steptype == STEPTYPE_HLL)
-				    cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
-				else
-				    cukern_HLLC_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i], i);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
+				else switch(stepdirect) {
+				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case 3: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				}
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 
+				#ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
+					#ifdef DEBUGMODE
+					printf("WARNING: Operating at first order for debug purposes!\n");
+					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
+					returnDebugArray(fluid, 6, wStepValues, plhs);
+					#endif
+				#else // runs at 2nd order
+
+
+				/*				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro"); */
+				if(steptype == STEPTYPE_HLL)
+					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
+				else switch(stepdirect) {
+				case 1: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case 3: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				}
+				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+					#ifdef DBG_SECONDORDER
+                                        returnDebugArray(fluid, 6, wStepValues, plhs);
+					#endif
+
+				#endif
 				// Release the memory taken for this step
 				cudaFree(wStepValues[i]);
 				CHECK_CUDA_ERROR("cudaFree()");
@@ -425,288 +491,609 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 
 // These tell the HLL and HLLC solvers how to dereference their shmem block
 // 16 threads, 8 circshifted shmem arrays
-#define N_SHMEM_BLOCKS 8
-#define BOS0 0
-#define BOS1 16
-#define BOS2 32
-#define BOS3 48
-#define BOS4 64
-#define BOS5 80
-#define BOS6 96
-#define BOS7 112
+#define N_SHMEM_BLOCKS 5
+#define BOS0 (0*BLOCKLENP4)
+#define BOS1 (1*BLOCKLENP4)
+#define BOS2 (2*BLOCKLENP4)
+#define BOS3 (3*BLOCKLENP4)
+#define BOS4 (4*BLOCKLENP4)
+#define BOS5 (5*BLOCKLENP4)
+#define BOS6 (6*BLOCKLENP4)
+#define BOS7 (7*BLOCKLENP4)
+#define BOS8 (8*BLOCKLENP4)
+#define BOS9 (9*BLOCKLENP4)
 
-#define HLL_LEFT 0
-#define HLL_HLL  1
-#define HLL_RIGHT 2
 
-template <unsigned int PCswitch>
-__global__ void cukern_HLLC_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel, int launchNo)
+template <unsigned int fluxDirection>
+__global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 {
 	// Create center, look-left and look-right indexes
 	int IC = threadIdx.x;
 	int IL = threadIdx.x - 1;
 	IL += 1*(IL < 0);
 	int IR = threadIdx.x + 1;
-	IR -= 16*(IL > 15);
+	IR -= BLOCKLENP4*(IR > (BLOCKLENP4-1));
 
 	// Advance by the Y index
-	IC += N_SHMEM_BLOCKS*16*threadIdx.y;
-	IL += N_SHMEM_BLOCKS*16*threadIdx.y;
-	IR += N_SHMEM_BLOCKS*16*threadIdx.y;
+	IC += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IL += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IR += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
 
 	/* Declare shared variable array */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
 
 	/* Declare tons of doubles and hope optimizer can sort this out */
-	double Ale, Ble, Cle;
-	double Are, Bre, Cre;
-	double Sleft, Sright, Utilde, Atilde;
-	double Fa, Fb; /* temp vars */
-	double Beta, Sstar;
+	double A, B, C, D, E, F, G, H;
 
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
-	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
-	if(x0 < 0) x0 += nx; // left wraps to right edge
-	if(x0 > (nx+1)) return; // More than 2 past right returns
-	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
+	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
+	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
 
 	/* Do some index calculations */
-	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
 	int j = threadIdx.y;
+	Qin += x0;
+	Qout += x0;
 
-	for(; j < ny; j += blockDim.y) {
+	int fluxmode;
 
-		if(PCswitch == RK_PREDICT) {
-			/* If making prediction use simple 0th order "reconstruction." */
-			Ale = Are = inputPointers[0+PTRS_PER_KERN*launchNo][x0]; /* load rho */
-			Bre =       inputPointers[2+PTRS_PER_KERN*launchNo][x0]; /* load px */
-			Cle = Cre = inputPointers[8+PTRS_PER_KERN*launchNo][x0]; /* load pressure */
-			Ble = Bre / Ale; /* Calculate vx */
-			Bre = Ble;
+	for(; j < DEV_NY; j += blockDim.y) {
+		/* LOAD VARIABLES: CONSTANT APPROXIMATION -> NO RECONSTRUCTION STEP */	
+		A = Qin[0             ]; /* rho; Load the q_i variables */
+		B = Qin[  DEV_SLABSIZE]; /* E */
+		switch(fluxDirection) {
+		case FLUX_X: /* Variables are in normal order [px py pz] */
+			C = Qin[2*DEV_SLABSIZE]; /* Px */
+			D = Qin[3*DEV_SLABSIZE]; /* Py */
+			E = Qin[4*DEV_SLABSIZE]; /* Pz */
+			break;
+		case FLUX_Y: /* Slabs are in order [py px pz] */
+			C = Qin[3*DEV_SLABSIZE]; /* Px */
+			D = Qin[2*DEV_SLABSIZE]; /* Py */
+			E = Qin[4*DEV_SLABSIZE]; /* Pz */
+			break;
+		case FLUX_Z: /* Slabs are in order [pz py px] */
+			C = Qin[4*DEV_SLABSIZE]; /* Px */
+			D = Qin[3*DEV_SLABSIZE]; /* Py */
+			E = Qin[2*DEV_SLABSIZE]; /* Pz */
+			break;
+		}
+
+		/* Convert to primitive variables */
+		F = 1.0/A;			
+
+		B -= .5*(C*C+D*D+E*E)*F; /* internal energy */
+		C *= F; /* velocity */
+		D *= F;
+		E *= F;
+
+		shblk[IC+BOS0] = A; /* Upload rho  to shmem */
+		shblk[IC+BOS1] = FLUID_GM1*B; /* pressure */
+		shblk[IC+BOS2] = C; /* vx */
+		shblk[IC+BOS3] = D; /* vy */
+		shblk[IC+BOS4] = E; /* vz */
+
+		__syncthreads();
+
+		/* CALCULATE WAVESPEED ESTIMATE */
+		C -= shblk[IR+BOS2]; /* Calculate Vleft - Vright */
+		D -= shblk[IR+BOS3];
+		E -= shblk[IR+BOS4];
+
+		C = C*C+D*D+E*E; /* velocity jump, squared */
+
+		A = shblk[IC+BOS0]; /* rho_le */
+		B = shblk[IR+BOS0]; /* rho_re */
+		F = sqrt(B/A); /* = batten et al's R */
+
+		A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
+
+		C = shblk[IC+BOS1]/shblk[IC+BOS0]; /* Pl/rhol = csq_l / gamma */
+		D = shblk[IR+BOS1]/B; /* Pr/rhor = csq_r / gamma */
+
+		E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
+
+		E = sqrt(E); /* Batten \overline{c} */
+
+		C = sqrt(FLUID_GAMMA * C); // left c_s
+		D = sqrt(FLUID_GAMMA * D); // right c_s
+
+		A = shblk[IC+BOS2]; /* vx_le */
+		B = shblk[IR+BOS2]; /* vx_re */
+
+		F = (A + F*B)/(1.0+F); /* vx_tilde */
+
+		C = A - C;
+		D = B + D;
+
+		F -= E; 
+		C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
+
+		F = F + 2.0*E;
+		D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+
+		#ifdef DBG_FIRSTORDER
+			DBGSAVE(0, C); DBGSAVE(2, D);
+		#endif
+
+		/* HLLC METHOD: COMPUTE SPEED IN STAR REGION */
+		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
+		__syncthreads(); // I don't think this is necessary...
+
+		A = shblk[IC+BOS0]*(C-A); // rho*(c-v) left
+		B = shblk[IR+BOS0]*(D-B); // rho*(c-v) right
+
+		/* Batten et al, Eqn 34 for S_M:
+		Speed of HLLC contact
+		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
+			 -------------------------------------------
+		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
+		E = (B*shblk[IR+BOS2] - shblk[IR+BOS1] - A*shblk[IC+BOS2] + shblk[IC+BOS1]) / (B-A);
+		__syncthreads();
+		#ifdef DBG_FIRSTORDER
+			DBGSAVE(1, E);
+		#endif 
+		
+		if(E > 0) {
+			if(C > 0) fluxmode = 0; // Fleft
+			else fluxmode = 2; // F*left
 		} else {
-			/* If making correction, perform 1st order MUSCL reconstruction */
-			Ale = Qstore[x0 + 0*devArrayNumel]; /* load rho */
-			Bre = Qstore[x0 + 2*devArrayNumel]; /* load px */
-			Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
-			Ble = Bre / Ale; /* Calculate vx */
-
-			shblk[IC + BOS0] = Ale;
-			shblk[IC + BOS1] = Ble;
-			shblk[IC + BOS2] = Cle;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 2 */
-			Are = Ale - shblk[IL + BOS0];
-			Bre = Ble - shblk[IL + BOS1];
-			Cre = Cle - shblk[IL + BOS2];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 3 */
-			shblk[IC + BOS0] = Are;
-			shblk[IC + BOS1] = Bre;
-			shblk[IC + BOS2] = Cre;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 4 */
-			Fa = SLOPEFUNC(Are, shblk[IR + BOS0]);
-			Are = Ale + Fa;
-			Ale -= Fa;
-			Fa = SLOPEFUNC(Bre, shblk[IR + BOS1]);
-			Bre = Ble + Fa;
-			Ble -= Fa;
-			Fa = SLOPEFUNC(Cre, shblk[IR + BOS2]);
-			Cre = Cle + Fa;
-			Cle -= Fa;
-		}
-		// up to here uses 40 regs
-		__syncthreads();
-		/* Rotate the [le_i-1 re_i-1][le_i re_i][le_i+1 re_i+1] variables one left
-		 * so that each cell stores [re_i le_i+1]
-		 * and thus each thread deals with F_i+1/2 */
-		shblk[IC + BOS0] = Ale;
-		shblk[IC + BOS1] = Are;
-		shblk[IC + BOS2] = Ble;
-		shblk[IC + BOS4] = Cle;
-
-		__syncthreads();
-
-		Ale = sqrt(Are); Are = sqrt(shblk[IR + BOS0]);
-		Ble = Bre; Bre = shblk[IR + BOS2];
-		Cle = Cre; Cre = shblk[IR + BOS4];
-		/* Calculation may now proceed based only on register variables! */
-
-		Utilde = (Ale*Ble + Are*Bre)/(Ale+Are);
-		/* This change implements the Batten Et Al correction to assure positivity */
-		Sleft  = Ale*Are;
-		Atilde = sqrt(FLUID_GAMMA*(Cle*Are+Cre*Ale)/((Ale+Are)*Sleft)); // Roe-averaged soundspeed
-
-		double Uroe = Utilde - Atilde;
-		double Uson = Ale - sqrt(FLUID_GAMMA*Cle)/Ale;
-		Sleft       = (Uson < Uroe) ? Uson : Uroe;
-		       Uroe = Utilde + Atilde;
-		       Uson = Are + sqrt(FLUID_GAMMA*Cre)/Are;
-		Sright      = (Uson > Uroe) ? Uson : Uroe;
-
-		// Load non-square-rooted density back up down here after using Ale/Are as sqrt(rho) scratchpad
-		Ale = shblk[IC + BOS1]; Are = shblk[IR + BOS0];
-		__syncthreads();
-
-		// Calculate the speed in the star region
-		Sstar = (Cre - Cle + Ale*Ble*(Sleft-Ble) - Are*Bre*(Sright-Bre))/(Ale*(Sleft-Ble)-Are*(Sright-Bre));
-
-		shblk[IC + BOS6] = Ale*Ble*Ble; // Accumulate kinetic energy density to use in energy flux
-		shblk[IC + BOS7] = Are*Bre*Bre;
-
-		if(Sstar > 0) { // Either left approximate wave or supersonic rightbound upwind
-			if(Sleft < 0) { // approximate left wave
-				Beta = (Sleft - Ble)/(Sleft-Sstar);
-				shblk[IC + BOS1] = Ale * (Ble + Sleft*(Beta - 1.0));
-				shblk[IC + BOS3] = Ale * (Ble * (Ble - Sleft) + Sleft * Sstar * Beta) + Cle;
-			} else { // supersonic rightbound advection
-				shblk[IC + BOS1] = Ale*Ble;
-				shblk[IC + BOS3] = Ale*Ble*Ble + Cle;
-			}
-		} else { // Either rightgoing approximate wave or supersonic leftbound upwind
-			if(Sright > 0) { // approximate right wave
-				Beta = (Sright - Bre)/(Sright-Sstar);
-				shblk[IC + BOS1] = Are * (Bre + Sright*(Beta - 1.0));
-				shblk[IC + BOS3] = Are * (Bre * (Bre - Sright) + Sright*Sstar*Beta) + Cre;
-			} else { // supersonic leftbound advection
-				shblk[IC + BOS1] = Are*Bre;
-				shblk[IC + BOS3] = Are*Bre*Bre + Cre;
-			}
+			if(D > 0) fluxmode = 3; // F*right
+			else fluxmode = 1; // Fright
 		}
 
+		#ifdef DBG_FIRSTORDER
+			DBGSAVE(3,1.0*fluxmode);
+		#endif
+
+		switch(fluxmode) {
+			case 0:
+				A = shblk[IC+BOS0]; // rho
+				B = shblk[IC+BOS2]; // vx
+				C = shblk[IC+BOS3]; // vy
+				D = shblk[IC+BOS4]; // vz
+				E = .5*(B*B+C*C+D*D)*A; // .5 v^2
+				F = shblk[IC+BOS1]; // P
+
+				A *= B; // rho vx           = RHO FLUX
+				C *= A; // rho vx vy        = PY FLUX
+				D *= A; // rho vx vz        = PZ FLUX
+				G = A*B+F; // rho vx vx + P = PX FLUX
+				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				break;
+			case 2: 
+/* Case 3 differs from case 2 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
+				A = shblk[IC+BOS0]; // rho
+				B = shblk[IC+BOS2]; // vx
+				D = A*(C-B)/(C-E);  // rho*beta
+				F = shblk[IC+BOS3]; // vy
+				H = shblk[IC+BOS4]; // vz
+				G = .5*(B*B+F*F+H*H); // .5v^2
+				A = D*E; // RHO FLUX
+				F *= A; // PY FLUX
+				H *= A; // PZ FLUX
+
+				C *= (E-B); // S(Sstar-vx)
+				B = shblk[IC+BOS1] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS1]/shblk[IC+BOS0] + G + C);
+				break;
+			case 3:
+				A = shblk[IR+BOS0]; // rho
+				B = shblk[IR+BOS2]; // vx
+				C = A*(D-B)/(D-E);  // rho*beta
+				F = shblk[IR+BOS3]; // vy
+				H = shblk[IR+BOS4]; // vz
+				G = .5*(B*B+F*F+H*H); // .5v^2
+				A = C*E; // RHO FLUX
+				F *= A; // PY FLUX
+				H *= A; // PZ FLUX
+
+				D *= (E-B); // S(Sstar-vx)
+				B = shblk[IR+BOS1] + C*(D+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = C*E*(FLUID_GOVERGM1 * shblk[IR+BOS1]/shblk[IR+BOS0] + G + D);
+				break;
+			case 1:
+                                A = shblk[IR+BOS0]; // rho
+                                B = shblk[IR+BOS2]; // vx
+                                C = shblk[IR+BOS3]; // vy
+                                D = shblk[IR+BOS4]; // vz
+                                E = .5*(B*B+C*C+D*D)*A; // .5 v^2
+                                F = shblk[IR+BOS1]; // P
+                                
+                                A *= B; // rho vx           = RHO FLUX
+                                C *= A; // rho vx vy        = PY FLUX
+                                D *= A; // rho vx vz        = PZ FLUX
+                                G = A*B+F; // rho vx vx + P = PX FLUX
+                                B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+			break;
+
+		} // case 0,1: [A B G C D] = [rho E px py pz] flux
+		  // case 2,3: [A G B F H] = [rho E px py pz] flux
+
 		__syncthreads();
-
-		// Calculate conservative differences for mass and x momentum fluxes
-		shblk[IC + BOS2] = (shblk[IL + BOS1]-shblk[IC + BOS1]);
-		shblk[IC + BOS4] = (shblk[IL + BOS3]-shblk[IC + BOS3]);
-
-		/* Flux density and momentum... for prediction we explicitly did not use MUSCL and
-                   therefore Ale = Acentered. For correction, we load/modify/store the centered value */
-		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
-				Qstore[x0                  ] = Ale + lambda * shblk[IC + BOS2];
-				Qstore[x0 + 2*devArrayNumel] = Ale*Ble + lambda * shblk[IC + BOS4];
-			} else {
-				inputPointers[PTRS_PER_KERN*launchNo+0][x0] += lambda * shblk[IC + BOS2];
-				inputPointers[PTRS_PER_KERN*launchNo+2][x0] += lambda * shblk[IC + BOS4];
-			}
-
+		switch(fluxmode) {
+			case 0:
+			case 1:
+				shblk[IC+BOS0] = A;
+				shblk[IC+BOS1] = B;
+				shblk[IC+BOS2] = G;
+				shblk[IC+BOS3] = C;
+				shblk[IC+BOS4] = D;
+			break;
+			case 2:
+			case 3:
+				shblk[IC+BOS0] = A;
+				shblk[IC+BOS1] = G;
+				shblk[IC+BOS2] = B;
+				shblk[IC+BOS3] = F;
+				shblk[IC+BOS4] = H;
+			break;
 		}
 
 		__syncthreads();
+		// All fluxes are now uploaded to shmem:
+		// shblk[IC+BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
 
-		// Now go back and do the whole thing again for y momentum, z momentum and energy
-		if(PCswitch == RK_PREDICT) {
-			/* If making prediction use simple 0th order "reconstruction." */
-			Fa =     inputPointers[3+PTRS_PER_KERN*launchNo][x0]; /* load py */
-			Utilde = inputPointers[4+PTRS_PER_KERN*launchNo][x0]; /* load pz */
-		} else {
-			/* If making correction, perform 1st order MUSCL reconstruction */
-			Fa = Qstore[x0 + 3*devArrayNumel]; /* load py */
-			Utilde = Qstore[x0 + 4*devArrayNumel]; /* load pz */
-
-			shblk[IC + BOS0] = Fa;
-			shblk[IC + BOS2] = Utilde;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 2 */
-			Fb = Fa - shblk[IL + BOS0];
-			Atilde = Utilde - shblk[IL + BOS2];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 3 */
-			shblk[IC + BOS0] = Fb;
-			shblk[IC + BOS2] = Atilde;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 4 */
-			/* Take the speed hit and use shmem #4 to avoid eating more registers */
-			shblk[IC + BOS4] = SLOPEFUNC(Fb, shblk[IR + BOS0]);
-			Fb = Fa + shblk[IC + BOS4];
-			Fa -= shblk[IC + BOS4];
-			shblk[IC + BOS4] = SLOPEFUNC(Atilde, shblk[IR + BOS2]);
-			Atilde = Utilde + shblk[IC + BOS4];
-			Utilde -= shblk[IC + BOS4];
-		}
-		__syncthreads();
-		//55 registers
-		shblk[IC + BOS0] = Fa;
-		shblk[IC + BOS1] = Utilde;
-
-		__syncthreads();
-		if(PCswitch == RK_PREDICT) {
-			Fb = shblk[IR + BOS0];
-			Atilde = shblk[IR + BOS1];
-		} else {
-			Fa = Fb; Fb = shblk[IR + BOS0];
-			Utilde = Atilde; Atilde = shblk[IR + BOS1];
-		}
-
-		// 55 registers
-
-		// Compute the kinetic energy density, T
-		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
-		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
-		// 57 registers
-
-		/* Note that energy flux is computed without ever loading the E array */
-		/* Either E or P provides the necessary state and consistency requires */
-		/* that we use of exactly one of them */
-		if(Sstar > 0) {
-			if(Sleft < 0) {
-				shblk[IC + BOS2] = Fa * (Ble + Sleft*(Beta - 1.0));
-				shblk[IC + BOS3] = Utilde * (Ble + Sleft*(Beta- 1.0));
-				shblk[IC + BOS4] = (Ble + Sleft*(Beta - 1.0))*shblk[IC + BOS6] + \
-						(Ble * FLUID_GOVERGM1 + Sleft*( (Beta-1.0)/FLUID_GM1 + (Sstar - Ble)/(Sleft-Sstar)))*Cle + \
-						Sleft*(Sstar - Ble)*Beta*Ale*Sstar;
-			} else {
-				shblk[IC + BOS2] = Fa * Ble;
-				shblk[IC + BOS3] = Utilde * Ble;
-				shblk[IC + BOS4] = Ble * (shblk[IC + BOS6] + FLUID_GOVERGM1*Cle);
-			}
-		} else {
-			if(Sright > 0) {
-				shblk[IC + BOS2] = Fb * (Bre + Sright*(Beta - 1.0));
-				shblk[IC + BOS3] = Atilde * (Bre + Sright*(Beta - 1.0));
-				shblk[IC + BOS4] = (Bre + Sright*(Beta - 1.0))*shblk[IC + BOS7] + \
-						(Bre * FLUID_GOVERGM1 + Sright*( (Beta-1.0)/FLUID_GM1 + (Sstar - Bre)/(Sright-Sstar)))*Cre + \
-						Sright*(Sstar - Bre)*Beta*Are*Sstar;
-
-			} else {
-				shblk[IC + BOS2] = Fb * Bre;
-				shblk[IC + BOS3] = Atilde * Bre;
-				shblk[IC + BOS4] = Bre * (shblk[IC + BOS7] + FLUID_GOVERGM1*Cre);
-			}
-		}
-
-		// 63 registers
-		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
+#ifdef DBG_FIRSTORDER
+	DBGSAVE(4, shblk[IC+BOS2]); // px flux
+	DBGSAVE(5, shblk[IC+BOS1]); // E flux
+#endif
 
 		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
-				Qstore[x0 +   devArrayNumel] = inputPointers[1+PTRS_PER_KERN*launchNo][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qstore[x0 + 3*devArrayNumel] = Fa                              + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qstore[x0 + 4*devArrayNumel] = Utilde                          + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
-			} else {
-				inputPointers[1+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				inputPointers[3+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				inputPointers[4+PTRS_PER_KERN*launchNo][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+			Qout[0]              = Qin[0           ] - lambda * (shblk[IC+BOS0]-shblk[IL+BOS0]);
+			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * (shblk[IC+BOS1]-shblk[IL+BOS1]);
+			switch(fluxDirection) {
+			case FLUX_X:
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				break;
+			case FLUX_Y:
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				break;
+			case FLUX_Z:
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				break;
 			}
 		}
-		x0 += blockDim.y*nx;
+
+		Qin += blockDim.y*DEV_NX;
+		Qout += blockDim.y*DEV_NX;
+	}
+
+}
+
+#undef N_SHMEM_BLOCKS
+#define N_SHMEM_BLOCKS 10
+
+template <unsigned int fluxDirection>
+__global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
+{
+	// Create center, look-left and look-right indexes
+	int IC = threadIdx.x;
+	int IL = threadIdx.x - 1;
+	IL += 1*(IL < 0);
+	int IR = threadIdx.x + 1;
+	IR -= BLOCKLENP4*(IR > (BLOCKLENP4-1));
+
+	// Advance by the Y index
+	IC += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IL += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IR += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+
+	/* Declare shared variable array */
+	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
+
+	/* Declare tons of doubles and hope optimizer can sort this out */
+	double A, B, C, D, E, F, G, H;
+
+	/* My x index: thread + blocksize block, wrapped circularly */
+	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
+
+	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
+	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
+	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
+	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
+
+	/* Do some index calculations */
+	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	int j = threadIdx.y;
+	Qin += x0;
+	Qout += x0;
+
+	int fluxmode;
+
+	for(; j < DEV_NY; j += blockDim.y) {
+		/* LOAD VARIABLES AND PERFORM MUSCL RECONSTRUCTION */	
+		A = Qin[0             ]; /* Load the q_i variables */
+		B = Qin[  DEV_SLABSIZE];
+		switch(fluxDirection) {
+		case FLUX_X: /* Variables are in normal order [px py pz] */
+			C = Qin[2*DEV_SLABSIZE]; /* Px */
+			D = Qin[3*DEV_SLABSIZE]; /* Py */
+			E = Qin[4*DEV_SLABSIZE]; /* Pz */
+			break;
+		case FLUX_Y: /* Slabs are in order [py px pz] */
+			C = Qin[3*DEV_SLABSIZE]; /* Px */
+			D = Qin[2*DEV_SLABSIZE]; /* Py */
+			E = Qin[4*DEV_SLABSIZE]; /* Pz */
+			break;
+		case FLUX_Z: /* Slabs are in order [pz py px] */
+			C = Qin[4*DEV_SLABSIZE]; /* Px */
+			D = Qin[3*DEV_SLABSIZE]; /* Py */
+			E = Qin[2*DEV_SLABSIZE]; /* Pz */
+			break;
+		}
+		F = 1.0/A;			
+
+		B -= .5*(C*C+D*D+E*E)*F; /* internal energy */
+		C *= F; /* velocity */
+		D *= F;
+		E *= F;
+
+		shblk[IC+BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
+		shblk[IC+BOS2] = B;
+		shblk[IC+BOS4] = C;
+		shblk[IC+BOS6] = D;
+		shblk[IC+BOS8] = E;
+
+		__syncthreads();
+		/* Perform monotonic reconstruction */
+
+		F = A - shblk[IL+BOS0];           // take backwards derivative
+		shblk[IC+BOS1] = F;               // upload
+		__syncthreads();
+		F = SLOPEFUNC(F, shblk[IR+BOS1]); // Compute monotonic slope
+		__syncthreads();
+		shblk[IC+BOS0] = A-F;             // apply left/right corrections
+		shblk[IC+BOS1] = A+F;
+
+		F = B - shblk[IL+BOS2]; 
+		shblk[IC+BOS3] = F;
+		__syncthreads();
+		F = SLOPEFUNC(F, shblk[IR+BOS3]);
+		__syncthreads();
+		shblk[IC+BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
+		shblk[IC+BOS3] = FLUID_GM1*(B+F);
+
+		F = C - shblk[IL+BOS4];
+		shblk[IC+BOS5] = F;
+		__syncthreads();
+		F = SLOPEFUNC(F, shblk[IR+BOS5]);
+		__syncthreads();
+		shblk[IC+BOS4] = C-F;
+		shblk[IC+BOS5] = C+F;
+
+		F = D - shblk[IL+BOS6]; 
+		shblk[IC+BOS7] = F;
+		__syncthreads();
+		F = SLOPEFUNC(F, shblk[IR+BOS7]);
+		__syncthreads();
+		shblk[IC+BOS6] = D-F;
+		shblk[IC+BOS7] = D+F;
+
+		F = E - shblk[IL+BOS8];
+		shblk[IC+BOS9] = F;
+		__syncthreads();
+		F = SLOPEFUNC(F, shblk[IR+BOS9]);
+		__syncthreads();
+		shblk[IC+BOS8] = E-F;
+		shblk[IC+BOS9] = E+F;
 		__syncthreads();
 
+		/* CALCULATE WAVESPEED ESTIMATE */
+		C = shblk[IC+BOS5]-shblk[IR+BOS4]; /* Calculate Vleft - Vright */
+                D = shblk[IC+BOS7]-shblk[IR+BOS6];
+                E = shblk[IC+BOS9]-shblk[IR+BOS8];
+
+                C = C*C+D*D+E*E; /* velocity jump, squared */
+
+                A = shblk[IC+BOS1]; /* rho_le */
+                B = shblk[IR+BOS0]; /* rho_re */
+                F = sqrt(B/A); /* = batten et al's R */
+
+                A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
+
+                C = shblk[IC+BOS3]/shblk[IC+BOS1]; /* Pl/rhol = csq_l / gamma */
+                D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
+
+                E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
+
+                E = sqrt(E); /* Batten \overline{c} */
+//------------
+//
+//		A = 1.0/shblk[IC+BOS1]; /* 1/rho_le */
+//		B = 1.0/shblk[IR+BOS0]; /* 1/rho_re */
+//		F = sqrt(A/B); /* = batten et al's R */
+//
+//		C = shblk[IC+BOS3]*A; /* csq_le */
+//		D = shblk[IR+BOS2]*B; /* csq_re */
+//
+//		E = (C + F*D) / (1.0+F); /* roe-average (P/rho) */
+//
+//		E = sqrt(FLUID_GAMMA * E); /* roe-average c_s */
+//-----------
+		C = sqrt(FLUID_GAMMA * C); // left c_s
+		D = sqrt(FLUID_GAMMA * D); // right c_s
+
+		A = shblk[IC+BOS5]; /* vx_le */
+		B = shblk[IR+BOS4]; /* vx_re */
+
+		F = (A + F*B)/(1.0+F); /* vx_tilde */
+
+		C = A - C; // (vx-cs)_le
+		D = B + D; // (vx+cs)_re
+
+		F -= E;    // (vbar - cbar)
+		C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
+
+		F = F + 2.0*E; // (vbar + cbar)
+		D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+
+#ifdef DBG_SECONDORDER
+DBGSAVE(0, C);
+DBGSAVE(2, D);
+#endif
+
+		/* HLLC METHOD: COMPUTE SPEED IN STAR REGION */
+		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
+		__syncthreads(); // I don't think this is necessary...
+
+		A = shblk[IC+BOS1]*(C-A); // rho_le*(Sleft - vx_le)
+		B = shblk[IR+BOS0]*(D-B); // rho_re*(Sright- vx_re)
+		/* Batten et al, Eqn 34 for S_M:
+		Speed of HLLC contact
+		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
+			 -------------------------------------------
+		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
+		E = (B*shblk[IR+BOS4] - shblk[IR+BOS2] - A*shblk[IC+BOS5] + shblk[IC+BOS3]) / (B-A);
+		__syncthreads();
+#ifdef DBG_SECONDODER
+DBGSAVE(1, E);
+#endif
+
+		if(E > 0) {
+			if(C > 0) fluxmode = 0; // Fleft
+			else fluxmode = 2; // F*left
+		} else {
+			if(D > 0) fluxmode = 3; // F*right
+			else fluxmode = 1; // Fright
+		}
+
+		switch(fluxmode) {
+			case 0:
+				A = shblk[IC+BOS1]; // rho
+				B = shblk[IC+BOS5]; // vx
+				C = shblk[IC+BOS7]; // vy
+				D = shblk[IC+BOS9]; // vz
+				E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2 = KE
+				F = shblk[IC+BOS3]; // P
+
+				A *= B; // rho vx           = RHO FLUX
+				C *= A; // rho vx vy        = PY FLUX
+				D *= A; // rho vx vz        = PZ FLUX
+				G = A*B+F; // rho vx vx + P = PX FLUX
+				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				break;
+			case 2: 
+/* Case two differs from case 1 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
+				A = shblk[IC+BOS1]; // rho
+				B = shblk[IC+BOS5]; // vx
+				D = A*(C-B)/(C-E);  // rho*beta
+				F = shblk[IC+BOS7]; // vy
+				H = shblk[IC+BOS9]; // vz
+				G = .5*(B*B+F*F+H*H); // .5v^2
+				A = D*E; // RHO FLUX
+				F *= A; // PY FLUX
+				H *= A; // PZ FLUX
+
+				C *= (E-B); // S(Sstar-vx)
+				B = shblk[IC+BOS3] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS3]/shblk[IC+BOS1] + G + C);
+				break;
+			case 3:
+				A = shblk[IR+BOS0]; // rho
+				B = shblk[IR+BOS4]; // vx
+				C = A*(D-B)/(D-E);  // rho*beta
+				F = shblk[IR+BOS6]; // vy
+				H = shblk[IR+BOS8]; // vz
+				G = .5*(B*B+F*F+H*H); // .5v^2
+				A = C*E; // RHO FLUX
+				F *= A; // PY FLUX
+				H *= A; // PZ FLUX
+
+				D *= (E-B); // S(Sstar-vx)
+				B = shblk[IR+BOS2] + C*(D+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = C*E*(FLUID_GOVERGM1 * shblk[IR+BOS2]/shblk[IR+BOS0] + G + D);
+				break;
+			case 1:
+                                A = shblk[IR+BOS0]; // rho
+                                B = shblk[IR+BOS4]; // vx
+                                C = shblk[IR+BOS6]; // vy
+                                D = shblk[IR+BOS8]; // vz
+                                E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2
+                                F = shblk[IR+BOS2]; // P
+                                
+                                A *= B; // rho vx           = RHO FLUX
+                                C *= A; // rho vx vy        = PY FLUX
+                                D *= A; // rho vx vz        = PZ FLUX
+                                G = A*B+F; // rho vx vx + P = PX FLUX
+                                B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+			break;
+
+		}
+
+		__syncthreads();
+		switch(fluxmode) {
+			case 0:
+			case 1:
+				shblk[IC+BOS7] = A;
+				shblk[IC+BOS5] = B;
+				shblk[IC+BOS6] = G;
+				shblk[IC+BOS8] = C;
+				shblk[IC+BOS9] = D;
+			break;
+			case 2:
+			case 3:
+				shblk[IC+BOS7] = A;
+				shblk[IC+BOS5] = G;
+				shblk[IC+BOS6] = B;
+				shblk[IC+BOS8] = F;
+				shblk[IC+BOS9] = H;
+			break;
+		}
+
+#ifdef DBG_SECONDORDER
+//DBGSAVE(3, shblk[IC+BOS7]); // rho
+//DBGSAVE(4, shblk[IC+BOS6]); // px
+//DBGSAVE(5, shblk[IC+BOS5]); // E
+#endif
+
+		if(thisThreadDelivers) {
+			Qout[0]              -= lambda * (shblk[IC+BOS7]-shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * (shblk[IC+BOS5]-shblk[IL+BOS5]);
+			switch(fluxDirection) {
+			case FLUX_X:
+				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				break;
+			case FLUX_Y:
+				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				break;
+			case FLUX_Z:
+				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				break;
+			}
+		}
+
+		Qin += blockDim.y*DEV_NX;
+		Qout += blockDim.y*DEV_NX;
+		__syncthreads();
 
 	}
 
 }
 
+
+
+#define HLL_LEFT 0
+#define HLL_HLL  1
+#define HLL_RIGHT 2
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel)
 {
