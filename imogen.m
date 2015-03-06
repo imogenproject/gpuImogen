@@ -64,20 +64,33 @@ function outdirectory = imogen(srcData, resumeinfo)
 	FieldSource = IC;
     end
 
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, FieldSource.mass, run, statics);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, FieldSource.ener, run, statics);
+    DataHolder = GPU_Type(FieldSource.mass); % This is a sort of dumb way of shoehorning the data in but it works
+    DataHolder.createSlabs(5); % [rho E px py pz] slabs
+
+    a = GPU_getslab(DataHolder, 0); % access mass
+    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, run, statics);
+    a = GPU_getslab(DataHolder, 1); % access E slab
+    b = GPU_Type(FieldSource.ener);
+    GPU_copy(a, b);
+    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, run, statics);
+
     mom  = FluidArray.empty(3,0);
     mag  = MagnetArray.empty(3,0);
     fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
 
     for i = 1:3;
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, getfield(FieldSource, fieldnames{i}), run, statics);
+	a = GPU_getslab(DataHolder, 1+i);
+	b.array = getfield(FieldSource, fieldnames{i});
+	GPU_copy(a, b);
+        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, run, statics);
         if run.pureHydro == 0
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
         else
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
         end
      end
+
+    clear b; 
 
 %    mf1 = GPU_memavail();
     asize = mass.gridSize();
