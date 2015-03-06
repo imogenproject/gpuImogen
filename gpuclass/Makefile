@@ -30,7 +30,7 @@ all: base fluids parallel lambda
 
 base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_copy cudaBasicOperations
 
-fluids: cudaArrayRotate2 cudaArrayRotateB cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayRotateB cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
@@ -121,28 +121,10 @@ GPU_memavail: GPU_memavail.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 ######## CUDA FLUID ROUTINES
-cudaArrayRotate.o: cudaArrayRotate.cu
-	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotate.cu -o cudaArrayRotate.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotate.cpp
-cudaArrayRotate: cudaCommon.o cudaArrayRotate.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
-
 cudaArrayRotateB.o: cudaArrayRotateB.cu
 	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateB.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotateB.cpp
 cudaArrayRotateB: cudaCommon.o cudaArrayRotateB.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
-
-cudaArrayRotate2_inplace.o: cudaArrayRotate2_inplace.cu
-	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotate2_inplace.cu -o cudaArrayRotate2_inplace.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotate2_inplace.cpp
-cudaArrayRotate2_inplace: cudaCommon.o cudaArrayRotate2_inplace.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
-
-cudaArrayRotate2.o: cudaArrayRotate2.cu
-	nvcc $(NVCC_OPTS) $(NVCC_INCL) -cuda cudaArrayRotate2.cu -o cudaArrayRotate2.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotate2.cpp
-cudaArrayRotate2: cudaCommon.o cudaArrayRotate2.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS)
 
 cudaArrayAtomic.o: cudaArrayAtomic.cu

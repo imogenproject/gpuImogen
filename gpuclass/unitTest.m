@@ -18,7 +18,7 @@ if(nargin < 4)
 end
 
 if(nargin == 4)
-    funcList = { 'cudaArrayAtomic', 'cudaArrayRotate', 'freezeAndPtot', 'cudaFwdAverage', 'cudaFwdDifference', 'freezeAndPtot'};
+    funcList = { 'cudaArrayAtomic', 'cudaArrayRotateB', 'freezeAndPtot', 'cudaFwdAverage', 'cudaFwdDifference', 'freezeAndPtot'};
 end
 
 nFuncs = numel(funcList);
@@ -32,8 +32,7 @@ for F = 1:nFuncs;
 
     targfunc = @noSuchThing; % Default to failure
     if strcmp(funcList{F}, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
-    if strcmp(funcList{F}, 'cudaArrayRotate'); targfunc = @testCudaArrayRotate; end
-    if strcmp(funcList{F}, 'cudaArrayRotate2'); targfunc = @testCudaArrayRotate2; end
+    if strcmp(funcList{F}, 'cudaArrayRotateB'); targfunc = @testCudaArrayRotateB; end
     if strcmp(funcList{F}, 'cudaFluidTVD'); targfunc = @testCudaFluidTVD; end
     if strcmp(funcList{F}, 'cudaFluidW'); targfunc = @testCudaFluidW; end
     if strcmp(funcList{F}, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
@@ -106,37 +105,19 @@ function outcome = testCudaArrayAtomic(res)
     outcome = fail;
 end
 
-function fail = testCudaArrayRotate(res)
+function fail = testCudaArrayRotateB(res)
     fail = 0;
     X = rand(res);
     Xg = GPU_Type(X);
-    Yg = GPU_Type(cudaArrayRotate(Xg,2));
+    Yg = GPU_Type(cudaArrayRotateB(Xg,2));
     Yg.array(1);
     Xp = []; for z = 1:res(3); Xp(:,:,z) = transpose(X(:,:,z)); end
     if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
     clear Yg;
 
     if res(3) > 1
-        Yg = GPU_Type(cudaArrayRotate(Xg,3));
+        Yg = GPU_Type(cudaArrayRotateB(Xg,3));
         Xp = []; for z = 1:res(2); Xp(:,z,:) = squeeze(X(:,z,:))'; end
-        if any(any(any(Yg.array ~= Xp))); disp('   !!! Test failed: XZ transpose !!!'); fail = 1; end
-     end
-
-end
-
-function fail = testCudaArrayRotate2(res)
-    fail = 0;
-    X = rand(res);
-    Xg = GPU_Type(X);
-    Yg = GPU_Type(cudaArrayRotate2(Xg,2));
-    Yg.array(1); % Test that we can still access it without barfing
-    Xp = permute(X, [2 1 3]);
-    if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
-    clear Yg;
-
-    if res(3) > 1
-        Yg = GPU_Type(cudaArrayRotate2(Xg,3));
-        Xp = permute(X, [3 2 1]);
         if any(any(any(Yg.array ~= Xp))); disp('   !!! Test failed: XZ transpose !!!'); fail = 1; end
      end
 

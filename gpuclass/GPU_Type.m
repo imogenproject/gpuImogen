@@ -138,8 +138,8 @@ classdef GPU_Type < handle
         function y = acosh(a);  y = GPU_Type(cudaBasicOperations(a,14)); end
         function y = atanh(a);  y = GPU_Type(cudaBasicOperations(a,15)); end
 
-        function y = transpose(a); y = GPU_Type(cudaArrayRotate2(a,2)); end
-        function y = Ztranspose(a); y = GPU_Type(cudaArrayRotate2(a,3)); end
+        function y = transpose(a); y = GPU_Type(cudaArrayRotateB(a,2)); end
+        function y = Ztranspose(a); y = GPU_Type(cudaArrayRotateB(a,3)); end
 
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
