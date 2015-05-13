@@ -1,4 +1,5 @@
 function result = jumpSolver( theta, sonicMach, alfvenMach, gamma)
+% function result = jumpSolver( theta, sonicMach, alfvenMach, gamma)
 % Solves the 3D MHD Jump Conditions for an equilibrium shock wave assuming that the pre-shock region
 % conforms to zero z components for both velocity and magnetic field as well as unity values for 
 % mass and pressure in the pre-shock region. Gamma has also been set to 5/3 in the equations to 

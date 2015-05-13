@@ -1,4 +1,5 @@
 function [result] = HDJumpSolver(ms, theta, gamma)
+% result = HDJumpSolver(ms, theta, gamma)
 % Solve the 3D Hydrodynamic jump conditions for an equilibrium shock wave, provided that the
 % preshock region conforms to zero z component of momentum. Takes the shock as existing in the
 % YZ plane with flow in the positive X direction; Your coordinate system may vary.
