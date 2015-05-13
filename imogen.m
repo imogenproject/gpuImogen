@@ -41,7 +41,9 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     mpi_barrier();
     run.save.logPrint('Creating simulation arrays...\n');
-%    mf0 = GPU_memavail();
+
+    gm = GPUManager.getInstance();
+    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(:,gm.deviceList+1);
 
     if RESTARTING
         % If reloading from time-evolved point,
@@ -92,10 +94,9 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     clear b; 
 
-%    mf1 = GPU_memavail();
+    nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(:,gm.deviceList+1))/1048576;
     asize = mass.gridSize();
-% FIXME: re-do this but since we use multiple GPUs now it's not so trivial
-%    run.save.logAllPrint(sprintf('rank %i: GPU reports %06.3fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), (mf0-mf1)/1048576,asize(1), asize(2), asize(3) ) );
+    run.save.logAllPrint(sprintf('rank %i: %i GPUs report %06fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), numel(gm.deviceList), usedGPUMem, asize(1), asize(2), asize(3) ) );
 
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
