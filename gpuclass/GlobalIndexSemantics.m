@@ -105,27 +105,41 @@ classdef GlobalIndexSemantics < handle
             if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<=obj.pMySize(3))); end
         end
 
-	function [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0)
-	% [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0) returns (for n = {x, y, z})
-	% (In - I0(n))*h(n) - x0(n), i.e.
-	% I0 is an index offset, h the coordinate spacing and x0 the coordinate offset.
-	% [] for I0 and x0 default to zero; [] for h defaults to 1; scalars are multiplied by [1 1 1]
+        function [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0)
+        % [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0) returns (for n = {x, y, z})
+        % (In - I0(n))*h(n) - x0(n), i.e.
+        % I0 is an index offset, h the coordinate spacing and x0 the coordinate offset.
+        % [] for I0 and x0 default to zero; [] for h defaults to 1; scalars are multiplied by [1 1 1]
 
-	if nargin < 3; error('Must receive at least toCoordinates(I0, x)'); end
-	% Throw duct tape at the arguments until glaring deficiencies are covered
-	if numel(I0) ~= 3; I0 = [1 1 1]*I0(1); end
-	if nargin < 4; Iy = []; end
-	if nargin < 5; Iz = []; end
-	if nargin < 6; h = [1 1 1]; end
-	if numel(h) ~= 3; h = [1 1 1]*h(1); end
-	if nargin < 7; x0 = [1 1 1]; end
-	if numel(x0) ~= 3; x0 = [1 1 1]*x0(1); end
+        if nargin < 3; error('Must receive at least toCoordinates(I0, x)'); end
+        % Throw duct tape at the arguments until glaring deficiencies are covered
+        if numel(I0) ~= 3; I0 = [1 1 1]*I0(1); end
+        if nargin < 4; Iy = []; end
+        if nargin < 5; Iz = []; end
+        if nargin < 6; h = [1 1 1]; end
+        if numel(h) ~= 3; h = [1 1 1]*h(1); end
+        if nargin < 7; x0 = [1 1 1]; end
+        if numel(x0) ~= 3; x0 = [1 1 1]*x0(1); end
 
-	if ~isempty(Ix); x = (Ix - I0(1))*h(1) - x0(1); end
-	if ~isempty(Iy); y = (Iy - I0(2))*h(2) - x0(2); end
-	if ~isempty(Iz); z = (Iz - I0(3))*h(3) - x0(3); end
+        if ~isempty(Ix); x = (Ix - I0(1))*h(1) - x0(1); end
+        if ~isempty(Iy); y = (Iy - I0(2))*h(2) - x0(2); end
+        if ~isempty(Iz); z = (Iz - I0(3))*h(3) - x0(3); end
 
-	end
+        end
+
+        function Y = evaluateFunctionOnGrid(obj, afunc)
+            [x y z] = obj.ndgridSetXYZ();
+            Y = afunc(x, y, z);
+        end
+
+%        function [idx, Y] = evaluateFunctionConditionally(obj, cond, afunc)
+%            [x y z] = obj.ndgridSetXYZ();
+%
+%            only = (cond(x,y,z) == 1);
+%
+%
+%
+%        end
 
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
         % Renders the 3 edge cells into halo automatically
