@@ -1,5 +1,5 @@
 %--- Initialize test ---%
-grid                = [1024 1024 1];
+grid                = [3072 3072 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 % The centrifuge test provides an effective test for Imogen's rotating frame
@@ -12,7 +12,7 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 % fluid comes to a stop at r=1) but because it is normally 2d, the axisymmetric
 % overturn is prevented 
 run                 = CentrifugeInitializer(grid);
-run.iterMax         = 40000;
+run.iterMax         = 250000;
 
 run.image.interval  = 100;
 %run.image.speed     = true;
@@ -21,13 +21,13 @@ run.image.mass      = true;
 run.activeSlices.xy = true;
 %run.activeSlices.xz = true;
 %run.activeSlices.xyz = false
-run.ppSave.dim2 = 10;
+run.ppSave.dim2 = 1;
 
 run.bcMode.x        = ENUM.BCMODE_CONST;
 run.bcMode.y        = ENUM.BCMODE_CONST;
 run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
 
-run.edgeFraction    = .5; % Sets the radius of the simulation to
+run.edgeFraction    = 2; % Sets the radius of the simulation to
 % (1+this) times the size of the centrifuged region
 run.gamma           = 5/3; % Sets the adiabatic index for fluid evolution
 run.omega0          = 1; % Sets the w0 of w(r) = w0 (1-cos(2 pi r)) in the default rotation curve
@@ -40,9 +40,9 @@ run.eqnOfState      = EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_IS
 run.pureHydro = true;
 run.cfl = .45;
 
-        run.useInSituAnalysis = 1;
+        run.useInSituAnalysis = 0;
         run.stepsPerInSitu = 10;
-        run.inSituHandle = @AdvectionPlotter;
+        run.inSituHandle = @RealtimePlotter;
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';
 run.notes       = '';

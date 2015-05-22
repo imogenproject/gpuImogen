@@ -2,7 +2,7 @@
 starterRun();
 
 %--- Initialize bow shock ---%
-grid = [1024 1024 1];
+grid = [512 512 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 run                 = BowShockInitializer(grid);
@@ -13,14 +13,14 @@ run.bcMode.x = 'const';
 run.bcMode.y = 'circ';
 run.bcMode.z = 'circ';
 
-run.cfl = .7;
+run.cfl = .4;
 
 %--- Adjustable simulation parameters ---%
 
 % Determine the part of the grid occupied by the obstacle
 run.ballXRadius = 1;
-run.ballCells = [63.5 63.5 63.5];
-run.ballCenter =  [512 512 1];
+run.ballCells = [1 1 1]*round(grid(1)/8) +.5;
+run.ballCenter =  ceil(grid/2);
 
 % Nope, nope nope, nope...
 run.mode.magnet = false;
@@ -31,13 +31,17 @@ run.magY = 0;
 run.preshockRho = 1;
 run.preshockP   = 1;
 % And the mach of the incoming blastwave
-run.blastMach   = 4;
+run.blastMach   = 0;
+        run.useInSituAnalysis = 1;
+        run.stepsPerInSitu = 1;
+        run.inSituHandle = @RealtimePlotter;
+	run.inSituInstructions.plotmode = 4;
 
 % Set the parameters of the ball itself
 run.ballRho = 1;
-run.ballVr = 9;
+run.ballVr = 2;
 run.ballXRadius = 1;
-run.ballThermalPressure = 3;
+run.ballThermalPressure = 1;
 run.ballLock = true;
 
 %--- Adjustable output parameters ---%
@@ -65,4 +69,3 @@ if (true)
     imogen(IC);
 end
 
-enderRun();
