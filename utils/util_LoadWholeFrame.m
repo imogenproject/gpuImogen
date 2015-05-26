@@ -4,10 +4,22 @@ if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single';
 
 if isa(basename,'double')
     switch basename;
-        case 1; basename = '1D_X';
-        case 2; basename = '2D_XY';
-        case 3; basename = '3D_XYZ';
-        default: error('Numeric basename must be 1 for 1D_X, 2 for 2D_XY, 3 for 3D_XYZ');
+        case 1
+        basename = '1D_X';
+    case 2
+        basename = '1D_Y';
+    case 3
+        basename = '1D_Z';
+    case 4    
+        basename = '2D_XY';
+    case 5    
+        basename = '2D_XZ';
+    case 6
+        basename = '2D_YZ';
+    case 7
+        basename = '3D_XYZ';
+    otherwise 
+        error('Numeric basename must be 1-7 for X, Y, Z, XY, XZ, YZ, XYZ\n');
     end
 end
 

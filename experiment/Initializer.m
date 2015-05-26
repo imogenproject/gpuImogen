@@ -50,6 +50,7 @@ classdef Initializer < handle
         inSituHandle; % Must be @SimulationAnalyzer.getInstance for some simulation analyzer
         stepsPerInSitu;  % If > 0, Imogen will pass the sim state to the instance's FrameAnalyer() function
                         % one in this many frames
+	inSituInstructions;
 
         frameRotateOmega; % Scalar: Rotation rate of the frame [0 = disabled]
         frameRotateCenter; % [X Y]: Point in the xy plane about which the rotation occurs

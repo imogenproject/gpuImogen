@@ -20,7 +20,9 @@ basicfiles = numel(dir('ini_settings.mat'));
 basicfiles = basicfiles + numel(dir('runfile.m'));
 basicfiles = basicfiles + numel(dir('SimInitializer_rank0.mat'));
 if basicfiles ~= 3
-    warning('Not seeing ini_settings.mat, runfile.m or SimInitializer_rank0.mat. Not sure if this is an Imogen run directory, but trying anyway.');
+    disp('Not seeing ini_settings.mat, runfile.m or SimInitializer_rank0.mat. This can''t be a valid Imogen run directory.');
+    dex = [];
+    return;
 end
 
 dex = struct('X',[],'Y',[],'Z',[],'XY',[],'XZ',[],'YZ',[],'XYZ',[],'misc',[]);

@@ -1,60 +1,69 @@
 classdef AdvectionInitializer < Initializer
-%___________________________________________________________________________________________________ 
-        
-%===================================================================================================
-        properties (Constant = true, Transient = true) %                                            C O N S T A N T         [P]
+    %___________________________________________________________________________________________________
+    
+    %===================================================================================================
+    properties (Constant = true, Transient = true) %                                            C O N S T A N T         [P]
     end%CONSTANT
-        
-%===================================================================================================
+    
+    %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                                           P U B L I C  [P]
-        backgroundMach;      % The background fluid's velocity in dimensionless terms.
-                             % 3x1 double: velocity
-                             % scalar    : equivalent [x speed, 0, 0] 
+        %FIXME If only magnetism even worked this would be relevant...
         backgroundB;         % Initial magnetic field. Automatically actives magnetic fluxing. [1x3].
-        density;
-        pressure;
-
-        numWavePeriods;      % The number of periods to run for (i.e. number of times to advect it through the box)
+        
         waveType;            % One of the 4 MHD wave types, or 'sound' for adiabatic fluid sound.
-
-        waveN;               % Wavenumber of wave existing on periodic domain
-        waveK;               % 'Physical' K used to calculate <k|x>
-        waveOmega;           % Omega is calculated from dispersion relation.
-                             
-        waveAmplitude;
-        waveDirection;       % >= 0 or < 0 for the forward or backward propagating wave respectively
-
     end %PUBLIC
+    
+    properties(SetAccess = private, GetAccess = public);
+        waveOmega;           % Omega is calculated from dispersion relation and K
+    end
+    
+    %===================================================================================================
+    properties (SetAccess = protected, GetAccess = public) %                                     P R O T E C T E D [P]
+        %Controlling values that define the simulation
+        pBackgroundMach;      % The background fluid's velocity in multiples of infinitesmal c_s (3x1 dbl)
+        pWavenumber;
+        pAmplitude;
+        pPhase; % FIXME: Not implemented yet because lazy
+        pCycles;          % The number of periods to run for (i.e. number of times to advect it through the box)
+        pWaveK;               % 'Physical' K used to calculate <k|x>
+        
+        pDensity;
+        pPressure;
 
-%===================================================================================================
-    properties (SetAccess = protected, GetAccess = protected) %                                     P R O T E C T E D [P]
+	pBeLinear; % If true, uses infinitesmal wave eigenvectors; If false, uses exact characteristics
+	pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the exact translational velocity
+	% to keep the wave exactly stationary
     end %PROTECTED
-        
-        
-%===================================================================================================
+    
+    properties (Dependent = true)
+        amplitude; backgroundMach; wavenumber; cycles;
+    end
+    
+    %===================================================================================================
     methods %                                                                                       G E T / S E T  [M]
-        
         function obj = AdvectionInitializer(input)
             obj                 = obj@Initializer();
             obj.gamma           = 5/3;
-            obj.pressure        = 1;
-            obj.density         = 1;
-            obj.backgroundMach  = [.5 0 0];
+            obj.pPressure        = 1;
+            obj.pDensity         = 1;
+            obj.backgroundMach  = [0 0 0];
             obj.backgroundB     = [0 0 0];
-
-            obj.numWavePeriods     = 2;
-
+            
             obj.waveType        = 'entropy';
-            obj.waveN           = [1 0 0];
-            obj.waveAmplitude   = .01;
-            obj.waveDirection   = 1;
+            obj.wavenumber      = 1;
+            obj.amplitude       = .001;
+            obj.pPhase = 0; % FIXME: not put in yet because redundant for tests & lazy
+            obj.cycles          = 2;
 
+	    obj.waveLinearity(true);
+
+            
             obj.runCode         = 'ADVEC';
             obj.info            = 'Advection test.';
             obj.mode.fluid      = true;
             obj.mode.magnet     = false;
             obj.mode.gravity    = false;
-            obj.cfl             = 0.35;
+            obj.cfl             = 0.45;
             obj.iterMax         = 1000;
             obj.ppSave.dim1     = 10;
             obj.ppSave.dim3     = 25;
@@ -65,118 +74,156 @@ classdef AdvectionInitializer < Initializer
             obj.bcMode.x          = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.y          = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z          = ENUM.BCMODE_CIRCULAR;
-
             
             obj.operateOnInput(input);
         end
         
-        end%GET/SET
+        function set.amplitude(self, A)
+            % Sets the nonnegative perturbation pAmplitude A
+            if nargin == 1; self.pAmplitude = .001; return; end;
+            self.pAmplitude = input2vector(A, 1, .001, false);
+        end
+        function A = get.amplitude(self); A = self.pAmplitude; end
         
-%===================================================================================================
+        function set.backgroundMach(self, M)
+            % Set the translation speed of the background in units of Mach.
+            %> V: 1-3 elements for vector mach; Default <0,0,0> for missing elements.
+            if nargin == 1; self.pBackgroundMach = [0 0 0]; return; end
+            self.pBackgroundMach = input2vector(M, 3, 0, false);
+        end
+        function M = get.backgroundMach(self); M = self.pBackgroundMach; end
+        
+        function set.wavenumber(self, V)
+            % Sets the pWavenumber integer triplet; Does some input validation for us
+            %> V: 1, 2, or 3 numbers; Absent elements default to <1,0,0>; noninteger is round()ed. Null vector is an error.
+            if nargin == 1; self.pWavenumber = [1 0 0]; return; end
+            self.pWavenumber = input2vector(V, 3, 0, true);
+            
+            if all(V == 0); error('In wavenumber(V), V evaluated to null vector! No reasonable default; wat u tryin to pull?'); end
+        end
+        function V = get.wavenumber(self); V = self.pWavenumber; end
+        
+        function set.cycles(self, C)
+            % Set how many wave cycles to simulate
+            % Entropy wave on stationary background takes this as sonic crossing times
+            if nargin == 1; self.pCycles = 1; return; end
+            self.pCycles = input2vector(C, 1, 1, false);
+        end
+        function C = get.cycles(self); C = self.pCycles; end
+        
+        function forCriticalTimes(self, NC)
+	    tc = 1/(self.amplitude*(self.gamma + 1));
+	    w_srf = norm(self.pWavenumber)*2*pi*sqrt(self.gamma*self.pPressure/self.pDensity);
+            self.cycles = NC*tc/w_srf;
+	end
+
+        function setBackground(self, rho, pPressure)
+            if nargin < 3; error('background requires (rho, pPressure) both be present.'); end
+            
+            self.pDensity = input2vector(rho, 1, 1e-6, false);
+            self.pPressure = input2vector(pPressure, 1, 1e-6, false);
+            
+            if self.pDensity  < 0; error('Density cannot be negative!'); end;
+            if self.pPressure < 0; error('Pressure cannot be negative!'); end;
+        end
+        
+    end%GET/SET
+    
+    %===================================================================================================
     methods (Access = public) %                                                                      P U B L I C  [M]
-        end%PUBLIC
-        
-%===================================================================================================        
-        methods (Access = protected) %                                                              P R O T E C T E D    [M]
-        
+        function waveLinearity(self, tf)
+	% If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact stationary frame
+	    if tf; self.pBeLinear = 1; self.pUseStationaryFrame = 0; else; self.pBeLinear = 0; end
+	end
+
+	function waveStationarity(self, tf)
+	% If called with true, regardless of use of linear wavevector, will ignore backgroundMach and put the wave in an exactly stationary frame
+	    if tf; self.pUseStationaryFrame = 1; else; self.pUseStationaryFrame = 0; end
+	end
+    end%PUBLIC
+    
+    %===================================================================================================
+    methods (Access = protected) %                                                              P R O T E C T E D    [M]
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             statics  = StaticsInitializer();
             potentialField = [];
             selfGravity = [];
-
+            
             GIS = GlobalIndexSemantics();
-
-            obj.dGrid = 1 ./ obj.grid; % set the total grid length to be 1. 
-
-            [xGrid yGrid zGrid] = GIS.ndgridSetXYZ();
-            xGrid = xGrid/obj.grid(1);
-            yGrid = yGrid/obj.grid(2);
-            zGrid = zGrid/obj.grid(3);
-
+	    GIS.setup(obj.grid);
+            
+            obj.dGrid = 1 ./ obj.grid; % set the total grid length to be 1.
+            
+            [xGrid yGrid zGrid] = GIS.ndgridSetXYZ([1 1 1], obj.dGrid);
+            
             % Store equilibrium parameters
-            mass     = 1*ones(GIS.pMySize);
+            mass     = obj.pDensity*ones(GIS.pMySize);
             mom      = zeros([3, GIS.pMySize]);
             mag      = zeros([3, GIS.pMySize]);
-            ener     = ones(GIS.pMySize)*obj.pressure/(obj.gamma-1); 
-
-            c_s      = sqrt(obj.gamma*obj.pressure);
-            for i = 1:3; mag(i,:,:,:) = obj.backgroundB(i); end
+            ener     = ones(GIS.pMySize)*obj.pPressure/(obj.gamma-1);
             
-            % Add velocity boost            
-            velocity    = c_s * obj.backgroundMach;
-            if numel(velocity) == 1; velocity = [velocity 0 0]; end
-            speed = norm(velocity);
-
-            mom(1,:,:,:) = velocity(1);
-            mom(2,:,:,:) = velocity(2);
-            mom(3,:,:,:) = velocity(3);
+	    % Assert the background magnetic field
+            for i = 1:3; mag(i,:,:,:) = obj.backgroundB(i); end
 
             % omega = c_wave k
             % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
-            K     = 2*pi*obj.waveN ./ [1 obj.grid(2)/obj.grid(1) obj.grid(3)/obj.grid(1)]; obj.waveK = K;
-            B0    = obj.backgroundB;
+            K     = 2*pi*obj.pWavenumber ./ [1 obj.grid(2)/obj.grid(1) obj.grid(3)/obj.grid(1)]; obj.pWaveK = K;
             KdotX = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
-            hgrid = obj.dGrid.*K;
-            phase = 0;
             
-            if obj.waveDirection >= 0; obj.waveDirection = 1; else; obj.waveDirection = -1; end
+            % Calculate the background velocity
+            c_s      = sqrt(obj.gamma*obj.pPressure); % The infinitesmal soundspeed
+	    if obj.pUseStationaryFrame;
+		bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude, obj.gamma)*K/norm(K);
+	    else
+		bgvelocity = c_s * obj.pBackgroundMach;
+	    end
+            
+	    FW = FluidWaveGenerator(obj.pDensity, bgvelocity, obj.pPressure, obj.backgroundB, obj.gamma);
 
-            % Depending on the wave selected, we calculate the appropriate wave eigenvector
-            % Allow dEpsilon to represent the perturbation in pressure
-            % The quantities are then appended to the equilibrium flow strictly to 1st order as is
-            % appropriate for a linear wave calculation.
-            if strcmp(obj.waveType, 'sonic') && norm(B0) > 0
+	    % Someday we'll do magnetic fields again...
+            if strcmp(obj.waveType, 'sonic') && norm(obj.backgroundB) > 0
                 obj.waveType = 'fast ma';
                 disp('WARNING: sonic wave selected with nonzero B. Changing to fast MA.');
             end
-
+            
             if strcmp(obj.waveType, 'entropy')
-                [waveEigenvector omega] = eigenvectorEntropy(1, c_s^2, velocity, B0, K);
-                waveEigenvector(8) = 0;
+		amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
+		FW.entropyExact(amp, K);
             elseif strcmp(obj.waveType, 'sonic')
-                [waveEigenvector omega] = eigenvectorSonic(1, c_s^2, velocity, B0, K, obj.waveDirection);
-                waveEigenvector(8) = c_s^2 * waveEigenvector(1);
+		amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
+		if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else
+				  FW.sonicExact(amp, K); end
+
+	        omega = 2*pi*sqrt(5/3); % FIXME HACK!
             elseif strcmp(obj.waveType, 'fast ma')
-                [waveEigenvector omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2*obj.waveDirection);
+                [waveEigenvector omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
                 waveEigenvector(8) = c_s^2 * waveEigenvector(1);
             end
 
-            [drho dV dB deps] = evaluateWaveEigenvector(exp(1i*phase) * obj.waveAmplitude * waveEigenvector, ...
-                                KdotX, hgrid);
-            wavespeed = omega / norm(K);
+	    mass = FW.waveRho;
+	    mom  = FW.waveMomentum();
+	    ener = FW.waveTotalEnergy();
+            
             obj.waveOmega = omega;
-
-            % Note that the following transforms are necessary to convert from the {drho, dv, dP} basis
-            % to the {drho, dp, dE} basis
-            %     rho <- rho + drho
-            %     p   <- p + v drho + rho dv
-            %     E   <- E + (d[.5 rho v^2]     ) + d[P] / (gamma-1)
-            %   = E   <- E + (.5 v^2 drho + p dv) + c_s^2 drho / (gamma-1)
-            mass = mass + drho;
-	    for i = 1:3
-                mom(i,:,:,:) = squeeze(mom(i,:,:,:) + dV(i,:,:,:)).*mass; % p = v*(rho+drho)+dv(rho+drho)==p + v*drho + rho*dv +drho*dv
-	    end
-            mag  = mag  + dB;
-            ener = ener + deps / (obj.gamma - 1) + 0.5*squeeze(sum(mom.^2,1))./mass + 0.5*squeeze(sum(mag.^2,1));
-
-            % forward speed = background speed + wave speed; Sim time = length/speed
+            wavespeed = omega / norm(K);
+            
+            % forward speed = background speed + wave speed; Sim time = length/speed, length \eq 1
             if abs(wavespeed) < .05*c_s; wavespeed = c_s; end
-            obj.timeMax  = obj.numWavePeriods / (abs(wavespeed)*norm(obj.waveN));
-
+            obj.timeMax  = obj.pCycles / (abs(wavespeed)*norm(obj.pWavenumber));
+            
             if max(abs(obj.backgroundB)) > 0;
                 obj.mode.magnet = true; obj.cfl = .4; obj.pureHydro = 0;
             else;
                 obj.pureHydro = 1;
             end
-
+            
             fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed);
         end
-        
-        end%PROTECTED
-                
-%===================================================================================================        
-        methods (Static = true) %                                                                   S T A T I C    [M]
-        end%PROTECTED
-        
+    end%PROTECTED
+    
+    %===================================================================================================
+    methods (Static = true) %                                                                   S T A T I C    [M]
+    end%PROTECTED
+    
 end%CLASS
     
