@@ -53,6 +53,7 @@ classdef GlobalIndexSemantics < handle
         end
 
         function obj = setup(obj, global_size)
+            % setup(global_resolution) sets the global resolution & does bookkeeping
 
             obj.pGlobalDims = global_size + 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
@@ -82,20 +83,19 @@ classdef GlobalIndexSemantics < handle
             instance = obj;
         end % Constructor
 
-        % Assigns the given dimension to be circular, enabling edge sharing across the outer boundary
         function makeDimCircular(obj, dim)
+            % makeDimCircular(1 <= dim <= 3) declares a circular BC on dim
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.circularBCs(dim) = 1;
             obj.updateGridVecs();
         end
 
         function makeDimNotCircular(obj, dim)
+            % makeDimNotCircular(1 <= dim <= 3) declares a noncircular BC on dim
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.circularBCs(dim) = 0;
             obj.updateGridVecs();
         end
-
-
 
         % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
         function [u v w] = toLocalIndices(obj, x, y, z)
@@ -141,10 +141,10 @@ classdef GlobalIndexSemantics < handle
 %
 %        end
 
-        % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
-        % Renders the 3 edge cells into halo automatically
+        
         function localset = LocalIndexSet(obj, globalset, d)
-            localset = [];
+        % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
+        % Renders the 3 edge cells into halo automatically    localset = [];
             pLocalMax = obj.pMyOffset + obj.pMySize;
 
             if nargin == 3;
@@ -157,10 +157,11 @@ classdef GlobalIndexSemantics < handle
             end
         end
 
+        
+        function LL = cornerIndices(obj)
         % Return the index of the lower left corner in both local and global coordinates
         % Such that subtracting them from a 1:size(array) will make the lower-left corner that isn't part of the halo [0 0 0] in local coords and whatever it is in global coords
-        function LL = cornerIndices(obj)
-            ndim = numel(obj.pGlobalDims);
+        ndim = numel(obj.pGlobalDims);
 
             LL=[1 1 1; (obj.pMyOffset+1)]';
             for j = 1:ndim;
@@ -169,8 +170,9 @@ classdef GlobalIndexSemantics < handle
 
         end
 
-        % Gets the 1xN vectors containing 1:N_i for all 3 dimensions
         function updateGridVecs(obj)
+            % Utility - upon change in global dims, recompute x/y/z index
+            % vectors
             ndim = numel(obj.pGlobalDims);
 
             x=[];
@@ -195,54 +197,68 @@ classdef GlobalIndexSemantics < handle
             u = obj.localXvector; v = obj.localYvector; w = obj.localZvector;
         end
 
-        % These return the part of ndgrid(1:globalsize(1), ...) that would reside on this node
-        % Halo is automatically part of it.
+        
         function [x y z] = ndgridSetXYZ(obj, offset, scale)
-            [u v w] = ndgrid(obj.localXvector, obj.localYvector, obj.localZvector);
+            % [x y z] = ndgridsetXYZ(offset, scale) returns the part of
+            % ndgrid( 1:grid(1), ...) that lives on this node.
+            % Returns affine transform [X - offset(1)]*scale(1) if given;
+            % defaulting to offset = [0 0 0] and scale = [1 1 1].
             
             if nargin > 1; % Lets the user get affine-transformed coordinates conveniently
                 if nargin < 3; scale  = [1 1 1]; end;
                 if nargin < 2; offset = [0 0 0]; end;
-                [x y z] = obj.toCoordinates(offset, u, v, w, scale, [0 0 0]);
+                [u v w] = obj.toCoordinates(offset, obj.localXvector, obj.localYvector, obj.localZvector, scale, [0 0 0]);
+                [x y z] = ndgrid(u, v, w);
             else
-                x = u; y = v; z = w;
-            end
+                [x y z] = ndgrid(obj.localXvector, obj.localYvector, obj.localZvector);
+                end
             
         end
         
         function [x y] = ndgridSetXY(obj, offset, scale)
-            [u v] = ndgrid(obj.localXvector, obj.localYvector);
+            % See ndgridSetXYZ doc; Returns [x y] arrays. 
+            % Note that offset/scale, if vector, must be 3 elements or
+            % x(1)*[1 1 1] will be used instead
             
             if nargin > 1;
-                if nargin < 3; scale  = [1 1]; end;
-                if nargin < 2; offset = [0 0]; end;
-                [x y] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+                if nargin < 3; scale  = [1 1 1]; end;
+                if nargin < 2; offset = [0 0 0]; end;
+                [u v] = obj.toCoordinates(offset, obj.localXvector, obj.localYvector, [], scale, [0 0 0]);
+                [x y] = ndgrid(u, v);
             else
-                x = u; y = v;
+                [x y] = ndgrid(obj.localXvector, obj.localYvector);
             end
         end
         
         function [y z] = ndgridSetYZ(obj)
+            % See ndgridSetXYZ doc; Returns [y z] arrays. 
+            % Note that offset/scale, if vector, must be 3 elements or
+            % x(1)*[1 1 1] will be used instead
             [u v] = ndgrid(obj.localYvector, obj.localZvector);
             
             if nargin > 1;
                 if nargin < 3; scale  = [1 1]; end;
                 if nargin < 2; offset = [0 0]; end;
-                [y z] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+                [u v w] = obj.toCoordinates(offset, obj.localXvector, obj.localYvector, obj.localZvector, scale, [0 0 0]);
+                [y z] = ndgrid(v, w);
             else
-                y = u; z = v;
+                [y z] = ndgrid(obj.localYvector, obj.localZvector);
             end
         end
         
         function [x z] = ndgridSetXZ(obj)
+            % See ndgridSetXYZ doc; Returns [x z] arrays. 
+            % Note that offset/scale, if vector, must be 3 elements or
+            % x(1)*[1 1 1] will be used instead
             [u v] = ndgrid(obj.localXvector, obj.localZvector);
             
             if nargin > 1;
                 if nargin < 3; scale  = [1 1]; end;
                 if nargin < 2; offset = [0 0]; end;
-                [x z] = obj.toCoordinates(offset, u, v, [], scale, [0 0 0]);
+                [u v w] = obj.toCoordinates(offset, obj.localXvector, obj.localYvector, obj.localZvector, scale, [0 0 0]);
+                [x z] = ndgrid(u, w);
             else
-                x = u; z = v;
+                [x z] = ndgrid(obj.localXvector, obj.localZvector);
             end
         end
 
