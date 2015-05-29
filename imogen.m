@@ -43,27 +43,27 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.logPrint('Creating simulation arrays...\n');
 
     gm = GPUManager.getInstance();
-    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(:,gm.deviceList+1);
+    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
     if RESTARTING
         % If reloading from time-evolved point,
         % garner important values from saved files:
         % (1) save paths [above]
         % (2) Q(x,t0) from saved files
-	% WARNING - this really, really needs to _know_ which frame type to load
+        % WARNING - this really, really needs to _know_ which frame type to load
         origpath=pwd(); cd(run.paths.save);
         dframe = util_LoadFrameSegment('2D_XY',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
-	run.image.frame = resumeinfo.imgframe;
+        run.image.frame = resumeinfo.imgframe;
 
         % (4) Recall and give a somewhat late init to indexing semantics.
         GIS = GlobalIndexSemantics(); GIS.setup(dframe.parallel.globalDims);
 
         cd(origpath); clear origpath;
-	FieldSource = dframe;
+        FieldSource = dframe;
     else
-	FieldSource = IC;
+        FieldSource = IC;
     end
 
     DataHolder = GPU_Type(FieldSource.mass); % This is a sort of dumb way of shoehorning the data in but it works
@@ -81,9 +81,9 @@ function outdirectory = imogen(srcData, resumeinfo)
     fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
 
     for i = 1:3;
-	a = GPU_getslab(DataHolder, 1+i);
-	b.array = getfield(FieldSource, fieldnames{i});
-	GPU_copy(a, b);
+        a = GPU_getslab(DataHolder, 1+i);
+        b.array = getfield(FieldSource, fieldnames{i});
+        GPU_copy(a, b);
         mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, run, statics);
         if run.pureHydro == 0
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
@@ -94,7 +94,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     clear b; 
 
-    nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(:,gm.deviceList+1))/1048576;
+    nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
     run.save.logAllPrint(sprintf('rank %i: %i GPUs report %06fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), numel(gm.deviceList), usedGPUMem, asize(1), asize(2), asize(3) ) );
 
@@ -111,7 +111,11 @@ function outdirectory = imogen(srcData, resumeinfo)
     if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
 
     doInSitu = ini.useInSituAnalysis;
-    if doInSitu; inSituAnalyzer = ini.inSituHandle(run, mass, mom, ener, mag); inSituSteps = ini.stepsPerInSitu; end
+    if doInSitu;
+        inSituAnalyzer = ini.inSituHandle(run, mass, mom, ener, mag);
+        inSituSteps = ini.stepsPerInSitu;
+        if isfield(ini, 'inSituInstructions'); inSituAnalyzer.setup(ini.inSituInstructions); end
+    end
 
     %--- Pre-loop actions ---%
     clear('IC', 'ini', 'statics');    
@@ -143,9 +147,9 @@ function outdirectory = imogen(srcData, resumeinfo)
         resultsHandler(run, mass, mom, ener, mag);
 
         %--- Analysis done as simulation runs ---%
-	if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
-	    inSituAnalyzer.FrameAnalyzer(run, mass, mom, ener, mag);
-	end
+        if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
+            inSituAnalyzer.FrameAnalyzer(run, mass, mom, ener, mag);
+        end
 
         run.time.step();
     end
