@@ -63,21 +63,68 @@ classdef SodShockSolution < handle
             rarefactionPressure         = obj.calculateRarefactionPressure(rarefactionMass);
             
             %--- Find Positions ---%
-            x1                          = ceil((0.5 - obj.soundSpeed(1)*time)*resolution);
-            x2                          = find(rarefactionMass <= postContactMass, true, 'first');
-            x3                          = floor((0.5 + postVelocity*time)*resolution);
-            x4                          = floor((0.5 + shockSpeed*time)*resolution);
+            x1true                      = (0.5 - obj.soundSpeed(1)*time);
+            x2true = .5 - time*((g+1)/(g-1))*obj.soundSpeed(1)*( (postContactMass/obj.mass(1))^(.5*g-.5) - 2/(g+1));
+            x3true                      = 0.5 + postVelocity*time;
+            x4true                      = 0.5 + shockSpeed*time;
+
+            % Cells' left edge exists at (N-1)h and right edge at Nh,
+            % with h = 1/N and N indexing from 1 to resolution.
+	    % If we consist with the notion of x_initialcontact = 1/2. 
+            h = 1/resolution;
+            posLeft = (0:(resolution-1))*h;
+            posRite = (1:resolution)*h;
+            posCtr  = (posLeft + posRite)/2;
+
+
+	    % Identify regions consisting entirely of a single function
+	    leftConstRegion   = (posLeft < x1true);
+            fanRegion         = (posLeft > x1true) & (posRite < x2true);
+            postContactRegion = (posLeft > x2true) & (posRite < x3true);
+            preContactRegion  = (posLeft > x3true) & (posRite < x4true);
+            preShockRegion    = (posLeft > x4true);
+
+            % A function to find the cell in which x resides:
+            cellStraddling = @(x) find((posLeft < x) & (posRite > x));
+
+	    % Plug in left
+	    obj.mass(leftConstRegion) = 1;
+
+	    % Handle [Uleft | Fan] cell
+	    id = cellStraddling(x1true);
+
+	    g = obj.GAMMA;
+            G = (g-1)/(g+1);
+            cRF = @(x) G*((0.5-x)/time) + (1-G)*obj.soundSpeed(1);
+
+	    % Compute the exact integral average over the cell where the rarefaction's head resides
+	    denfunc = @(x) obj.calculateRarefactionMass(cRF(x));
+	    obj.mass(id) = ( integral(denfunc, x1true, posRite(id)) + (x1true - posLeft(id))*1 ) / h;
+
+            % Use cell center mass (accurate to 3rd order of smallness) in rarefaction region
+            obj.mass(fanRegion) = denfunc(posCtr(fanRegion));
+
+            % Identify fan-to-postcontact cell and average it
+	    id = cellStraddling(x2true);
+            obj.mass(id) = ( integral(denfunc, posLeft(id), x2true) + (posRite(id) - x2true)*postContactMass ) / h;
+
+	    % Plug in post contact mass density as constant
+            obj.mass(postContactRegion) = postContactMass;
             
-            obj.mass(x1:x2)             = rarefactionMass(x1:x2);
-            obj.mass(x2:x3)             = postContactMass;
-            obj.mass(x3:x4)             = postMass;
-            
-            obj.pressure(x1:x2)         = rarefactionPressure(x1:x2);
-            obj.pressure(x2:x4)         = postPressure;
-            
-            obj.velocity(x1:x2)         = rarefactionVelocity(x1:x2);
-            obj.velocity(x2:x4)         = postVelocity;
-            
+	    % Average two halves of the contact's cell
+	    id = cellStraddling(x3true);
+	    obj.mass(id) = ( postContactMass*(x3true-posLeft(id)) + postMass*(posRite(id)-x3true) ) / h;
+
+	    % Plug in precontact/postshock mass
+            obj.mass(preContactRegion) = postMass;
+
+            % Average the shock's cell
+	    id = cellStraddling(x4true);
+	    obj.mass(id) = ( postMass*(x4true-posLeft(id)) + .125*(posRite(id)-x4true) ) / h;
+	    
+	    obj.mass(preShockRegion) = .125;
+
+
             obj.soundSpeed              = sqrt(g*obj.pressure./obj.mass);
             obj.energy                  = obj.pressure./(g - 1) ...
                                             + 0.5*obj.mass.*obj.velocity.^2;

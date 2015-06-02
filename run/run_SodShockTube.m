@@ -3,10 +3,8 @@
 %-- Initialize Imogen directory ---%
 starterRun();
 
-grid = [8192 2 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
+grid = [8192 2 1];
 run             = SodShockTubeInitializer(grid);
 run.normal([1 0 0]);
 

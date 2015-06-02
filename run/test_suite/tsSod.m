@@ -1,13 +1,10 @@
-function result = testSod(N, direct)
-
-GIS = GlobalIndexSemantics(); GIS.setup([N 16 1]);
+function result = tsSod(N, direct, doublings)
 
 %--- Initialize test ---%
-run             = SodShockTubeInitializer([N 16 1]);
-run.direction   = direct;
-run.shockAngle  = 0;
+run             = SodShockTubeInitializer([N 4 1]);
+run.normal(direct);
 run.iterMax     = 50000;
-run.timeMax     = 0.15;
+run.timeMax     = 0.25;
 
 run.alias       = '';
 run.info        = 'Sod shock tube test.';
@@ -15,47 +12,41 @@ run.notes       = 'Simple axis aligned shock tube test';
 
 run.ppSave.dim2 = 100;
 
+run.bcMode.x = ENUM.BCMODE_CONST;
+
 %--- Run tests ---%
-icfile = run.saveInitialCondsToFile();
-outpath = imogen(icfile);
 
-od = pwd(); cd(outpath);
-u = util_LoadWholeFrame('3D_XYZ',1,1); % Load final output
-cd(od); result.pathA = od;
+result.L1    = [];
+result.L2    = [];
+result.res   = [];
+result.paths = {};
 
-T = sum(u.time.history);
-X = SodShockSolution(N, T);
+for p = 1:doublings;
+    % Run test at given resolution
+    run.grid(direct) = N*2^(p-1);
+    icfile           = run.saveInitialCondsToFile();
+    outpath          = imogen(icfile);
 
-sodME(1) = mean(u.mass(:,1)-X.mass');
+    % Load last frame
+    S = SavefilePortal(outpath);
+    S.setFrametype(7);
+    u = S.jumpToLastFrame();
 
-run.grid = [2*N 16 1];
-GIS.setup(run.grid);
-icfile = run.saveInitialCondsToFile();
-outpath = imogen(icfile);
+    % Compute L_n integral error norms and output
+    T = sum(u.time.history);
+    X = SodShockSolution(run.grid(direct), T);
 
-od = pwd(); cd(outpath);
-u = util_LoadWholeFrame('3D_XYZ',1,1); % Load final output
-cd(od); result.pathB = od;
+    result.L2(p)    = norm(u.mass(:,1)-X.mass') / sqrt(numel(X.mass));
+    result.L1(p)    = norm(u.mass(:,1)-X.mass',1) / numel(X.mass);
+    result.res(p)   = run.grid(direct);
+    result.paths{p} = outpath;
 
-T = sum(u.time.history);
-X = SodShockSolution(2*N, T);
+end
 
-sodME(2) = mean(u.mass(:,1)-X.mass');
+% Compute convergence order
+dlogh = -log(2);
 
-run.grid = [3*N 16 1];
-GIS.setup(run.grid);
-icfile = run.saveInitialCondsToFile();
-outpath = imogen(icfile);
-
-od = pwd(); cd(outpath);
-u = util_LoadWholeFrame('3D_XYZ',1,1); % Load final output
-cd(od); result.pathC = od;
-
-T = sum(u.time.history);
-X = SodShockSolution(3*N, T);
-
-sodME(3) = mean(u.mass(:,1)-X.mass');
-
-result.meanError = sodME
+result.OrderL1 = diff(log(result.L1)) / dlogh;
+result.OrderL2 = diff(log(result.L2)) / dlogh;
 
 end

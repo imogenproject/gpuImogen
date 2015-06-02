@@ -112,10 +112,10 @@ classdef SodShockTubeInitializer < Initializer
             half                  = floor(obj.grid/2);
 
 	    GIS = GlobalIndexSemantics();
+        GIS.setup(obj.grid);
 
 	    %--- Compute the conditions for the domains ---%
-	    [X Y Z] = GIS.ndgridSetXYZ();
-	    [X Y Z] = GIS.toCoordinates(half + 1/2, X,Y,Z); % The "index" of the contact is halfway past the midpoint position
+	    [X Y Z] = GIS.ndgridSetXYZ(half + .5);
 	    NdotX = (obj.pShockNormal(1)*X + obj.pShockNormal(2)*Y + obj.pShockNormal(3)*Z) > 0;
 
             %--- Set array values to high density condition ---%
