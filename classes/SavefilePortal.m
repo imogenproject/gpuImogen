@@ -65,42 +65,40 @@ classdef SavefilePortal < handle
         function accessYZ(self); self.setFrametype(6); end
         function accessXYZ(self); self.setFrametype(7); end
 
-        function F = nextFrame(self)
+        % Next/previous/start/last to make raw setFrame() friendlier
+        function [F glitch] = nextFrame(self)
             % F = nextFrame() returns the next Imogen saveframe of the
             % currently selected type
-	    self.pushdir(self.savefileDirectory);
             n = self.currentFrame(self.typeToLoad) + 1;
-            b = getfield(self.savefileList,self.strnames{self.typeToLoad});
-
-            if n > numel(b)
-                n = n-1;
-            end
-            self.currentFrame(self.typeToLoad) = n;
-
-            F = util_LoadWholeFrame(self.typeToLoad,self.savefileList.misc.padlen, b(n));
-	    self.popdir();
+            [F glitch] = self.setFrame(n);
         end
 
         function F = previousFrame(self)
             % F = previousFrame() returns the previous Imogen saveframe of
             % the current type
-            
             n = self.currentFrame(self.typeToLoad)-1;
-            b = getfield(self.savefileList,self.strnames{self.typeToLoad});
-            if n <= 0; n = 1; end
-            self.currentFrame(self.typeToLoad) = n;
-
-            self.pushdir(self.savefileDirectory);
-            F = util_LoadWholeFrame(self.typeToLoad,self.savefileList.misc.padlen, b(n));
-            self.popdir();
+            [F glitch] = self.setFrame(n);
         end
-
-        function F = setFrame(self, f)
+        
+        function [F glitch] = jumpToStartFrame(self)
+            % Resets the current frame to the first
+    	    [F glitch] = self.setFrame(1);
+        end
+        
+        function [F glitch] = jumpToLastFrame(self)
+           % Hop to the last frame available
+           n = self.numFrames();
+           [F glitch] = self.setFrame(n);
+        end
+        
+        function [F glitch] = setFrame(self, f)
             % F = setFrame(n) jumps to the indicated frame of the current
             % type; Automatically clamps to [1 ... #frames]
-            if f < 1; f = 1; end
+            glitch = 0; % assume no problem...
+            if f < 1; f = 1; glitch = -1; end
             if f >= self.numFrames();
                 f = self.numFrames();
+                glitch = 1;
             end
             
             b = getfield(self.savefileList,self.strnames{self.typeToLoad});
@@ -110,12 +108,7 @@ classdef SavefilePortal < handle
             F = util_LoadWholeFrame(self.typeToLoad, self.savefileList.misc.padlen, b(f));
             self.popdir();
         end
-
-        function rewind(self)
-            % Resets the current frame to the first
-    	    self.currentFrame(self.typeToLoad) = 0;
-        end
-    
+            
        function arewe = atLastFrame(self)
            % true if the portal is currently aimed at the last frame of the
            % current type, otherwise false
