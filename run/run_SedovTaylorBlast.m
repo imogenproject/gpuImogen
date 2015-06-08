@@ -2,12 +2,13 @@
 
 %-- Initialize Imogen directory ---%
 starterRun();
-grid = [65 65 65];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
+grid = [128 128 128];
 
 %--- Initialize test ---%
-run         = SedovTaylorBlastWaveInitializer([65 65 65]);
-run.iterMax = 100;
+run         = SedovTaylorBlastWaveInitializer(grid);
+
+run.autoEndtime = 1; % Automatically run until R = 0.45
+run.iterMax = 10000;
 
 run.alias   = '';
 run.info    = 'Sedov-Taylor blast wave test.';
