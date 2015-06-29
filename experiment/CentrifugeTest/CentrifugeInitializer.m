@@ -55,6 +55,9 @@ classdef CentrifugeInitializer < Initializer
         
 %___________________________________________________________________________________________________ KojimaDiskInitializer
         function obj = CentrifugeInitializer(input)
+	% CentrifugeInitializer: the core of the centrifuge experiment. Tests ability of code to
+	% maintain analytically time-independent but linearly unstable flow solution.
+	% See Imogen manual for details.
             obj                     = obj@Initializer();            
             obj.runCode             = 'CENTRIFUGE';
             obj.info                = 'Code test for rotating-frame source term.';
@@ -155,16 +158,14 @@ fmin = 0;
             obj.frameRotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
             GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
             mygrid = GIS.pMySize;
 
             obj.dGrid = (1+obj.pEdgeFraction)*2./obj.grid;
  
             mom     = zeros([3 mygrid]);
             
-            % Normalizes the box to radius of 1 + a bit
-            [Xv Yv] = GIS.ndgridSetXY();
-            Xv = (Xv - obj.grid(1)/2 + .5)*obj.dGrid(1);
-            Yv = (Yv - obj.grid(2)/2 + .5)*obj.dGrid(2);
+            [Xv Yv] = GIS.ndgridSetXY([obj.grid(1)/2 + .5, obj.grid(2)/2 + .5, 0], obj.dGrid);
 
             % Evaluate the \int r w(r)^2 dr curve 
             rads   = [0:.0001:1];
@@ -172,11 +173,7 @@ fmin = 0;
             Rphi = fim(rads, igrand); Rphi = Rphi - Rphi(end); %Reset potential to zero at outer edge
             Rphi(end+1) = 0;
 
-            % The analytic solution of 2d rotating-on-cylinders flow for isothermal conditions
-            % for rotation curve w = w0 (1 - cos(2 pi r)). woa = pOmega0 / a^2
-%            Rphi = @(x, w0) (w0^2*(15 - 24*pi^2 + 24*pi^2*x.^2 - 16*cos(2*pi*x) + cos(4*pi*x) - 32*pi*x.*sin(2*pi*x) + 4*pi*x.*sin(4*pi*x)))/(32*pi^2);
-
-            % Isothermal density resulting from centrifugal potential
+            % Compute density resulting from centrifuge potential
             [rho Pgas] = obj.thermo(Rphi);
 
             rho(10001:10002) = obj.pRho0;
