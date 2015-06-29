@@ -33,7 +33,7 @@ classdef SavefilePortal < handle
             if nargin == 0; wd = pwd(); end
 
             self.changeDirectory(wd);
-
+            self.rescanDirectory();
             self.typeToLoad = 7;
         end
 
@@ -45,7 +45,6 @@ classdef SavefilePortal < handle
 	    self.pushdir(nwd);
             
 	    self.currentFrame = [0 0 0 0 0 0 0];
-            self.savefileList = enumerateSavefiles();
 
             self.popdir();
         end
@@ -80,7 +79,7 @@ classdef SavefilePortal < handle
             [F glitch] = self.setFrame(n);
         end
         
-        function [F glitch] = jumpToStartFrame(self)
+        function [F glitch] = jumpToFirstFrame(self)
             % Resets the current frame to the first
     	    [F glitch] = self.setFrame(1);
         end
@@ -126,6 +125,12 @@ classdef SavefilePortal < handle
         % accessible in the current directory
 	    n = numel(getfield(self.savefileList,self.strnames{self.typeToLoad}));
 	end
+
+        function rescanDirectory(self)
+            self.pushdir(self.savefileDirectory);
+            self.savefileList = enumerateSavefiles();
+            self.popdir();
+        end
 
     end%PUBLIC
     
