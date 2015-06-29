@@ -15,14 +15,14 @@ classdef EinfeldtInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-	rhol;
-	ml;
-	nl;
-	el;
-	rhor;
-	mr;
-	nr;
-	er;
+        rhol;
+        ml;
+        nl;
+        el;
+        rhor;
+        mr;
+        nr;
+        er;
     end %PUBLIC
 
 %===================================================================================================
@@ -42,11 +42,11 @@ classdef EinfeldtInitializer < Initializer
             obj.gamma            = 1.4;
             obj.runCode          = 'Einfeldt';
             obj.info             = 'Einfeldt Strong Rarefaction test';
-            obj.pureHydro 	 = 1;
-            obj.mode.fluid	 = true;
-            obj.mode.magnet	 = false;
-            obj.mode.gravity	 = false;
-            obj.cfl		 = 0.7;
+            obj.pureHydro        = 1;
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.4;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -57,17 +57,17 @@ classdef EinfeldtInitializer < Initializer
             
             obj.operateOnInput(input, [1024, 4, 4]);
 
-	    obj.rhol		 = 1;
-	    obj.ml		 = -2;
-	    obj.nl		 = 0;
-	    obj.el		 = 3;
+            obj.rhol               = 1;
+            obj.ml                 = -2;
+            obj.nl                 = 0;
+            obj.el                 = 3;
 
-	    obj.rhor		 = 1;
-	    obj.mr		 = 2;
-	    obj.nr		 = 0;
-	    obj.er		 = 3;
+            obj.rhor               = 1;
+            obj.mr                 = 2;
+            obj.nr                 = 0;
+            obj.er                 = 3;
       
-	end
+        end
         
     end%GET/SET
     
@@ -85,31 +85,32 @@ classdef EinfeldtInitializer < Initializer
             statics               = []; % No statics used in this problem
             potentialField        = [];
             selfGravity           = [];
-	    GIS			  = GlobalIndexSemantics();
+            GIS                   = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	    % Initialize Parallel Vectors	
-	    X 			  = GIS.ndgridSetXY();
+            % Initialize Parallel Vectors        
+            X                     = GIS.ndgridSetXY();
             obj.dGrid             = 1./obj.grid;
             half                  = ceil(obj.grid/2);
-	    left		  = (X < obj.grid(1)/2);
-	    right		  = (X >= obj.grid(1)/2);
+            left                  = (X < obj.grid(1)/2);
+            right                 = (X >= obj.grid(1)/2);
 
-	    % Initialize Arrays
+            % Initialize Arrays
             mass                  = ones(GIS.pMySize);
-            mom                   = ones([3, GIS.pMySize]);
+            mom                   = zeros([3, GIS.pMySize]);
             mag                   = zeros([3, GIS.pMySize]);
             ener                  = ones(GIS.pMySize);
 
             %--- Set Array Values ---%
-	    mass(left)	 	  = obj.rhol; 	%Density of left half
-	    mom(1,left) 	  = obj.ml; 	%X momentum of left half
-	    mom(2,left) 	  = obj.nl; 	%Y momentum of left half
-	    ener(left) 	 	  = obj.el; 	%Total energy of left half
-	
-            mass(right) 	  = obj.rhor;	%Density of right half
-	    mom(1,right)	  = obj.mr; 	%X momentum of right half
-	    mom(2,right) 	  = obj.nr; 	%Y momentum of right half
-            ener(right)  	  = obj.er;	%Total energy of right half
+            mass(left)            = obj.rhol;         %Density of left half
+            mom(1,left)           = obj.ml;         %X momentum of left half
+            mom(2,left)           = obj.nl;         %Y momentum of left half
+            ener(left)            = obj.el;         %Total energy of left half
+        
+            mass(right)           = obj.rhor;        %Density of right half
+            mom(1,right)          = obj.mr;         %X momentum of right half
+            mom(2,right)          = obj.nr;         %Y momentum of right half
+            ener(right)           = obj.er;        %Total energy of right half
     end
         
 end%PROTECTED
