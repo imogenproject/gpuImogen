@@ -1,11 +1,8 @@
 classdef SedovTaylorBlastWaveInitializer < Initializer
-% Creates initial conditions for a Sedov-Taylor blast wave simulation. This is a high energy point
-% located centrally in the grid that shocks outward in a spherical manner. A good test of how well
-% the Cartesian grid handles non-aligned propagation. This problem is essentially the simulation of
-% an explosion, and is developed based on the original nuclear simulation work of Sedov and Taylor.
-%
-% Unique properties for this initializer:
-    
+% Sets up a Sedov-Taylor explosion, consisting of a point deposition of energy in a near-zero-
+% pressure background which drives a maximally symmetric explosion outward.
+% c.f. Sedov (1959) for original solution or Kamm & Timmes (2007) for modern description of
+% exact solution 1- to 3-D & multiple background densities.
         
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
@@ -14,6 +11,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         autoEndtime;
+
+        backgroundDensity;
     end %PUBLIC
 
 %===================================================================================================
@@ -22,13 +21,9 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-	pDepositRadius; % Radius (in cell) inside which energy will be deposited
-	pBlastEnergy;
+        pDepositRadius; % Radius (in cell) inside which energy will be deposited
+        pBlastEnergy;
     end %PROTECTED
-    
-    
-    
-    
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
@@ -54,7 +49,9 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             obj.pureHydro = true;
 
             obj.depositRadiusCells(3.5);
-	    obj.setBlastEnergy(1);
+            obj.setBlastEnergy(1);
+
+            obj.backgroundDensity = 1;
 
             obj.autoEndtime = 1;
 
@@ -67,11 +64,11 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-	function depositRadiusCells(self, N); self.pDepositRadius = N; end
-	function depositRadiusFraction(self, f); self.pDepositRadius = f*max(self.grid)/2; end
+        function depositRadiusCells(self, N); self.pDepositRadius = N; end
+        function depositRadiusFraction(self, f); self.pDepositRadius = f*max(self.grid)/2; end
         function setBlastEnergy(self, Eblast);
-	    self.pBlastEnergy = Eblast;
-	 end
+            self.pBlastEnergy = Eblast;
+         end
 
 
     end%PUBLIC
@@ -82,45 +79,47 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-	    GIS = GlobalIndexSemantics();
-	    GIS.setup(obj.grid);
+            GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
             %--- Initialization ---%
             statics         = [];
             potentialField  = [];
             selfGravity     = [];
             obj.dGrid       = 1./obj.grid;
-            mass            = GIS.onesSetXYZ();
+            mass            = obj.backgroundDensity*GIS.onesSetXYZ();
             mom             = zeros([3, GIS.pMySize]);
             mag             = zeros([3, GIS.pMySize]);
-            
+
             if obj.autoEndtime
-                disp('auto end time active: will run to blast radius = 0.45.');
-                obj.timeMax = Sedov_timeToReachSize(obj.pBlastEnergy, .45, 1, obj.gamma, 2+1*(obj.grid(3)>1));
+                disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)');
+                obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1));
             end
 
             %--- Calculate Radial Distance ---%
-	    [X Y Z] = GIS.ndgridSetXYZ(floor(obj.grid/2));
+            [X Y Z] = GIS.ndgridSetXYZ(floor(obj.grid/2));
             distance  = sqrt(X.*X + Y.*Y + Z.*Z);
-            clear X Y Z;
 
-	    %--- Find the correct energy density Ec = Eblast / (# deposit cells) ---%
+            %--- Find the correct energy density Ec = Eblast / (# deposit cells) ---%
             % FIXME: Note that this is still 'wrong' in that it fails to integral average
-            % over cells which only partially overlap the radius
+            % However the error lies in high-harmonics of the distribution,
+            % not the actual amount of energy - that is exactly correct and is most important for
+            % Seeing to it that the 
+            % WARNING: This works because we know from above that the coordinate zero is integer...
             gv = floor(-obj.pDepositRadius-1):ceil(obj.pDepositRadius+1);
-	    if obj.grid(3) == 1 % 2D
-	        [xctr yctr] = ndgrid(gv,gv);
-	        activeCells = (xctr.^2+yctr.^2 < obj.pDepositRadius^2);
-	    else % 3D
-		[xctr yctr zctr] = ndgrid(gv,gv,gv);
-	        activeCells = (xctr.^2+yctr.^2+zctr.^2 < obj.pDepositRadius^2);
-	    end
-	
+            if obj.grid(3) == 1 % 2D
+                [xctr yctr] = ndgrid(gv,gv);
+                activeCells = (xctr.^2+yctr.^2 < obj.pDepositRadius^2);
+            else % 3D
+                [xctr yctr zctr] = ndgrid(gv,gv,gv);
+                activeCells = (xctr.^2+yctr.^2+zctr.^2 < obj.pDepositRadius^2);
+            end
+ 
             nDepositCells = numel(find(activeCells));
             
             %--- Determine Energy Distribution ---%
-	    ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
-	    ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.dGrid));
+            ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
+            ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.dGrid));
         end
     
     end%PROTECTED
