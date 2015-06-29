@@ -28,10 +28,10 @@ c = sqrt(gamma*P0/rho0);
 m = (gamma-1)/(gamma+1);
 
 % Location of rightgoing fan's head
-xRightHead = (c+v0)*t
+xRightHead = (c+v0)*t;
 
 % Location where v0 -> 0
-xRightTail = (c+(1-gamma)*v0/2)*t
+xRightTail = (c+(1-gamma)*v0/2)*t;
 
 % Generate logicals that partition the solution space
 set5 = (x >= xRightHead);
