@@ -39,6 +39,9 @@ elseif strcmpi(thing, 'velocity')
     end
 elseif strcmpi(thing, 'speed') % = |mom| / mass
     result = sqrt(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass;
+elseif strcmpi(thing, 'soundspeed') % = sqrt(gamma P / rho)
+    P = util_DerivedQty(f, 'gaspressure');
+    result = sqrt(f.gamma*P./f.mass);    
 elseif strcmpi(thing, 'vorticity') % = curl(V)
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''vorticity'', component'); end
     minv = 1./f.mass;
