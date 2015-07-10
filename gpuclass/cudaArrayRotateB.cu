@@ -120,19 +120,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			}
 		}
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
+	}
 
-		// If performing transpose in place, move transposed data back to original array.
-		if(makeNew == 0) {
+	// If performing transpose in place, move transposed data back to original array.
+	if(makeNew == 0) {
+		for(i = 0; i < trans.nGPUs; i++) {
 			cudaMemcpy(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
 			CHECK_CUDA_ERROR("cudaMemcpy");
+
 			cudaFree(nuClone->devicePtr[i]);
 			CHECK_CUDA_ERROR("free");
 		}
 	}
 
 	CHECK_CUDA_ERROR("Departing cudaArrayRotateB");
-
-
 
 }
 
