@@ -149,6 +149,7 @@ classdef GPU_Type < handle
             obj.numdims = 2;
         end
 
+        % Convert this GPU_Type into a slab; This requires a reallocation & thus a new tag.
 	function createSlabs(obj, N)
 	    B = GPU_makeslab(obj.GPU_MemPtr, N);
 	    obj.GPU_MemPtr = B;

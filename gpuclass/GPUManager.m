@@ -12,10 +12,12 @@ classdef GPUManager < handle
 	useHalo;    % If > 0, boundaries between shared segments will have a useHalo-wide halo
         partitionDir;
         isInitd;
+        cudaStreamsPtr;
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
+
     end %PROTECTED
 
 %===================================================================================================
@@ -29,13 +31,17 @@ classdef GPUManager < handle
             g.useHalo = 0;
             g.partitionDir = 1;
             g.isInitd = 0;
+            g.cudaStreamsPtr = int64(0); % initialize to NULL
         end
 
         function init(obj, devlist, halo, partitionDirection)
 	    obj.deviceList = devlist;
+% This was added when I thought it was needed, now it isn't.
+%            obj.cudaStreamsPtr = GPU_ctrl('createStreams',devlist);
 	    obj.useHalo = halo;
             obj.partitionDir = partitionDirection;
             obj.isInitd = 1;
+
         end
 
         function describe(obj)

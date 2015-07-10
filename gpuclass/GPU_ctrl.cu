@@ -183,5 +183,39 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 		}
 	}
+	if(strcmp(c,"createStreams") == 0) { /* FIXME lines 186-217 are new/untested and are about as safe as letting grandma drive your your Shelby GTX */
+		if(nrhs < 1) { printf("Must receive list of devices to get new streams: streams_ptr = GPU_ctrl('createStreams',[0 1]) e.g."); return; }
+		if(nlhs < 1) { printf("Must be able to return cudaStream_t *: streams_ptr = GPU_ctrl('createStreams',[0 1]) e.g."); return; }
+		double *d = mxGetPr(prhs[1]);
+
+		int i;
+		int imax = mxGetNumberOfElements(prhs[1]);
+
+		mwSize dims[2];
+		dims[0] = 1;
+		dims[1] = 1;
+
+		plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
+		int64_t *out = (int64_t *)mxGetData(plhs[0]);
+
+		cudaStream_t *pstream = (cudaStream_t *)malloc(sizeof(cudaStream_t) * imax);
+		for(i = 0; i < imax; i++) {
+			cudaSetDevice((int)d[i]);
+			cudaStreamCreate(pstream + i);
+		}
+
+		out[0] = (int64_t)pstream;
+
+	}
+	if(strcmp(c,"destroyStreams") == 0) {
+		if(nrhs < 2) { printf("Must receive GPUManager.cudaStreamsPtr and # of streams in it."); return; }
+		cudaStream_t *streams = (cudaStream_t *)mxGetData(prhs[0]);
+		int x = (int)*mxGetPr(prhs[1]);
+		int i;
+		for(i = 0; i < x; i++) {
+			cudaStreamDestroy(*streams);
+			streams++;
+		}
+	}
 
 }
