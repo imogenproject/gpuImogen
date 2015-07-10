@@ -14,6 +14,9 @@
 
 #include "cudaCommon.h" // This defines the getGPUSourcePointers and makeGPUDestinationArrays utility functions
 
+// Only uncomment this if you plan to debug this file.
+//#define DEBUGMODE
+
 #include "mpi.h"
 #include "parallel_halo_arrays.h"
 //#include "mpi_common.h"
@@ -166,6 +169,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray fluid[5], mag[3], PC[2];
 	int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+
+	//cudaStream_t *GPUStreamList = getGPUTypeStreams(prhs[0]);
+
 	// The sanity checker tended to barf on the 6 [allzeros] that represent "no array" before.
 	if(hydroOnly == false) worked = accessMGArrays(prhs, 5, 7, &mag[0]);
 	worked = accessMGArrays(prhs, 8, 9, &PC[0]);
@@ -255,20 +261,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		} break;
 		case STEPTYPE_HLL:
 		case STEPTYPE_HLLC: {
-			// Iteratively for each device, setup the launch & hit it
+			int numarrays;
+			#ifdef DEBUGMODE
+			numarrays = 6 + DBG_NUMARRAYS;
+			#else
+			numarrays = 6;
+			#endif
+
+			// Allocate memory for the half timestep's output
 			for(i = 0; i < fluid->nGPUs; i++) {
-				// Set the device and grab half-step storage for it
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
-				int numarrays;
-				#ifdef DEBUGMODE
-				numarrays = 6 + DBG_NUMARRAYS;
-				#else
-				numarrays = 6;
-				#endif
-
 				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
 				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+			}
+
+			// Launch zee kernels
+			for(i = 0; i < fluid->nGPUs; i++) {
+				cudaSetDevice(fluid->deviceID[i]);
 
 				// Find out the size of the partition
 				calcPartitionExtent(fluid, i, sub);
@@ -309,6 +319,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					#endif
 
 				#endif
+			}
+			for(i = 0; i < fluid->nGPUs; i++) {
 				// Release the memory taken for this step
 				cudaFree(wStepValues[i]);
 				CHECK_CUDA_ERROR("cudaFree()");
@@ -625,8 +637,8 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
 		__syncthreads(); // I don't think this is necessary...
 
-		A = shblk[IC+BOS0]*(C-A); // rho*(c-v) left
-		B = shblk[IR+BOS0]*(D-B); // rho*(c-v) right
+		A = shblk[IC+BOS0]*(C-A); // rho*(S-v) left
+		B = shblk[IR+BOS0]*(D-B); // rho*(S-v) right
 
 		/* Batten et al, Eqn 34 for S_M:
 		Speed of HLLC contact
@@ -910,19 +922,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
                 E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
 
                 E = sqrt(E); /* Batten \overline{c} */
-//------------
-//
-//		A = 1.0/shblk[IC+BOS1]; /* 1/rho_le */
-//		B = 1.0/shblk[IR+BOS0]; /* 1/rho_re */
-//		F = sqrt(A/B); /* = batten et al's R */
-//
-//		C = shblk[IC+BOS3]*A; /* csq_le */
-//		D = shblk[IR+BOS2]*B; /* csq_re */
-//
-//		E = (C + F*D) / (1.0+F); /* roe-average (P/rho) */
-//
-//		E = sqrt(FLUID_GAMMA * E); /* roe-average c_s */
-//-----------
+
 		C = sqrt(FLUID_GAMMA * C); // left c_s
 		D = sqrt(FLUID_GAMMA * D); // right c_s
 
@@ -1102,11 +1102,12 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 	int IL = threadIdx.x - 1;
 	IL += 1*(IL < 0);
 	int IR = threadIdx.x + 1;
-	IR -= 16*(IL > 15);
+	IR -= BLOCKLENP4*(IR > (BLOCKLENP4-1));
 
-	IC += N_SHMEM_BLOCKS*16*threadIdx.y;
-	IL += N_SHMEM_BLOCKS*16*threadIdx.y;
-	IR += N_SHMEM_BLOCKS*16*threadIdx.y;
+        // Advance by the Y index
+ 	IC += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IL += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IR += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
 
 	/* Declare variable arrays */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
@@ -1118,7 +1119,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
-	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
 	if(x0 < 0) x0 += nx; // left wraps to right edge
