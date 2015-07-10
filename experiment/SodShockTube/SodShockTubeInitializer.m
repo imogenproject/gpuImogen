@@ -42,7 +42,7 @@ classdef SodShockTubeInitializer < Initializer
             obj.mode.fluid		 = true;
             obj.mode.magnet		 = false;
             obj.mode.gravity	 = false;
-            obj.cfl				 = 0.7;
+            obj.cfl				 = 0.4;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -53,7 +53,7 @@ classdef SodShockTubeInitializer < Initializer
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             
-            obj.operateOnInput(input, [1024, 4, 4]);
+            obj.operateOnInput(input, [1024, 2, 1]);
 
             obj.pureHydro = 1;
         end
@@ -112,7 +112,7 @@ classdef SodShockTubeInitializer < Initializer
             half                  = floor(obj.grid/2);
 
 	    GIS = GlobalIndexSemantics();
-        GIS.setup(obj.grid);
+            GIS.setup(obj.grid);
 
 	    %--- Compute the conditions for the domains ---%
 	    [X Y Z] = GIS.ndgridSetXYZ(half + .5);
