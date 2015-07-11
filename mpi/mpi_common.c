@@ -34,6 +34,27 @@ switch(id) {
 return MPI_BYTE;
 }
 
+/* Returns true if the type is suitable for logic AND
+ * and false if not (i.e. float/double)
+ */
+bool mpidatatypeIsInteger(MPI_Datatype t)
+{
+if(t == MPI_CHAR) return true;
+if(t == MPI_BYTE) return true;
+if(t == MPI_SHORT) return true;
+if(t == MPI_INT) return true;
+if(t == MPI_LONG) return true;
+if(t == MPI_UNSIGNED_CHAR) return true;
+if(t == MPI_UNSIGNED_SHORT) return true;
+if(t == MPI_UNSIGNED) return true;
+if(t == MPI_UNSIGNED_LONG) return true;
+
+return false;
+
+
+}
+
+
 /*mxClassID typeid_mpi2ml(MPI_Datatype md)
 {
 switch((int)md) {
