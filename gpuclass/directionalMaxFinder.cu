@@ -142,6 +142,7 @@ switch(nrhs) {
     cudaMallocHost((void **)&blkB, hblockElements * sizeof(int));
     CHECK_CUDA_ERROR("CFL malloc ints");
 
+    // FIXME: Fluid pointers are slabbed now, no need to pass all 5 seperately.
     int i;
     for(i = 0; i < fluid->nGPUs; i++) {
         cudaSetDevice(fluid->deviceID[i]);
@@ -154,8 +155,8 @@ switch(nrhs) {
 		fluid[4].devicePtr[i],
 		fluid[0].partNumel[i], blkA + i*gridsize.x, blkB + i*gridsize.x);
         CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &fluid[0], i, "CFL max finder");
-        cudaDeviceSynchronize();
     }
+
 
     mwSize dims[2];
     dims[0] = 1;
@@ -165,11 +166,24 @@ switch(nrhs) {
 
     double *maxout = mxGetPr(plhs[0]);
     double *dirout = mxGetPr(plhs[1]);
-    maxout[0] = blkA[0];
-    dirout[0] = (double)blkB[0];
+
     
-    for(i = 1; i < fluid->nGPUs*gridsize.x; i++) {
-        if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; } 
+    int devCount = 0;
+    for(i = 0; i < fluid->nGPUs*gridsize.x; i++) {
+        /* Wait for device to finish processing */
+	if(i % gridsize.x == 0) {
+	    cudaSetDevice(devCount);
+            cudaDeviceSynchronize();
+	    devCount++;
+        }
+
+	/* Download and compute local maxima */
+        if(i == 0) {
+	    maxout[0] = blkA[0];
+	    dirout[0] = (double)blkB[0];
+        } else {
+            if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; } 
+	}
     }
 
     cudaFreeHost(blkA);
