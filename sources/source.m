@@ -16,6 +16,7 @@ GIS = GlobalIndexSemantics();
 % while purely mechanical forces act only on kinetic energy + momentum
 % and self-gravity force is a function only of density
 
+% We double the dtime here because one source step is sandwiched between two flux steps
 dTime = 2 * tFraction * run.time.dTime;
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
