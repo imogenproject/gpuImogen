@@ -8,7 +8,8 @@ GEN_OPTS =
 #NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
 #NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
 # To get debuggability & ptxas chatter...
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G -Xptxas="-v"
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G 
+#-Xptxas="-v" # Put this back on opts line if you really enjoy compiler output
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
