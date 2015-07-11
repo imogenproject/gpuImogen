@@ -109,17 +109,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	CHECK_CUDA_ERROR("Copying star state to __constant__ memory");
 
 	// Get source array info and create destination arrays
-	ArrayMetadata amd;
-	double **srcs = getGPUSourcePointers(prhs, &amd, 0, 4);
+	MGArray fluid[5];
+	int worked = accessMGArrays(prhs, 0, 4, fluid);
 
-	int is3D = (amd.dim[2] > 1);
+	int is3D = (fluid->dim[2] > 1);
 
 	// FIXME: Implement (or steal from a CSG code) SphereInsideBox()
 	// Check if any part of the stellar accretion region is on our grid.
 	int mustAccrete = 1;
 	for(j = 0; j < 3; j++) {
 		lowleft[j] = (i0[j]-1+3*(topologySize[j] > 1) )*H; // Use topologySize to avoid accreting from halo region, which would get doublecounted
-		upright[j] = (i0[j]-1+amd.dim[j]-3*(topologySize[j] > 1))*H;
+		upright[j] = (i0[j]-1+fluid->dim[j]-3*(topologySize[j] > 1))*H;
 
 		if(lowleft[j] > originalStarState[STAR_X+j] + originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our left  > R_star from the star, no accretion
 		if(upright[j] < originalStarState[STAR_X+j] - originalStarState[STAR_RADIUS]) mustAccrete = 0; // If our right > R_star from the star, no accretion
@@ -134,6 +134,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	for(j = 0; j < 7; j++) localFinalDelta[j] = 0;
 	int nparts = 0;
 	double *hostDeltas;
+
+	double *S[5];
+	int i;
+	for(i = 0; i < 5; i++) S[i] = fluid[i].devicePtr[0];
 
 	// If we've determined that star intersects our grid
 	if(mustAccrete) {
@@ -170,17 +174,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		// Also force it to not begin further right
 		// We presume that the domain & radius are compatible with the left and right edge conditions not being simultaneously met
 		// As might be implied by the phrase "COMPACT object".
-		if( (LL.x + acGrid.x*ACCRETE_NX) > (amd.dim[0]-3*(topologySize[0] > 1)) ) LL.x = amd.dim[0] - 3*(topologySize[0] > 1) - acGrid.x*ACCRETE_NX;
-		if( (LL.y + acGrid.y*ACCRETE_NY) > (amd.dim[1]-3*(topologySize[1] > 1)) ) LL.y = amd.dim[1] - 3*(topologySize[1] > 1) - acGrid.y*ACCRETE_NY;
+		if( (LL.x + acGrid.x*ACCRETE_NX) > (fluid->dim[0]-3*(topologySize[0] > 1)) ) LL.x = fluid->dim[0] - 3*(topologySize[0] > 1) - acGrid.x*ACCRETE_NX;
+		if( (LL.y + acGrid.y*ACCRETE_NY) > (fluid->dim[1]-3*(topologySize[1] > 1)) ) LL.y = fluid->dim[1] - 3*(topologySize[1] > 1) - acGrid.y*ACCRETE_NY;
 		int nvertical = 2*starRadInCells + 8;
-		if(( (LL.z + nvertical) > (amd.dim[2]-3*(topologySize[2] > 1)) ) && is3D) LL.z = amd.dim[2] - 3*(topologySize[2] > 1) - nvertical;
+		if(( (LL.z + nvertical) > (fluid->dim[2]-3*(topologySize[2] > 1)) ) && is3D) LL.z = fluid->dim[2] - 3*(topologySize[2] > 1) - nvertical;
 
 		//printf("check LL: %i %i %i\n", LL.x, LL.y, LL.z);
 		//printf("check gs: %i %i %i\n", acGrid.x, acGrid.y, acGrid.z);
 		//printf("check bs: %i %i %i\n", acBlock.x,acBlock.y,acBlock.z);
 
 		// call accretion kernel: transfers bits of changed state to outputState
-		cudaStarAccretes<<<acGrid, acBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], LL, H, amd.dim[0], amd.dim[1], amd.dim[2], stateOut, is3D ? 2*starRadInCells+8 : 1);
+		cudaStarAccretes<<<acGrid, acBlock>>>(S[0], S[1], S[2], S[3], S[4], LL, H, fluid->dim[0], fluid->dim[1], fluid->dim[2], stateOut, is3D ? 2*starRadInCells+8 : 1);
 
 		cudaDeviceSynchronize(); // Force accretion to finish.
 		CHECK_CUDA_ERROR("just ran cudaStarAccretes()");
@@ -265,15 +269,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	dim3 gravBlock, gravGrid;
 
-	int3 arraysize; arraysize.x = amd.dim[0]; arraysize.y = amd.dim[1]; arraysize.z = amd.dim[2];
+	int3 arraysize; arraysize.x = fluid->dim[0]; arraysize.y = fluid->dim[1]; arraysize.z = fluid->dim[2];
 
-	int *dim = &amd.dim[0];
+	int *dim = &fluid->dim[0];
 	dim3 tileDimension(GRAVITY_NX, GRAVITY_NY, 1);
 	dim3 gravHalo(0,0,0);
         getTiledLaunchDims(dim, &tileDimension, &gravHalo, &gravBlock, &gravGrid);
 	gravGrid.z = 1;
 
-	cudaStarGravitation<<<gravGrid, gravBlock>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], arraysize);
+	cudaStarGravitation<<<gravGrid, gravBlock>>>(S[0], S[1], S[2], S[3], S[4], arraysize);
 	CHECK_CUDA_ERROR("Ran pointlike gravitation routine");
 
 }

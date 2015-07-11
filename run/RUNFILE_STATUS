@@ -1,30 +1,29 @@
-Advection:    runs
+Advection:    Works, initializer cleaned up and presentable
 bonner_ebert: Pending gravity support
-Bow Shock:    GOOD
-Centrifuge:   GOOD
-corrugation:  GOOD
-CPAW:         unknown
-dataFromFile: dead
-debug:        dead
-Dryrun:       RUNS
-fluidJet:     GOOD
-Fromfile:     unknown
+Bow Shock:    WORKING (20140523)
+Centrifuge:   WORKING (20140523)
+corrugation:  broken (magnetism)
+CPAW:         broken (not WORKING)
+dataFromFile: ?
+Dryrun:       WORKING (20140523)
+fluidJet:     WORKING (20140523)
+Fromfile:     ?
 FullTestSuite:RUNS
 gravityToy:   pending gravity support
 gravJet:      pending gravity support
 hachisuDisk:  pending gravity support
-KH test:      GOOD
-KojimaDisk:   GOOD
-magJetTest:   unknown
-Brio-Wu:      unknown
-OTV test:     GOOD
-RHD shock:    Runs
+KH test:      WORKING (20140523)
+KojimaDisk:   WORKING (20140522)
+magJetTest:   broken (magnetism)
+Brio-Wu:      broken (magnetism)
+OTV test:     broken (magnetism)
+RHD shock:    WORKING (hydro, 20140523)
 RT:           unknown (should run)
 SedovTaylor:  Runs (claimed github 2/27/14)
 SodShockTube: Runs
 Resumer:      Runs
 
 pending - ought to work but needs gravity
-GOOD    - confirmed working IRL
-dead    - definitely won't work now
+Note: All simulations requiring magnetism are marked broken until
+      Github issue #39 is fixed
 

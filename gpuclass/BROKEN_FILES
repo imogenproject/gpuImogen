@@ -1,10 +1,10 @@
-cudaAccretingStar.cu		| builds 			| S USES __constant_ will barf on multidevice
+cudaAccretingStar.cu		| WORKSFORME, SINGLE-GPU	| S USES __constant_ will barf on multidevice
 cudaArrayAtomic.cu		| SUCCESSFULLY FUZZED		| E
-cudaArrayRotate2.cu		| SUCCESSFULLY FUZZED		| E
+cudaArrayRotateB.cu		| SUCCESSFULLY FUZZED		| E
 cudaBasicOperations.cu		| WORKSFORME			| E
 cudaCommon.cu			| 				| E
 cudaFluidStep.cu		| multi-device parallel works n | E
-cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S
+cudaFreeRadiation.cu		| SUCCESSFULLY FUZZED		| S (Generates discrepancies in MHD mode, problem may be in test module and not here...)
 cudaFwdAverage.cu		| builds 			| M
 cudaFwdDifference.cu		| builds			| M
 cudaHaloExchange.cu		| seems to work...		| P
@@ -34,19 +34,6 @@ P = parallel operation
 S = source terms
 
 These I think are never used so they're dead last priority:
-cudaAdvect.cu			| dead (was never alive)	| 
 cudaMagNew.cu			| dead (MHD-ONLY)		| M
-cudaArrayRotate.cu		| shim, OBSOLETE		| E
-cudaFluidTVD.cu			| OBSOLETE
-cudaFluidW.cu			| OBSOLETE
 cudaPointPotentials.cu		| dead (compact objects only)
-cudaSetMirror.cu		| dead (OBSOLETE?)
-cudaShift.cu			| dead (OBSOLETE?)
-cudaSourceAntimach.cu		| dead (OBSOLETE?)
-cudaSourceConstantG.cu		| dead (NEVER USED EVEN ONCE?)
-cudaSourceForceTerms.cu		| dead (never used?)
-cudaSourceRotatingFrame2.cu	| dead (never used?)
 freezeAndPtot_new.cu		| dead
-GPU_ctrl.cu			| ~~ Obsolete			| 
-GPU_cudamemcpy.cu		| OBSOLETE			| 
-GPU_exit.cu			| OBSOLETE			| 
