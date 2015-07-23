@@ -36,8 +36,8 @@ if [ ${1} = "help" ]; then
   echo "+----=< *IMOGEN HELP* >=======----------------------------------------"
   echo "|      \\=============/"
   echo "|"
-  echo "| Serial operation: ./imogen serial   runfile streamnumber GPUnumber"
-  echo "| Local parallel:   ./imogen parallel runfile streamnumber #procs"
+  echo "| Serial operation: ./imogen serial   runfile streamnumber GPUn"
+  echo "| Local parallel:   ./imogen parallel runfile streamnumber GPUs #procs"
   echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np] [queue]"
   echo "|                   (tees realtime output to ~/imogenout)"
   echo "|"
@@ -65,7 +65,7 @@ fi
 redirectStr="${HOME}/Results/logfile${stream}.out"
 
 if [ -f "$redirectStr" ]; then
-  echo ">>> WARNING: requested output stream exists; Appending."
+  echo ">>> NOTE: requested output stream exists; Appending."
 fi
 
 
@@ -74,21 +74,28 @@ if [ ${1} = "serial" ]; then
   gpuno=${4}
   if [ -z "$4" ]; then
     gpuno=0
+    echo ">>> WARNING: defaulting to GPUs = [0]"
   fi
 
-  echo "imogenLoad('${RUNFILE}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >> $redirectStr & 
+  echo "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >> $redirectStr & 
   exit 0
 fi
 
 if [ ${1} = "parallel" ]; then
-  # ./imogen parallel runfile stream# nprocs
-  numproc=${4}
+  # ./imogen parallel runfile stream#  GPU# nprocs
+  gpuno=${4}
+  if [ -z "$4" ]; then
+    gpuno=0
+    echo ">>> WARNING: defaulting to GPUs = [0]"
+  fi
+
+  numproc=${5}
   if [ -z "$numproc" ]; then
     numproc=1
     echo ">>> WARNING: Parallel run defaulting to np=1"
   fi
 
-  mpirun -np $numproc matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);" >> $redirectStr &
+  mpirun -np $numproc matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuno);" >> $redirectStr &
 
   exit 0
 fi
