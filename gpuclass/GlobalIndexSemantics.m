@@ -27,7 +27,13 @@ classdef GlobalIndexSemantics < handle
     end % Private
 
     properties (SetAccess = private, GetAccess = private)
+        % The local parts of the x/y/z index counting vectors
+        % Matlab format (from 1)
         localXvector; localYvector; localZvector; circularBCs;
+
+        % Local indices such that validArray(nohaloXindex, ...) contains everything but the halo cells
+        % Useful for array reducing operations
+        nohaloXindex, nohaloYindex, nohaloZindex;
     end
 
     properties (Dependent = true)
@@ -54,7 +60,8 @@ classdef GlobalIndexSemantics < handle
 
         function obj = setup(obj, global_size)
             % setup(global_resolution) sets the global resolution & does bookkeeping
-
+            if numel(global_size) == 2; global_size(3) = 1; end
+            
             obj.pGlobalDims = global_size + 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
             pMySize = floor(obj.pGlobalDims ./ double(obj.topology.nproc));
@@ -100,9 +107,19 @@ classdef GlobalIndexSemantics < handle
         % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
         function [u v w] = toLocalIndices(obj, x, y, z)
             u = []; v = []; w = [];
+            if (nargin == 2) & (size(x,2) == 3);
+                z = x(:,3) - obj.pMyOffset(3);
+                y = x(:,2) - obj.pMyOffset(2);
+                x = x(:,1) - obj.pMyOffset(1);
+  
+                keep = (x>0) & (x<=obj.pMySize(1)) & (y>0) & (y<=obj.pMySize(2)) & (z>0) & (z<=obj.pMySize(3));
+                u = [x(keep) y(keep) z(keep)];
+                return;
+            end
             if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<=obj.pMySize(1))); end
             if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<=obj.pMySize(2))); end
             if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<=obj.pMySize(3))); end
+
         end
 
         function [x y z] = toCoordinates(obj, I0, Ix, Iy, Iz, h, x0)
@@ -131,16 +148,6 @@ classdef GlobalIndexSemantics < handle
             [x y z] = obj.ndgridSetXYZ();
             Y = afunc(x, y, z);
         end
-
-%        function [idx, Y] = evaluateFunctionConditionally(obj, cond, afunc)
-%            [x y z] = obj.ndgridSetXYZ();
-%
-%            only = (cond(x,y,z) == 1);
-%
-%
-%
-%        end
-
         
         function localset = LocalIndexSet(obj, globalset, d)
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
@@ -156,7 +163,6 @@ classdef GlobalIndexSemantics < handle
                 end
             end
         end
-
         
         function LL = cornerIndices(obj)
         % Return the index of the lower left corner in both local and global coordinates
@@ -175,7 +181,7 @@ classdef GlobalIndexSemantics < handle
             % vectors
             ndim = numel(obj.pGlobalDims);
 
-            x=[];
+            x=[]; lnh = [];
             for j = 1:ndim;
                 q = 1:obj.pMySize(j);
                 % This line degerates to the identity operation if nproc(j) = 1
@@ -186,18 +192,28 @@ classdef GlobalIndexSemantics < handle
                     q = mod(q + obj.pHaloDims(j) - 1, obj.pHaloDims(j)) + 1;
                 end
                 x{j} = q;
+
+                lmin = 1; lmax = obj.pMySize(j);
+                if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
+                    lmin = 4;
+                end
+                if (obj.topology.coord(j) < obj.topology.nproc(j)-1) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
+                    lmax = lmax - 3;
+                end
+
+                lnh{j} = lmin:lmax;
             end
 
             if ndim == 2; x{3} = 1; end
         
-            obj.localXvector = x{1}; obj.localYvector = x{2}; obj.localZvector = x{3};       
+            obj.localXvector = x{1}; obj.localYvector = x{2}; obj.localZvector = x{3};
+            obj.nohaloXindex = lnh{1}; obj.nohaloYindex = lnh{2}; obj.nohaloZindex = lnh{3};
         end
 
         function [u v w] = ndgridVecs(obj)
             u = obj.localXvector; v = obj.localYvector; w = obj.localZvector;
         end
 
-        
         function [x y z] = ndgridSetXYZ(obj, offset, scale)
             % [x y z] = ndgridsetXYZ(offset, scale) returns the part of
             % ndgrid( 1:grid(1), ...) that lives on this node.
@@ -283,6 +299,19 @@ classdef GlobalIndexSemantics < handle
             index = double(mod(obj.topology.neighbor_left+1, obj.topology.nproc));
         end
 
+        function slim = withoutHalo(obj, array)
+	    cantdo = any(size(array) ~= obj.pMySize);
+            cantdo = mpi_max(cando); % All nodes must receive an array of the appropriate size
+  
+            if cantdo;
+                disp(obj.topology);
+                disp([size(array); obj.pMySize]);
+                error('Oh the noez, I received an array of invalid size!');
+            end
+      
+            slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
+        end
+        
         % Given a set of values to index a global-sized array, restrict it to those within the local domain.
         %function [out index] = findIndicesInMyDomain(obj, in, indexMode)
         %    if (nargin == 2) || (indexMode == 1); in = in - 1; end % convert to zero-based indexing
