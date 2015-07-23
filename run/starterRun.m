@@ -1,14 +1,9 @@
-function starterRun()
-% This routine does the initialization and directory search to locate imogen root for starting a new
-% run.
+function starterRun(gpuSet)
+% This routine does the initialization to include the imogen program paths and stand up the MPI
+% and GPU routines necessary for new runs.
 
-%---------------------------------------------------------------------------------------------------
-% Locate Imogen root directory and source subfolder paths
-%--------------------------------------------------------
-
-	clear; % Clear existing variables from workspace to prevent conflict.
-
-    % Attempt locate path from location of this m-file
+    % Attempt locate path from location of this m-file and make sure Imogen paths
+    % are in the loop
     try
         rootPath = [strrep(mfilename('fullpath'),'starterRun','') '../'];
         cd(rootPath);
@@ -33,4 +28,33 @@ function starterRun()
     catch MERR
         error('Imogen:starterRun:ImogenRootFailure','Unable to find Imogen root directory. Run aborted.');
     end
+
+    % Get us ready to talk to MPI
+    if ~mpi_isinitialized()
+        context = parallel_start();
+        topology = parallel_topology(context, 3);
+        GIS = GlobalIndexSemantics(context, topology);
+        if context.rank==0
+            fprintf('----------\nFirst start: MPI is now ready. Roll call:\n'); end
+	mpi_barrier();
+        fprintf('Rank %i ready.\n', int32(context.rank));
+        mpi_barrier();
+        if context.rank==0; fprintf('----------\n'); end
+    else
+        if context.rank==0; fprintf('----------\nMPI is already ready.\n----------\n'); end
+    end
+
+    %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
+    gm = GPUManager.getInstance();
+
+    if ~gm.isInitd;
+        haloSize = 3; dimensionDistribute = 1;
+        gm.init(gpuSet, haloSize, dimensionDistribute);
+        GPU_ctrl('peers',1);
+        fprintf('Rank %i: Initialized GPUs.\n');
+    end
+
+    mpi_barrier();
+
+
 end
