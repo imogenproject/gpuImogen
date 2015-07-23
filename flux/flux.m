@@ -9,43 +9,15 @@ function flux(run, mass, mom, ener, mag, order)
 %>< mag         magnetic field                                                          MagnetArray(3)
 %>> order       direction of flux sweep (1 forward/-1 backward)                         int     +/-1
 
-    
     %-----------------------------------------------------------------------------------------------
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
 
-%    switch (-order)
-%        case 1;
-            % Permutations of [1 2 3]
-            p = [3 2 1 ;3 1 2;2 3 1;1 2 3;2 1 3;1 3 2];
-%            p= perms([1 2 3]);
-            directVec = p(mod(run.time.iteration-1,6)+1,:)';
-            magneticIndices = [3 2; 3 1; 2 1];
-            magneticIndices = magneticIndices(directVec,:);
-%        case -1;
-%             p = perms([3 2 1]);
-%             directVec = p(mod(run.time.iteration-1,6)+1,:)';
-%             magneticIndices = [2 3; 1 3; 1 2];
-%             magneticIndices = magneticIndices(directVec,:);
-%        otherwise;
-%            run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
-%            return;
-%     end
+    p = [1 3 2; 2 1 3; 1 2 3; 2 3 1; 3 1 2; 3 2 1];
 
-%    switch (order)
-%        case 1;
-%            directVec = [1; 2; 3];
-%            magneticIndices = [2 3; 1 3; 1 2];
-%        case -1;
-%            directVec = [3; 2; 1];
-%            magneticIndices = [2 1; 3 1; 3 2];
-%        otherwise;
-%            run.save.logPrint('%g is not a recognized direction. Fluxing aborted.\n', order);
-%            return;
-%    end
-%    
-%    directVec = circshift(directVec, order*[mod(run.time.iteration-1,3), 0]);
-%    magneticIndices = circshift(magneticIndices, order*[mod(run.time.iteration-1,3), 0]);
+    directVec = p(mod(run.time.iteration-1,6)+1,:)';
+    magneticIndices = [3 2; 3 1; 2 1];
+    magneticIndices = magneticIndices(directVec,:);
 
     %===============================================================================================
     if (order > 0) %                             FORWARD FLUXING
