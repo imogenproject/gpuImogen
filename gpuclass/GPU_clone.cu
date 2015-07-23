@@ -24,9 +24,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   CHECK_CUDA_ERROR("entering GPU_clone");
   
   MGArray orig;
-  int worked = accessMGArrays(prhs, 0, 0, &orig);
+  int worked = MGA_accessMatlabArrays(prhs, 0, 0, &orig);
 
-  MGArray *nu = createMGArrays(plhs, 1, &orig);
+  MGArray *nu = MGA_createReturnedArrays(plhs, 1, &orig);
 
   int j;
   int sub[6];

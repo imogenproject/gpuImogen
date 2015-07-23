@@ -98,8 +98,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     MGArray srcArray;
     MGArray *dstArray;
-    int worked = accessMGArrays(prhs, 0, 0, &srcArray);
-    dstArray = createMGArrays(plhs, 1, &srcArray);
+    int worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcArray);
+    dstArray = MGA_createReturnedArrays(plhs, 1, &srcArray);
 
     int j;
     int sub[6];
@@ -127,22 +127,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       if(ne != 1) mexErrMsgTxt("cudaBasicOperations: fatal, y = f(a, scalar): \"scalar\" is not scalar.");
 
       n = *mxGetPr(prhs[1]);
-      worked = accessMGArrays(prhs, 0, 0, &srcA);
+      worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcA);
       optype = 1;
     } else if(mxGetClassID(prhs[0]) == mxDOUBLE_CLASS) {
       int64_t ne = mxGetNumberOfElements(prhs[0]);
       if(ne != 1) mexErrMsgTxt("cudaBasicOperations: fatal, y = f(scalar, a): \"scalar\" is not scalar.");
 
       n = *mxGetPr(prhs[0]);
-      worked = accessMGArrays(prhs, 1, 1, &srcA);
+      worked = MGA_accessMatlabArrays(prhs, 1, 1, &srcA);
       optype = 2;
     } else {
-      worked = accessMGArrays(prhs, 0, 0, &srcA);
-      worked = accessMGArrays(prhs, 1, 1, &srcB);
+      worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcA);
+      worked = MGA_accessMatlabArrays(prhs, 1, 1, &srcB);
       optype = 3;
     }
     
-    dest   = createMGArrays(plhs, 1, &srcA);
+    dest   = MGA_createReturnedArrays(plhs, 1, &srcA);
 
     int i;
     int sub[6];

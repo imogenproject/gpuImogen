@@ -80,42 +80,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   }
   m.numSlabs = 1;
 
-  MGArray *dest = createMGArrays(plhs, 1, &m);
+  MGArray *dest = MGA_createReturnedArrays(plhs, 1, &m);
 
-  double *gmem = NULL;
- 
-  int u, v, w;
-  int64_t iT, iS;
-
-  for(i = 0; i < m.nGPUs; i++) {
-    calcPartitionExtent(dest, i, &sub[0]);
-    gmem = (double *)realloc((void *)gmem, m.partNumel[i]*sizeof(double));
-    
-    // Copy the partition out of the full host array
-    for(w = sub[2]; w < sub[2]+sub[5]; w++)
-      for(v = sub[1]; v < sub[1]+sub[4]; v++)
-        for(u = sub[0]; u < sub[0] + sub[3]; u++) {
-          iT = (u-sub[0]) + sub[3]*(v - sub[1]  + sub[4]*(w-sub[2]));
-          iS = u+m.dim[0]*(v+m.dim[1]*w);
-
-          gmem[iT] = hmem[iS];
-        }
-
-    cudaSetDevice(m.deviceID[i]);
-    cudaError_t fail;// = cudaMalloc((void **)&m.devicePtr[i],  sub[3]*sub[4]*sub[5]*sizeof(double));
-  //  if(fail == cudaErrorMemoryAllocation) mexErrMsgTxt("GPU_upload: H2D, error attempting to allocate memory (cudaErrorMemoryAllocation). We've been had.");
-
-    fail = cudaMemcpy((void *)dest->devicePtr[i], (void *)gmem, m.partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
-    if(fail != cudaSuccess) mexErrMsgTxt("GPU_upload: H2D, Copy to device failed.");
-  }
-
-
-
-//  mwSize dims[2]; dims[0] = 6+2*m.nGPUs; dims[1] = 1;
-//  plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
-//  int64_t *tag = (int64_t *)mxGetData(plhs[0]);
-
-//  serializeMGArrayToTag(&m, tag);
-
+  MGA_uploadArrayToGPU(hmem, dest, 0);
   return;
 }

@@ -36,7 +36,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   int operation = (int)*mxGetPr(prhs[2]);
 
   MGArray phi;
-  int worked = accessMGArrays(prhs, 0, 0, &phi);
+  int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
   int j; int sub[6];
 
   CHECK_CUDA_ERROR("Entering cudaArrayAtomic");

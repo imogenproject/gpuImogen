@@ -66,14 +66,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray f[8];
 
 	if( isHydro == false ) {
-		accessMGArrays(prhs, 0, 7, &f[0]);
+		MGA_accessMatlabArrays(prhs, 0, 7, &f[0]);
 	} else {
-		accessMGArrays(prhs, 0, 4, &f[0]);
+		MGA_accessMatlabArrays(prhs, 0, 4, &f[0]);
 	}
 
 	MGArray *dest;
 	if(nlhs == 1) {
-		dest = createMGArrays(plhs, 1, &f[0]);
+		dest = MGA_createReturnedArrays(plhs, 1, &f[0]);
 	}
 
 	double hostRP[5];

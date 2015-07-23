@@ -57,8 +57,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     // Get source array info and create destination arrays
     MGArray src[3];
-    int worked = accessMGArrays(prhs, 0, 2, src);
-    MGArray *dst = createMGArrays(plhs, 1, src);
+    int worked = MGA_accessMatlabArrays(prhs, 0, 2, src);
+    MGArray *dst = MGA_createReturnedArrays(plhs, 1, src);
 
     // Establish launch dimensions & a few other parameters
     double lambda     = *mxGetPr(prhs[3]);

@@ -64,6 +64,10 @@ and considerably speeds up the process.
 
 //__device__ void __syncthreads(void);
 
+/* This is my handwritten assembly version of the Osher function
+ * It is observed to to save some 10% on execution time if used
+ */
+
 /*__device__ double slopeLimiter_Osher(double A, double B)
 {
 double retval;
@@ -142,10 +146,11 @@ __constant__ __device__ double fluidQtys[8];
 #define FLUID_GG1     fluidQtys[2]
 #define FLUID_MINMASS fluidQtys[3]
 #define FLUID_MINEINT fluidQtys[4]
-#define FLUID_GOVERGM1 fluidQtys[7]
-
 #define MHD_PRESS_B   fluidQtys[5]
 #define MHD_CS_B      fluidQtys[6]
+#define FLUID_GOVERGM1 fluidQtys[7]
+
+
 
 __constant__ __device__ int    arrayParams[4];
 #define DEV_NX arrayParams[0]
@@ -168,13 +173,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	hydroOnly = (int)*mxGetPr(prhs[11]);
 
 	MGArray fluid[5], mag[3], PC[2];
-	int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
 
 	//cudaStream_t *GPUStreamList = getGPUTypeStreams(prhs[0]);
 
 	// The sanity checker tended to barf on the 6 [allzeros] that represent "no array" before.
-	if(hydroOnly == false) worked = accessMGArrays(prhs, 5, 7, &mag[0]);
-	worked = accessMGArrays(prhs, 8, 9, &PC[0]);
+	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 5, 7, &mag[0]);
+	worked = MGA_accessMatlabArrays(prhs, 8, 9, &PC[0]);
 
 	double lambda     = *mxGetPr(prhs[10]);
 
@@ -185,11 +190,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int steptype = (int)thermo[2];
 	unsigned int stepdirect= (unsigned int)thermo[3];
 
+	/* To be uploads to fluidQtys[] constant memory array */
 	double gamHost[8];
 	gamHost[0] = gamma;
 	gamHost[1] = gamma-1.0;
 	gamHost[2] = gamma*(gamma-1.0);
 	gamHost[3] = rhomin;
+	// Calculation of minimum internal energy for adiabatic fluid:
 	// assert     cs > cs_min
 	//     g P / rho > g rho_min^(g-1)
 	// (g-1) e / rho > rho_min^(g-1)
@@ -242,11 +249,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		// Switches between various prediction steps
 		switch(steptype) {
 		case STEPTYPE_XINJIN: {
-			cudaMalloc((void **)&wStepValues[0],fluid[0].numel*sizeof(double)*6); // [rho px py pz E P]_.5dt
-			CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+			// Allocate memory for the half timestep's output
+			int numarrays = 6 ;
+			for(i = 0; i < fluid->nGPUs; i++) {
+				cudaSetDevice(fluid->deviceID[i]);
+				CHECK_CUDA_ERROR("cudaSetDevice()");
+				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
+				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+			}
+
+
 			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+
 			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y, (int)fluid->numel);
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+
+#ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
+#ifdef DEBUGMODE
+			printf("WARNING: Operating at first order for debug purposes!\n");
+			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].numel*sizeof(double), cudaMemcpyDeviceToDevice);
+			//returnDebugArray(fluid, 6, wStepValues, plhs);
+#endif
+#else // runs at 2nd order
 
 			dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
 			dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
@@ -258,6 +282,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
 			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+#endif
 		} break;
 		case STEPTYPE_HLL:
 		case STEPTYPE_HLLC: {
@@ -322,12 +347,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			}
 			for(i = 0; i < fluid->nGPUs; i++) {
 				// Release the memory taken for this step
+				cudaSetDevice(fluid->deviceID[i]);
+				CHECK_CUDA_ERROR("cudaSetDevice();");
 				cudaFree(wStepValues[i]);
 				CHECK_CUDA_ERROR("cudaFree()");
 			}
 		} break;
 		}
-		if(fluid->partitionDir == PARTITION_X) exchangeMGArrayHalos(fluid, 5);
+		if(fluid->partitionDir == PARTITION_X) MGA_exchangeLocalHalos(fluid, 5);
 		CHECK_CUDA_ERROR("after exchange halos");
 
 		// We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
@@ -356,7 +383,7 @@ void cfSync(double *cfArray, int cfNumel, const mxArray *topo)
 {
 	pParallelTopology topology = topoStructureToC(topo);
 
-	/* Reversed for silly Fortran memory ordering */
+	/* Reverse silly Fortran memory ordering */
 	int d = 0;
 	int dmax = topology->nproc[d];
 
@@ -418,41 +445,6 @@ void cfSync(double *cfArray, int cfNumel, const mxArray *topo)
 	free(storeA); free(storeB);
 
 	return;
-
-}
-
-pParallelTopology topoStructureToC(const mxArray *prhs)
-{
-	mxArray *a;
-
-	pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
-
-	a = mxGetFieldByNumber(prhs,0,0);
-	pt->ndim = (int)*mxGetPr(a);
-	a = mxGetFieldByNumber(prhs,0,1);
-	pt->comm = (int)*mxGetPr(a);
-
-	int *val;
-	int i;
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
-	for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
-	for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
-	for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
-	for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
-
-	for(i = pt->ndim; i < 4; i++) {
-		pt->coord[i] = 0;
-		pt->nproc[i] = 1;
-	}
-
-	return pt;
 
 }
 
@@ -1351,6 +1343,9 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 
 }
 
+#undef DBGSAVE
+#define DBGSAVE(n, x) if(thisThreadDelivers) { Qstore[((n)+6)*(1024*64)] = (x); }
+
 template <unsigned int PCswitch>
 __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel)
 {
@@ -1359,11 +1354,11 @@ __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double 
 	int IL = threadIdx.x - 1;
 	IL += 1*(IL < 0);
 	int IR = threadIdx.x + 1;
-	IR -= 1*(IL > 15);
+	IR -= 1*(IL > (BLOCKLENP4-1));
 
-	IC += 4*16*threadIdx.y;
-	IL += 4*16*threadIdx.y;
-	IR += 4*16*threadIdx.y;
+	IC += 4*BLOCKLENP4*threadIdx.y;
+	IL += 4*BLOCKLENP4*threadIdx.y;
+	IR += 4*BLOCKLENP4*threadIdx.y;
 
 	/* Declare variable arrays */
 	__shared__ double shblk[2*YBLOCKS*4*BLOCKLENP4];
@@ -1372,7 +1367,7 @@ __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double 
 
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
-	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
+	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= BLOCKLENP4-3);
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
 	if(x0 < 0) x0 += nx; // left wraps to right edge

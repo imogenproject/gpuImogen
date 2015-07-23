@@ -141,6 +141,12 @@ return (int64_t *)mxGetData(tag);
 
 }
 
+cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
+	mxArray *streamptr  = mxGetProperty(fluidarray, 0, "streamptr");
+
+	return (cudaStream_t *)(*((int64_t *)mxGetData(streamptr)) );
+}
+
 // SERDES routines
 void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
@@ -215,7 +221,7 @@ return;
 }
 
 // Helpers to easily access/create multiple arrays
-int accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg)
+int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg)
 {
 int i;
 prhs += idxFrom;
@@ -230,7 +236,7 @@ for(i = 0; i < (idxTo + 1 - idxFrom); i++) {
 return 0;
 }
 
-MGArray *allocMGArrays(int N, MGArray *skeleton)
+MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 {
 // Do some preliminaries,
 MGArray *m = (MGArray *)malloc(N*sizeof(MGArray));
@@ -240,7 +246,11 @@ int j;
 
 int sub[6];
 
-/* Don't let being passed a slab cause a defective allocation or output */
+/* If we are passed a slab array (e.g. the second slab of a 5-slab set),
+ * allocate this array to be a single-slab array (i.e. assume that unless
+ * explicitly stated otherwise, "make new a new array like skeleton" means
+ * one slab element, not the whole thing.
+ */
 int nActualSlabs = skeleton->numSlabs;
 if(nActualSlabs <= 0) nActualSlabs = 1;
 
@@ -269,16 +279,16 @@ for(i = 0; i < N; i++) {
         if(m[i].numSlabs > 1) num2alloc = m[i].slabPitch[j];
 
         cudaMalloc((void **)&m[i].devicePtr[j], num2alloc);
-        CHECK_CUDA_ERROR("createMGArrays: cudaMalloc");
+        CHECK_CUDA_ERROR("MGA_createReturnedArrays: cudaMalloc");
     }
 }
 
 return m;
 }
 
-MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton)
+MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton)
 {
-MGArray *m = allocMGArrays(N, skeleton);
+MGArray *m = MGA_allocArrays(N, skeleton);
 
 int i;
 
@@ -296,7 +306,7 @@ for(i = 0; i < N; i++) {
 return m;
 }
 
-void returnAnMGArray(mxArray *plhs[], MGArray *m)
+void MGA_returnOneArray(mxArray *plhs[], MGArray *m)
 {
 mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*m->nGPUs; dims[1] = 1;
 int64_t *r;
@@ -307,6 +317,21 @@ r = (int64_t *)mxGetData(plhs[0]);
 serializeMGArrayToTag(m, r);
 }
 
+void MGA_delete(MGArray *victim)
+{
+	if(victim->numSlabs < 1) return; // This is a slab reference and was never actually allocated. Ignore it.
+
+	for(int j = 0; j<victim->nGPUs; j++){
+		cudaSetDevice(victim->deviceID[j]);
+		CHECK_CUDA_ERROR("in MGA_delete, setting device");
+		cudaFree(victim->devicePtr[j]);
+		CHECK_CUDA_ERROR("in MGA_delete, freeing");
+	}
+}
+
+/* Some routines still run in the mold of "we were passed N arrays so expect N pointers"
+ * and this makes it simple enough to do this.
+ */
 void pullMGAPointers( MGArray *m, int N, int i, double **dst)
 {
 	int x;
@@ -324,6 +349,200 @@ dim3 makeDim3(unsigned int *b) {
 dim3 makeDim3(int *b) {
     dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
 
+/* A node whose MGA partitions are of equal size may call this function
+ * resulting in:
+ *    in.devicePtr[partitionOnto][i] = REDUCE( { in->devicePtr[N][i] } ),
+ * for N in (0, 1, ..., in->nGPus-1) and i in (0, ..., n->partNumel[0])
+ * if(redistribute) { copies in->devicePtr[partitionOnto] back to the others as well. }
+ */
+int MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute)
+{
+	/* FIXME: not implemented */
+	FATAL_NOT_IMPLEMENTED
+	return -1;
+}
+
+/* A node whose MGAs have compatible sizes transverse to dir may call this
+ * such that the array in 'dir' is reduced to size 1
+ * If dir != in->partitionDir:
+ *   each partition will simply be pancaked in parallel, partition scheme unchanged
+ * If dir == in->partitionDir,
+ *   Each partition is reduced in parallel
+ *   Reduce is applied across devices to the 2D pancakes
+ *   if(redistribute && (dir == in->partitionDir)) {
+ *     The result is marked as PARTITION_CLONED and the reduction memcpy()ed back }
+ */
+int MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute)
+{
+
+	int i;
+	int sub[6];
+
+	MGArray clone = *in;
+
+	clone.dim[dir] = 1;
+
+	if(dir == in->partitionDir) {
+		clone.haloSize = PARTITION_CLONED;
+		out = MGA_allocArrays(1, &clone);
+
+		for(i = 0; i < in->nGPUs; i++) {
+			calcPartitionExtent(in, i, &sub[0]);
+			if(sub[3+dir] > 1) {
+				/* FIXME: reduce in->devicePtr[i] into out->devicePtr[i] */
+				FATAL_NOT_IMPLEMENTED
+			} else {
+				cudaSetDevice(in->deviceID[i]);
+				CHECK_CUDA_ERROR("cudaSetDevice");
+				cudaMemcpy(out->devicePtr[i], in->devicePtr[i], in->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+				CHECK_CUDA_ERROR("cudaMemcpy");
+			}
+		}
+
+		MGA_reduceClonedArray(out, operate, redistribute);
+		if(redistribute) MGA_distributeArrayClones(out, partitionOnto);
+	} else {
+		/* Reduce each device's array in parallel */
+		for(i = 0; i < in->nGPUs; i++) {
+			FATAL_NOT_IMPLEMENTED
+			cudaSetDevice(in->deviceID[i]);
+			/* FIXME: reduce in->devicePtr[i] to out->devicePtr[i] */
+		}
+
+	}
+
+	return 0;
+
+}
+
+/* FIXME: Copied this flush out of cudaFluidStep, it should be checked for bullshit */
+pParallelTopology topoStructureToC(const mxArray *prhs)
+{
+	mxArray *a;
+
+	pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
+
+	a = mxGetFieldByNumber(prhs,0,0);
+	pt->ndim = (int)*mxGetPr(a);
+	a = mxGetFieldByNumber(prhs,0,1);
+	pt->comm = (int)*mxGetPr(a);
+
+	int *val;
+	int i;
+
+	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
+	for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
+
+	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
+	for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
+
+	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
+	for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
+
+	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
+	for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
+
+	for(i = pt->ndim; i < 4; i++) {
+		pt->coord[i] = 0;
+		pt->nproc[i] = 1;
+	}
+
+	return pt;
+
+}
+
+/* Every node in dir must call this:
+ * Does MGA_localEmementwiseReduce per node to partitionOnto, copies this reduction to CPU memory,
+ * then performs MPI_AllReduce in the given direction on it,
+ * and copies that result back to partitionOnto's device memory.
+ * if(redistribute) {
+ *   result is memcpy()ed from partitionOnto to all others as well }
+  */
+int MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+{
+	FATAL_NOT_IMPLEMENTED
+	return 0;
+
+}
+
+/* Every node in dir must call this:
+ * Does MGA_localpancakeReduce on each node to partitionOnto,
+ * copies this to host memory
+ * calls MPI_AllReduce,
+ * copies result back to partitionOnto's device memory,
+ *
+ */
+int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+{
+	pParallelTopology topology = topoStructureToC(topo);
+
+	/* Reverse silly Fortran memory ordering */
+	int d = 0;
+	int dmax = topology->nproc[d];
+
+	MPI_Comm commune = MPI_Comm_f2c(topology->comm);
+	int r0; MPI_Comm_rank(commune, &r0);
+
+	/* First step: Perform a local pancaking in the reduce dir */
+	MGA_localPancakeReduce(in, out, operate, dir, partitionOnto, 0);
+
+	double *readBuf;
+	// This handles cloned or not-cloned automatically
+	MGA_downloadArrayToCPU(out, &readBuf, partitionOnto);
+	double *writeBuf= (double *)malloc(out->numel*sizeof(double));
+
+
+	/* FIXME: This is a temporary hack
+   FIXME: The creation of these communicators should be done once,
+   FIXME: by PGW, at start time. */
+	/* FIXME this fixme is as old as this crap from cudaWStep... */
+	int dimprocs[dmax];
+	int proc0, procstep;
+	switch(d) { /* everything here is Wrong because fortran is Wrong */
+	case 0: /* i0 = nx Y + nx ny Z, step = 1 -> nx ny */
+		/* x dimension: step = ny nz, i0 = z + nz y */
+		proc0 = topology->coord[2] + topology->nproc[2]*topology->coord[1];
+		procstep = topology->nproc[2]*topology->nproc[1];
+		break;
+	case 1: /* i0 = x + nx ny Z, step = nx */
+		/* y dimension: step = nz, i0 = z + nx ny x */
+		proc0 = topology->coord[2] + topology->nproc[2]*topology->nproc[1]*topology->coord[0];
+		procstep = topology->nproc[2];
+		break;
+	case 2: /* i0 = x + nx Y, step = nx ny */
+		/* z dimension: i0 = nz y + nz ny x, step = 1 */
+		proc0 = topology->nproc[2]*(topology->coord[1] + topology->nproc[1]*topology->coord[0]);
+		procstep = 1;
+		break;
+	}
+	int j;
+	for(j = 0; j < dmax; j++) {
+		dimprocs[j] = proc0 + j*procstep;
+	}
+
+	MPI_Group worldgroup, dimgroup;
+	MPI_Comm dimcomm;
+	/* r0 has our rank in the world group */
+	MPI_Comm_group(commune, &worldgroup);
+	MPI_Group_incl(worldgroup, dmax, dimprocs, &dimgroup);
+	/* Create communicator for this dimension */
+	MPI_Comm_create(commune, dimgroup, &dimcomm);
+
+	/* Perform the reduce */
+	MPI_Allreduce((void *)readBuf, (void *)writeBuf, out->partNumel[partitionOnto], MPI_DOUBLE, operate, dimcomm);
+
+	MPI_Barrier(dimcomm);
+	/* Clean up */
+	MPI_Group_free(&dimgroup);
+	MPI_Comm_free(&dimcomm);
+
+	MGA_uploadArrayToGPU(writeBuf, out, partitionOnto);
+	if(redistribute) MGA_distributeArrayClones(out, partitionOnto);
+
+	free(readBuf); free(writeBuf);
+
+	return 0;
+}
 
 template<MGAReductionOperator OP>
 __global__ void cudaClonedReducer(double *a, double *b, int numel);
@@ -335,17 +554,12 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 // so if *a is { [x] [y] [z] } on 3 devices,
 // this would end with *a = { [w] [w] [w] } where w is the reduction of [x y z].
 // if target is not null, puts the output data in target instead
-int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
+int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 {
 	if(a->haloSize != PARTITION_CLONED) return 0;
-	// Copying shit over and then reducing gains us nothing over letting UVA handle
-	// it transparently, so we're just gonna run with it.
-	int i;
 
 	dim3 gridsize; gridsize.x = 32; gridsize.y = gridsize.z = 1;
 	dim3 blocksize; blocksize.x = 256; blocksize.y = blocksize.z = 1;
-
-	cudaError_t crap = cudaSuccess;
 
 	double *B; double *C;
 
@@ -354,44 +568,45 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 	case 2: // reduce(A,B)->A
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
-		crap = cudaMalloc((void **)&B, a->numel*sizeof(double));
+		cudaMalloc((void **)&B, a->numel*sizeof(double));
 		CHECK_CUDA_ERROR("cudaMalloc()");
-		crap = cudaMemcpy((void *)B, (void*)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+		cudaMemcpy((void *)B, (void*)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+		CHECK_CUDA_ERROR("cudaMalloc()");
 
-		switch(op) {
-		case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-		case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-		case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-		case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-		}
+		if(operate == MPI_SUM) cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+		if(operate == MPI_PROD) cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+		if(operate == MPI_MAX) cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+		if(operate == MPI_MIN) cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 2 GPUs");
-		crap = cudaFree(B);
+		cudaFree(B);
 		CHECK_CUDA_ERROR("cudaFree()");
 		break;
 	case 3: // reduce(A,B)->A; reduce(A, C)->C
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
-		crap = cudaMalloc((void **)&B, a->numel*sizeof(double));
+		cudaMalloc((void **)&B, a->numel*sizeof(double));
 		CHECK_CUDA_ERROR("cuda malloc");
-		crap = cudaMalloc((void **)&C, a->numel*sizeof(double));
+		cudaMalloc((void **)&C, a->numel*sizeof(double));
 		CHECK_CUDA_ERROR("cuda malloc");
 
 		cudaMemcpy((void *)B, (void *)a->devicePtr[1], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+		CHECK_CUDA_ERROR("cuda memcpy");
 		cudaMemcpy((void *)C, (void *)a->devicePtr[2], a->numel*sizeof(double), cudaMemcpyDeviceToDevice);
+		CHECK_CUDA_ERROR("cuda memcpy");
 
-		switch(op) {
-				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0],B, a->partNumel[0]); break;
-				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]); break;
-				}
+		if(operate == MPI_SUM) cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+		if(operate == MPI_PROD) cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0],B, a->partNumel[0]);
+		if(operate == MPI_MAX) cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+		if(operate == MPI_MIN) cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], B, a->partNumel[0]);
+
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, first call");
-		switch(op) {
-				case OP_SUM: cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
-				case OP_PROD: cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
-				case OP_MAX: cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
-				case OP_MIN: cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]); break;
-				}
+
+		if(operate == MPI_SUM)  cudaClonedReducer<OP_SUM><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]);
+		if(operate == MPI_PROD) cudaClonedReducer<OP_PROD><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]);
+		if(operate == MPI_MAX)  cudaClonedReducer<OP_MAX><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]);
+		if(operate == MPI_MIN)  cudaClonedReducer<OP_MIN><<<32, 256>>>(a->devicePtr[0], C, a->partNumel[0]);
+
 		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, second call");
 
 		cudaFree(B);
@@ -404,28 +619,46 @@ int reduceClonedMGArray(MGArray *a, MGAReductionOperator op)
 		mexErrMsgTxt("This is broken soz.");
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
-		crap = cudaMalloc((void **)&B ,a->partNumel[0]);
-		switch(op) {
-				case OP_SUM: cudaClonedReducerQuad<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
-				case OP_PROD: cudaClonedReducerQuad<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
-				case OP_MAX: cudaClonedReducerQuad<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
-				case OP_MIN: cudaClonedReducerQuad<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]); break;
-				}
+		cudaMalloc((void **)&B ,a->partNumel[0]);
+		CHECK_CUDA_ERROR("cudaMalloc");
 
-		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 4 GPUs using quadreducer");
+		if(operate == MPI_SUM) cudaClonedReducerQuad<OP_SUM><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]);
+		if(operate == MPI_PROD) cudaClonedReducerQuad<OP_PROD><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]);
+		if(operate == MPI_MAX) cudaClonedReducerQuad<OP_MAX><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]);
+		if(operate == MPI_MIN) cudaClonedReducerQuad<OP_MIN><<<32, 256>>>(a->devicePtr[0], a->devicePtr[1], a->devicePtr[2], a->devicePtr[3], a->partNumel[0]);
+
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 4 GPUs using clonedReducerQuad");
 		break;
 	default: return -1;
 	}
 
-	// Now drop the result back to the other cloned partitions
-	for(i = 1; i < a->nGPUs; i++) {
-		cudaMemcpy((void *)a->devicePtr[i], (void *)a->devicePtr[0], a->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
-		CHECK_CUDA_ERROR("Copying after cloned partition reduce.");
-	}
-
+if(redistribute)
+	MGA_distributeArrayClones(a, 0);
 
 	return 0;
 }
+
+/* If partition sizes are equal (as typical e.g. post-reduction),
+ * copies the array on partition partitionFrom to the others resulting in
+ * identical copies on each device.
+ */
+int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
+{
+if(cloned->partitionDir != PARTITION_CLONED) return 0;
+
+int j;
+
+for(j = 0; j < cloned->nGPUs; j++) {
+	if(j == partitionFrom) continue;
+
+	cudaMemcpy(cloned->devicePtr[j], cloned->devicePtr[partitionFrom], sizeof(double)*cloned->numel, cudaMemcpyDeviceToDevice);
+	CHECK_CUDA_ERROR("MGA_distributeArrayClones");
+}
+
+return 0;
+
+}
+
 
 template<MGAReductionOperator OP>
 __global__ void cudaClonedReducer(double *a, double *b, int numel)
@@ -471,10 +704,19 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 }
 
 // Necessary when non-point operations have been performed in the partition direction
-void exchangeMGArrayHalos(MGArray *a, int n)
+void MGA_exchangeLocalHalos(MGArray *a, int n)
 {
 int i, j, jn;
 dim3 blocksize, gridsize;
+
+/* It is essential that ALL devices be absolutely synchronized before this operation starts
+ * It is an observed fact that the cudaFree() after the fluid step kernels does NOT result in
+ * sequential consistency between different devices.
+ */
+for(j = 0; j < a->nGPUs; j++) {
+    	cudaSetDevice(a->deviceID[j]);
+    	cudaDeviceSynchronize();
+    }
 
 for(i = 0; i < n; i++) {
 	// Skip this if it's a cloned partition
@@ -531,15 +773,20 @@ for(i = 0; i < n; i++) {
 
     a++;
 }
+a--;
+for(j = 0; j < a->nGPUs; j++) {
+    	cudaSetDevice(a->deviceID[j]);
+    	cudaDeviceSynchronize();
+    }
 
 
 }
 
 // The Z halo exchange function is simply done by a pair of memcopies
 
-/* expect invocation with [h BLKy A] threads and [ny/BLKy B 1].rp blocks with "arbitrary" A and B
+/* expect invocation with [4*roundup(h/4) BLKy A] threads and [ny/BLKy B 1].rp blocks with "arbitrary" A and B
  * given thread index t.[xyz] block index b.[xyz] and grid size g.[xyz], then consider:
- * x0 = nxL - 2*h + t.x; x1 = t.x; x1 = t.x;
+ * x0 = nxL - 2*h + t.x; x1 = t.x;
  * y0 = t.y + BLKy*b.y; z0 = t.z + A*b.y
  * copy from L[x0 + nxL*(y0 + ny*z0)] to R[x1 + nxR*(y0 + ny*z0)]
  * copy from R[x1 + h + nxR*(y0 + ny*z0)] to L[x0 + h + nxL*(y0 + ny*z0)]
@@ -558,22 +805,29 @@ __global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, 
 	if(y0 >= ny) return;
 	int z0 = threadIdx.z + blockDim.z*blockIdx.y;
 
-	int x0 = nxL - 2*h + threadIdx.x;
-	int x1 = threadIdx.x;
-
-	L += nxL*(y0 + ny*z0) + x0;
-	R += nxR*(y0 + ny*z0) + x1;
+	/* This will generate unaligned addresses, yes I'm sorry, DEAL WITH IT */
+	L += nxL*(y0 + ny*z0) + nxL - 2*h + threadIdx.x;
+	R += nxR*(y0 + ny*z0) + threadIdx.x;
+	double alpha[2];
 
 	int k;
 	int hz = blockDim.z*gridDim.y;
-	for(k = z0; k < nz; k+= hz) {
-		*R   = *L;
-		L[h] = R[h];
-		L   += nxL*ny*hz;
-		R   += nxR*ny*hz;
+	for(k = z0; k < nz; k+= hz) { /* This implicitly contains: if(z0 >= nz) { return; } */
+		// read enough data, for sure
+		alpha[0] = L[0];
+		alpha[1] = R[h];
+
+		if(threadIdx.x < h) {
+			R[0] = alpha[0];
+			L[h] = alpha[1];
+		}
+
+	    L   += nxL*ny*hz;
+            R   += nxR*ny*hz;
 	}
 
 }
+
 
 // FIXME: And this ny on both sides, also goddamnit.
 /* Expect invocation with [BLKx BLKz 1] threads and [nx/BLKx nz/BLKz 1].rp blocks */
@@ -595,9 +849,129 @@ for(i = 0; i < h; i++) {
 
 }
 
-/* Given a list of indices into the global array, returns a * to a new array listing only */
-// that subset which exists on partition i of the given MGArray.
-//int partitionIndexTranslate(void)
+/* Given an MGArray, allocates prod(g->dim) doubles at p and
+ * copies it back to the cpu.
+ * if(g->haloSize == PARTITION_CLONED), the partitionFrom-th device pointer is read*/
+// FIXME: this entire serial crapshow should just make a few calls to cudaMemcpy2D/3D
+int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
+{
+	long numelOut = g->numel;
+
+	// Create output numeric array if passed NULL
+	// If e.g. returning to MATLAB, it will have already been allocated for us.
+	if(p[0] == NULL)
+		*p = (double *)malloc(numelOut * sizeof(double));
+
+	int sub[6];
+	int htrim[6];
+
+	int u, v, w, i;
+	int64_t iT, iS;
+	double *gmem[g->nGPUs];
+
+	if(g->haloSize == PARTITION_CLONED) {
+		cudaSetDevice(g->deviceID[partitionFrom]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		cudaError_t fail = cudaMemcpy((void *)p, (void *)g->devicePtr[partitionFrom], numelOut*sizeof(double), cudaMemcpyDeviceToHost);
+		CHECK_CUDA_ERROR("MGArray_downloadArrayToCPU");
+		return 0;
+	}
+
+	/* Otherwise we need to do some actual work */
+	/* Get all partitions streaming back */
+	/* FIXME: look into making this asynchronous */
+	for(i = 0; i < g->nGPUs; i++) {
+		gmem[i] = (double *)malloc(g->partNumel[i]*sizeof(double));
+
+		cudaError_t fail = cudaMemcpy((void *)gmem[i], (void *)g->devicePtr[i], g->partNumel[i]*sizeof(double), cudaMemcpyDeviceToHost);
+		CHECK_CUDA_ERROR("MGArray_downloadArrayToCPU");
+	}
+
+
+	double *out = p[0];
+
+	double *currentTarget;
+	for(i = 0; i < g->nGPUs; i++) {
+		// Get this partition's extent
+		calcPartitionExtent(g, i, &sub[0]);
+		// Trim the halo away when copying back to CPU
+		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
+		if(i < (g->nGPUs-1)) { htrim[3+g->partitionDir-1] -= g->haloSize; }
+		if(i > 0)           { htrim[g->partitionDir-1] += g->haloSize; htrim[3+g->partitionDir-1] -= g->haloSize; }
+
+		currentTarget = gmem[i];
+
+		// Copy into the output array
+		// FIXME I can't get the mex compiler to use -fopenmp flags :(
+#pragma omp parallel for private(u, v, w, iT, iS) default shared
+		for(w = htrim[2]; w < htrim[2]+htrim[5]; w++)
+			for(v = htrim[1]; v < htrim[1]+htrim[4]; v++)
+				for(u = htrim[0]; u < htrim[0] + htrim[3]; u++) {
+					iT = (u-sub[0]) + sub[3]*(v - sub[1]  + sub[4]*(w-sub[2]));
+					iS = u+g->dim[0]*(v+g->dim[1]*w);
+
+					out[iS] = currentTarget[iT];
+				}
+		free(currentTarget);
+
+	}
+
+	return 0;
+}
+
+int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
+{
+	int sub[6];
+	int htrim[6];
+
+	int u, v, w, i;
+	int64_t iT, iS;
+	double *gmem[g->nGPUs];
+
+	if(g->haloSize == PARTITION_CLONED) {
+		cudaSetDevice(g->deviceID[partitionTo]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[partitionTo], (void *)p, g->numel*sizeof(double), cudaMemcpyHostToDevice);
+		CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
+		return 0;
+	}
+
+	/* Otherwise we need to do some actual work */
+
+	double *currentTarget;
+	for(i = 0; i < g->nGPUs; i++) {
+		gmem[i] = (double *)malloc(g->partNumel[i]*sizeof(double));
+		// Get this partition's extent
+		calcPartitionExtent(g, i, &sub[0]);
+		// Trim the halo away when copying back to CPU
+		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
+		if(i < (g->nGPUs-1)) { htrim[3+g->partitionDir-1] -= g->haloSize; }
+		if(i > 0)           { htrim[g->partitionDir-1] += g->haloSize; htrim[3+g->partitionDir-1] -= g->haloSize; }
+
+		currentTarget = gmem[i];
+
+		// Copy into the output array
+		// FIXME I can't get the mex compiler to use -fopenmp flags :(
+#pragma omp parallel for private(u, v, w, iT, iS) default shared
+		for(w = htrim[2]; w < htrim[2]+htrim[5]; w++)
+			for(v = htrim[1]; v < htrim[1]+htrim[4]; v++)
+				for(u = htrim[0]; u < htrim[0] + htrim[3]; u++) {
+					iT = (u-sub[0]) + sub[3]*(v - sub[1]  + sub[4]*(w-sub[2]));
+					iS = u+g->dim[0]*(v+g->dim[1]*w);
+
+					currentTarget[iT] = p[iS];
+				}
+
+
+		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[i], (void *)gmem[i], g->partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
+		CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
+		free(currentTarget);
+	}
+
+        MGA_exchangeLocalHalos(g, 1);
+
+	return 0;
+}
 
 // Just grab in.fieldA.fieldB
 // Or in.fieldA if fieldB is blank
@@ -717,7 +1091,10 @@ void checkCudaError(char *where, char *fname, int lname)
 cudaError_t epicFail = cudaGetLastError();
 if(epicFail == cudaSuccess) return;
 
-printf("cudaCheckError was non-success when polled at %s (%s:%i): %s -> %s\n", where, fname, lname, errorName(epicFail), cudaGetErrorString(epicFail));
+int myrank;
+MPI_Commo_rank(MPI_COMM_WORLD, &myrank);
+
+printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
 mexErrMsgTxt("Forcing stop due to CUDA error");
 }
 

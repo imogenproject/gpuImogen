@@ -39,8 +39,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	// Get source array info and create destination arrays
 	MGArray src[2];
-	int worked = accessMGArrays(prhs, 0, 1, src);
-	MGArray *dst = createMGArrays(plhs, 2, src);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 1, src);
+	MGArray *dst = MGA_createReturnedArrays(plhs, 2, src);
 
 	// Establish launch dimensions & a few other parameters
 	int fluxDirection = (int)*mxGetPr(prhs[3]);

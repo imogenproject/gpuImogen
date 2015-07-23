@@ -28,7 +28,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray m;
 
-	accessMGArrays(prhs, 0, 0, &m);
+	MGA_accessMatlabArrays(prhs, 0, 0, &m);
 
 	int x = (int)*mxGetPr(prhs[1]);
 	int sub[6];
@@ -56,7 +56,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			m.devicePtr[i] = newblock;
 			m.numSlabs = x;
 		}
-returnAnMGArray(plhs, &m);
+MGA_returnOneArray(plhs, &m);
 
 	return;
 }

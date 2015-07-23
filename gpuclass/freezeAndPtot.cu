@@ -49,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if(ispurehydro) { nArrays = 5; } else { nArrays = 8; }
 
 	MGArray fluid[8];
-	accessMGArrays(prhs, 0, nArrays-1, fluid);
+	MGA_accessMatlabArrays(prhs, 0, nArrays-1, fluid);
 
 	dim3 arraySize;
 	arraySize.x = fluid->dim[0];
@@ -70,8 +70,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// If partitioned in the X direction it must be cloned rather than split
 	if((clone.nGPUs > 1) && (clone.partitionDir == PARTITION_X)) clone.haloSize = PARTITION_CLONED;
 
-	POut = createMGArrays(plhs, 1, fluid);
-	cfOut= createMGArrays(plhs+1, 1, &clone);
+	POut = MGA_createReturnedArrays(plhs, 1, fluid);
+	cfOut= MGA_createReturnedArrays(plhs+1, 1, &clone);
 
 	double hostgf[6];
 	double gam = *mxGetPr(prhs[8]);
@@ -127,7 +127,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	if((fluid->nGPUs > 1) && (fluid->partitionDir == PARTITION_X)) {
-		reduceClonedMGArray(cfOut, OP_MAX);
+		MGA_reduceClonedArray(cfOut, MPI_MAX, 1);
 	}
 	free(POut);
 	free(cfOut);

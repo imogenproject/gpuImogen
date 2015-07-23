@@ -63,13 +63,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     if(pureHydro == 1) {
       gam    = *mxGetPr(prhs[5]);
-      worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+      worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
       } else {
       gam = *mxGetPr(prhs[8]);
-      worked = accessMGArrays(prhs, 0, 7, &fluid[0]);
+      worked = MGA_accessMatlabArrays(prhs, 0, 7, &fluid[0]);
       }
 
-    MGArray *dest = createMGArrays(plhs, 1, &fluid[0]);
+    MGArray *dest = MGA_createReturnedArrays(plhs, 1, &fluid[0]);
     
     double gg1 = gam*(gam-1);
     double hostP[6];

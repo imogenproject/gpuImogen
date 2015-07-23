@@ -53,8 +53,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     double gam = *mxGetPr(prhs[9]);
 
     MGArray fluid[8];
-    int worked   = accessMGArrays(prhs, 1, 8, fluid);
-    MGArray *dst = createMGArrays(plhs, 1, fluid);
+    int worked   = MGA_accessMatlabArrays(prhs, 1, 8, fluid);
+    MGArray *dst = MGA_createReturnedArrays(plhs, 1, fluid);
 
     gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
@@ -73,8 +73,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   } else if((operation == OP_MAGPRESSURE)) {
     if( (nlhs != 1) || (nrhs != 4)) { mexErrMsgTxt("Magnetic pressure operator is Pm = cudaMHDKernels(4, bx, by, bz)"); }
     MGArray mag[3];
-    int worked = accessMGArrays(prhs, 1, 3, mag);
-    MGArray *Pmag = createMGArrays(plhs, 1, mag);
+    int worked = MGA_accessMatlabArrays(prhs, 1, 3, mag);
+    MGArray *Pmag = MGA_createReturnedArrays(plhs, 1, mag);
 
     gridsize.x = mag->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < mag->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
@@ -87,11 +87,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if( (nlhs != 2) || (nrhs != 10)) { mexErrMsgTxt("Soundspeed operator is [Ptot Cs] = cudaMHDKernels(5, rho, E, px, py, pz, bx, by, bz, gamma)"); }
     double gam = *mxGetPr(prhs[9]);
     MGArray fluid[8];
-    int worked = accessMGArrays(prhs, 1, 8, fluid);
+    int worked = MGA_accessMatlabArrays(prhs, 1, 8, fluid);
 
     gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z = 1;
-    MGArray *out = createMGArrays(plhs, 2, fluid);
+    MGArray *out = MGA_createReturnedArrays(plhs, 2, fluid);
 
     double *srcs[8]; pullMGAPointers(fluid, 8, 0, srcs);
     cukern_TotalAndSound<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], out[0].devicePtr[0], out[1].devicePtr[0], gam, fluid->numel);
@@ -101,8 +101,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if( (nlhs != 5) || (nrhs != 12)) { mexErrMsgTxt("solving W operator is [rhoW enerW pxW pyW pzW] = cudaMHDKernels(6, rho, E, px, py, pz, bx, by, bz, P, cFreeze, direction)"); }
     int dir = (int)*mxGetPr(prhs[11]);
     MGArray fluid[10];
-    int worked = accessMGArrays(prhs, 1, 10, fluid);
-    MGArray *Wout = createMGArrays(plhs, 5, fluid);
+    int worked = MGA_accessMatlabArrays(prhs, 1, 10, fluid);
+    MGArray *Wout = MGA_createReturnedArrays(plhs, 5, fluid);
 
     gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
@@ -116,8 +116,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if( (nlhs != 1) || (nrhs != 8)) { mexErrMsgTxt("relaxing flux operator is fluxed = cudaMHDKernels(7, old, tempfreeze, right, right_shifted, left, left_shifted, lambda)"); }
     double lambda = *mxGetPr(prhs[7]);
     MGArray fluid[6];
-    int worked = accessMGArrays(prhs, 1, 6, fluid);
-    MGArray *dst = createMGArrays(plhs, 1, fluid);
+    int worked = MGA_accessMatlabArrays(prhs, 1, 6, fluid);
+    MGArray *dst = MGA_createReturnedArrays(plhs, 1, fluid);
 
     gridsize.x = fluid->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < fluid->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;
@@ -130,8 +130,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   } else if ((operation == OP_SEPERATELRFLUX)) {
     if ((nlhs != 2) || (nrhs != 3)) { mexErrMsgTxt("flux seperation operator is [Fl Fr] = cudaMHDKernels(8, array, wArray)"); }
     MGArray in[2];
-    int worked = accessMGArrays(prhs, 1, 2, in);
-    MGArray *out = createMGArrays(plhs, 2, in);
+    int worked = MGA_accessMatlabArrays(prhs, 1, 2, in);
+    MGArray *out = MGA_createReturnedArrays(plhs, 2, in);
 
     gridsize.x = in->numel / (BLOCKWIDTH*THREADLOOPS); if(gridsize.x * (BLOCKWIDTH*THREADLOOPS) < in->numel) gridsize.x++;
     gridsize.y = gridsize.z =1;

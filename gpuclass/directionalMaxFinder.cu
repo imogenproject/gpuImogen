@@ -50,8 +50,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 switch(nrhs) {
   case 3: {
   MGArray in[2];
-  int worked   = accessMGArrays(prhs, 0, 1, in);
-  MGArray *out = createMGArrays(plhs, 1, in);
+  int worked   = MGA_accessMatlabArrays(prhs, 0, 1, in);
+  MGArray *out = MGA_createReturnedArrays(plhs, 1, in);
 
   dim3 blocksize, gridsize, dims;
 
@@ -90,7 +90,7 @@ switch(nrhs) {
   } break;
   case 1: {
     MGArray a;
-    accessMGArrays(prhs, 0, 0, &a);
+    MGA_accessMatlabArrays(prhs, 0, 0, &a);
 
     dim3 blocksize, gridsize;
     blocksize.x = 256; blocksize.y = blocksize.z = 1;
@@ -108,6 +108,7 @@ switch(nrhs) {
       cudaSetDevice(a.deviceID[i]);
       CHECK_CUDA_ERROR("calling cudaSetDevice()");
       cukern_GlobalMax<<<gridsize, blocksize>>>(a.devicePtr[i], a.partNumel[i], blkA+gridsize.x*i);
+      CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &a, i, "directionalMaxFinder()");
     }
 
     mwSize dims[2];
@@ -124,7 +125,7 @@ switch(nrhs) {
   case 5: {
     // Get input arrays: [rho, c_s, px, py, pz]
     MGArray fluid[5];
-    int worked = accessMGArrays(prhs, 0, 4, &fluid[0]);
+    int worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
 
     dim3 blocksize, gridsize;
     blocksize.x = GLOBAL_BLOCKDIM; blocksize.y = blocksize.z = 1;
@@ -133,9 +134,11 @@ switch(nrhs) {
     gridsize.x = 64;
     gridsize.y = gridsize.z =1;
 
-    // Allocate enough pinned emory
+    // Allocate enough pinned memory to hold results
     double *blkA; int *blkB;
     int hblockElements = gridsize.x * fluid->nGPUs;
+
+    cudaSetDevice(fluid->deviceID[0]);
 
     cudaMallocHost((void **)&blkA, hblockElements * sizeof(double));
     CHECK_CUDA_ERROR("CFL malloc double");
@@ -157,7 +160,6 @@ switch(nrhs) {
         CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &fluid[0], i, "CFL max finder");
     }
 
-
     mwSize dims[2];
     dims[0] = 1;
     dims[1] = 1;
@@ -167,27 +169,32 @@ switch(nrhs) {
     double *maxout = mxGetPr(plhs[0]);
     double *dirout = mxGetPr(plhs[1]);
 
-    
+
     int devCount = 0;
     for(i = 0; i < fluid->nGPUs*gridsize.x; i++) {
-        /* Wait for device to finish processing */
-	if(i % gridsize.x == 0) {
-	    cudaSetDevice(devCount);
-            cudaDeviceSynchronize();
-	    devCount++;
-        }
+    	/* Wait for device to finish processing */
+    	if(i % gridsize.x == 0) {
+    		cudaSetDevice(devCount);
+    		CHECK_CUDA_ERROR("cudaSetDevice");
+    		cudaDeviceSynchronize();
+    		CHECK_CUDA_ERROR("cudadevicesynchronize");
+    		devCount++;
+    	}
 
-	/* Download and compute local maxima */
-        if(i == 0) {
-	    maxout[0] = blkA[0];
-	    dirout[0] = (double)blkB[0];
-        } else {
-            if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; } 
-	}
+    	/* Download and compute local maxima */
+    	if(i == 0) {
+    		maxout[0] = blkA[0];
+    		dirout[0] = (double)blkB[0];
+    	} else {
+    		if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; }
+    	}
     }
 
+    cudaSetDevice(fluid->deviceID[0]);
     cudaFreeHost(blkA);
+    CHECK_CUDA_ERROR("cudaFree() of blkA");
     cudaFreeHost(blkB);
+    CHECK_CUDA_ERROR("cudaFree() of blkB");
 
   } break;
 }

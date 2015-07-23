@@ -49,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	CHECK_CUDA_ERROR("entering cudaArrayRotateB");
 
 	MGArray src;
-	int worked = accessMGArrays(prhs, 0, 0, &src);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &src);
 
 	/* This function will make the partition direction track the transposition of indices
 	 * Such that if partitioning direction is X and a Y transpose is done, partition is in Y.
@@ -98,10 +98,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	if(makeNew) {
 		// allocate storage and return the newly transposed array
-		nuClone = createMGArrays(plhs, 1, &trans);
+		nuClone = MGA_createReturnedArrays(plhs, 1, &trans);
 	} else {
 		// just allocate storage; Overwrite original tag
-		nuClone = allocMGArrays(1, &trans);
+		nuClone = MGA_allocArrays(1, &trans);
 		serializeMGArrayToTag(&trans, (int64_t *)mxGetData(prhs[0]));
 	}
 
@@ -127,10 +127,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		for(i = 0; i < trans.nGPUs; i++) {
 			cudaMemcpy(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
 			CHECK_CUDA_ERROR("cudaMemcpy");
-
-			cudaFree(nuClone->devicePtr[i]);
-			CHECK_CUDA_ERROR("free");
 		}
+		MGA_delete(&trans);
 	}
 
 	CHECK_CUDA_ERROR("Departing cudaArrayRotateB");

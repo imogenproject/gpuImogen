@@ -43,10 +43,6 @@ __global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int n
 /* The easiest; We make one copy of an Nx by Ny by 3 slab of memory */
 /* No kernels necessary, we can simply memcpy our hearts out */
 
-pParallelTopology topoStructureToC(const mxArray *prhs);
-
-
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	/* Functional form:
     cudaHaloExchange(arraytag, [orientation 3x1], dimension_to_exchange, parallel topology information)
@@ -72,7 +68,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// Do not waste time if we can't possibly have any work to do
 
 	MGArray phi;
-	int worked = accessMGArrays(prhs, 0, 0, &phi);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
 
 	int ctr;
 	for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
@@ -279,32 +275,3 @@ __global__ void cukern_MemBlockCopy(double *S, dim3 sDim, double *D, dim3 dDim, 
 
 }
 
-pParallelTopology topoStructureToC(const mxArray *prhs)
-{
-mxArray *a;
-
-pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
-
-a = mxGetFieldByNumber(prhs,0,0);
-pt->ndim = (int)*mxGetPr(a);
-a = mxGetFieldByNumber(prhs,0,1);
-pt->comm = (int)*mxGetPr(a);
-
-int *val;
-int i;
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
-for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
-for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
-
-return pt;
-
-}

@@ -21,19 +21,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   CHECK_CUDA_ERROR("Entering GPU_free()");
   MGArray t[nrhs];
 
-  int worked = accessMGArrays(prhs, 0, nrhs-1, &t[0]);
+  int worked = MGA_accessMatlabArrays(prhs, 0, nrhs-1, &t[0]);
 
-  int i, j;
-
-  for(i = 0; i < nrhs; i++) {
-	  if(t[i].numSlabs < 1) continue; // This is a slab reference and was never actually allocated. Ignore it.
-    for(j = 0; j < t[i].nGPUs; j++) {
-      cudaSetDevice(t[i].deviceID[j]);
-      CHECK_CUDA_ERROR("cudaSetDevice()");
-      cudaError_t result = cudaFree(t[i].devicePtr[j]);
-      CHECK_CUDA_ERROR("After GPU_free()");
-    }
-  }
+  int i;
+  for(i = 0; i < nrhs; i++)
+	  MGA_delete(t+i);
 
 return;
 }

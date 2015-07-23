@@ -110,7 +110,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	// Get source array info and create destination arrays
 	MGArray fluid[5];
-	int worked = accessMGArrays(prhs, 0, 4, fluid);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 4, fluid);
 
 	int is3D = (fluid->dim[2] > 1);
 

@@ -33,8 +33,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     CHECK_CUDA_ERROR("entering cudaFwdAverage");
 
     MGArray in;
-    int worked = accessMGArrays(prhs, 0, 0, &in);
-    MGArray *out = createMGArrays(plhs, 1, &in);
+    int worked = MGA_accessMatlabArrays(prhs, 0, 0, &in);
+    MGArray *out = MGA_createReturnedArrays(plhs, 1, &in);
 
     // Establish launch dimensions & a few other parameters
     int direction = (int)*mxGetPr(prhs[1]);

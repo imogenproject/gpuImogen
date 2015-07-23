@@ -1,3 +1,5 @@
+#include "parallel_halo_arrays.h"
+
 // These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
 // These parameters would normally be stored in a __device__ __constant__ array:
 // gm1fact = gamma - 1
@@ -29,6 +31,8 @@ void dropMexError(char *excuse, char *infile, int atline);
 
 #define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK"); }
 
+#define FATAL_NOT_IMPLEMENTED mexErrMsgTxt("Fatal: Encountered requited but completely non-implemented code branch.");
+
 typedef struct {
         double *fluidIn[5];
         double *fluidOut[5];
@@ -57,7 +61,7 @@ typedef struct {
 #define GPU_TAG_PARTDIR 5
 #define GPU_TAG_NGPUS 6
 
-
+        // Templates seem to dislike MPI_Op? Switches definitely do.
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
 
 // If the haloSize parameter is set to this,
@@ -81,23 +85,40 @@ typedef struct {
     } MGArray; 
 
 int64_t *getGPUTypeTag (const mxArray *gputype); // matlab -> c
+cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
 bool     sanityCheckTag(const mxArray *tag);     // sanity
 
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
 
 void     deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
 void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
-int      accessMGArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
-MGArray *allocMGArrays(int N, MGArray *skeleton);
-MGArray *createMGArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
-void returnAnMGArray(mxArray *plhs[], MGArray *m);
+
+/* MultiGPU Array allocation stuff */
+int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
+MGArray *MGA_allocArrays(int N, MGArray *skeleton);
+MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
+void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
+void     MGA_delete(MGArray *victim);
+
+/* MultiGPU Array I/O */
+int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
+int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
+int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
+
+/* MultiGPU "extensions" for mpi reduce type stuff */
+int MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute);
+int MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute);
+
+int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
+int MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);\
 
 // Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
 void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
-int reduceClonedMGArray(MGArray *a, MGAReductionOperator op);
+int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
-void exchangeMGArrayHalos(MGArray *a, int n);
+
+void MGA_exchangeLocalHalos(MGArray *a, int n);
 __global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
 __global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h);
 
@@ -119,6 +140,14 @@ int3 makeInt3(int *b);
 dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z);
 dim3 makeDim3(unsigned int *b);
 dim3 makeDim3(int *b);
+
+pParallelTopology topoStructureToC(const mxArray *prhs);
+int MGA_localElmentwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute);
+int MGA_localPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute);
+int MGA_globalElementwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute, const mxArray *topo);
+int MGA_globalPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute, const mxArray *topo);
+int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
+
 
 mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB);
 double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB);

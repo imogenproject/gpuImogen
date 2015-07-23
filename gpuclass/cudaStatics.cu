@@ -61,7 +61,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	CHECK_CUDA_ERROR("entering cudaStatics");
 
 	MGArray phi, statics;
-	int worked = accessMGArrays(prhs, 0, 0, &phi);
+	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(prhs[0], 0, "boundaryData");
@@ -70,7 +70,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	/* The statics describe "solid" structures which we force the grid to have */
 	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
 	if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
-	worked = accessMGArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
+	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
 
 	/* The indexPermute property tells us how the array's indices are currently oriented. */
 	mxArray *permArray =  mxGetProperty(prhs[0], 0, "indexPermute");
@@ -141,9 +141,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			}
 
 			// Extrapolates f(b+x) = f(b) + x f'(b)
+			// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
 			if(strcmp(bs, "linear") == 0) {
 				setBoundarySAS(&phi, d, (int)directionToSet[j], 3);
 			}
+
+			if(strcmp(bs, "wall") == 0) {
+				
+			} 
 
 		}
 	}
@@ -311,16 +316,28 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 	return;
 }
 
+
+
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset)
 {
 	int myAddr = threadIdx.x + blockDim.x * (blockIdx.x + gridDim.x*blockIdx.y);
 	if(myAddr >= nSpecials) return;
+	statics += myAddr;
 
-	long int xaddr = (long int)statics[myAddr];
-	double f0      =           statics[myAddr + blkOffset];
-	double c       =           statics[myAddr + blkOffset*2];
+	long int xaddr = (long int)statics[0];
+	double f0      =           statics[blkOffset];
+	double c       =           statics[blkOffset*2];
 
-	phi[xaddr] = f0*c + (1.0-c)*phi[xaddr];
+//	if(c >= 0) {
+		// Fade condition: Exponentially pulls cell towards c with rate constant f0;
+		phi[xaddr] = f0*c + (1.0-c)*phi[xaddr];
+//	} else {
+		// Wall condition: Any transfer between the marked cells is reversed
+		// Assumptions: 2nd cell (xprimeaddr) must be in a stationary, no-flux region
+//		long int xprimeaddr = (long int) statics[myAddr + blkOffset*3];
+//		phi[xaddr] += (phi[xprimeaddr]-f0);
+//		phi[xprimaddr] = f0;
+//	}
 
 }
 

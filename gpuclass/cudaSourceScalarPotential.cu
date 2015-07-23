@@ -56,7 +56,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     
     // Get source array info and create destination arrays
     MGArray fluid[6];
-    int worked = accessMGArrays(prhs, 0, 5, fluid);
+    int worked = MGA_accessMatlabArrays(prhs, 0, 5, fluid);
 
     dim3 gridsize, blocksize;
     int3 arraysize;
