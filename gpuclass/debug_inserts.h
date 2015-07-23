@@ -2,7 +2,7 @@
 
 // If defined, the code runs the Euler prediction step and copies wStepValues back to the Matlab fluid data arrays
 // If not defined, it runs the RK2 predictor/corrector step
-//#define DBG_FIRSTORDER
+#define DBG_FIRSTORDER
 
 // If not debugging the 1st order step, flips on debugging of the 2nd order step
 #ifndef DBG_FIRSTORDER
@@ -22,7 +22,7 @@
 // Assuming debug has been put on the wStepValues array, download it to a Matlab array
 void returnDebugArray(MGArray *ref, int x, double **wStepValues, mxArray *plhs[])
 {
-  CHECK_CUDA_ERROR("entering makeDebugOutputSlab");
+  CHECK_CUDA_ERROR("entering returnDebugArray");
 
   MGArray m = *ref;
   
