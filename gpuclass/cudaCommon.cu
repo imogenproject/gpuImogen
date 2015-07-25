@@ -98,13 +98,15 @@ int alpha = m->dim[direct] / m->nGPUs;
 // "raw" offset of P*alpha, extent of alpha
 sub[0] = P*alpha;
 sub[3] = alpha;
+
 // Rightmost partition takes up any remainder slack
 if(P == (m->nGPUs-1)) sub[3] = m->dim[direct] - P*alpha;
 
-// If not the leftmost, move start left & add halo
-if(P > 0)            { sub[0] -= m->haloSize; sub[3] += m->haloSize; }
-// If not rightmost, extend halo right
-if(P < (m->nGPUs-1))   sub[3] += m->haloSize;
+// MultiGPU operation requires halos on both sides of the partitions for FDing operations
+if(m->nGPUs > 1) {
+	sub[0] -= m->haloSize;
+	sub[3] += 2*m->haloSize;
+}
 
 }
 
@@ -749,7 +751,7 @@ for(i = 0; i < n; i++) {
                 gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
                 gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
 
-                cudaMGHaloSyncY<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], a->dim[0], a->dim[1], a->dim[2], a->haloSize);
+                cudaMGHaloSyncY<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subL[4], subR[4], subL[5], a->haloSize);
             } break;
             case 3: {
 
@@ -831,20 +833,20 @@ __global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, 
 
 // FIXME: And this ny on both sides, also goddamnit.
 /* Expect invocation with [BLKx BLKz 1] threads and [nx/BLKx nz/BLKz 1].rp blocks */
-__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h)
+__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int nyL, int nyR, int nz, int h)
 {
 int x0 = threadIdx.x + blockIdx.x*blockDim.x;
 int z0 = threadIdx.y + blockIdx.y*blockDim.y;
 
 if((x0 >= nx) || (z0 >= nz)) return;
 
-L += (x0 + nx*(ny-h+ny*z0)); // To the plus y extent
-R += (x0 + nx*ny*z0);        // to the minus y extent
+L += (x0 + nx*(nyL-2*h + nyL*z0)); // To the plus y extent
+R += (x0 + nx*nyR*z0);        // to the minus y extent
 
 int i;
 for(i = 0; i < h; i++) {
-    L[i*nx]     = R[(i+3)*nx];
-    L[(i-3)*nx] = R[i*nx];
+    L[(i+h)*nx]     = R[(i+h)*nx];
+    R[i*nx] = L[i*nx];
 }
 
 }
@@ -852,7 +854,7 @@ for(i = 0; i < h; i++) {
 /* Given an MGArray, allocates prod(g->dim) doubles at p and
  * copies it back to the cpu.
  * if(g->haloSize == PARTITION_CLONED), the partitionFrom-th device pointer is read*/
-// FIXME: this entire serial crapshow should just make a few calls to cudaMemcpy2D/3D
+// FIXME: this entire crapshow should just make a few calls to cudaMemcpy2D/3D
 int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 {
 	long numelOut = g->numel;
@@ -872,7 +874,7 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 	if(g->haloSize == PARTITION_CLONED) {
 		cudaSetDevice(g->deviceID[partitionFrom]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
-		cudaError_t fail = cudaMemcpy((void *)p, (void *)g->devicePtr[partitionFrom], numelOut*sizeof(double), cudaMemcpyDeviceToHost);
+		cudaError_t fail = cudaMemcpy((void *)p[0], (void *)g->devicePtr[partitionFrom], numelOut*sizeof(double), cudaMemcpyDeviceToHost);
 		CHECK_CUDA_ERROR("MGArray_downloadArrayToCPU");
 		return 0;
 	}
@@ -896,8 +898,10 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 		calcPartitionExtent(g, i, &sub[0]);
 		// Trim the halo away when copying back to CPU
 		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
-		if(i < (g->nGPUs-1)) { htrim[3+g->partitionDir-1] -= g->haloSize; }
-		if(i > 0)           { htrim[g->partitionDir-1] += g->haloSize; htrim[3+g->partitionDir-1] -= g->haloSize; }
+		if(g->nGPUs > 1) {
+			htrim[3+g->partitionDir-1] -= 2*g->haloSize;
+			htrim[g->partitionDir-1] += g->haloSize;
+		}
 
 		currentTarget = gmem[i];
 
@@ -945,8 +949,10 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		calcPartitionExtent(g, i, &sub[0]);
 		// Trim the halo away when copying back to CPU
 		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
-		if(i < (g->nGPUs-1)) { htrim[3+g->partitionDir-1] -= g->haloSize; }
-		if(i > 0)           { htrim[g->partitionDir-1] += g->haloSize; htrim[3+g->partitionDir-1] -= g->haloSize; }
+		if(g->nGPUs > 1) {
+			htrim[3+g->partitionDir-1] -= 2*g->haloSize;
+			htrim[g->partitionDir-1] += g->haloSize;
+		}
 
 		currentTarget = gmem[i];
 
@@ -1092,7 +1098,7 @@ cudaError_t epicFail = cudaGetLastError();
 if(epicFail == cudaSuccess) return;
 
 int myrank;
-MPI_Commo_rank(MPI_COMM_WORLD, &myrank);
+MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
 printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
 mexErrMsgTxt("Forcing stop due to CUDA error");

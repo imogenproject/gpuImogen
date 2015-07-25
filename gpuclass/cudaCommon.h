@@ -120,7 +120,7 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
 void MGA_exchangeLocalHalos(MGArray *a, int n);
 __global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
-__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int ny, int nz, int h);
+__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int nyL, int nyR, int nz, int h);
 
 typedef struct {
     int ndims;

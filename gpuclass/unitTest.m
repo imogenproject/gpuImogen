@@ -1,11 +1,5 @@
 function result = unitTest(n2d, max2d, n3d, max3d, funcList)
 
-disp('### Beginning GPU functional tests ###');
-disp('### Debug-if-error is set.');
-disp('### GPU Manager partitioning setup:');
-GPUManager.getInstance()
-dbstop if error
-
 if(nargin < 4)
     disp('unitTest help:');
     disp('unitTest(n2d, max2d, n3d, max3d, funcList):');
@@ -212,21 +206,21 @@ function fail = testCudaFreeRadiation(res)
     if max(abs(rtrue(:)-rtest.array(:))) > 1e-12; fail = 1; end
 
     % Test MHD radiation sinking
-    tau = .01*.5/max(rtest.array(:));
+%    tau = .01*.5/max(rtest.array(:));
 
-    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau .2 0]);
-    P0 = gm1*(Emhd - T - B);
+%    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau .2 0]);
+%    P0 = gm1*(Emhd - T - B);
 
-    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
-    COLD = (P0 < Tmin*rho);
-    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
+%    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
+%    COLD = (P0 < Tmin*rho);
+%    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
 
     % No radiation below critical temp
-    dE(COLD) = 0;
-    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
+%    dE(COLD) = 0;
+%    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
 
-    Enew = Emhd - dE;
-    if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12 fail = 1; end
+%    Enew = Emhd - dE;
+%    if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12 fail = 1; end
      %mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 end
 
