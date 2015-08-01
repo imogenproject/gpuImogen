@@ -1,5 +1,7 @@
 function result = unitTest(n2d, max2d, n3d, max3d, funcList)
 
+result = 0;
+
 if(nargin < 4)
     disp('unitTest help:');
     disp('unitTest(n2d, max2d, n3d, max3d, funcList):');
@@ -8,7 +10,7 @@ if(nargin < 4)
     disp('    n3d:   Number of 3 dimensional resolutions to fuzz functions with');
     disp('    max3d: Maximum resolution to use for 3D tests');
     disp('    funcList: {''strings'', ''naming'', ''functions''} or blank to test all.');
-    result = 0; return;
+    return;
 end
 
 if(nargin == 4)
@@ -48,7 +50,7 @@ for F = 1:nFuncs;
     outcome = iterateOnFunction(targfunc, D, R);
 
     switch outcome
-        case 1;  fprintf('Testing %s failed!\n', funcList{F});
+        case 1;  fprintf('Testing %s failed!\n', funcList{F}); result = 1;
         case 0;  fprintf('Testing %s successful!\n', funcList{F});
         case -1; fprintf('Test for function named %s not implemented\n', funcList{F});
 	case -2: fprintf('No function named %s...\n', funcList{F});
@@ -412,11 +414,12 @@ px = rand(res);
 py = rand(res);
 x = 1:res(1);
 y = 1:res(2);
+z = 1:res(3);
 rho = 0.5 + rand(res);
 vx = px ./ rho;
 vy = py ./ rho;
 E = rand(res) + .5 * rho .* ((vx).^2 + (vy).^2);
-[x,y] = ndgrid(x,y);
+[x,y] = ndgrid(x,y,z);
 dt = .01;
 
 pxD = GPU_Type(px);
@@ -462,7 +465,7 @@ c = max(E(:) - ED.array(:));
 n = [a, b, c];
 if max(abs(n)) < 1e-10;
     fail = 0;
-else fail = -1;
+else fail = 1;
 end
 end
 
@@ -524,18 +527,67 @@ fail = -1;
 end
 
 function fail = testDirectionalMaxFinder(res)
-fail = -1;
-%yes
+fail = 0;
+
+% test one: simple max
+rho = .5 + rand(res);
+rhoD = GPU_Type(rho);
+
+cpuResult = max(rho(:));
+gpuResult = directionalMaxFinder(rhoD);
+
+if cpuResult ~= gpuResult 
+    disp('    !!! Simple global maximum was not correct !!!');
+    fail = 1;
+end
+
+% Test two: CFL speed determination
+% Make up some other crap
+cs = 1 + rand(res); csD = GPU_Type(cs);
+px = -.5 + rand(res); pxD = GPU_Type(px);
+py = -.5 + rand(res); pyD = GPU_Type(py);
+pz = -.5 + rand(res); pzD = GPU_Type(pz);
+
+% Use it to compute the CFL constraint speed
+cflDir = 1;
+cflX = max(cs(:) + px(:) ./ rho(:));
+cfl = cflX;
+
+cflY = max(cs(:) + py(:) ./ rho(:));
+if cflY > cfl; cfl = cflY; cflDir = 2; end
+
+cflZ = max(cs(:) + pz(:) ./ rho(:));
+if cflZ > cfl; cfl = cflZ; cflDir = 3; end
+
+% Now make the GPU compute it
+[gpuCFL gpuDIR] = directionalMaxFinder(rhoD, csD, pxD, pyD, pzD);
+
+if gpuCFL ~= cfl;
+    disp('   !!! Test failed to return correct cfl speed !!!');
+    fail = 1;
+end
+if gpuDIR ~= cflDir
+    disp('   !!! Test failed to return correct cfl direction !!!');
+    fail = 1;
+end
+
+% Test 3:
+% c = directionalMaxFinder(a1, a2, direct) will find the max of |a1(r)+a2(r)| in the
+%      'direct' direction (1=X, 2=Y, 3=Z)
+% This is used by the xin/jin algorithm to find the freezing speed
+% This code branch is terrible and should not be used
+% I am 90% sure the current xin/jin kernel doesn't even use this call
+
 end
 
 function fail = testFreezeAndPtot(res)
     [xpos ypos zpos] = ndgrid((1:res(1))*2*pi/res(1), (1:res(2))*2*pi/res(2), (1:res(3))*2*pi/res(3));
     % Generate nontrivial conditions
     rho = ones(res);
-    px = zeros(res) + sin(xpos);
-    py = ones(res) + sin(ypos + zpos);
-    pz = cos(zpos);
-    E  = .5*(px.^2+py.^2+pz.^2)./rho + 2 + .3*cos(4*xpos) + .1*sin(3*ypos);
+    px = zeros(res);% + sin(xpos);
+    py = ones(res);% + sin(ypos + zpos);
+    pz = zeros(res);%cos(zpos);
+    E  = .5*(px.^2+py.^2+pz.^2)./rho + 2;% + .3*cos(4*xpos) + .1*sin(3*ypos);
     Bx = zeros(res);
     By = zeros(res);
     Bz = zeros(res);
@@ -558,9 +610,12 @@ function fail = testFreezeAndPtot(res)
 
     pd = GPU_Type(pdev);
     cf = GPU_Type(cdev);
+
+%[cf.array(:) freeze(:) (cf.array(:) - freeze(:))]
     fail = 0;
-    if max(max(max(abs(pd.array - ptot)))) > 1e-10; disp('   !!! Test failed: P !!!'); fail = 1; end
-    if max(max(abs(cf.array(:) - freeze(:)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; end
+    if max(max(max(abs(pd.array - ptot)))) > 1e-10;  disp('   !!! Test failed: P !!!'); fail = 1; end
+    if max(max(abs(cf.array(:) - freeze(:)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; 
+end
 
 end
 
