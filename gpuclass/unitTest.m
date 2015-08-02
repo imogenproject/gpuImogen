@@ -550,13 +550,13 @@ pz = -.5 + rand(res); pzD = GPU_Type(pz);
 
 % Use it to compute the CFL constraint speed
 cflDir = 1;
-cflX = max(cs(:) + px(:) ./ rho(:));
+cflX = max(cs(:) + abs(px(:) ./ rho(:)));
 cfl = cflX;
 
-cflY = max(cs(:) + py(:) ./ rho(:));
+cflY = max(cs(:) + abs(py(:) ./ rho(:)));
 if cflY > cfl; cfl = cflY; cflDir = 2; end
 
-cflZ = max(cs(:) + pz(:) ./ rho(:));
+cflZ = max(cs(:) + abs(pz(:) ./ rho(:)));
 if cflZ > cfl; cfl = cflZ; cflDir = 3; end
 
 % Now make the GPU compute it

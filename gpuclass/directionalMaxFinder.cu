@@ -49,18 +49,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 switch(nrhs) {
   case 3: {
+  /* m = directionalMaxFinder(v, c, dir) 
+   * computes MAX[ (|v|+c)_{ijk} ] in the dir = 1/2/3/ ~ i/j/k direction
+   */ 
   MGArray in[2];
   int worked   = MGA_accessMatlabArrays(prhs, 0, 1, in);
   MGArray *out = MGA_createReturnedArrays(plhs, 1, in);
 
   dim3 blocksize, gridsize, dims;
 
+  int maxDirection = (int)*mxGetPr(prhs[2]);
+
   for(i = 0; i < in->nGPUs; i++) {
     calcPartitionExtent(in, i, sub);
     dims = makeDim3(&sub[3]);
     blocksize = makeDim3(BLOCKDIM, BLOCKDIM, 1);
 
-    switch((int)*mxGetPr(prhs[2])) {
+    switch(maxDirection) {
       case 1:
         gridsize.x = dims.y / BLOCKDIM; if (gridsize.x * BLOCKDIM < dims.y) gridsize.x++;
         gridsize.y = dims.z / BLOCKDIM; if (gridsize.y * BLOCKDIM < dims.z) gridsize.y++;
@@ -76,14 +81,17 @@ switch(nrhs) {
       default: mexErrMsgTxt("Direction passed to directionalMaxFinder is not in { 1,2,3 }");
     }
   
-  //printf("%i %i %i %i %i %i\n", gridsize.x, gridsize.y, gridsize.z, blocksize.x, blocksize.y, blocksize.z);
     cudaSetDevice(in->deviceID[i]);
     CHECK_CUDA_ERROR("setCudaDevice()");
-    cukern_DirectionalMax<<<gridsize, blocksize>>>(in[0].devicePtr[i], in[1].devicePtr[i], out->devicePtr[i], (int)*mxGetPr(prhs[2]), dims.x, dims.y, dims.z);
+    cukern_DirectionalMax<<<gridsize, blocksize>>>(in[0].devicePtr[i], in[1].devicePtr[i], out->devicePtr[i], maxDirection, dims.x, dims.y, dims.z);
     CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, in, i, "directionalMaxFinder(a,b,direct)");
   }
 
-  // FIXME: Must now check if prhs[2] == in->partitionDir and them max across partitions
+// FIXME the above function executes in the worst possible way
+// FIXME it stores the local max in N locations in a non-flattened array
+// FIXME which will effectively stymie MGA_globalPancakeReduce
+//  MGArray *finalResult;
+//    MGA_globalPancakeReduce(out, finalResult, maxDirection, 0, 1);
 
   free(out);
 
@@ -98,17 +106,18 @@ switch(nrhs) {
     gridsize.x = 32; // 8K threads out to keep it occupied
     gridsize.y = gridsize.z =1;
 
-    // Allocate nGPUs * gridsize) elements of pinned memory
-    // Results wil be conveniently waiting on the CPU for us when we're done
-    double *blkA;
-    cudaMallocHost(&blkA, gridsize.x * a.nGPUs);
+    // Allocate nGPUs * gridsize elements of pinned memory
+    // Results will be conveniently waiting on the CPU for us when we're done
+    double *blkA[a.nGPUs];
 
     int i;
     for(i = 0; i < a.nGPUs; i++) {
       cudaSetDevice(a.deviceID[i]);
       CHECK_CUDA_ERROR("calling cudaSetDevice()");
-      cukern_GlobalMax<<<gridsize, blocksize>>>(a.devicePtr[i], a.partNumel[i], blkA+gridsize.x*i);
-      CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &a, i, "directionalMaxFinder()");
+      cudaMallocHost(&blkA[i], gridsize.x * sizeof(double));
+      CHECK_CUDA_ERROR("cudaMallocHost");
+      cukern_GlobalMax<<<gridsize, blocksize>>>(a.devicePtr[i], a.partNumel[i], blkA[i]);
+      CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &a, i, "directionalMaxFinder(phi)");
     }
 
     mwSize dims[2];
@@ -117,10 +126,27 @@ switch(nrhs) {
     plhs[0] = mxCreateNumericArray (2, dims, mxDOUBLE_CLASS, mxREAL);
 
     // Since we get only 32*nGPUs elements back, not worth another kernel invocation
-    double *d = mxGetPr(plhs[0]);
-    d[0] = *blkA;
-    for(i = 1; i < a.nGPUs*gridsize.x; i++) { if(blkA[i] > *d) *d = blkA[i]; }
-    cudaFreeHost(blkA);
+    double nodeMax = 0;
+    int devCount = 0; // track which partition we're getting results from
+
+    for(devCount = 0; devCount < a.nGPUs; devCount++) {
+        cudaSetDevice(a.deviceID[devCount]);
+        CHECK_CUDA_ERROR("cudaSetDevice()");
+        cudaDeviceSynchronize();
+        CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
+        if(devCount == 0) nodeMax = blkA[0][0]; // Special first case: initialize nodeMax
+
+        for(i = 0; i < gridsize.x; i++)
+          if(blkA[devCount][i] > nodeMax) nodeMax = blkA[devCount][i];
+        cudaFreeHost(blkA[devCount]);
+        CHECK_CUDA_ERROR("cudaFreeHost");
+    }
+
+
+    // Now apply result to all nodes
+    double *globalMax = mxGetPr(plhs[0]);
+
+    MPI_Allreduce((void *)&nodeMax, (void *)globalMax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   } break;
   case 5: {
     // Get input arrays: [rho, c_s, px, py, pz]
@@ -131,32 +157,30 @@ switch(nrhs) {
     blocksize.x = GLOBAL_BLOCKDIM; blocksize.y = blocksize.z = 1;
 
     // Launches enough blocks to fully occupy the GPU
-    gridsize.x = 64;
+    gridsize.x = 32;
     gridsize.y = gridsize.z =1;
 
     // Allocate enough pinned memory to hold results
-    double *blkA; int *blkB;
-    int hblockElements = gridsize.x * fluid->nGPUs;
+    double *blkA[fluid->nGPUs];
+    int *blkB[fluid->nGPUs];
+    int hblockElements = gridsize.x;
 
-    cudaSetDevice(fluid->deviceID[0]);
-
-    cudaMallocHost((void **)&blkA, hblockElements * sizeof(double));
-    CHECK_CUDA_ERROR("CFL malloc double");
-    cudaMallocHost((void **)&blkB, hblockElements * sizeof(int));
-    CHECK_CUDA_ERROR("CFL malloc ints");
-
-    // FIXME: Fluid pointers are slabbed now, no need to pass all 5 seperately.
     int i;
     for(i = 0; i < fluid->nGPUs; i++) {
         cudaSetDevice(fluid->deviceID[i]);
         CHECK_CUDA_ERROR("cudaSetDevice()");
+        cudaMallocHost((void **)&blkA[i], hblockElements * sizeof(double));
+        CHECK_CUDA_ERROR("CFL malloc doubles");
+        cudaMallocHost((void **)&blkB[i], hblockElements * sizeof(int));
+        CHECK_CUDA_ERROR("CFL malloc ints");
+
         cukern_GlobalMax_forCFL<<<gridsize, blocksize>>>(
 		fluid[0].devicePtr[i],
 		fluid[1].devicePtr[i],
 		fluid[2].devicePtr[i],
 		fluid[3].devicePtr[i],
 		fluid[4].devicePtr[i],
-		fluid[0].partNumel[i], blkA + i*gridsize.x, blkB + i*gridsize.x);
+		fluid[0].partNumel[i], blkA[i], blkB[i]);
         CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &fluid[0], i, "CFL max finder");
     }
 
@@ -168,34 +192,26 @@ switch(nrhs) {
 
     double *maxout = mxGetPr(plhs[0]);
     double *dirout = mxGetPr(plhs[1]);
+    int devCount;
 
+    for(devCount = 0; devCount < fluid->nGPUs; devCount++) {
+        cudaSetDevice(fluid->deviceID[devCount]);
+        CHECK_CUDA_ERROR("cudaSetDevice()");
+        cudaDeviceSynchronize();
+        CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
+        if(devCount == 0) { maxout[0] = blkA[0][0]; dirout[0] = blkB[devCount][0]; } // Special first case: initialize nodeMax
 
-    int devCount = 0;
-    for(i = 0; i < fluid->nGPUs*gridsize.x; i++) {
-    	/* Wait for device to finish processing */
-    	if(i % gridsize.x == 0) {
-    		cudaSetDevice(devCount);
-    		CHECK_CUDA_ERROR("cudaSetDevice");
-    		cudaDeviceSynchronize();
-    		CHECK_CUDA_ERROR("cudadevicesynchronize");
-    		devCount++;
-    	}
+        for(i = 0; i < gridsize.x; i++)
+    	    if(blkA[devCount][i] > maxout[0]) { maxout[0] = blkA[devCount][i]; dirout[0] = blkB[devCount][i]; }
 
-    	/* Download and compute local maxima */
-    	if(i == 0) {
-    		maxout[0] = blkA[0];
-    		dirout[0] = (double)blkB[0];
-    	} else {
-    		if(blkA[i] > maxout[0]) { maxout[0] = blkA[i]; dirout[0] = blkB[0]; }
-    	}
+        cudaFreeHost(blkA[devCount]);
+        CHECK_CUDA_ERROR("cudaFreeHost");
+	cudaFreeHost(blkB[devCount]);
+	CHECK_CUDA_ERROR("cudaFreeHost");
     }
 
-    cudaSetDevice(fluid->deviceID[0]);
-    cudaFreeHost(blkA);
-    CHECK_CUDA_ERROR("cudaFree() of blkA");
-    cudaFreeHost(blkB);
-    CHECK_CUDA_ERROR("cudaFree() of blkB");
-
+// FIXME This needs the mpi_reduce with complex structures thingie done to it
+//    MPI_Allreduce((void *)&nodeMax, (void *)globalMax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   } break;
 }
 
@@ -256,75 +272,78 @@ switch(direct) {
 
 }
 
-__global__ void cukern_GlobalMax(double *din, int n, double *dout)
+__global__ void cukern_GlobalMax(double *phi, int n, double *dout)
 {
+unsigned int tix = threadIdx.x;
+int x = blockIdx.x * blockDim.x + tix;
 
-int x = blockIdx.x * blockDim.x + threadIdx.x;
-__shared__ double locBloc[256];
+__shared__ double W[256];
 
-double CsMax = -1e37;
-locBloc[threadIdx.x] = -1e37;
-if(threadIdx.x == 0) dout[blockIdx.x] = locBloc[0]; // As a safety measure incase we return below
+double Wmax = -1e37;
+W[tix] = -1e37;
+if(tix == 0) dout[blockIdx.x] = W[0]; // As a safety measure incase we return below
 
 if(x >= n) return; // If we're fed a very small array, this will be easy
 
-// Threads step through memory with a stride of (total # of threads), finding the max in this space
+// Threads step through memory with a stride of (total # of threads), finphig the max in this space
 while(x < n) {
-  if(din[x] > CsMax) CsMax = din[x];
+  if(phi[x] > Wmax) Wmax = phi[x];
   x += blockDim.x * gridDim.x;
   }
-locBloc[threadIdx.x] = CsMax;
+W[tix] = Wmax;
 
-// Synchronize, then logarithmically fan in to identify each block's maximum
+x = 128;
+while(x > 16) {
+	if(tix >= x) return;
+	__syncthreads();
+	if(W[tix+x] > W[tix]) W[tix] = W[tix+x];
+        x=x/2;
+}
+// We have one halfwarp (16 threads) remaining, proceed synchronously
+
+if(W[tix+16] > W[tix]) W[tix] = W[tix+16]; if(tix >= 8) return;
+if(W[tix+8] > W[tix]) W[tix] = W[tix+8]; if(tix >= 4) return;
+if(W[tix+4] > W[tix]) W[tix] = W[tix+4]; if(tix >= 2) return;
+if(W[tix+2] > W[tix]) W[tix] = W[tix+2]; if(tix) return;
+
 __syncthreads();
 
-x = 2;
-while(x < 256) {
-  if(threadIdx.x % x != 0) break;
-
-  if(locBloc[threadIdx.x + x/2] > locBloc[threadIdx.x]) locBloc[threadIdx.x] = locBloc[threadIdx.x + x/2];
-
-  x *= 2;
-  }
-
-__syncthreads();
-
-// Make sure the max is written and visible; each block writes one value. We test these 30 or so in CPU.
-if(threadIdx.x == 0) dout[blockIdx.x] = locBloc[0];
+dout[blockIdx.x] = (W[1] > W[0]) ? W[1] : W[0];
 
 }
 
 __global__ void cukern_GlobalMax_forCFL(double *rho, double *cs, double *px, double *py, double *pz, int n, double *out, int *dirOut)
 {
-int x = blockIdx.x * blockDim.x + threadIdx.x; // address
+unsigned int tix = threadIdx.x;
+int x = blockIdx.x * blockDim.x + tix; // address
 int blockhop = blockDim.x * gridDim.x;         // stepsize
 
+// Do not use struct because 12-byte struct = bad memory pattern
 __shared__ int    maxdir[GLOBAL_BLOCKDIM];
-__shared__ double setA[GLOBAL_BLOCKDIM];
+__shared__ double freeze[GLOBAL_BLOCKDIM];
 
 double u, v;
 int q;
 
-setA[threadIdx.x] = 0.0;
+freeze[tix] = 0.0;
 
 if(x >= n) return; // This is unlikely but we may get a stupid-small resolution
 
 // load first set and set maxdir
-maxdir[threadIdx.x] = 1;
+maxdir[tix] = 1;
+
 u = abs(px[x]);
 v = abs(py[x]);
-if(v > u) { u = v; maxdir[threadIdx.x] = 2; }
+if(v > u) { u = v; maxdir[tix] = 2; }
 v = abs(pz[x]);
-if(v > u) { u = v; maxdir[threadIdx.x] = 3; }
+if(v > u) { u = v; maxdir[tix] = 3; }
 
-setA[threadIdx.x] = u / rho[x] + cs[x];
+freeze[tix] = u / rho[x] + cs[x];
 
 x += blockhop; // skip the first block since we've already done it.
 
 // load next set and compare until reaching end of array
 while(x < n) {
-  //__syncthreads(); // prevent the memory accesses from breaking too far apart
-
   // Perform the max operation for this cell
   u = abs(px[x]);
   v = abs(py[x]);
@@ -335,107 +354,28 @@ while(x < n) {
 
   u = u / rho[x] + cs[x];
   // And compare-write to the shared array
-  if(u > setA[threadIdx.x]) { setA[threadIdx.x] = u; maxdir[threadIdx.x] = q; }
+  if(u > freeze[tix]) { freeze[tix] = u; maxdir[tix] = q; }
 
   x += blockhop;
   }
 
-__syncthreads();
-// logarithmic foldin to determine max for block
-if(threadIdx.x == 0) {
-  int a;
-  u = setA[0];
-  q = maxdir[0];
-  
-  // do this the stupid way for now
-  for(a = 1; a < GLOBAL_BLOCKDIM; a++) {
-    if(setA[a] > u) { u = setA[a]; q = maxdir[a]; }
-    }
-  }
-
-
-// write final values to out[blockIdx.x] and dirOut[blockidx.x]
-if(threadIdx.x == 0) {
-  out[blockIdx.x] = u;
-  dirOut[blockIdx.x] = q;
-  }
-
+x = GLOBAL_BLOCKDIM / 2;
+while(x > 16) {
+        if(tix >= x) return;
+        __syncthreads();
+        if(freeze[tix+x] > freeze[tix]) { freeze[tix] = freeze[tix+x]; maxdir[tix] = maxdir[tix+x]; }
+        x=x/2;
 }
+// We have one halfwarp (16 threads) remaining, proceed synchronously
+if(freeze[tix+16] > freeze[tix]) { freeze[tix] = freeze[tix+16]; maxdir[tix] = maxdir[tix+16]; } if(tix >= 8) return;
+if(freeze[tix+8] > freeze[tix])  { freeze[tix] = freeze[tix+8 ]; maxdir[tix] = maxdir[tix+8];  } if(tix >= 4) return;
+if(freeze[tix+4] > freeze[tix])  { freeze[tix] = freeze[tix+4 ]; maxdir[tix] = maxdir[tix+4];  } if(tix >= 2) return;
+if(freeze[tix+2] > freeze[tix])  { freeze[tix] = freeze[tix+2 ]; maxdir[tix] = maxdir[tix+2];  } if(tix) return;
 
-
-/*
-// This is specifically for finding globalmax( max(abs(p_i))/rho + c_s) for the CFL constraint
-__global__ void cukern_GlobalMax_forCFL(double *rho, double *cs, double *px, double *py, double *pz, int n, double *dout, int *dirOut)
-{
-
-int x = blockIdx.x * blockDim.x + threadIdx.x;
-// In the end threads must share their maxima and fold them in logarithmically
-__shared__ double locBloc[GLOBAL_BLOCKDIM];
-__shared__ int locDir[GLOBAL_BLOCKDIM];
-
-// Threadwise: The largest sound speed and it's directional index yet seen; Local comparision direction.
-// temporary float values used to evaluate each cell
-double CsMax = -1e37; int IndMax, locImax;
-double tmpA, tmpB;
-
-// Set all maxima to ~-infinity and index to invalid.
-locBloc[threadIdx.x] = -1e37;
-locDir[threadIdx.x] = 0;
-
-return; 
-
-// Have thread 0 write such to the globally shared values (overwrite garbage before we possibly get killed next line)
-if(threadIdx.x == 0) { dout[blockIdx.x] = -1e37; dirOut[blockIdx.x] = 0; }
-
-if(x >= n) return; // If we get a very low resolution, save time & space on wasted threads
-
-// Jumping through memory,
-while(x < n) {
-  // Find the maximum |momentum| first; Convert it to velocity and add to soundspeed, then compare with this thread's previous max.
-  tmpA = abs(px[x]);
-  tmpB = abs(py[x]);
-
-  if(tmpB > tmpA) { tmpA = tmpB; locImax = 2; } else { locImax = 1; }
-  tmpB = abs(pz[x]);
-  if(tmpB > tmpA) { tmpA = tmpB; locImax = 3; }  
-
-  tmpA = tmpA / rho[x] + cs[x];
-
-  if(tmpA > CsMax) { CsMax = tmpA; IndMax = locImax; }
-
-  // Jump to next address to compare
-  x += blockDim.x * gridDim.x;
-  }
-
-// Between them threads have surveyed entire array
-// Flush threadwise maxima to shared memory
-locBloc[threadIdx.x] = CsMax;
-locDir[threadIdx.x] = IndMax;
-
-// Now we need the max of the stored shared array to write back to the global array
 __syncthreads();
 
-if (threadIdx.x % 8 > 0) return; // keep one in 8 threads
-
-// Each searches the max of the nearest 8 points
-for(x = 1; x < 8; x++) {
-  if(locBloc[threadIdx.x+x] > locBloc[threadIdx.x]) locBloc[threadIdx.x] = locBloc[threadIdx.x+x];
-  }
-
-// The last thread takes the max of these maxes
-if(threadIdx.x > 0) return;
-for(x = 8; x < GLOBAL_BLOCKDIM; x+= 8) {
-  if(locBloc[threadIdx.x+x] > locBloc[0]) locBloc[0] = locBloc[threadIdx.x+x];
-  }
-
-// NOTE: This is the dead-stupid backup if all else fails.
-//if(threadIdx.x > 0) return;
-//for(x = 1; x < GLOBAL_BLOCKDIM; x++)  if(locBloc[x] > locBloc[0]) locBloc[0] = locBloc[x];
-
-dout[blockIdx.x] = locBloc[0];
-dirOut[blockIdx.x] = locDir[0];
+out[blockIdx.x] = (freeze[1] > freeze[0]) ? freeze[1] : freeze[0];
+dirOut[blockIdx.x] = (freeze[1] > freeze[0]) ? maxdir[1] : maxdir[0];
 
 }
-
-*/
 

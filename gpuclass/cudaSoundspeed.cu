@@ -40,7 +40,7 @@ __global__ void cukern_Soundspeed_hd(double *rho, double *E, double *px, double 
 #define GRIDDIM  64
 
 // FIXME: Not quite clear why this is 6 elements and not 2...
-__constant__ double pressParams[6];
+__device__ __constant__ double pressParams[6];
 #define MHD_CS_B pressParams[0]
 #define GG1 pressParams[1]
 
@@ -77,8 +77,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     hostP[0] = ALFVEN_CSQ_FACTOR - .5*gg1;
     hostP[1] = gg1;
     
-    cudaMemcpyToSymbol(pressParams, &hostP[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
-    CHECK_CUDA_ERROR("cudaSoundspeed memcpy to constants.");
 
     int i, j;
     int sub[6];
@@ -87,6 +85,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
       calcPartitionExtent(&fluid[0], i, &sub[0]);
       cudaSetDevice(fluid[0].deviceID[i]);
       CHECK_CUDA_ERROR("Setting device.");
+      cudaMemcpyToSymbol(pressParams, &hostP[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+      CHECK_CUDA_ERROR("cudaSoundspeed memcpy to constants.");
 
       for(j = 0; j < 8; j++) { srcs[j] = fluid[j].devicePtr[i]; }
 

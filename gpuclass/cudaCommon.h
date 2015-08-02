@@ -31,7 +31,7 @@ void dropMexError(char *excuse, char *infile, int atline);
 
 #define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK"); }
 
-#define FATAL_NOT_IMPLEMENTED mexErrMsgTxt("Fatal: Encountered requited but completely non-implemented code branch.");
+#define FATAL_NOT_IMPLEMENTED mexErrMsgTxt("Fatal: Encountered required but completely non-implemented code branch.");
 
 typedef struct {
         double *fluidIn[5];
@@ -117,10 +117,16 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
 int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
-
+/* Functions for managing halos of MGA partitioned data */
 void MGA_exchangeLocalHalos(MGArray *a, int n);
-__global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
-__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int nyL, int nyR, int nz, int h);
+__global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
+__global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int nyR, int nz, int h);
+
+template<int lr_rw>
+__global__ void cudaMGA_haloXrw(double *phi, double *linear, int nx, int ny, int nz, int h);
+
+template<int lr_rw>
+__global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int nz, int h);
 
 typedef struct {
     int ndims;

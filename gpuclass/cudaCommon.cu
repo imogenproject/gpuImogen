@@ -565,6 +565,12 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 
 	double *B; double *C;
 
+	int i;
+		for(i = 0; i < a->nGPUs; i++) {
+			cudaSetDevice(a->deviceID[i]);
+			cudaDeviceSynchronize();
+		}
+
 	switch(a->nGPUs) {
 	case 1: break; // nofin to do
 	case 2: // reduce(A,B)->A
@@ -634,8 +640,18 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 	default: return -1;
 	}
 
+	for(i = 0; i < a->nGPUs; i++) {
+				cudaSetDevice(a->deviceID[i]);
+				cudaDeviceSynchronize();
+			}
+
 if(redistribute)
 	MGA_distributeArrayClones(a, 0);
+for(i = 0; i < a->nGPUs; i++) {
+			cudaSetDevice(a->deviceID[i]);
+			cudaDeviceSynchronize();
+		}
+
 
 	return 0;
 }
@@ -646,7 +662,7 @@ if(redistribute)
  */
 int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
 {
-if(cloned->partitionDir != PARTITION_CLONED) return 0;
+if(cloned->haloSize != PARTITION_CLONED) return 0;
 
 int j;
 
@@ -708,79 +724,159 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 // Necessary when non-point operations have been performed in the partition direction
 void MGA_exchangeLocalHalos(MGArray *a, int n)
 {
-int i, j, jn;
-dim3 blocksize, gridsize;
+	int i, j, jn;
+	dim3 blocksize, gridsize;
 
-/* It is essential that ALL devices be absolutely synchronized before this operation starts
- * It is an observed fact that the cudaFree() after the fluid step kernels does NOT result in
- * sequential consistency between different devices.
- */
-for(j = 0; j < a->nGPUs; j++) {
-    	cudaSetDevice(a->deviceID[j]);
-    	cudaDeviceSynchronize();
-    }
+	for(i = 0; i < n; i++) {
+		// Skip this if it's a cloned partition
+		if(a->haloSize == PARTITION_CLONED) { a++; continue; }
+		// Or there's only one partition to begin with
+		if(a->nGPUs == 1) { a++; continue; }
 
-for(i = 0; i < n; i++) {
-	// Skip this if it's a cloned partition
-	if(a->haloSize == PARTITION_CLONED) { a++; continue; }
-	// Or there's only one partition to begin with
-	if(a->nGPUs == 1) { a++; continue; }
+		for(j = 0; j < a->nGPUs; j++) {
+			jn = (j+1) % a->nGPUs;
 
-    for(j = 0; j < a->nGPUs; j++) {
-    	jn = (j+1) % a->nGPUs;
+			int subL[6], subR[6];
+			calcPartitionExtent(a, j, subL);
+			calcPartitionExtent(a, jn, subR);
 
-    	int subL[6], subR[6];
-    	calcPartitionExtent(a, j, subL);
-    	calcPartitionExtent(a, jn, subR);
+			switch(a->partitionDir) {
+			case 1: {
+				cudaSetDevice(a->deviceID[j]);
+				blocksize.x = a->haloSize;
+				blocksize.y = SYNCBLOCK;
+				blocksize.z = (subL[5] > 1) ? 8 : 1;
 
-        switch(a->partitionDir) {
-            case 1: {
-                cudaSetDevice(a->deviceID[j]);
-                blocksize.x = a->haloSize;
-                blocksize.y = SYNCBLOCK;
-                blocksize.z = (subL[5] > 1) ? 8 : 1;
+				gridsize.x  = a->dim[1]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[1]);
+				gridsize.y  = 1; gridsize.z = 1;
 
-                gridsize.x  = a->dim[1]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[1]);
-                gridsize.y  = 1; gridsize.z = 1;
-                cudaMGHaloSyncX<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subR[3], subL[4], subL[5], a->haloSize);
-            } break;
-            case 2: {
-                cudaSetDevice(a->deviceID[j]);
-                blocksize.x = blocksize.y = SYNCBLOCK;
-                blocksize.z = 1;
-                gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
-                gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
+				int canRWPeer; cudaDeviceCanAccessPeer(&canRWPeer, a->deviceID[j], a->deviceID[jn]);
 
-                cudaMGHaloSyncY<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subL[4], subR[4], subL[5], a->haloSize);
-            } break;
-            case 3: {
+				canRWPeer= 0;
+				/* Perf testing seems to indicate that the p2p kernel is horribly, horribly, horribly slow compared
+				 * to the generic code
+				 */
+				if(canRWPeer) {
+					cudaMGHaloSyncX_p2p<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subR[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("hcudaMGHaloSyncX_p2p");
+				} else {
+					size_t haloNumel = a->haloSize * subL[4]*subL[5];
 
-                size_t halotile = a->dim[0]*a->dim[1];
-                size_t byteblock = halotile*a->haloSize*sizeof(double);
+					// Initiate left read
+					cudaSetDevice(a->deviceID[j]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					double *leftLinear;
+					cudaMalloc((void **)&leftLinear, 2*haloNumel*sizeof(double));
+					CHECK_CUDA_ERROR("cudaMalloc()");
+					cudaMGA_haloXrw<1><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear, subL[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwx");
 
-                size_t L_halo = (subL[5] - a->haloSize)*halotile;
-                size_t L_src  = (subL[5]-2*a->haloSize)*halotile;
+					// Initiate right read
+					cudaSetDevice(a->deviceID[jn]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					double *rightLinear;
+					cudaMalloc((void **)&rightLinear, 2*haloNumel*sizeof(double));
+					CHECK_CUDA_ERROR("cudaMalloc()");
+					cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear, subR[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwx");
 
-		// Fill right halo with left's source
-                cudaMemcpy((void *)a->devicePtr[jn],
-                           (void *)(a->devicePtr[j] + L_src), byteblock, cudaMemcpyDeviceToDevice);
-                // Fill left halo with right's source
-                cudaMemcpy((void *)(a->devicePtr[j] + L_halo),
-                           (void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
+					// Manually copy
+					cudaMemcpy((void *)(leftLinear + haloNumel), rightLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+					CHECK_CUDA_ERROR("cudaMemcpy");
+					cudaMemcpy((void *)(rightLinear+ haloNumel), leftLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+					CHECK_CUDA_ERROR("cudaMemcpy");
 
-            } break;
+					// Initiate writebacks
+					cudaMGA_haloXrw<2><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear + haloNumel, subR[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwx");
+					cudaFree(rightLinear);
+					CHECK_CUDA_ERROR("cudaFree");
+					// Deallocate
+					cudaSetDevice(a->deviceID[j]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					cudaMGA_haloXrw<3><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear + haloNumel, subL[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwx");
+					cudaFree(leftLinear);
+					CHECK_CUDA_ERROR("cudaFree");
+				}
+			} break;
+			case 2: {
+				cudaSetDevice(a->deviceID[j]);
+				CHECK_CUDA_ERROR("cudasSetDevice");
+				blocksize.x = blocksize.y = SYNCBLOCK;
+				blocksize.z = 1;
+				gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
+				gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
 
-        }
-    }
+				int canRWPeer; cudaDeviceCanAccessPeer(&canRWPeer, a->deviceID[j], a->deviceID[jn]);
+				canRWPeer = 0;
+				/* Perf testing seems to indicate that the p2p kernel is horribly, horribly, horribly slow compared
+				 * to the generic code
+				 */
+				if(canRWPeer) { /* if have p2p accessibility */
+					cudaMGHaloSyncY_p2p<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subL[4], subR[4], subL[5], a->haloSize);
+				} else {
+					size_t haloNumel = a->haloSize * subL[3]*subL[5];
 
-    a++;
-}
-a--;
-for(j = 0; j < a->nGPUs; j++) {
-    	cudaSetDevice(a->deviceID[j]);
-    	cudaDeviceSynchronize();
-    }
+					// Initiate left read
+					cudaSetDevice(a->deviceID[j]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					double *leftLinear;
+					cudaMalloc((void **)&leftLinear, 2*haloNumel*sizeof(double));
+					CHECK_CUDA_ERROR("cudaMalloc()");
+					cudaMGA_haloYrw<1><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear, subL[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwy");
+					// Initiate right read
+					cudaSetDevice(a->deviceID[jn]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					double *rightLinear;
+					cudaMalloc((void **)&rightLinear, 2*haloNumel*sizeof(double));
+					CHECK_CUDA_ERROR("cudaMalloc()");
+					cudaMGA_haloYrw<0><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear, subL[3], subR[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwy");
 
+					// Manually copy
+					cudaMemcpy((void *)(leftLinear + haloNumel), rightLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+					CHECK_CUDA_ERROR("cudaMemcpy");
+					cudaMemcpy((void *)(rightLinear+ haloNumel), leftLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
+					CHECK_CUDA_ERROR("cudaMemcpy");
+
+					// Initiate right writeback & free
+					cudaMGA_haloYrw<2><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear + haloNumel, subL[3], subR[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwy");
+					cudaFree(rightLinear);
+					CHECK_CUDA_ERROR("cudaFree");
+					// Initiate left writeback & free
+					cudaSetDevice(a->deviceID[j]);
+					CHECK_CUDA_ERROR("cudasSetDevice");
+					cudaMGA_haloYrw<3><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear + haloNumel, subL[3], subL[4], subL[5], a->haloSize);
+					CHECK_CUDA_ERROR("halorwy");
+					cudaFree(leftLinear);
+					CHECK_CUDA_ERROR("cudaFree");
+				}
+			} break;
+			case 3: { /* This is a simple transfer of a contiguous linear block of memory, no kernel req'd */
+				size_t halotile = a->dim[0]*a->dim[1];
+				size_t byteblock = halotile*a->haloSize*sizeof(double);
+
+				size_t L_halo = (subL[5] - a->haloSize)*halotile;
+				size_t L_src  = (subL[5]-2*a->haloSize)*halotile;
+
+				// Fill right halo with left's source
+				cudaMemcpy((void *)a->devicePtr[jn],
+						(void *)(a->devicePtr[j] + L_src), byteblock, cudaMemcpyDeviceToDevice);
+				CHECK_CUDA_ERROR("cudaMemcpy");
+				// Fill left halo with right's source
+				cudaMemcpy((void *)(a->devicePtr[j] + L_halo),
+						(void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
+				CHECK_CUDA_ERROR("cudaMemcpy");
+
+			} break;
+
+			}
+		}
+
+	}
 
 }
 
@@ -801,7 +897,7 @@ for(j = 0; j < a->nGPUs; j++) {
  *    L += nxL*ny*g.y; R =+ nxR*ny*g.y;
 
  */
-__global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, int nz, int h)
+__global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h)
 {
 	int y0 = threadIdx.y + blockDim.y*blockIdx.x;
 	if(y0 >= ny) return;
@@ -810,30 +906,23 @@ __global__ void cudaMGHaloSyncX(double *L, double *R, int nxL, int nxR, int ny, 
 	/* This will generate unaligned addresses, yes I'm sorry, DEAL WITH IT */
 	L += nxL*(y0 + ny*z0) + nxL - 2*h + threadIdx.x;
 	R += nxR*(y0 + ny*z0) + threadIdx.x;
-	double alpha[2];
 
 	int k;
 	int hz = blockDim.z*gridDim.y;
 	for(k = z0; k < nz; k+= hz) { /* This implicitly contains: if(z0 >= nz) { return; } */
 		// read enough data, for sure
-		alpha[0] = L[0];
-		alpha[1] = R[h];
+		R[0] = L[0];
+		L[h] = R[h];
 
-		if(threadIdx.x < h) {
-			R[0] = alpha[0];
-			L[h] = alpha[1];
-		}
-
-	    L   += nxL*ny*hz;
-            R   += nxR*ny*hz;
+		L   += nxL*ny*hz;
+		R   += nxR*ny*hz;
 	}
 
 }
 
-
 // FIXME: And this ny on both sides, also goddamnit.
 /* Expect invocation with [BLKx BLKz 1] threads and [nx/BLKx nz/BLKz 1].rp blocks */
-__global__ void cudaMGHaloSyncY(double *L, double *R, int nx, int nyL, int nyR, int nz, int h)
+__global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int nyR, int nz, int h)
 {
 int x0 = threadIdx.x + blockIdx.x*blockDim.x;
 int z0 = threadIdx.y + blockIdx.y*blockDim.y;
@@ -848,6 +937,81 @@ for(i = 0; i < h; i++) {
     L[(i+h)*nx]     = R[(i+h)*nx];
     R[i*nx] = L[i*nx];
 }
+
+}
+
+/* FIXME: These kernels are NOT particularly efficient
+ * FIXME: But they account for very little time vs actual compute kernels
+ */
+
+/* bit 0 = 0: left; bit 0 = 1: right
+ * bit 1 = 0: read; bit 1 = 1: write to phi's halo
+ */
+template<int lr_rw>
+__global__ void cudaMGA_haloXrw(double *phi, double *linear, int nx, int ny, int nz, int h)
+{
+	int y0 = threadIdx.y + blockDim.y*blockIdx.x;
+	if(y0 >= ny) return;
+	int z0 = threadIdx.z + blockDim.z*blockIdx.y;
+
+	phi += nx*(y0 + ny*z0) + threadIdx.x;
+	linear += threadIdx.x + h*(y0+ny*z0);
+
+	switch(lr_rw) {
+	case 0: /* left read   */ phi += h; break;
+	case 1: /* right read  */ phi += nx - 2*h; break;
+	case 2: /* left write  */ break;
+	case 3: /* right write */ phi += nx - h; break;
+	}
+
+	int k;
+	int hz = blockDim.z*gridDim.y;
+	for(k = z0; k < nz; k+= hz) { /* This implicitly contains: if(z0 >= nz) { return; } */
+		if(lr_rw & 2) {
+			phi[0] = linear[0];
+		} else {
+			linear[0] = phi[0];
+		}
+
+		phi    += nx*ny*hz;
+		linear += h*ny*hz;
+	}
+
+}
+
+/* bit 0 = 0: left; bit 0 = 1: right
+ * bit 1 = 0: read; bit 1 = 1: write to phi's halo
+ */
+template<int lr_rw>
+__global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int nz, int h)
+{
+	int x0 = threadIdx.x + blockIdx.x*blockDim.x;
+	int z0 = threadIdx.y + blockIdx.y*blockDim.y;
+
+
+	if((x0 >= nx) || (z0 >= nz)) return;
+
+	phi    += x0 + nx*ny*z0;
+	linear += x0 + nx*h*z0;
+
+	switch(lr_rw) {
+	case 0: /* left read   */ phi += nx*h; break;
+	case 1: /* right read  */ phi += nx*(ny - 2*h); break;
+	case 2: /* left write  */ break;
+	case 3: /* right write */ phi += nx*(ny - h); break;
+	}
+
+
+	int i;
+	for(i = 0; i < h; i++) {
+		if(lr_rw & 2) {
+			phi[0] = linear[0];
+		} else {
+			linear[0] = phi[0];
+		}
+		phi += nx;
+		linear += nx;
+	}
 
 }
 
@@ -937,6 +1101,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[partitionTo], (void *)p, g->numel*sizeof(double), cudaMemcpyHostToDevice);
 		CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
+                MGA_distributeArrayClones(g, 0);
 		return 0;
 	}
 
@@ -974,7 +1139,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		free(currentTarget);
 	}
 
-        MGA_exchangeLocalHalos(g, 1);
+	MGA_exchangeLocalHalos(g, 1);
 
 	return 0;
 }
