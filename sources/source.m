@@ -22,7 +22,7 @@ dTime = 2 * tFraction * run.time.dTime;
     % FIXME: This could be improved by calculating this affine transform once and storing it
     if run.frameRotateOmega ~= 0
         [xg yg] = GIS.ndgridVecs;
-        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ]); 
+        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ], 1); 
         cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime, xyvector);
         clear xyvector;
     end
