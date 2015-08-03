@@ -43,9 +43,8 @@ if(nDevs < 1) return false;
 if(nDevs > MAX_GPUS_USED) return false;
 if(halo < 0) { // check it is sane to clone
 	if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
-
-	if(x[partitionDir-1] != 1) return false;
 }
+
 if((partitionDir < 1) || (partitionDir > 3)) return false;
 
 // Require there be exactly the storage required

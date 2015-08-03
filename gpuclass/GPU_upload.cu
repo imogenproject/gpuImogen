@@ -35,7 +35,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     if(a >= 1) {
       m.haloSize = (int)*d;
-      if(m.haloSize < 0) m.haloSize = 0;
+      if(m.haloSize < 0) m.haloSize = PARTITION_CLONED;
     }
     if(a >= 2) {
       m.partitionDir = (int)d[1];
