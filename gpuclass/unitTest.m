@@ -457,7 +457,7 @@ py = py + dpy1;
 
 %GPU
 
-cudaSourceRotatingFrame(rhoD, ED, pxD, pyD, w, dt, GPU_Type([1:res(1) 1:res(2)]));
+cudaSourceRotatingFrame(rhoD, ED, pxD, pyD, w, dt, GPU_Type([1:res(1) 1:res(2)], 1));
 a = max(px(:) - pxD.array(:));
 b = max(py(:) - pyD.array(:));
 c = max(E(:) - ED.array(:));
