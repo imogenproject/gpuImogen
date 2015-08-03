@@ -34,12 +34,13 @@ classdef GPU_Type < handle
     end
 
     methods
-        function obj = GPU_Type(arrin)
+        function obj = GPU_Type(arrin, docloned)
             obj.allocated = false;
             obj.clearArray();
+	    if nargin == 1; docloned = 0; end
 
             if nargin > 0
-                obj.handleDatain(arrin);
+                obj.handleDatain(arrin, docloned);
             end
 
             obj.manager = GPUManager.getInstance();
@@ -54,7 +55,7 @@ classdef GPU_Type < handle
             % Goofus doesn't care if he leaks memory
             % Gallant always cleans up after himself
             if obj.allocated == true; GPU_free(obj); obj.allocated = false; end
-            obj.handleDatain(arrin);
+            obj.handleDatain(arrin, 0);
 
         end
 
@@ -159,7 +160,7 @@ classdef GPU_Type < handle
 
     methods (Access = private)
 
-        function handleDatain(obj, arrin)
+        function handleDatain(obj, arrin, docloned)
             gm = GPUManager.getInstance();
             if isa(arrin, 'double')
                 if isempty(arrin); obj.clearArray(); return; end
@@ -170,7 +171,9 @@ classdef GPU_Type < handle
                 if numel(obj.asize) == 2; obj.asize(3) = 1; end
                 obj.numdims = ndims(arrin);
 
-                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [gm.useHalo gm.partitionDir]);
+                halo = gm.useHalo; if docloned; halo = -1; end
+
+                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir]);
             elseif isa(arrin, 'GPU_Type') == 1
                 obj.allocated = true;
                 obj.asize     = arrin.asize;
