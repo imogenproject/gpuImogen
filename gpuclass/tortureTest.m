@@ -50,8 +50,10 @@ disp('Fuzzing the following routines which have computable exactly correct answe
 %	cudaSourceRotatingFrame, cudaAccretingStar, cudaSourceScalarPotential, cudaFreeRadiation
 % 25% coverage by unit tests (potential test works)
 
-%names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
-names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential'};
+functests = [1 1 1 1];
+
+names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
+
 for N = 1:numel(names); disp(['	' names{N}]); end
 disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
 disp('#########################');
@@ -62,20 +64,30 @@ res3d = [192 192 192];
 nTests = 25;
 
 % Test single-device operation
-disp('==================== Testing on one GPU');
-x.init([0], 3, 1); rng(randSeed);
-onedev = unitTest(nTests, res2d, nTests, res3d, names);
+if functests(1)
+    disp('==================== Testing on one GPU');
+    x.init([0], 3, 1); rng(randSeed);
+    onedev = unitTest(nTests, res2d, nTests, res3d, names);
+else; onedev = 0; end
 
 % Test two partitions on different devices
-disp('==================== Testing two GPUs, X partitioning');
-x.init(multidev, 3, 1); rng(randSeed);
-devx = unitTest(nTests, res2d, nTests, res3d, names);
-disp('==================== Testing two GPUs, Y partitioning');
-x.init(multidev, 3, 2); rng(randSeed);
-devy = unitTest(nTests, res2d, nTests, res3d, names);
-disp('==================== Testing two GPUs, Z partitioning');
-x.init(multidev, 3, 3); rng(randSeed);
-devz = unitTest(nTests, res2d, nTests, res3d, names);
+if functests(2)
+    disp('==================== Testing two GPUs, X partitioning');
+    x.init(multidev, 3, 1); rng(randSeed);
+    devx = unitTest(nTests, res2d, nTests, res3d, names);
+else; devx = 0; end
+
+if functests(3)
+    disp('==================== Testing two GPUs, Y partitioning');
+    x.init(multidev, 3, 2); rng(randSeed);
+    devy = unitTest(nTests, res2d, nTests, res3d, names);
+else; devy = 0; end
+
+if functests(4)
+    disp('==================== Testing two GPUs, Z partitioning');
+    x.init(multidev, 3, 3); rng(randSeed);
+    devz = unitTest(nTests, res2d, nTests, res3d, names);
+else; devz = 0; end
 
 disp('#########################');
 disp('RESULTS:')
@@ -88,9 +100,17 @@ if any(tests > 0);
     if devx > 0;   disp('	TWO DEVICES, X PARTITION: FAILED'); end 
     if devy > 0;   disp('	TWO DEVICES, Y PARTITION: FAILED'); end
     if devz > 0;   disp('	TWO DEVICES, Z PARTITION: FAILED'); end 
+
+    if any(functests == 0);
+        disp('	>>> SOME UNIT TESTS WERE NOT RUN <<<');
+	disp('	>>>   FURTHER ERRORS MAY EXIST   <<<');
+    end
 else
     disp('	UNIT TESTS PASSED!');
-    disp('	HORRAY NOT SUCKING!');
+    if any(functests == 0);
+        disp('	>>>       SOME UNIT TESTS WERE NOT RUN        <<<');
+        disp('	>>> DO NOT COMMIT CODE UNTIL _ALL_ TESTS PASS <<<');
+    end
 end
 
 
