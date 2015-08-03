@@ -92,6 +92,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	if(ispurehydro) {
+		double *bad = (double *)malloc(cfOut->numel*sizeof(double));
+
 		for(i = 0; i < fluid->nGPUs; i++) {
 			cudaSetDevice(fluid->deviceID[i]);
 			CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -107,6 +109,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					cfOut->devicePtr[i], POut->devicePtr[i], sub[3]); 
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Freeze speed hydro");
 		}
+		free(bad);
 	} else {
 		for(i = 0; i < fluid->nGPUs; i++) {
 			cudaSetDevice(fluid->deviceID[i]);
@@ -210,22 +213,6 @@ __global__ void cukern_FreezeSpeed_mhd(double *rho, double *E, double *px, doubl
 		freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0];
 	}
 
-	/*if (tix % 8 > 0) return; // keep one in 8 threads
-
-// Each searches the max of the nearest 8 points
-for(x = 1; x < 8; x++) {
-  if(locBloc[tix+x] > locBloc[tix]) locBloc[tix] = locBloc[tix+x];
-  }
-
-__syncthreads();
-
-// The last thread takes the max of these maxes
-if(tix > 0) return;
-for(x = 8; x < BLOCKDIM; x+= 8) {
-  if(locBloc[tix+x] > locBloc[0]) locBloc[0] = locBloc[tix+x];
-  }
-
-freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0]; */
 }
 
 #define PRESSURE Cs
@@ -269,25 +256,26 @@ __global__ void cukern_FreezeSpeed_hydro(double *rho, double *E, double *px, dou
 
 	__syncthreads();
 
-	if (tix % 8 > 0) return; // keep threads  [0 8 16 ...]
+	if(tix >= 32) return;
+	if(locBloc[tix+32] > locBloc[tix]) { locBloc[tix] = locBloc[tix+32]; }
+	__syncthreads(); // compute 2 and later schedule by half-warps so we need to be down to 16 before no syncthreads
 
-	// Each searches the max of the nearest 8 points
-	for(x = 1; x < 8; x++) {
-		if(locBloc[tix+x] > locBloc[tix]) locBloc[tix] = locBloc[tix+x];
-		__syncthreads();
+	if(tix >= 16) return;
+	if(locBloc[tix+16] > locBloc[tix]) { locBloc[tix] = locBloc[tix+16]; }
+
+	if(tix >= 8) return;
+	if(locBloc[tix+8] > locBloc[tix]) {  locBloc[tix] = locBloc[tix+8];  }
+
+	if(tix >= 4) return;
+	if(locBloc[tix+4] > locBloc[tix]) {  locBloc[tix] = locBloc[tix+4];  }
+
+	if(tix >= 2) return;
+	if(locBloc[tix+2] > locBloc[tix]) {  locBloc[tix] = locBloc[tix+2];  }
+
+	if(tix == 0) {
+		if(locBloc[1] > locBloc[0]) {  locBloc[0] = locBloc[1];  }
+		freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0];
 	}
-
-	// The last thread takes the max of these maxes
-	if(tix > 0) return;
-	for(x = 8; x < BLOCKDIM; x+= 8) {
-		if(locBloc[x] > locBloc[0]) locBloc[0] = locBloc[x];
-	}
-
-	// NOTE: This is the dead-stupid backup if all else fails.
-	//if(tix > 0) return;
-	//for(x = 1; x < GLOBAL_BLOCKDIM; x++)  if(locBloc[x] > locBloc[0]) locBloc[0] = locBloc[x];
-
-	freeze[blockIdx.x + gridDim.x*blockIdx.y] = locBloc[0];
 
 
 }
