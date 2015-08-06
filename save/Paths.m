@@ -113,10 +113,10 @@ classdef Paths < handle
 
 %___________________________________________________________________________________________________ printHostVariables
 		function printHostVariables(obj, startTime)
-                    fprintf('\n\nRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
+                    fprintf('\nRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
 		    fprintf('\tRunning on %s\n',            obj.hostName);
 			fprintf('\tImogen directory: %s\n',     obj.imogen);
-			fprintf('\tOutput directory: %s\n\n\n',	obj.results);
+			fprintf('\tOutput directory: %s\n',	obj.results);
 		end
         
 %___________________________________________________________________________________________________ makePathUnique

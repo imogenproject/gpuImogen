@@ -16,11 +16,13 @@ function initializeResultPaths(run, IC)
     mpi_barrier(); % force all units to evaluate to the same paths
     run.paths.indexPadding = length(num2str(run.time.ITERMAX));
 
+    if mpi_amirank0(); fprintf('--------- Output preparation\n'); end
+
     if mpi_amirank0() && (setupDirectories == 1)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
-        fprintf('\n-----------------------------------------------------------------------------------\n');
+	disp('Creating directories...');
             
         %--- RESULTS Directory ---%
         MErr = locDirMaker(run, run.paths.results,'Results folder Created');
@@ -96,10 +98,13 @@ function initializeResultPaths(run, IC)
                 end
             end
         end
-        fprintf('-----------------------------------------------------------------------------------\n');
+
+    disp('Awaiting global visibility by all ranks:');
+
     end
 
-        % Wait until save directory is globally visible
+
+        % Wait forever until save directory is globally visible
         secspaused = 0;
         while true
             ready = exist(run.paths.save,'dir');
@@ -108,9 +113,10 @@ function initializeResultPaths(run, IC)
             pause(1);
             secspaused = secspaused+1;
         end
+        fprintf('%i ', int32(mpi_myrank()));
         mpi_barrier();
-        if mpi_amirank0(); fprintf('Waited %is for global results directory visibility\n',secspaused); end
-
+        if mpi_amirank0(); fprintf('\nResults directory was globally visible in %.1f sec\n', secspaused);end
+  
 end
 
 function created = locDirMaker(run, folderPath, infoStr)

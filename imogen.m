@@ -1,4 +1,3 @@
-%function imogen(massDen, momDen, enerDen, magnet, ini, statics)
 function outdirectory = imogen(srcData, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
@@ -12,12 +11,12 @@ function outdirectory = imogen(srcData, resumeinfo)
 %<< outdirectory   Path to directory containing results                        string
     if isstruct(srcData) == 0
         load(srcData);
-        if mpi_amirank0(); disp('Resuming from file'); end
+        if mpi_amirank0(); fprintf('---------- Imogen starting from file'); end
     else
         IC = srcData;
         clear srcData;
         evalin('caller','clear IC'); % Make ML release the memory used above
-        if mpi_amirank0(); disp('Starting for first time'); end
+        if mpi_amirank0(); fprintf('---------- Imogen starting from passed IC structure'); end
     end
 
     ini     = IC.ini;
@@ -27,7 +26,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       The initialize function parses the ini structure input and populates all of the manager
     %       classes with the values. From these values the initializeResultsPaths function 
     %       establishes all of the save directories for the run, creating whatever directories are
-    %       needed in the process. 
+    %       needed in the process.
     run = initialize(ini);
 
     if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
@@ -40,7 +39,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.preliminary();
 
     mpi_barrier();
-    run.save.logPrint('Creating simulation arrays...\n');
+    run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
 
     gm = GPUManager.getInstance();
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
@@ -96,7 +95,9 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
-    run.save.logAllPrint(sprintf('rank %i: %i GPUs report %06fMB used by fluid state arrays\narray dimensions: [%i %i %i]\n', mpi_myrank(), numel(gm.deviceList), usedGPUMem, asize(1), asize(2), asize(3) ) );
+    run.save.logAllPrint('rank %i: %i GPUs report %06.3fMB used by fluid state arrays\nRank''s array dimensions: [%i %i %i]\n', mpi_myrank(), numel(gm.deviceList), usedGPUMem, asize(1), asize(2), asize(3) );
+
+    run.save.logPrint('---------- Preparing physics subsystems\n');
 
     run.selfGravity.initialize(IC.selfGravity, mass);
     run.potentialField.initialize(IC.potentialField);
@@ -122,17 +123,18 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.initialize(mass, mom, ener, mag);
 
     mpi_barrier();
+    run.save.logPrint('---------- Entering simulation loop\n');
+
     if ~RESTARTING
-        run.save.logPrint('Running initial save...\n');
+        run.save.logPrint('New simulation: Doing initial save\n');
         resultsHandler(run, mass, mom, ener, mag);
         run.time.iteration  = 1;
     else
-        run.save.logPrint(sprintf('Simulation resuming at iteration %i.\n',run.time.iteration));
+        run.save.logPrint('Simulation resuming at iteration %i\n',run.time.iteration);
     end
-    direction           = [1 -1];
 
-    run.save.logPrint('Beginning simulation loop...\n');
-    clockA = clock;
+    direction           = [1 -1];
+    run.time.recordWallclock();
 
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
@@ -154,9 +156,9 @@ function outdirectory = imogen(srcData, resumeinfo)
         run.time.step();
     end
     %%%=== END MAIN LOOP ========================================================================%%%
-    run.save.logPrint(sprintf('%gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
-                                     etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) ));
 %    error('development: error to prevent matlab exiting at end-of-run')
+
+
 
 if doInSitu; inSituAnalyzer.finish(run); end
 

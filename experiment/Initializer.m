@@ -242,10 +242,11 @@ classdef Initializer < handle
                 obj.populateValues(ini.ini);
 
             else
+		if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [mass, mom, ener, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
                 obj.minMass = max(mpi_allgather(obj.minMass));
 
-                if mpi_amirank0(); fprintf('Done calculating initial conditions.\n'); end
+                if mpi_amirank0(); fprintf('Finished.\n'); end
             end
 
 % This is an ugly hack; slice determination is a FAIL since parallelization.

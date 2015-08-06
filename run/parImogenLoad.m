@@ -1,83 +1,45 @@
-function parImogenLoad(runFile, logFile, alias, gpuno)
+function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
 % This script is the command and control manager for command line run Imogen scripts. It is
 % designed to simplify the run script syntax and allow for greater extensibility.
 % 
 %>> runFile    run file function name to execute            str
 %>> logFile    log file name for writing output information str
-%>> uid         unique identifier string for the run        str
 
-    %-- Initialize Imogen directory ---%
-    starterRun();
+% DEVELOPERS: Uncomment to buy time to attach GDB to parallel runs
+% disp('FIVE SECOND WARNING');
+% pause(5);
 
-% Uncomment to buy time to attach GDB to parallel runs
-%disp('FIFTEEN SECOND WARNING');
-%pause(10)
-%disp('FIVE SECOND WARNING');
-%pause(5);
 
-    %--- Initialize MPI and GPU ---%
-    if ~mpi_isinitialized()
-        context = parallel_start();
-        topology = parallel_topology(context, 3);
-        GIS = GlobalIndexSemantics(context, topology);
-    else
-        GIS = GlobalIndexSemantics();
-    end
 
-    gm = GPUManager.getInstance();
-    gm.init([0 2], 3, 1);
-    GPU_ctrl('peers',1); % Turn on peer sharing
-
-    mpi_barrier();
-    % If we're running in parallel, print some bookkeeping stuff just to make
-    % sure that everyone is one the same page; Share hashes to make sure that
-    % exactly one process is using each GPU.
-    %
-    % If serial, select the GPU indicated on the command line.
-    mpiInfo = mpi_basicinfo();
-    if mpiInfo(1) > 1
-        if context.rank == 0; fprintf('MPI size > 1; We are running in parallel: Autoselecting GPUs\n'); end
-
-        y = mpi_allgather(mpiInfo(2:3));
-        ranks = y(1:2:end);
-        hash = y(2:2:end);
-
-        % Select ranks on this node, sort them, chose my gpu # by resultant ordering
-        thisnode = ranks(hash == mpiInfo(3));
-        [dump idx] = sort(thisnode);
-        mygpu = idx(dump == mpiInfo(2)) - 1;
-        [sysStatus sysOutput] = system('hostname');
-
-        if strncmp(sysOutput,'fusion.uoregon.edu',18); mygpu=mygpu*2; end % Idiotic hack for my office box
-
-%        fprintf('Rank %i/%i on host %s activating host GPU #%i\n', context.rank, context.size, sysOutput(1:(end-1)), mygpu);
-%        GPU_ctrl(mygpu);
-    else
-%        fprintf('MPI size = 1; We are running in serial. Activating indicated device, GPU %i\n', gpuno);
-%        GPU_ctrl(gpuno);
-    end
-
-    mpi_barrier();
+    %-- Stand up the basics Imogen expects to be in place --%
+    starterRun(gpuSet);
 
     runFile = strrep(runFile,'.m','');
     assignin('base','logFile',logFile);
     assignin('base','alias',alias);
+    
+    shutDownEverything = 0;
+    if nargin < 5;
+        if mpi_myrank() == 0; fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
+        shutDownEverything = 1;
+    end
 
-%    try
+    try
         eval(runFile);
-%    catch ME
-%        ME
-%        ME.cause
-%        for n = 1:numel(ME.stack);
-%            fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line);
-%        end
-%        fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
-%        GPU_ctrl('exit');
-%        mpi_barrier();
-%        mpi_finalize(); % nothingtodohere.gif
-%        rethrow(ME);
-%    end
+    catch ME
+        ME
+        ME.cause
+        for n = 1:numel(ME.stack);
+            fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line);
+        end
+        fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
+        shutDownEverything = 1;
+    end
 
     mpi_barrier();
-    mpi_finalize();
+    if shutDownEverything
+        clear GPUManager GlobalIndexSemantics
+        GPU_ctrl('reset');
+        mpi_finalize();
+    end
 end

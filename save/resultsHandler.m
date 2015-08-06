@@ -223,8 +223,11 @@ function resultsHandler(run, mass, mom, ener, mag)
 
         %--- Notify of code of finish ---%
         if run.save.done
-            fprintf('Run completed at %s.\n',datestr(endVec ,'HH:MM on mmm-dd-yy'));
-            disp(strcat('Results files saved to directory: ', run.paths.save));
+            run.save.logPrint('Run completed at %s.\n',datestr(endVec ,'HH:MM on mmm-dd-yy'));
+            clockA = run.time.firstWallclockValue;
+            run.save.logPrint('Elapsed wallclock: %gh %gs in main sim loop\n', floor(etime(clock, clockA)/3600), ...
+                                     etime(clock, clockA)-3600*floor(etime(clock, clockA)/3600) );
+            run.save.logPrint(['Results files saved to directory: ' run.paths.save '\n']);
         end
     end
 %    labBarrier(); % Block all labs until lab 1 has finished saving

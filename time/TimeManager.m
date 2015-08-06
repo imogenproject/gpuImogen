@@ -24,6 +24,8 @@ classdef TimeManager < handle
         wallPercent; % Percent complete based on wall time.                          double
         running;     % Specifies if the simulation should continue running.          logical
         dtAverage;   % The accumulated mean timestep                                 double
+
+        firstWallclockValue;
     end%PUBLIC
         
 %===================================================================================================
@@ -44,6 +46,10 @@ classdef TimeManager < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
     
+	function recordWallclock(obj)
+            obj.firstWallclockValue = clock;
+        end
+
 %___________________________________________________________________________________________________ update
 % Calculate the correct timestep for the upcoming flux iteration (both the forward and backward 
 % steps) of the main loop according to the Courant-Freidrichs-Levy condition for a magnetic fluid.
@@ -162,7 +168,7 @@ classdef TimeManager < handle
                         
                     case 4;        %Stop clock timer and use the elapsed time to predict total run time
                         tPerStep = toc/3;
-                        save.logPrint('\nFirst three timesteps averaged %0.5g secs.', tPerStep);
+                        save.logPrint('\tFirst three timesteps averaged %0.4g secs ea.\n', tPerStep);
 
                         if (obj.iterPercent > obj.timePercent)
                             secsRemaining = tPerStep*(obj.ITERMAX-3);
@@ -176,13 +182,13 @@ classdef TimeManager < handle
                         if ( floor(finTime) - floor(now) >= 1.0 )
                             expComplete = [expComplete ' on ' datestr( finTime, 'mmm-dd')];
                         end
-                        save.logPrint('\n\tExpect completion at: %s\n', expComplete);
+                        save.logPrint('\tEst. time of completion: %s\n', expComplete);
 
                         dDays       = floor(secsRemaining/86400); rem = secsRemaining - 86400*dDays;
                         dHours      = floor( rem / 3600 );        rem = rem - 3600*dHours;
                         dMinutes    = floor( rem / 60 );          rem = rem - 60*dMinutes;
                         dSecs       = ceil(rem);
-                        save.logPrint('\tProjected wallclock time: [%g days | %g hr | %g mins | %g sec ]\n', ...
+                        save.logPrint('\tEst. wallclock compute time: [%g days | %g hr | %g mins | %g sec ]\n', ...
                                       dDays, dHours, dMinutes, dSecs);
                 end
             end

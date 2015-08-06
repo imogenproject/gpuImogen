@@ -125,29 +125,29 @@ classdef SaveManager < handle
 %_____________________________________________________________________________________ postliminary
     function postliminary(obj) %#ok<MANU>
     end
-    
+
 %_________________________________________________________________________________________ logPrint
 % Prints information to the standard output as well as a log file.
     function logPrint(obj, printLine, varargin)
         if mpi_amirank0() 
-%            fid       = fopen([obj.parent.paths.save, filesep, sprintf('logfile_rank%i.out',GIS.context.rank) ],'a');
-%            disp([GIS.context.rank fid]);
-%            fprintf(fid, printLine, varargin{:});
             fprintf(printLine, varargin{:});
         end
-%            fclose(fid);
     end
 
-%_________________________________________________________________________________________ logPrint
-% Prints information to the standard output as well as a log file.
+%_________________________________________________________________________________________ logAllPrint
+% Prints information to the standard output as well as a log file for all ranks
     function logAllPrint(obj, printLine, varargin)
-%            fid       = fopen([obj.parent.paths.save, filesep, sprintf('logfile_rank%i.out',GIS.context.rank) ],'a');
-%            disp([GIS.context.rank fid]);
-%            fprintf(fid, printLine, varargin{:});
             fprintf(printLine, varargin{:});
-%            fclose(fid);
     end
     
+% logMaskprint
+% Prints information iff any(mpi_myrank() == masks)
+    function logMaskPrint(obj, mask, printLine, varargin)
+        if any(mpi_myrank() == mask)
+            fprintf(printLine, varargin{:});
+        end
+    end
+
 %________________________________________________________________________________ saveIniSettings
 % Saves the ini structure to disk so that it can be reused later to restart a run if necessary.
     function saveIniSettings(obj, ini)
