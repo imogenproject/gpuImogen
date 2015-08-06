@@ -107,6 +107,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         	    devXYset[i]);
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, -1, "applyScalarPotential");
 
+	}
+
+	for(i = 0; i < fluid->nGPUs; i++) { 
 		cudaFree(devXYset[i]);
 		CHECK_CUDA_ERROR("cudaFree");
 	}
