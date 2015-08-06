@@ -720,10 +720,13 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 	}
 }
 
+
+
+
 // Necessary when non-point operations have been performed in the partition direction
 void MGA_exchangeLocalHalos(MGArray *a, int n)
 {
-	int i, j, jn;
+	int i, j, jn, jp;
 	dim3 blocksize, gridsize;
 
 	for(i = 0; i < n; i++) {
@@ -732,134 +735,75 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 		// Or there's only one partition to begin with
 		if(a->nGPUs == 1) { a++; continue; }
 
-		for(j = 0; j < a->nGPUs; j++) {
-			jn = (j+1) % a->nGPUs;
+		double *buffs[a[i].nGPUs * 4];
+		int sub[6];
 
-			int subL[6], subR[6];
-			calcPartitionExtent(a, j, subL);
-			calcPartitionExtent(a, jn, subR);
+		calcPartitionExtent(a, 0, sub);
 
-			switch(a->partitionDir) {
-			case 1: {
+		// Acquire sufficient RW linear buffers to R and W both sides
+		int numTransverse = a->partNumel[0] / sub[2+a->partitionDir];
+		int numHalo = a->haloSize * numTransverse;
+
+		if(a->partitionDir != PARTITION_Z) {
+			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
-				blocksize.x = a->haloSize;
-				blocksize.y = SYNCBLOCK;
-				blocksize.z = (subL[5] > 1) ? 8 : 1;
+				CHECK_CUDA_ERROR("cudaSetDevice()");
+				cudaMalloc((void **)&buffs[4*j], 4*numHalo*sizeof(double));
+				CHECK_CUDA_ERROR("cudaMalloc");
+				buffs[4*j+1] = buffs[4*j] + 1*numHalo;
+				buffs[4*j+2] = buffs[4*j] + 2*numHalo;
+				buffs[4*j+3] = buffs[4*j] + 3*numHalo;
+			}
 
-				gridsize.x  = a->dim[1]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[1]);
-				gridsize.y  = 1; gridsize.z = 1;
 
-				int canRWPeer; cudaDeviceCanAccessPeer(&canRWPeer, a->deviceID[j], a->deviceID[jn]);
+			for(j = 0; j < a->nGPUs; j++) {
+				jn = (j+1) % a->nGPUs; // Next partition
+				jp = (j - 1 + a->nGPUs) % a->nGPUs; // Previous partition
 
-				canRWPeer= 0;
-				/* Perf testing seems to indicate that the p2p kernel is horribly, horribly, horribly slow compared
-				 * to the generic code
-				 */
-				if(canRWPeer) {
-					cudaMGHaloSyncX_p2p<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subR[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("hcudaMGHaloSyncX_p2p");
-				} else {
-					size_t haloNumel = a->haloSize * subL[4]*subL[5];
+				// Read our left/right partitions to linear strips
+				MGA_partitionHaloToLinear(a, j, a->partitionDir, 0, 0, a->haloSize, &buffs[4*j+0]);
+				MGA_partitionHaloToLinear(a, j, a->partitionDir, 1, 0, a->haloSize, &buffs[4*j+1]);
+			}
 
-					// Initiate left read
-					cudaSetDevice(a->deviceID[j]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					double *leftLinear;
-					cudaMalloc((void **)&leftLinear, 2*haloNumel*sizeof(double));
-					CHECK_CUDA_ERROR("cudaMalloc()");
-					cudaMGA_haloXrw<1><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear, subL[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwx");
+                        for(j = 0; j < a->nGPUs; j++) {
+                                jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
+				// Initiate transfers of linear strips
+				cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+				CHECK_CUDA_ERROR("cudamemcpy");
+				cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+				CHECK_CUDA_ERROR("cudaMemcpy");
+			}
 
-					// Initiate right read
-					cudaSetDevice(a->deviceID[jn]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					double *rightLinear;
-					cudaMalloc((void **)&rightLinear, 2*haloNumel*sizeof(double));
-					CHECK_CUDA_ERROR("cudaMalloc()");
-					cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear, subR[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwx");
+                        for(j = 0; j < a->nGPUs; j++) {
+                                jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs; 
+				// Translate linear strips back to halo cells
+				MGA_partitionHaloToLinear(a, jn, a->partitionDir, 0, 1, a->haloSize, &buffs[4*jn+2]);
+				MGA_partitionHaloToLinear(a, jp, a->partitionDir, 1, 1, a->haloSize, &buffs[4*jp+3]);
+			}
 
-					// Manually copy
-					cudaMemcpy((void *)(leftLinear + haloNumel), rightLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
-					CHECK_CUDA_ERROR("cudaMemcpy");
-					cudaMemcpy((void *)(rightLinear+ haloNumel), leftLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
-					CHECK_CUDA_ERROR("cudaMemcpy");
-
-					// Initiate writebacks
-					cudaMGA_haloXrw<2><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear + haloNumel, subR[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwx");
-					cudaFree(rightLinear);
-					CHECK_CUDA_ERROR("cudaFree");
-					// Deallocate
-					cudaSetDevice(a->deviceID[j]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					cudaMGA_haloXrw<3><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear + haloNumel, subL[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwx");
-					cudaFree(leftLinear);
-					CHECK_CUDA_ERROR("cudaFree");
-				}
-			} break;
-			case 2: {
+			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
-				CHECK_CUDA_ERROR("cudasSetDevice");
-				blocksize.x = blocksize.y = SYNCBLOCK;
-				blocksize.z = 1;
-				gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
-				gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
+				CHECK_CUDA_ERROR("cudaSetDevice");
+				cudaFree(buffs[4*j]);
+				CHECK_CUDA_ERROR("cudaFree");
+			}
 
-				int canRWPeer; cudaDeviceCanAccessPeer(&canRWPeer, a->deviceID[j], a->deviceID[jn]);
-				canRWPeer = 0;
-				/* Perf testing seems to indicate that the p2p kernel is horribly, horribly, horribly slow compared
-				 * to the generic code
-				 */
-				if(canRWPeer) { /* if have p2p accessibility */
-					cudaMGHaloSyncY_p2p<<<gridsize, blocksize>>>(a->devicePtr[j], a->devicePtr[jn], subL[3], subL[4], subR[4], subL[5], a->haloSize);
-				} else {
-					size_t haloNumel = a->haloSize * subL[3]*subL[5];
+		} else {
+			/* Z halos are delightful, we simply copy some already-linearly-contiguous blocks
+			 * of memory back and forth. the partition halo call would *work* but we can short-circuit
+			 * pointless copying this way.
+			 */
 
-					// Initiate left read
-					cudaSetDevice(a->deviceID[j]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					double *leftLinear;
-					cudaMalloc((void **)&leftLinear, 2*haloNumel*sizeof(double));
-					CHECK_CUDA_ERROR("cudaMalloc()");
-					cudaMGA_haloYrw<1><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear, subL[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwy");
-					// Initiate right read
-					cudaSetDevice(a->deviceID[jn]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					double *rightLinear;
-					cudaMalloc((void **)&rightLinear, 2*haloNumel*sizeof(double));
-					CHECK_CUDA_ERROR("cudaMalloc()");
-					cudaMGA_haloYrw<0><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear, subL[3], subR[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwy");
+			for(j = 0; j < a->nGPUs; j++) {
+				cudaSetDevice(a->deviceID[j]);
+				calcPartitionExtent(a, j, sub);
+				jn = (j+1) % a->nGPUs; // Next partition
 
-					// Manually copy
-					cudaMemcpy((void *)(leftLinear + haloNumel), rightLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
-					CHECK_CUDA_ERROR("cudaMemcpy");
-					cudaMemcpy((void *)(rightLinear+ haloNumel), leftLinear, haloNumel*sizeof(double), cudaMemcpyDeviceToDevice);
-					CHECK_CUDA_ERROR("cudaMemcpy");
-
-					// Initiate right writeback & free
-					cudaMGA_haloYrw<2><<<gridsize, blocksize>>>(a->devicePtr[jn] , rightLinear + haloNumel, subL[3], subR[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwy");
-					cudaFree(rightLinear);
-					CHECK_CUDA_ERROR("cudaFree");
-					// Initiate left writeback & free
-					cudaSetDevice(a->deviceID[j]);
-					CHECK_CUDA_ERROR("cudasSetDevice");
-					cudaMGA_haloYrw<3><<<gridsize, blocksize>>>(a->devicePtr[j] , leftLinear + haloNumel, subL[3], subL[4], subL[5], a->haloSize);
-					CHECK_CUDA_ERROR("halorwy");
-					cudaFree(leftLinear);
-					CHECK_CUDA_ERROR("cudaFree");
-				}
-			} break;
-			case 3: { /* This is a simple transfer of a contiguous linear block of memory, no kernel req'd */
 				size_t halotile = a->dim[0]*a->dim[1];
 				size_t byteblock = halotile*a->haloSize*sizeof(double);
 
-				size_t L_halo = (subL[5] - a->haloSize)*halotile;
-				size_t L_src  = (subL[5]-2*a->haloSize)*halotile;
+				size_t L_halo = (sub[5] - a->haloSize)*halotile;
+				size_t L_src  = (sub[5]-2*a->haloSize)*halotile;
 
 				// Fill right halo with left's source
 				cudaMemcpy((void *)a->devicePtr[jn],
@@ -869,17 +813,87 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 				cudaMemcpy((void *)(a->devicePtr[j] + L_halo),
 						(void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
 				CHECK_CUDA_ERROR("cudaMemcpy");
-
-			} break;
+				cudaDeviceSynchronize();
 
 			}
+
 		}
 
 	}
 
 }
 
-// The Z halo exchange function is simply done by a pair of memcopies
+/* Fetches the indicated face of a partition's cube to a linear swatch of memory,
+ * suitable for memcpy or MPI internode halo exchange
+ */
+void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear)
+{
+	cudaSetDevice(a->deviceID[partition]);
+	CHECK_CUDA_ERROR("cudasSetDevice");
+
+	int sub[6];
+	calcPartitionExtent(a, partition, &sub[0]);
+
+	int haloTransverse = a->partNumel[partition] / sub[2+direction];
+	int haloNumel = haloTransverse * h;
+
+	if(linear[0] == NULL) {
+		cudaMalloc((void **)linear, 2*haloNumel*sizeof(double));
+		CHECK_CUDA_ERROR("cudaMalloc()");
+	}
+
+	dim3 blocksize, gridsize;
+
+	switch(direction) {
+	case 1: {
+		blocksize.x = a->haloSize;
+		blocksize.y = SYNCBLOCK;
+		blocksize.z = (sub[5] > 1) ? 8 : 1;
+
+		gridsize.x  = ROUNDUPTO(a->dim[1], SYNCBLOCK)/SYNCBLOCK;
+		gridsize.y  = 1; gridsize.z = 1;
+		switch(right + 2*toHalo) {
+		case 0: cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 1: cudaMGA_haloXrw<1><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 2: cudaMGA_haloXrw<2><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 3: cudaMGA_haloXrw<3><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		default: mexErrMsgTxt("Uh oh");
+		}
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, "cudaMGA_haloXrw");
+		break;
+	}
+	case 2: {
+		blocksize.x = blocksize.y = SYNCBLOCK;
+		blocksize.z = 1;
+		gridsize.x  = a->dim[0]/SYNCBLOCK; gridsize.x += (gridsize.x*SYNCBLOCK < a->dim[0]);
+		gridsize.y  = a->dim[2]/SYNCBLOCK; gridsize.y += (gridsize.y*SYNCBLOCK < a->dim[2]);
+		switch(right + 2*toHalo) {
+		case 0: cudaMGA_haloYrw<0><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 1: cudaMGA_haloYrw<1><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 2: cudaMGA_haloYrw<2><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		case 3: cudaMGA_haloYrw<3><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		default: mexErrMsgTxt("uh oh");
+		}
+		CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, "cudaMGA_haloYrw");
+		break;
+	}
+
+	case 3: {
+		switch(right + 2*toHalo) {
+		case 0: cudaMemcpy((void *)linear[0], (void *)(a->devicePtr[partition] + haloNumel),                   haloNumel*sizeof(double), cudaMemcpyDeviceToDevice); break;
+		case 1: cudaMemcpy((void *)linear[0], (void *)(a->devicePtr[partition] + (sub[5]-2*h)*haloTransverse), haloNumel*sizeof(double), cudaMemcpyDeviceToDevice); break;
+		case 2: cudaMemcpy((void *)linear[0], (void *)(a->devicePtr[partition]),                               haloNumel*sizeof(double), cudaMemcpyDeviceToDevice); break;
+		case 3: cudaMemcpy((void *)linear[0], (void *)(a->devicePtr[partition] + (sub[5]-h)*haloTransverse),   haloNumel*sizeof(double), cudaMemcpyDeviceToDevice); break;
+		}
+		CHECK_CUDA_ERROR("cudamemcpy");
+		break;
+	}
+
+	}
+
+	CHECK_CUDA_ERROR("halorwy");
+
+}
 
 /* expect invocation with [4*roundup(h/4) BLKy A] threads and [ny/BLKy B 1].rp blocks with "arbitrary" A and B
  * given thread index t.[xyz] block index b.[xyz] and grid size g.[xyz], then consider:

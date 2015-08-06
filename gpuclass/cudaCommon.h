@@ -119,6 +119,8 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
 /* Functions for managing halos of MGA partitioned data */
 void MGA_exchangeLocalHalos(MGArray *a, int n);
+void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear);
+
 __global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
 __global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int nyR, int nz, int h);
 
