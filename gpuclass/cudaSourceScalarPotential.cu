@@ -75,14 +75,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     lambda[5] = 1.0/(lambda[4] - lambda[3]); /* 1/(rho_g - rho_c) */
     lambda[6] = lambda[3]*lambda[5];
 
-    // Good guy cuda takes care of putting this on all the contexts for us
-    cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
+
 
     // Iterate over all partitions, and here we GO!
     for(i = 0; i < fluid->nGPUs; i++) {
         calcPartitionExtent(fluid, i, sub);
         cudaSetDevice(fluid->deviceID[i]);
         CHECK_CUDA_ERROR("cudaSetDevice()");
+        cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
+        CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
 
         arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
