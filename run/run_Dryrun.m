@@ -8,8 +8,8 @@ GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
-run.iterMax     = 10;
-run.info        = 'Dry run: Start, run 5 steps, bug out.';
+run.iterMax     = 25;
+run.info        = 'Dry run: Start, run 25 steps, bug out.';
 run.notes       = 'Simple advection test in the x-direction.';
 
 %run.image.interval = 100;
@@ -23,7 +23,6 @@ run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 100;
 
 % Set a background speed at which the fluid is advected
-run.waveDirection = 1;
 run.backgroundMach = 0;
 
 % Set the type of wave to be run.
@@ -31,14 +30,16 @@ run.backgroundMach = 0;
 % The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
 % Any nonzero B will automatically activate magnetic fluxing
 run.waveType = 'sonic';
-run.waveAmplitude = .0001;
+run.amplitude = .0001;
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 
 % number of transverse wave periods in Y and Z directions
-run.waveN    = [16 0 0];
-run.numWavePeriods = 16;
+run.wavenumber  = [16 0 0];
+run.cycles      = 16;
 
 run.alias = 'DRYRUN_SONIC';
+
+run.saveFormat = ENUM.FORMAT_MAT;
 
 % Store 8 steps for each time a sound wave goes past a given point
 run.ppSave.dim3 =  100;
@@ -53,8 +54,8 @@ end
 run.backgroundB = [.5 .3 0];
 run.waveType = 'fast ma';
 
-if(true)
-    IC = run.saveInitialCondsToStructure();
-    outpath = imogen(IC);
-    fprintf('Dry MHD run at %s\n', outpath);
-end
+%if(true)
+%    IC = run.saveInitialCondsToStructure();
+%    outpath = imogen(IC);
+%    fprintf('Dry MHD run at %s\n', outpath);
+%end
