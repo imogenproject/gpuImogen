@@ -165,10 +165,7 @@ classdef ImogenManager < handle
                 save(strcat(obj.paths.save, filesep, 'profile'),'proInfo');
                 
             end
-            
-            obj.save.logPrint('Run complete.\n');
             obj.save.postliminary();
-
         end
     
 %___________________________________________________________________________________________________ setGridSpacing
