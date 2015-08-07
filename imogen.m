@@ -95,7 +95,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
-    run.save.logAllPrint('rank %i: %i GPUs report %06.3fMB used by fluid state arrays\nRank''s array dimensions: [%i %i %i]\n', mpi_myrank(), numel(gm.deviceList), usedGPUMem, asize(1), asize(2), asize(3) );
+    run.save.logAllPrint('rank %i: %06.3fMB used by fluid state arrays of size [%i %i %i] partitioned on %i GPUs\n', mpi_myrank(), usedGPUMem, asize(1), asize(2), asize(3), int32(numel(gm.deviceList)) );
 
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
@@ -126,9 +126,10 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.logPrint('---------- Entering simulation loop\n');
 
     if ~RESTARTING
-        run.save.logPrint('New simulation: Doing initial save\n');
+        run.save.logPrint('New simulation: Doing initial save... ');
         resultsHandler(run, mass, mom, ener, mag);
         run.time.iteration  = 1;
+        run.save.logPrint('Succeeded.\n');
     else
         run.save.logPrint('Simulation resuming at iteration %i\n',run.time.iteration);
     end
