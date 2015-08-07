@@ -35,13 +35,12 @@ function starterRun(gpuSet)
         topology = parallel_topology(context, 3);
         GIS = GlobalIndexSemantics(context, topology);
         if context.rank==0
-            fprintf('----------\nFirst start: MPI is now ready. Roll call:\n'); end
+            fprintf('\n---------- MPI Startup\nFirst start: MPI is now ready. Roll call:\n'); end
 	mpi_barrier();
         fprintf('Rank %i ready.\n', int32(context.rank));
         mpi_barrier();
-        if context.rank==0; fprintf('----------\n'); end
     else
-        if context.rank==0; fprintf('----------\nMPI is already ready.\n----------\n'); end
+        if mpi_amirank0()==0; fprintf('---------- MPI Startup\nMPI is already ready.'); end
     end
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
@@ -51,7 +50,7 @@ function starterRun(gpuSet)
         haloSize = 3; dimensionDistribute = 1;
         gm.init(gpuSet, haloSize, dimensionDistribute);
         GPU_ctrl('peers',1);
-        fprintf('Rank %i: Initialized GPUs.\n');
+%        fprintf('Rank %i: Initialized GPUs.\n');
     end
 
     mpi_barrier();
