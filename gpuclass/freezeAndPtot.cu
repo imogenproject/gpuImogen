@@ -92,8 +92,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	if(ispurehydro) {
-		double *bad = (double *)malloc(cfOut->numel*sizeof(double));
-
 		for(i = 0; i < fluid->nGPUs; i++) {
 			cudaSetDevice(fluid->deviceID[i]);
 			CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -109,7 +107,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					cfOut->devicePtr[i], POut->devicePtr[i], sub[3]); 
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Freeze speed hydro");
 		}
-		free(bad);
 	} else {
 		for(i = 0; i < fluid->nGPUs; i++) {
 			cudaSetDevice(fluid->deviceID[i]);
