@@ -128,7 +128,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			cudaMemcpy(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
 			CHECK_CUDA_ERROR("cudaMemcpy");
 		}
-		MGA_delete(&trans);
+		MGA_delete(nuClone);
 	}
 
 	CHECK_CUDA_ERROR("Departing cudaArrayRotateB");
