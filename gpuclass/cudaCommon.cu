@@ -731,14 +731,14 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 
 	for(i = 0; i < n; i++) {
 		// Skip this if it's a cloned partition
-		if(a->haloSize == PARTITION_CLONED) { a++; continue; }
+		if(a->haloSize == PARTITION_CLONED) { break; }
 		// Or there's only one partition to begin with
-		if(a->nGPUs == 1) { a++; continue; }
+		if(a->nGPUs == 1) { break; }
 
-		double *buffs[a[i].nGPUs * 4];
+		double *buffs[a->nGPUs * 4];
 		int sub[6];
 
-		calcPartitionExtent(a, 0, sub);
+		calcPartitionExtent(a, 0, &sub[0]);
 
 		// Acquire sufficient RW linear buffers to R and W both sides
 		int numTransverse = a->partNumel[0] / sub[2+a->partitionDir];
@@ -768,10 +768,15 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
                         for(j = 0; j < a->nGPUs; j++) {
                                 jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				// Initiate transfers of linear strips
-				cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-				CHECK_CUDA_ERROR("cudamemcpy");
-				cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-				CHECK_CUDA_ERROR("cudaMemcpy");
+			//	cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+			//	CHECK_CUDA_ERROR("cudamemcpy");
+			//	cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+			//	CHECK_CUDA_ERROR("cudaMemcpy");
+                               cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
+                               CHECK_CUDA_ERROR("cudaMemcpyPeer");
+                               cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
+                               CHECK_CUDA_ERROR("cudaMemcpyPeer");
+
 			}
 
                         for(j = 0; j < a->nGPUs; j++) {
@@ -818,6 +823,8 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 			}
 
 		}
+
+		a++;
 
 	}
 
@@ -1114,7 +1121,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[partitionTo], (void *)p, g->numel*sizeof(double), cudaMemcpyHostToDevice);
 		CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
-                MGA_distributeArrayClones(g, 0);
+                MGA_distributeArrayClones(g, partitionTo);
 		return 0;
 	}
 

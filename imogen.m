@@ -159,8 +159,6 @@ function outdirectory = imogen(srcData, resumeinfo)
     %%%=== END MAIN LOOP ========================================================================%%%
 %    error('development: error to prevent matlab exiting at end-of-run')
 
-
-
 if doInSitu; inSituAnalyzer.finish(run); end
 
 % This is a bit hackish but it works
