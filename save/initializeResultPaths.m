@@ -115,7 +115,7 @@ function initializeResultPaths(run, IC)
         end
         fprintf('%i ', int32(mpi_myrank()));
         mpi_barrier();
-        if mpi_amirank0(); fprintf('\nResults directory was globally visible in %.1f sec\n', secspaused);end
+        if mpi_amirank0(); pause(.032); fprintf('\nResults directory was globally visible in %.1f sec\n', secspaused);end
   
 end
 
