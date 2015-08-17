@@ -216,33 +216,34 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int i, j, sub[6];
 
 	int haParams[4];
+	double *hostptrs[PTRS_PER_KERN];
 	for(i = 0; i < fluid->nGPUs; i++) {
+		cudaSetDevice(fluid->deviceID[i]);
+
 		calcPartitionExtent(fluid, i, &sub[0]);
 		haParams[0] = sub[3];
 		haParams[1] = sub[4];
 		haParams[2] = sub[5];
 		/* This is aligned on 256 so we _can_ safely divide by 8
-		 * We _have_  to because the cuda code does (double *) + SLABSIZE
-		 */
+		 * We _have_  to because the cuda code does (double *) + SLABSIZE */
 		haParams[3] = fluid->slabPitch[i] / sizeof(double);
-		cudaSetDevice(fluid->deviceID[i]);
+
+		// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
+		/* FIXME: This sucks but the HLL kernel depends on it and I
+		 * FIXME: seriously don't have time to rewrite it presently */
+
+		for(j = 0; j < 5; j++)  hostptrs[j+0] = fluid[j].devicePtr[i];
+
+		hostptrs[2           ] = fluid[1+stepdirect].devicePtr[i];
+		hostptrs[1+stepdirect] = fluid[2           ].devicePtr[i];
+
+		for(j = 0; j < 3; j++) hostptrs[j+5] =   mag[j].devicePtr[i];
+		for(j = 0; j < 2; j++) hostptrs[j+8] =    PC[j].devicePtr[i];
+
 		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
-	}
-
-	// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
-	/* FIXME: This is deprecated */
-	double *hostptrs[PTRS_PER_KERN*MAX_GPUS_USED];
-	for(j = 0; j < fluid->nGPUs; j++) {
-		for(i = 0; i < 5; i++) hostptrs[PTRS_PER_KERN*j+  i] = fluid[i].devicePtr[j];
-		for(i = 0; i < 3; i++) hostptrs[PTRS_PER_KERN*j+5+i] =   mag[i].devicePtr[j];
-		for(i = 0; i < 2; i++) hostptrs[PTRS_PER_KERN*j+8+i] =    PC[i].devicePtr[j];
-	}
-	/* FIXME: Deprecated, remove once old kernels are ported */
-	for(j = 0; j < fluid->nGPUs; j++) {
-		cudaSetDevice(fluid->deviceID[j]);
 		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
-		cudaMemcpyToSymbol(inputPointers, hostptrs, PTRS_PER_KERN*MAX_GPUS_USED*sizeof(double), 0, cudaMemcpyHostToDevice);
 
+		cudaMemcpyToSymbol(inputPointers, hostptrs, PTRS_PER_KERN*sizeof(double *), 0, cudaMemcpyHostToDevice);
 	}
 
 	if(hydroOnly == 1) {
@@ -312,7 +313,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 				// Fire off the fluid update step
 				if(steptype == STEPTYPE_HLL)
-					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
+					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i]);
 				else switch(stepdirect) {
 				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
@@ -329,11 +330,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				#else // runs at 2nd order
 
 
-				/*				cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro"); */
-				if(steptype == STEPTYPE_HLL)
-					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, arraySize.x, arraySize.y, fluid->partNumel[i]);
-				else switch(stepdirect) {
+				if(steptype == STEPTYPE_HLL) {
+					cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
+					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i]);
+				} else switch(stepdirect) {
 				case 1: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 3: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
@@ -495,7 +496,6 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 
 // These tell the HLL and HLLC solvers how to dereference their shmem block
 // 16 threads, 8 circshifted shmem arrays
-#define N_SHMEM_BLOCKS 5
 #define BOS0 (0*BLOCKLENP4)
 #define BOS1 (1*BLOCKLENP4)
 #define BOS2 (2*BLOCKLENP4)
@@ -507,6 +507,7 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 #define BOS8 (8*BLOCKLENP4)
 #define BOS9 (9*BLOCKLENP4)
 
+#define N_SHMEM_BLOCKS 5
 
 template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
@@ -702,19 +703,19 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 				G = C*E*(FLUID_GOVERGM1 * shblk[IR+BOS1]/shblk[IR+BOS0] + G + D);
 				break;
 			case 1:
-                                A = shblk[IR+BOS0]; // rho
-                                B = shblk[IR+BOS2]; // vx
-                                C = shblk[IR+BOS3]; // vy
-                                D = shblk[IR+BOS4]; // vz
-                                E = .5*(B*B+C*C+D*D)*A; // .5 v^2
-                                F = shblk[IR+BOS1]; // P
-                                
-                                A *= B; // rho vx           = RHO FLUX
-                                C *= A; // rho vx vy        = PY FLUX
-                                D *= A; // rho vx vz        = PZ FLUX
-                                G = A*B+F; // rho vx vx + P = PX FLUX
-                                B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
-			break;
+				A = shblk[IR+BOS0]; // rho
+				B = shblk[IR+BOS2]; // vx
+				C = shblk[IR+BOS3]; // vy
+				D = shblk[IR+BOS4]; // vz
+				E = .5*(B*B+C*C+D*D)*A; // .5 v^2
+				F = shblk[IR+BOS1]; // P
+
+				A *= B; // rho vx           = RHO FLUX
+				C *= A; // rho vx vy        = PY FLUX
+				D *= A; // rho vx vz        = PZ FLUX
+				G = A*B+F; // rho vx vx + P = PX FLUX
+				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				break;
 
 		} // case 0,1: [A B G C D] = [rho E px py pz] flux
 		  // case 2,3: [A G B F H] = [rho E px py pz] flux
@@ -1081,7 +1082,8 @@ DBGSAVE(1, E);
 
 }
 
-
+#undef N_SHMEM_BLOCKS
+#define N_SHMEM_BLOCKS 10
 
 #define HLL_LEFT 0
 #define HLL_HLL  1
@@ -1269,6 +1271,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 			__syncthreads();
 
 			/*************** BEGIN SECTION 3 */
+
 			shblk[IC + BOS0] = Fb;
 			shblk[IC + BOS2] = Atilde;
 			__syncthreads();
@@ -1290,6 +1293,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 
 		__syncthreads();
 		if(PCswitch == RK_PREDICT) {
+
 			Fb = shblk[IR + BOS0];
 			Atilde = shblk[IR + BOS1];
 		} else {
@@ -1302,7 +1306,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
 		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
 		// 57 registers
-#if 1
+
 		// FATAL: This code section causes register utilization to jump from 57 to 63.
 		// FUCK THAT NOISE, this must be stopped ;-(
 		switch(HLL_FluxMode) {
@@ -1334,7 +1338,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 				inputPointers[4][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			}
 		}
-#endif
+
 		x0 += blockDim.y*nx;
 		__syncthreads();
 
