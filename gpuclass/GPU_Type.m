@@ -145,7 +145,7 @@ classdef GPU_Type < handle
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
-            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0]);
+            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0 0]);
             obj.asize = [0 0 0];
             obj.numdims = 2;
         end
@@ -173,7 +173,7 @@ classdef GPU_Type < handle
 
                 halo = gm.useHalo; if docloned; halo = -1; end
 
-                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir]);
+                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
             elseif isa(arrin, 'GPU_Type') == 1
                 obj.allocated = true;
                 obj.asize     = arrin.asize;
@@ -189,7 +189,7 @@ classdef GPU_Type < handle
                 obj.numdims = 3; if q(3)==1; obj.numdims = 2; end
                 obj.asize = q(1:3)';
             else
-                 error('GPU_Type must be set with either a double array, another GPU_Type, or 5-int64 tag from gpu routine');
+                 error('GPU_Type must be set with either a double array, another GPU_Type, or int64 tag returned by gpu routine');
             end
         end
 
