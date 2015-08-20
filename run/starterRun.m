@@ -36,7 +36,7 @@ function starterRun(gpuSet)
         GIS = GlobalIndexSemantics(context, topology);
         if context.rank==0
             fprintf('\n---------- MPI Startup\nFirst start: MPI is now ready. Roll call:\n'); end
-	mpi_barrier();
+        mpi_barrier();
         fprintf('Rank %i ready.\n', int32(context.rank));
         mpi_barrier();
     else
@@ -45,13 +45,12 @@ function starterRun(gpuSet)
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
+    haloSize = 3; dimensionDistribute = 1;
+    gm.init(gpuSet, haloSize, dimensionDistribute);
 
     if ~gm.isInitd;
-        haloSize = 3; dimensionDistribute = 1;
-        gm.init(gpuSet, haloSize, dimensionDistribute);
         GPU_ctrl('peers',1);
-%        fprintf('Rank %i: Initialized GPUs.\n');
-    end
+    end    
 
     mpi_barrier();
 
