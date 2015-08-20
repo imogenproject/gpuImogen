@@ -18,127 +18,131 @@
 
 bool sanityCheckTag(const mxArray *tag)
 {
-int64_t *x = (int64_t *)mxGetData(tag);
+	int64_t *x = (int64_t *)mxGetData(tag);
 
-int tagsize = mxGetNumberOfElements(tag);
+	int tagsize = mxGetNumberOfElements(tag);
 
-// This cannot possibly be valid
-if(tagsize < GPU_TAG_LENGTH) return false;
+	// This cannot possibly be valid
+	if(tagsize < GPU_TAG_LENGTH) return false;
 
-int nx = x[GPU_TAG_DIM0];
-int ny = x[GPU_TAG_DIM1];
-int nz = x[GPU_TAG_DIM2];
+	int nx = x[GPU_TAG_DIM0];
+	int ny = x[GPU_TAG_DIM1];
+	int nz = x[GPU_TAG_DIM2];
 
-// Null array OK
-if((nx == 0) && (ny == 0) && (nz == 0) && (tagsize == GPU_TAG_LENGTH)) return true;
+	// Null array OK
+	if((nx == 0) && (ny == 0) && (nz == 0) && (tagsize == GPU_TAG_LENGTH)) return true;
 
-if((nx < 0) || (ny < 0) || (nz < 0)) return false;
+	if((nx < 0) || (ny < 0) || (nz < 0)) return false;
 
-int halo         = x[GPU_TAG_HALO];
-int partitionDir = x[GPU_TAG_PARTDIR];
-int nDevs        = x[GPU_TAG_NGPUS];
+	int halo         = x[GPU_TAG_HALO];
+	int partitionDir = x[GPU_TAG_PARTDIR];
+	int nDevs        = x[GPU_TAG_NGPUS];
 
-// Some basic does-this-make-sense
-if(nDevs < 1) return false;
-if(nDevs > MAX_GPUS_USED) return false;
-if(halo < 0) { // check it is sane to clone
-	if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
-}
+	// Some basic does-this-make-sense
+	if(nDevs < 1) return false;
+	if(nDevs > MAX_GPUS_USED) return false;
+	if(halo < 0) { // check it is sane to clone
+		if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
+	}
 
-if((partitionDir < 1) || (partitionDir > 3)) return false;
+	if((partitionDir < 1) || (partitionDir > 3)) return false;
 
-// Require there be exactly the storage required
-int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
-if(tagsize != requisiteNumel) return false;
+	// Require there be exactly the storage required
+	int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
+	if(tagsize != requisiteNumel) return false;
 
-int j;
-x += GPU_TAG_LENGTH;
-// CUDA device #s are nonnegative, and it is nonsensical that there would be over 16 of them.
-for(j = 0; j < nDevs; j++) {
-    if((x[2*j] < 0) || (x[2*j] >= MAX_GPUS_USED)) {
-        return false;
-        }
-    }
+	int j;
+	x += GPU_TAG_LENGTH;
+	// CUDA device #s are nonnegative, and it is nonsensical that there would be over 16 of them.
+	for(j = 0; j < nDevs; j++) {
+		if((x[2*j] < 0) || (x[2*j] >= MAX_GPUS_USED)) {
+			return false;
+		}
+	}
 
-return true;
+	return true;
 }
 
 // Fills sub with [x0 y0 z0 nx ny nz] of partition P of multi-GPU array m
 void calcPartitionExtent(MGArray *m, int P, int *sub)
 {
-if(P >= m->nGPUs) {
-	char bugstring[256];
-	sprintf(bugstring, "Fatal: Requested partition %i but only %i GPUs in use.", P, m->nGPUs);
-	mexErrMsgTxt(bugstring);
-}
+	if(P >= m->nGPUs) {
+		char bugstring[256];
+		sprintf(bugstring, "Fatal: Requested partition %i but only %i GPUs in use.", P, m->nGPUs);
+		mexErrMsgTxt(bugstring);
+	}
 
-// If the array is marked as cloned, the "partition" is simply the whole array
-if(m->haloSize == PARTITION_CLONED) {
-	sub[0] = sub[1] = sub[2] = 0;
-	sub[3] = m->dim[0];
-	sub[4] = m->dim[1];
-	sub[5] = m->dim[2];
-	return;
-}
+	// If the array is marked as cloned, the "partition" is simply the whole array
+	if(m->haloSize == PARTITION_CLONED) {
+		sub[0] = sub[1] = sub[2] = 0;
+		sub[3] = m->dim[0];
+		sub[4] = m->dim[1];
+		sub[5] = m->dim[2];
+		return;
+	}
 
-int direct = m->partitionDir - 1; // zero-indexed direction
+	int direct = m->partitionDir - 1; // zero-indexed direction
 
-int i;
-// We get the whole array transverse to the partition direction
-for(i = 0; i < 3; i++) {
-  if(i == direct) continue;
-  sub[i  ] = 0;
-  sub[3+i] = m->dim[i];
-}
+	int i;
+	// We get the whole array transverse to the partition direction
+	for(i = 0; i < 3; i++) {
+		if(i == direct) continue;
+		sub[i  ] = 0;
+		sub[3+i] = m->dim[i];
+	}
 
-sub += direct;
-int alpha = m->dim[direct] / m->nGPUs;
+	sub += direct;
+	int alpha = m->dim[direct] / m->nGPUs;
 
-// "raw" offset of P*alpha, extent of alpha
-sub[0] = P*alpha;
-sub[3] = alpha;
+	// "raw" offset of P*alpha, extent of alpha
+	sub[0] = P*alpha;
+	sub[3] = alpha;
 
-// Rightmost partition takes up any remainder slack
-if(P == (m->nGPUs-1)) sub[3] = m->dim[direct] - P*alpha;
+	// Rightmost partition takes up any remainder slack
+	if(P == (m->nGPUs-1)) sub[3] = m->dim[direct] - P*alpha;
 
-// MultiGPU operation requires halos on both sides of the partitions for FDing operations
-if(m->nGPUs > 1) {
-	sub[0] -= m->haloSize;
-	sub[3] += 2*m->haloSize;
-}
+	// MultiGPU operation requires halos on both sides of the partitions for FDing operations
+	if(m->nGPUs > 1) {
+		if((m->addExteriorHalo != 0) || (P > 0)) {
+			sub[0] -= m->haloSize; sub[3] += m->haloSize;
+		}
+		if((m->addExteriorHalo != 0) || (P < (m->nGPUs-1))) {
+			sub[3] += m->haloSize;
+		}
+	}
 
 }
 
 // This does the "ugly" work of deciding what was passed and getting a hold of the raw data pointer
 int64_t *getGPUTypeTag(const mxArray *gputype)
 {
-mxClassID dtype = mxGetClassID(gputype);
+	mxClassID dtype = mxGetClassID(gputype);
 
-/* Handle gpu tags straight off */
-if(dtype == mxINT64_CLASS) {
-  bool sanity = sanityCheckTag(gputype);
-  if(sanity == false) mexErrMsgTxt("cudaCommon: fatal, passed tag failed sanity test.");
-  return  (int64_t *)mxGetData(gputype);
-  }
+	/* Handle gpu tags straight off */
+	if(dtype == mxINT64_CLASS) {
+		bool sanity = sanityCheckTag(gputype);
+		if(sanity == false) mexErrMsgTxt("cudaCommon: fatal, passed tag failed sanity test.");
+		return  (int64_t *)mxGetData(gputype);
+	}
 
-mxArray *tag;
-const char *cname = mxGetClassName(gputype);
+	mxArray *tag;
+	const char *cname = mxGetClassName(gputype);
 
-/* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
-if(strcmp(cname, "GPU_Type") == 0) {
-  tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
-  } else { /* Assume it's an ImogenArray or descendant and retrieve the gputag property */
-  tag = mxGetProperty(gputype, 0, "gputag");
-  }
+	/* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
+	if(strcmp(cname, "GPU_Type") == 0) {
+		tag = mxGetProperty(gputype, 0, "GPU_MemPtr");
+	} else { /* Assume it's an ImogenArray or descendant and retrieve the gputag property */
+		tag = mxGetProperty(gputype, 0, "gputag");
+	}
 
-/* We have done all that duty required, there is no dishonor in surrendering */
-if(tag == NULL) {
-  mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag, GPU_Type class, or Imogen array");
-  }
+	/* We have done all that duty required, there is no dishonor in surrendering */
+	if(tag == NULL) {
+		mexErrMsgTxt("cudaCommon: fatal, tried to get gpu src pointer from something not a gpu tag, GPU_Type class, or Imogen array");
+	}
 
-bool sanity = sanityCheckTag(tag);
-if(sanity == false)  mexErrMsgTxt("cudaCommon: fatal, passed tag failed sanity test.");
-return (int64_t *)mxGetData(tag);
+	bool sanity = sanityCheckTag(tag);
+	if(sanity == false)  mexErrMsgTxt("cudaCommon: fatal, passed tag failed sanity test.");
+	return (int64_t *)mxGetData(tag);
 
 }
 
@@ -151,40 +155,42 @@ cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
 // SERDES routines
 void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
-int i;
-mg->numel = 1;
+	int i;
+	mg->numel = 1;
 
-mg->dim[0] = tag[GPU_TAG_DIM0];
-mg->numel *= mg->dim[0];
-mg->dim[1] = tag[GPU_TAG_DIM1];
-mg->numel *= mg->dim[1];
-mg->dim[2] = tag[GPU_TAG_DIM2];
-mg->numel *= mg->dim[2];
-mg->numSlabs = tag[GPU_TAG_DIMSLAB];
+	mg->dim[0] = tag[GPU_TAG_DIM0];
+	mg->numel *= mg->dim[0];
+	mg->dim[1] = tag[GPU_TAG_DIM1];
+	mg->numel *= mg->dim[1];
+	mg->dim[2] = tag[GPU_TAG_DIM2];
+	mg->numel *= mg->dim[2];
+	mg->numSlabs = tag[GPU_TAG_DIMSLAB];
 
-mg->haloSize     = tag[GPU_TAG_HALO];
-mg->partitionDir = tag[GPU_TAG_PARTDIR];
-mg->nGPUs        = tag[GPU_TAG_NGPUS];
+	mg->haloSize     = tag[GPU_TAG_HALO];
+	mg->partitionDir = tag[GPU_TAG_PARTDIR];
+	mg->nGPUs        = tag[GPU_TAG_NGPUS];
 
-int sub[6];
+	mg->addExteriorHalo = tag[GPU_TAG_EXTERIORHALO];
 
-tag += GPU_TAG_LENGTH;
-for(i = 0; i < mg->nGPUs; i++) {
-    mg->deviceID[i]  = (int)tag[2*i];
-    mg->devicePtr[i] = (double *)tag[2*i+1];
-    // Many elementwise funcs only need numel, so avoid having to do this every time
-    calcPartitionExtent(mg, i, sub);
-    mg->partNumel[i] = sub[3]*sub[4]*sub[5];
-    mg->slabPitch[i] = ROUNDUPTO(mg->partNumel[i]*sizeof(double), 256);
-    }
-for(; i < MAX_GPUS_USED; i++) {
-    mg->deviceID[i]  = -1;
-    mg->devicePtr[i] = 0x0;
-    mg->partNumel[i] = 0;
-    mg->slabPitch[i] = 0;
-    }
+	int sub[6];
 
-return;
+	tag += GPU_TAG_LENGTH;
+	for(i = 0; i < mg->nGPUs; i++) {
+		mg->deviceID[i]  = (int)tag[2*i];
+		mg->devicePtr[i] = (double *)tag[2*i+1];
+		// Many elementwise funcs only need numel, so avoid having to do this every time
+		calcPartitionExtent(mg, i, sub);
+		mg->partNumel[i] = sub[3]*sub[4]*sub[5];
+		mg->slabPitch[i] = ROUNDUPTO(mg->partNumel[i]*sizeof(double), 256);
+	}
+	for(; i < MAX_GPUS_USED; i++) {
+		mg->deviceID[i]  = -1;
+		mg->devicePtr[i] = 0x0;
+		mg->partNumel[i] = 0;
+		mg->slabPitch[i] = 0;
+	}
+
+	return;
 }
 
 /* Serialized tag form:
@@ -202,120 +208,122 @@ return;
      (...)
      device ID N-1
      device memory* N-1]
-*/
+ */
 void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 {
-tag[GPU_TAG_DIM0] = mg->dim[0];
-tag[GPU_TAG_DIM1] = mg->dim[1];
-tag[GPU_TAG_DIM2] = mg->dim[2];
-tag[GPU_TAG_DIMSLAB] = mg->numSlabs;
-tag[GPU_TAG_HALO] = mg->haloSize;
-tag[GPU_TAG_PARTDIR] = mg->partitionDir;
-tag[GPU_TAG_NGPUS] = mg->nGPUs;
-int i;
-for(i = 0; i < mg->nGPUs; i++) {
-    tag[GPU_TAG_LENGTH+2*i]   = (int64_t)mg->deviceID[i];
-    tag[GPU_TAG_LENGTH+2*i+1] = (int64_t)mg->devicePtr[i];
-    }
+	tag[GPU_TAG_DIM0] = mg->dim[0];
+	tag[GPU_TAG_DIM1] = mg->dim[1];
+	tag[GPU_TAG_DIM2] = mg->dim[2];
+	tag[GPU_TAG_DIMSLAB] = mg->numSlabs;
+	tag[GPU_TAG_HALO] = mg->haloSize;
+	tag[GPU_TAG_PARTDIR] = mg->partitionDir;
+	tag[GPU_TAG_NGPUS] = mg->nGPUs;
+	tag[GPU_TAG_EXTERIORHALO] = mg->addExteriorHalo;
 
-return;
+	int i;
+	for(i = 0; i < mg->nGPUs; i++) {
+		tag[GPU_TAG_LENGTH+2*i]   = (int64_t)mg->deviceID[i];
+		tag[GPU_TAG_LENGTH+2*i+1] = (int64_t)mg->devicePtr[i];
+	}
+
+	return;
 }
 
 // Helpers to easily access/create multiple arrays
 int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg)
 {
-int i;
-prhs += idxFrom;
+	int i;
+	prhs += idxFrom;
 
-int64_t *tag;
+	int64_t *tag;
 
-for(i = 0; i < (idxTo + 1 - idxFrom); i++) {
-    tag = getGPUTypeTag(prhs[i]);
-    deserializeTagToMGArray(tag, &mg[i]);
-    }
+	for(i = 0; i < (idxTo + 1 - idxFrom); i++) {
+		tag = getGPUTypeTag(prhs[i]);
+		deserializeTagToMGArray(tag, &mg[i]);
+	}
 
-return 0;
+	return 0;
 }
 
 MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 {
-// Do some preliminaries,
-MGArray *m = (MGArray *)malloc(N*sizeof(MGArray));
+	// Do some preliminaries,
+	MGArray *m = (MGArray *)malloc(N*sizeof(MGArray));
 
-int i;
-int j;
+	int i;
+	int j;
 
-int sub[6];
+	int sub[6];
 
-/* If we are passed a slab array (e.g. the second slab of a 5-slab set),
- * allocate this array to be a single-slab array (i.e. assume that unless
- * explicitly stated otherwise, "make new a new array like skeleton" means
- * one slab element, not the whole thing.
- */
-int nActualSlabs = skeleton->numSlabs;
-if(nActualSlabs <= 0) nActualSlabs = 1;
+	/* If we are passed a slab array (e.g. the second slab of a 5-slab set),
+	 * allocate this array to be a single-slab array (i.e. assume that unless
+	 * explicitly stated otherwise, "make new a new array like skeleton" means
+	 * one slab element, not the whole thing.
+	 */
+	int nActualSlabs = skeleton->numSlabs;
+	if(nActualSlabs <= 0) nActualSlabs = 1;
 
-// clone skeleton,
-for(i = 0; i < N; i++) {
-    m[i]       = *skeleton;
-    m[i].numSlabs = nActualSlabs;
-	
-    // but all "derived" qualities need to be reset
-    m[i].numel = m[i].dim[0]*m[i].dim[1]*m[i].dim[2];
+	// clone skeleton,
+	for(i = 0; i < N; i++) {
+		m[i]       = *skeleton;
+		m[i].numSlabs = nActualSlabs;
 
-    // allocate new memory
-    for(j = 0; j < skeleton->nGPUs; j++) {
-        cudaSetDevice(m[i].deviceID[j]);
-        m[i].devicePtr[j] = 0x0;
+		// but all "derived" qualities need to be reset
+		m[i].numel = m[i].dim[0]*m[i].dim[1]*m[i].dim[2];
 
-        // Check this, because the user may have merely set .haloSize = PARTITION_CLONED
-        calcPartitionExtent(m+i, j, sub);
-        m[i].partNumel[j] = sub[3]*sub[4]*sub[5];
-        m[i].slabPitch[j] = ROUNDUPTO(m[i].partNumel[j]*sizeof(double), 256);
+		// allocate new memory
+		for(j = 0; j < skeleton->nGPUs; j++) {
+			cudaSetDevice(m[i].deviceID[j]);
+			m[i].devicePtr[j] = 0x0;
+
+			// Check this, because the user may have merely set .haloSize = PARTITION_CLONED
+			calcPartitionExtent(m+i, j, sub);
+			m[i].partNumel[j] = sub[3]*sub[4]*sub[5];
+			m[i].slabPitch[j] = ROUNDUPTO(m[i].partNumel[j]*sizeof(double), 256);
 
 
 
-        /* Differs if we have slabs... */
-        int64_t num2alloc = m[i].partNumel[j] * sizeof(double);
-        if(m[i].numSlabs > 1) num2alloc = m[i].slabPitch[j];
+			/* Differs if we have slabs... */
+			int64_t num2alloc = m[i].partNumel[j] * sizeof(double);
+			if(m[i].numSlabs > 1) num2alloc = m[i].slabPitch[j];
 
-        cudaMalloc((void **)&m[i].devicePtr[j], num2alloc);
-        CHECK_CUDA_ERROR("MGA_createReturnedArrays: cudaMalloc");
-    }
-}
+			cudaMalloc((void **)&m[i].devicePtr[j], num2alloc);
+			CHECK_CUDA_ERROR("MGA_createReturnedArrays: cudaMalloc");
+		}
+	}
 
-return m;
+	return m;
 }
 
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton)
 {
-MGArray *m = MGA_allocArrays(N, skeleton);
+	MGArray *m = MGA_allocArrays(N, skeleton);
 
-int i;
+	int i;
 
-mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*skeleton->nGPUs; dims[1] = 1;
-int64_t *r;
+	mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*skeleton->nGPUs; dims[1] = 1;
+	int64_t *r;
 
-// create Matlab arrays holding serialized form,
-for(i = 0; i < N; i++) {
-    plhs[i] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
-    r = (int64_t *)mxGetData(plhs[i]);
-    serializeMGArrayToTag(m+i, r);
-    }
+	// create Matlab arrays holding serialized form,
+	for(i = 0; i < N; i++) {
+		plhs[i] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
+		r = (int64_t *)mxGetData(plhs[i]);
+		serializeMGArrayToTag(m+i, r);
+	}
 
-// send back the MGArray structs.
-return m;
+	// send back the MGArray structs.
+	return m;
 }
 
 void MGA_returnOneArray(mxArray *plhs[], MGArray *m)
 {
-mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*m->nGPUs; dims[1] = 1;
-int64_t *r;
+	mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*m->nGPUs; dims[1] = 1;
+	int64_t *r;
 
-// create Matlab arrays holding serialized form,
-plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
-r = (int64_t *)mxGetData(plhs[0]);
-serializeMGArrayToTag(m, r);
+	// create Matlab arrays holding serialized form,
+	plhs[0] = mxCreateNumericArray(2, dims, mxINT64_CLASS, mxREAL);
+	r = (int64_t *)mxGetData(plhs[0]);
+	serializeMGArrayToTag(m, r);
 }
 
 void MGA_delete(MGArray *victim)
@@ -340,15 +348,15 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst)
 }
 
 int3 makeInt3(int x, int y, int z) {
-    int3 a; a.x = x; a.y = y; a.z = z; return a; }
+	int3 a; a.x = x; a.y = y; a.z = z; return a; }
 int3 makeInt3(int *b) {
-    int3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
+	int3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
 dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z) {
-    dim3 a; a.x = x; a.y = y; a.z = z; return a; }
+	dim3 a; a.x = x; a.y = y; a.z = z; return a; }
 dim3 makeDim3(unsigned int *b) {
-    dim3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
+	dim3 a; a.x = b[0]; a.y = b[1]; a.z = b[2]; return a; }
 dim3 makeDim3(int *b) {
-    dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
+	dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
 
 /* A node whose MGA partitions are of equal size may call this function
  * resulting in:
@@ -458,7 +466,7 @@ pParallelTopology topoStructureToC(const mxArray *prhs)
  * and copies that result back to partitionOnto's device memory.
  * if(redistribute) {
  *   result is memcpy()ed from partitionOnto to all others as well }
-  */
+ */
 int MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
 {
 	FATAL_NOT_IMPLEMENTED
@@ -565,10 +573,10 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 	double *B; double *C;
 
 	int i;
-		for(i = 0; i < a->nGPUs; i++) {
-			cudaSetDevice(a->deviceID[i]);
-			cudaDeviceSynchronize();
-		}
+	for(i = 0; i < a->nGPUs; i++) {
+		cudaSetDevice(a->deviceID[i]);
+		cudaDeviceSynchronize();
+	}
 
 	switch(a->nGPUs) {
 	case 1: break; // nofin to do
@@ -622,7 +630,7 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 		CHECK_CUDA_ERROR("cudaFree");
 		break;
 	case 4: // {reduce(A,B)->A, reduce(C,D)->C}; reduce(A,C)->A
-// FIXME: This is broken right now...
+		// FIXME: This is broken right now...
 		mexErrMsgTxt("This is broken soz.");
 		cudaSetDevice(a->deviceID[0]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -640,16 +648,16 @@ int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute)
 	}
 
 	for(i = 0; i < a->nGPUs; i++) {
-				cudaSetDevice(a->deviceID[i]);
-				cudaDeviceSynchronize();
-			}
+		cudaSetDevice(a->deviceID[i]);
+		cudaDeviceSynchronize();
+	}
 
-if(redistribute)
-	MGA_distributeArrayClones(a, 0);
-for(i = 0; i < a->nGPUs; i++) {
-			cudaSetDevice(a->deviceID[i]);
-			cudaDeviceSynchronize();
-		}
+	if(redistribute)
+		MGA_distributeArrayClones(a, 0);
+	for(i = 0; i < a->nGPUs; i++) {
+		cudaSetDevice(a->deviceID[i]);
+		cudaDeviceSynchronize();
+	}
 
 
 	return 0;
@@ -661,18 +669,18 @@ for(i = 0; i < a->nGPUs; i++) {
  */
 int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
 {
-if(cloned->haloSize != PARTITION_CLONED) return 0;
+	if(cloned->haloSize != PARTITION_CLONED) return 0;
 
-int j;
+	int j;
 
-for(j = 0; j < cloned->nGPUs; j++) {
-	if(j == partitionFrom) continue;
+	for(j = 0; j < cloned->nGPUs; j++) {
+		if(j == partitionFrom) continue;
 
-	cudaMemcpy(cloned->devicePtr[j], cloned->devicePtr[partitionFrom], sizeof(double)*cloned->numel, cudaMemcpyDeviceToDevice);
-	CHECK_CUDA_ERROR("MGA_distributeArrayClones");
-}
+		cudaMemcpy(cloned->devicePtr[j], cloned->devicePtr[partitionFrom], sizeof(double)*cloned->numel, cudaMemcpyDeviceToDevice);
+		CHECK_CUDA_ERROR("MGA_distributeArrayClones");
+	}
 
-return 0;
+	return 0;
 
 }
 
@@ -765,22 +773,22 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 				MGA_partitionHaloToLinear(a, j, a->partitionDir, 1, 0, a->haloSize, &buffs[4*j+1]);
 			}
 
-                        for(j = 0; j < a->nGPUs; j++) {
-                                jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
+			for(j = 0; j < a->nGPUs; j++) {
+				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				// Initiate transfers of linear strips
-			//	cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-			//	CHECK_CUDA_ERROR("cudamemcpy");
-			//	cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-			//	CHECK_CUDA_ERROR("cudaMemcpy");
-                               cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
-                               CHECK_CUDA_ERROR("cudaMemcpyPeer");
-                               cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
-                               CHECK_CUDA_ERROR("cudaMemcpyPeer");
+				//	cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+				//	CHECK_CUDA_ERROR("cudamemcpy");
+				//	cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
+				//	CHECK_CUDA_ERROR("cudaMemcpy");
+				cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
+				CHECK_CUDA_ERROR("cudaMemcpyPeer");
+				cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
+				CHECK_CUDA_ERROR("cudaMemcpyPeer");
 
 			}
 
-                        for(j = 0; j < a->nGPUs; j++) {
-                                jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs; 
+			for(j = 0; j < a->nGPUs; j++) {
+				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				// Translate linear strips back to halo cells
 				MGA_partitionHaloToLinear(a, jn, a->partitionDir, 0, 1, a->haloSize, &buffs[4*jn+2]);
 				MGA_partitionHaloToLinear(a, jp, a->partitionDir, 1, 1, a->haloSize, &buffs[4*jp+3]);
@@ -944,19 +952,19 @@ __global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int 
 /* Expect invocation with [BLKx BLKz 1] threads and [nx/BLKx nz/BLKz 1].rp blocks */
 __global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int nyR, int nz, int h)
 {
-int x0 = threadIdx.x + blockIdx.x*blockDim.x;
-int z0 = threadIdx.y + blockIdx.y*blockDim.y;
+	int x0 = threadIdx.x + blockIdx.x*blockDim.x;
+	int z0 = threadIdx.y + blockIdx.y*blockDim.y;
 
-if((x0 >= nx) || (z0 >= nz)) return;
+	if((x0 >= nx) || (z0 >= nz)) return;
 
-L += (x0 + nx*(nyL-2*h + nyL*z0)); // To the plus y extent
-R += (x0 + nx*nyR*z0);        // to the minus y extent
+	L += (x0 + nx*(nyL-2*h + nyL*z0)); // To the plus y extent
+	R += (x0 + nx*nyR*z0);        // to the minus y extent
 
-int i;
-for(i = 0; i < h; i++) {
-    L[(i+h)*nx]     = R[(i+h)*nx];
-    R[i*nx] = L[i*nx];
-}
+	int i;
+	for(i = 0; i < h; i++) {
+		L[(i+h)*nx]     = R[(i+h)*nx];
+		R[i*nx] = L[i*nx];
+	}
 
 }
 
@@ -1082,9 +1090,16 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 		calcPartitionExtent(g, i, &sub[0]);
 		// Trim the halo away when copying back to CPU
 		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
+
 		if(g->nGPUs > 1) {
-			htrim[3+g->partitionDir-1] -= 2*g->haloSize;
-			htrim[g->partitionDir-1] += g->haloSize;
+			// left halo removal
+			if((g->addExteriorHalo != 0) || (i > 0)) {
+				htrim[3+g->partitionDir-1] -= g->haloSize;
+				htrim[g->partitionDir-1] += g->haloSize;
+
+			}
+			if((g->addExteriorHalo != 0) || (i < (g->nGPUs-1)))
+				htrim[3+g->partitionDir-1] -= g->haloSize;
 		}
 
 		currentTarget = gmem[i];
@@ -1121,7 +1136,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[partitionTo], (void *)p, g->numel*sizeof(double), cudaMemcpyHostToDevice);
 		CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
-                MGA_distributeArrayClones(g, partitionTo);
+		MGA_distributeArrayClones(g, partitionTo);
 		return 0;
 	}
 
@@ -1135,8 +1150,14 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		// Trim the halo away when copying back to CPU
 		for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
 		if(g->nGPUs > 1) {
-			htrim[3+g->partitionDir-1] -= 2*g->haloSize;
-			htrim[g->partitionDir-1] += g->haloSize;
+			// left halo removal
+			if((g->addExteriorHalo != 0) || (i > 0)) {
+				htrim[3+g->partitionDir-1] -= g->haloSize;
+				htrim[g->partitionDir-1] += g->haloSize;
+
+			}
+			if((g->addExteriorHalo != 0) || (i < (g->nGPUs-1)))
+				htrim[3+g->partitionDir-1] -= g->haloSize;
 		}
 
 		currentTarget = gmem[i];
@@ -1199,10 +1220,10 @@ mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 		} else {
 			B = mxGetProperty(A, 0, fieldB);
 		}
-	
+
 		sprintf(estring,"Failed to get X.%s.%s", fieldA, fieldB);
 		if(B == NULL) mexErrMsgTxt(estring);
-	
+
 		return B;
 	} else {
 		return A;
@@ -1213,28 +1234,28 @@ mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 // first element of a presumed double array or the first N elements
 double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
 {
-mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
+	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
 
-if(u != NULL) return *mxGetPr(u);
+	if(u != NULL) return *mxGetPr(u);
 
-return NAN;
+	return NAN;
 }
 
 void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N)
 {
-mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
+	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
 
-int Nmax = mxGetNumberOfElements(u);
-N = (N > Nmax) ? Nmax : N;
+	int Nmax = mxGetNumberOfElements(u);
+	N = (N > Nmax) ? Nmax : N;
 
-double *d = mxGetPr(u);
-int i;
+	double *d = mxGetPr(u);
+	int i;
 
-if(d != NULL) {
-	for(i = 0; i < N; i++) { x[i] = d[i]; } // Give it the d.
-} else {
-	for(i = 0; i < N; i++) { x[i] = NAN; }
-}
+	if(d != NULL) {
+		for(i = 0; i < N; i++) { x[i] = d[i]; } // Give it the d.
+	} else {
+		for(i = 0; i < N; i++) { x[i] = NAN; }
+	}
 
 }
 
@@ -1251,53 +1272,53 @@ void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, di
 
 void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname)
 {
-if(E == cudaSuccess) return;
+	if(E == cudaSuccess) return;
 
-printf("Caught CUDA error at %s:%i: error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
-printf("Code's description of what it just did: %s\n", srcname);
-printf("Rx'd integer: %i\n", i);
+	printf("Caught CUDA error at %s:%i: error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
+	printf("Code's description of what it just did: %s\n", srcname);
+	printf("Rx'd integer: %i\n", i);
 
-if(a == NULL) {
-  printf("No MGArray passed.\n");
-  mexErrMsgTxt("Forcing program stop.");
-  return;
-  }
+	if(a == NULL) {
+		printf("No MGArray passed.\n");
+		mexErrMsgTxt("Forcing program stop.");
+		return;
+	}
 
-printf("Information about rx'd MGArray*:\n");
+	printf("Information about rx'd MGArray*:\n");
 
-char pdStrings[4] = "XYZ";
-printf("\tdim = <%i %i %i>\n\thalo size = %i\n\tpartition direction=%c\n", a->dim[0], a->dim[1], a->dim[2], a->haloSize, pdStrings[a->partitionDir-1]);
-printf("Array partitioned across %i devices: [", a->nGPUs);
-int u;
-for(u = 0; u < a->nGPUs; u++) {
-  printf("%i%s", a->deviceID[u], u==(a->nGPUs-1) ? "]\n" : ", ");
-  }
+	char pdStrings[4] = "XYZ";
+	printf("\tdim = <%i %i %i>\n\thalo size = %i\n\tpartition direction=%c\n", a->dim[0], a->dim[1], a->dim[2], a->haloSize, pdStrings[a->partitionDir-1]);
+	printf("Array partitioned across %i devices: [", a->nGPUs);
+	int u;
+	for(u = 0; u < a->nGPUs; u++) {
+		printf("%i%s", a->deviceID[u], u==(a->nGPUs-1) ? "]\n" : ", ");
+	}
 
-printf("Block and grid dims: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
-mexErrMsgTxt("Forcing stop due to CUDA error");
+	printf("Block and grid dims: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
+	mexErrMsgTxt("Forcing stop due to CUDA error");
 }
 
 void checkCudaError(char *where, char *fname, int lname)
 {
-cudaError_t epicFail = cudaGetLastError();
-if(epicFail == cudaSuccess) return;
+	cudaError_t epicFail = cudaGetLastError();
+	if(epicFail == cudaSuccess) return;
 
-int myrank;
-MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	int myrank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
-mexErrMsgTxt("Forcing stop due to CUDA error");
+	printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
+	mexErrMsgTxt("Forcing stop due to CUDA error");
 }
 
 void dropMexError(char *excuse, char *infile, int atline)
 {
-char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
+	char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
 
-sprintf(turd, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
+	sprintf(turd, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
 
-mexErrMsgTxt(turd);
+	mexErrMsgTxt(turd);
 
-free(turd);
+	free(turd);
 
 }
 
@@ -1311,75 +1332,75 @@ void printgputag(char *name, int64_t *tag)
 
 const char *errorName(cudaError_t E)
 {
-/* Written the stupid way because nvcc is idiotically claims these are all "case inaccessible" if it's done with a switch.
+	/* Written the stupid way because nvcc is idiotically claims these are all "case inaccessible" if it's done with a switch.
 
 WRONG, asshole! */
-// OM...
-NOM(cudaSuccess)
-NOM(cudaErrorMissingConfiguration)
-NOM(cudaErrorMemoryAllocation)
-NOM(cudaErrorInitializationError)
-NOM(cudaErrorLaunchFailure)
-NOM(cudaErrorPriorLaunchFailure)
-NOM(cudaErrorLaunchTimeout)
-NOM(cudaErrorLaunchOutOfResources)
-NOM(cudaErrorInvalidDeviceFunction)
-NOM(cudaErrorInvalidConfiguration)
-NOM(cudaErrorInvalidDevice)
-NOM(cudaErrorInvalidValue)
-NOM(cudaErrorInvalidPitchValue)
-NOM(cudaErrorInvalidSymbol)
-NOM(cudaErrorMapBufferObjectFailed)
-NOM(cudaErrorUnmapBufferObjectFailed)
-NOM(cudaErrorInvalidHostPointer)
-NOM(cudaErrorInvalidDevicePointer)
-NOM(cudaErrorInvalidTexture)
-NOM(cudaErrorInvalidTextureBinding)
-NOM(cudaErrorInvalidChannelDescriptor)
-NOM(cudaErrorInvalidMemcpyDirection)
-NOM(cudaErrorAddressOfConstant)
-NOM(cudaErrorTextureFetchFailed)
-NOM(cudaErrorTextureNotBound)
-NOM(cudaErrorSynchronizationError)
-NOM(cudaErrorInvalidFilterSetting)
-NOM(cudaErrorInvalidNormSetting)
-NOM(cudaErrorMixedDeviceExecution)
-NOM(cudaErrorCudartUnloading)
-NOM(cudaErrorUnknown)
-NOM(cudaErrorNotYetImplemented)
-NOM(cudaErrorMemoryValueTooLarge)
-NOM(cudaErrorInvalidResourceHandle)
-NOM(cudaErrorNotReady)
-NOM(cudaErrorInsufficientDriver)
-NOM(cudaErrorSetOnActiveProcess)
-NOM(cudaErrorInvalidSurface)
-NOM(cudaErrorNoDevice)
-NOM(cudaErrorECCUncorrectable)
-NOM(cudaErrorSharedObjectSymbolNotFound)
-NOM(cudaErrorSharedObjectInitFailed)
-NOM(cudaErrorUnsupportedLimit)
-NOM(cudaErrorDuplicateVariableName)
-NOM(cudaErrorDuplicateTextureName)
-NOM(cudaErrorDuplicateSurfaceName)
-NOM(cudaErrorDevicesUnavailable)
-NOM(cudaErrorInvalidKernelImage)
-NOM(cudaErrorNoKernelImageForDevice)
-NOM(cudaErrorIncompatibleDriverContext)
-NOM(cudaErrorPeerAccessAlreadyEnabled)
-NOM(cudaErrorPeerAccessNotEnabled)
-NOM(cudaErrorDeviceAlreadyInUse)
-NOM(cudaErrorProfilerDisabled)
-NOM(cudaErrorProfilerNotInitialized)
-NOM(cudaErrorProfilerAlreadyStarted)
-NOM(cudaErrorProfilerAlreadyStopped)
-/*cudaErrorAssert
+	// OM...
+	NOM(cudaSuccess)
+		NOM(cudaErrorMissingConfiguration)
+		NOM(cudaErrorMemoryAllocation)
+		NOM(cudaErrorInitializationError)
+		NOM(cudaErrorLaunchFailure)
+		NOM(cudaErrorPriorLaunchFailure)
+		NOM(cudaErrorLaunchTimeout)
+		NOM(cudaErrorLaunchOutOfResources)
+		NOM(cudaErrorInvalidDeviceFunction)
+		NOM(cudaErrorInvalidConfiguration)
+		NOM(cudaErrorInvalidDevice)
+		NOM(cudaErrorInvalidValue)
+		NOM(cudaErrorInvalidPitchValue)
+		NOM(cudaErrorInvalidSymbol)
+		NOM(cudaErrorMapBufferObjectFailed)
+		NOM(cudaErrorUnmapBufferObjectFailed)
+		NOM(cudaErrorInvalidHostPointer)
+		NOM(cudaErrorInvalidDevicePointer)
+		NOM(cudaErrorInvalidTexture)
+		NOM(cudaErrorInvalidTextureBinding)
+		NOM(cudaErrorInvalidChannelDescriptor)
+		NOM(cudaErrorInvalidMemcpyDirection)
+		NOM(cudaErrorAddressOfConstant)
+		NOM(cudaErrorTextureFetchFailed)
+		NOM(cudaErrorTextureNotBound)
+		NOM(cudaErrorSynchronizationError)
+		NOM(cudaErrorInvalidFilterSetting)
+		NOM(cudaErrorInvalidNormSetting)
+		NOM(cudaErrorMixedDeviceExecution)
+		NOM(cudaErrorCudartUnloading)
+		NOM(cudaErrorUnknown)
+		NOM(cudaErrorNotYetImplemented)
+		NOM(cudaErrorMemoryValueTooLarge)
+		NOM(cudaErrorInvalidResourceHandle)
+		NOM(cudaErrorNotReady)
+		NOM(cudaErrorInsufficientDriver)
+		NOM(cudaErrorSetOnActiveProcess)
+		NOM(cudaErrorInvalidSurface)
+		NOM(cudaErrorNoDevice)
+		NOM(cudaErrorECCUncorrectable)
+		NOM(cudaErrorSharedObjectSymbolNotFound)
+		NOM(cudaErrorSharedObjectInitFailed)
+		NOM(cudaErrorUnsupportedLimit)
+		NOM(cudaErrorDuplicateVariableName)
+		NOM(cudaErrorDuplicateTextureName)
+		NOM(cudaErrorDuplicateSurfaceName)
+		NOM(cudaErrorDevicesUnavailable)
+		NOM(cudaErrorInvalidKernelImage)
+		NOM(cudaErrorNoKernelImageForDevice)
+		NOM(cudaErrorIncompatibleDriverContext)
+		NOM(cudaErrorPeerAccessAlreadyEnabled)
+		NOM(cudaErrorPeerAccessNotEnabled)
+		NOM(cudaErrorDeviceAlreadyInUse)
+		NOM(cudaErrorProfilerDisabled)
+		NOM(cudaErrorProfilerNotInitialized)
+		NOM(cudaErrorProfilerAlreadyStarted)
+		NOM(cudaErrorProfilerAlreadyStopped)
+		/*cudaErrorAssert
 cudaErrorTooManyPeers
 cudaErrorHostMemoryAlreadyRegistered
 cudaErrorHostMemoryNotRegistered
 cudaErrorOperatingSystem*/
-NOM(cudaErrorStartupFailure)
-// ... NOM, ASSHOLE!
-return NULL;
+		NOM(cudaErrorStartupFailure)
+		// ... NOM, ASSHOLE!
+		return NULL;
 }
 
 

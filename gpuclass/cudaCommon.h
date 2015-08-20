@@ -52,7 +52,7 @@ typedef struct {
 #define PARTITION_Z 3
 
 // Never ever don't use these
-#define GPU_TAG_LENGTH 7
+#define GPU_TAG_LENGTH 8
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
@@ -60,8 +60,9 @@ typedef struct {
 #define GPU_TAG_HALO 4
 #define GPU_TAG_PARTDIR 5
 #define GPU_TAG_NGPUS 6
+#define GPU_TAG_EXTERIORHALO 7
 
-        // Templates seem to dislike MPI_Op? Switches definitely do.
+// Templates seem to dislike MPI_Op? Switches definitely do.
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
 
 // If the haloSize parameter is set to this,
@@ -77,6 +78,13 @@ typedef struct {
 
     int haloSize;
     int partitionDir;
+
+    // For mpi-serial runs, GIS will NOT supply halo cells at the edge of the array and
+    // GIS must add them: addExteriorHalo is true
+
+    // For mpi-parallel runs with >1 nodes in partition direct, GIS adds the parallel halo
+    // so we do NOT need to.
+    int addExteriorHalo;
 
     int nGPUs;
     int deviceID[MAX_GPUS_USED];

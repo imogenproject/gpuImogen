@@ -25,9 +25,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   MGArray m;
   
-  // Default to no halo, X partition
+  // Default to no halo, X partition, add exterior halo
   m.haloSize = 0;
   m.partitionDir = PARTITION_X;
+  m.addExteriorHalo = 1;
 
   if(nrhs >= 3) {
     int a = mxGetNumberOfElements(prhs[2]);
@@ -40,6 +41,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if(a >= 2) {
       m.partitionDir = (int)d[1];
       if((m.partitionDir < 1) || (m.partitionDir > 3)) m.partitionDir = PARTITION_X;
+    }
+    if(a >= 3) {
+    	// addExteriorHalo should be false iff #procs(partition direction) > 1
+      m.addExteriorHalo = (int)d[2];
     }
   }
 

@@ -13,11 +13,12 @@ classdef GPUManager < handle
         partitionDir;
         isInitd;
         cudaStreamsPtr;
+	nprocs;
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-
+        GIS;
     end %PROTECTED
 
 %===================================================================================================
@@ -32,6 +33,8 @@ classdef GPUManager < handle
             g.partitionDir = 1;
             g.isInitd = 0;
             g.cudaStreamsPtr = int64(0); % initialize to NULL
+
+            g.GIS = GlobalIndexSemantics();
         end
 
         function init(obj, devlist, halo, partitionDirection)
@@ -41,7 +44,7 @@ classdef GPUManager < handle
 	    obj.useHalo = halo;
             obj.partitionDir = partitionDirection;
             obj.isInitd = 1;
-
+	    obj.nprocs = obj.GIS.topology.nproc;
         end
 
         function describe(obj)
