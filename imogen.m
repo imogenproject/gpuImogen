@@ -65,14 +65,12 @@ function outdirectory = imogen(srcData, resumeinfo)
         FieldSource = IC;
     end
 
-    DataHolder = GPU_Type(FieldSource.mass); % This is a sort of dumb way of shoehorning the data in but it works
+    DataHolder = GPU_Type(FieldSource.mass);
     DataHolder.createSlabs(5); % [rho E px py pz] slabs
 
-    a = GPU_getslab(DataHolder, 0); % access mass
+    a = GPU_getslab(DataHolder, 0);
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, run, statics);
-    a = GPU_getslab(DataHolder, 1); % access E slab
-    b = GPU_Type(FieldSource.ener);
-    GPU_copy(a, b);
+    a = GPU_setslab(DataHolder, 1, FieldSource.ener);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, run, statics);
 
     mom  = FluidArray.empty(3,0);
@@ -80,9 +78,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
 
     for i = 1:3;
-        a = GPU_getslab(DataHolder, 1+i);
-        b.array = getfield(FieldSource, fieldnames{i});
-        GPU_copy(a, b);
+        a = GPU_setslab(DataHolder, 1+i, getfield(FieldSource, fieldnames{i}) );
         mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, run, statics);
         if run.pureHydro == 0
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
@@ -90,8 +86,6 @@ function outdirectory = imogen(srcData, resumeinfo)
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
         end
      end
-
-    clear b; 
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();

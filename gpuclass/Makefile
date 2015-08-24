@@ -29,7 +29,7 @@ all: base fluids parallel lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_copy cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
 
 fluids: cudaArrayRotateB cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
 	echo "Done building fluid kernels."
@@ -63,6 +63,13 @@ GPU_getslab.o: GPU_getslab.cu
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_getslab.cpp
 GPU_getslab: GPU_getslab.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_getslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+
+
+GPU_setslab.o: GPU_setslab.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_setslab.cu -o GPU_setslab.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_setslab.cpp
+GPU_setslab: GPU_setslab.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_setslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 
 GPU_makeslab.o: GPU_makeslab.cu
