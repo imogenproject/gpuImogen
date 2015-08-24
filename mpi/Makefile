@@ -16,8 +16,11 @@ PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
 PAR_LIBS = -lpgw -lmpi
 
 ###############################################################################
-all: mpi_amirank0 mpi_all mpi_allgather mpi_any mpi_barrier mpi_basicinfo mpi_dimreduce mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_min mpi_max mpi_sum mpi_prod mpi_scatter
+all: debugSpin mpi_amirank0 mpi_all mpi_allgather mpi_any mpi_barrier mpi_basicinfo mpi_dimreduce mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_min mpi_max mpi_sum mpi_prod mpi_scatter
 	echo "Finished!"
+
+debugSpin: debugSpin.c
+	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) -o debugSpin debugSpin.c
 
 mpi_common.o: mpi_common.c
 	mpicc $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(PAR_INCL) -fPIC -c mpi_common.c -o mpi_common.o
