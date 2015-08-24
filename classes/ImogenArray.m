@@ -106,6 +106,12 @@ classdef ImogenArray < handle
         function initialArray(obj, array)
             obj.pArray.array = array;
             if obj.pBCUninitialized;
+                % Make certain everyone is on board & shares the same view before setting up BCs
+		GIS = GlobalIndexSemantics();
+                cudaHaloExchange(obj, [1 2 3], 1, GIS.topology, obj.bcHaloShare); 
+                cudaHaloExchange(obj, [1 2 3], 2, GIS.topology, obj.bcHaloShare); 
+                cudaHaloExchange(obj, [1 2 3], 3, GIS.topology, obj.bcHaloShare); 
+
                 obj.setupBoundaries();
                 obj.pBCUninitialized = false;
             else % Initialize if needed.
@@ -249,9 +255,9 @@ classdef ImogenArray < handle
         %___________________________________________________________________________________________________ setupBoundaries
         % Function merges the raw statics supplied when the ImogenArray was created with an initial data
         % array and compiled a linearly indexed list for use setting Boundary Conditions quickly at runtime.
+        % This function should be called once at start-time.
         function setupBoundaries(obj)
             statics = obj.boundaryData.rawStatics;
-            
             % Get "other" statics for this array, those not implied by boundary conditions
             [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
             

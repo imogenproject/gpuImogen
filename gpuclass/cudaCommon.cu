@@ -763,37 +763,53 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 				buffs[4*j+3] = buffs[4*j] + 3*numHalo;
 			}
 
-
+			// Fetch current partition's halo to linear strips, letting jn denote next and jp denote previous
 			for(j = 0; j < a->nGPUs; j++) {
-				jn = (j+1) % a->nGPUs; // Next partition
-				jp = (j - 1 + a->nGPUs) % a->nGPUs; // Previous partition
+				jn = (j+1) % a->nGPUs;
+				jp = (j - 1 + a->nGPUs) % a->nGPUs;
 
-				// Read our left/right partitions to linear strips
-				MGA_partitionHaloToLinear(a, j, a->partitionDir, 0, 0, a->haloSize, &buffs[4*j+0]);
-				MGA_partitionHaloToLinear(a, j, a->partitionDir, 1, 0, a->haloSize, &buffs[4*j+1]);
+				// If addExteriorHalo is set, we behave circularly
+				// This is appropriate if e.g. we have only one MPI rank in the partitioned direction.
+
+				// If there are N>1 MPI ranks in the U direction and we are partitioned in U,
+				// We do not handle these boundaries & leave them to MPI (cudaHaloExchange)
+
+				// At first glance full-circular here isn't a problem (after all, the MPI exchange will just overwrite
+				// this, right?). However, IF cudaHaloExchange is involved, then outside-MGA things (i.e.
+				// Matlab) will be aware of the halo because it was added by GIS, not MGA.
+				// Then our use of the halo here will corrupt visible data.
+
+				// In particular, it will corrupt the calculation of boundary conditions!
+				if(a->addExteriorHalo || (j > 0))
+					MGA_partitionHaloToLinear(a, j, a->partitionDir, 0, 0, a->haloSize, &buffs[4*j+0]);
+				if(a->addExteriorHalo || (j < (a->nGPUs-1)))
+					MGA_partitionHaloToLinear(a, j, a->partitionDir, 1, 0, a->haloSize, &buffs[4*j+1]);
 			}
 
+			// Transfer linear strips
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
-				// Initiate transfers of linear strips
-				//	cudaMemcpy(buffs[4*jp+3], buffs[4*j], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-				//	CHECK_CUDA_ERROR("cudamemcpy");
-				//	cudaMemcpy(buffs[4*jn+2], buffs[4*j+1], numHalo * sizeof(double), cudaMemcpyDeviceToDevice);
-				//	CHECK_CUDA_ERROR("cudaMemcpy");
-				cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
-				CHECK_CUDA_ERROR("cudaMemcpyPeer");
-				cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
-				CHECK_CUDA_ERROR("cudaMemcpyPeer");
+				if(a->addExteriorHalo || (j > 0)) {
+					cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
+					CHECK_CUDA_ERROR("cudaMemcpyPeer");
+				}
+				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
+					cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
+					CHECK_CUDA_ERROR("cudaMemcpyPeer");
+				}
 
 			}
 
+			// Dump the strips back to halo
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
-				// Translate linear strips back to halo cells
-				MGA_partitionHaloToLinear(a, jn, a->partitionDir, 0, 1, a->haloSize, &buffs[4*jn+2]);
-				MGA_partitionHaloToLinear(a, jp, a->partitionDir, 1, 1, a->haloSize, &buffs[4*jp+3]);
+				if(a->addExteriorHalo || (j > 0))
+					MGA_partitionHaloToLinear(a, jp, a->partitionDir, 1, 1, a->haloSize, &buffs[4*jp+3]);
+				if(a->addExteriorHalo || (j < (a->nGPUs-1)))
+					MGA_partitionHaloToLinear(a, jn, a->partitionDir, 0, 1, a->haloSize, &buffs[4*jn+2]);
 			}
 
+			// Let go of temp memory
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
 				CHECK_CUDA_ERROR("cudaSetDevice");
@@ -841,6 +857,30 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 /* Fetches the indicated face of a partition's cube to a linear swatch of memory,
  * suitable for memcpy or MPI internode halo exchange
  */
+int MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h)
+{
+	// Sanity checks!
+	if(partition < 0) DROP_MEX_ERROR("MGA_partitionHaloNumel sanity checks: negative partition id!");
+	if(a == NULL) DROP_MEX_ERROR("In MGA_partitionHaloNumel sanity checks: crap, a == NULL!");
+	if(partition >= a->nGPUs) DROP_MEX_ERROR("In MGA_partitionHaloNumel sanity checks: crap, partition > # GPUs!");
+	if(direction < 1) DROP_MEX_ERROR("In MGA_partitionHaloNumel sanity checks: direction < 1. Did you accidently use XYZ==012?");
+	if(direction > 3) DROP_MEX_ERROR("In MGA_partitionHaloNumel sanity checks: direction > 3?");
+	if(h < 0) DROP_MEX_ERROR("In MGA_partitionHaloNumel sanity checks: halo size h < 0?");
+
+	int sub[6];
+	calcPartitionExtent(a, partition, &sub[0]);
+
+	int haloTransverse = a->partNumel[partition] / sub[2+direction];
+	int haloNumel = haloTransverse * h;
+
+	return haloNumel;
+}
+
+
+
+/* Fetches the indicated face of a partition's cube to a linear swatch of memory,
+ * suitable for memcpy or MPI internode halo exchange
+ */
 void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear)
 {
 	cudaSetDevice(a->deviceID[partition]);
@@ -849,8 +889,9 @@ void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int rig
 	int sub[6];
 	calcPartitionExtent(a, partition, &sub[0]);
 
-	int haloTransverse = a->partNumel[partition] / sub[2+direction];
-	int haloNumel = haloTransverse * h;
+	int haloNumel = MGA_partitionHaloNumel(a, partition, direction, h);
+	int haloTransverse = haloNumel / h;
+
 
 	if(linear[0] == NULL) {
 		cudaMalloc((void **)linear, 2*haloNumel*sizeof(double));
@@ -1120,6 +1161,30 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 	}
 
 	return 0;
+}
+
+int MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo)
+{
+
+if(m == NULL) return -1;
+if(g == NULL) return -1;
+
+mwSize ndims = mxGetNumberOfDimensions(m);
+if(ndims > 3) { DROP_MEX_ERROR("Input array has more than 3 dimensions!"); }
+
+const mwSize *arraydims = mxGetDimensions(m);
+
+int j;
+int failed = 0;
+
+for(j = 0; j < ndims; j++) { 
+	if(arraydims[j] != g->dim[j]) failed = 1;
+}
+
+if(failed) return -1;
+
+return MGA_uploadArrayToGPU(mxGetPr(m), g, partitionTo);
+
 }
 
 int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)

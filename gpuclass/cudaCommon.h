@@ -109,24 +109,27 @@ void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
 void     MGA_delete(MGArray *victim);
 
 /* MultiGPU Array I/O */
-int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
-int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
-int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
+int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
+int  MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo);
+
+int  MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
+int  MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 
 /* MultiGPU "extensions" for mpi reduce type stuff */
-int MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute);
-int MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute);
+int  MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute);
+int  MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute);
 
-int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
-int MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);\
+int  MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
+int  MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);\
 
 // Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
 void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
-int MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
+int  MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
 /* Functions for managing halos of MGA partitioned data */
 void MGA_exchangeLocalHalos(MGArray *a, int n);
+int  MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h);
 void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear);
 
 __global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
