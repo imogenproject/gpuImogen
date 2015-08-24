@@ -1,3 +1,4 @@
+function tortureTest(multidev)
 
 disp('#########################');
 disp('Standing up test instance');
@@ -13,16 +14,8 @@ disp('#########################');
 disp('Stand up successful. Begin testing!');
 disp('#########################');
 
-% If cuda-gdb'ed
-if 0;
-  multidev = [0 1];
-  disp('	>>>  using devices [0 1] for multidevice tests  <<<');
-% If normal
-else
-  multidev = [0 2];
-  disp('	>>>  using devices [0 2] for multidevice tests  <<<');
-  disp('	>>> If unexpected fail, check device visibility <<<');
-end
+disp('	>>> Using the following devices for multidevice testing <<<');
+disp(multidev);
 
 % Check that the basic stuff works first
 x = GPUManager.getInstance();
@@ -35,20 +28,20 @@ if basicunits > 0;
     error('Fatal: Unit tests of basic functionality indicate failure. Aborting further tests.');
 end
 
-disp('Fundamental functionality is working (or at least not spectacularly malfunctioning).');
-disp('Fuzzing the following routines which have computable exactly correct answers:');
+disp('Horray, we got this far! That means basic upload/download is working (or at least not');
+disp('manifestly defective). Proceeding to fuzz the following routines which have unit tests:');
 
 % Kernels used by Imogen:
 % TIME_MANAGER	cudaSoundspeed directionalMaxFinder
-% 50% coverage by unit tests
+% 100% coverage by unit tests
 % FLUX		
 % 	ARRAY_INDEX_EXCHANGE:	cudaArrayRotateB
 %	RELAXING_FLUID:		freezeAndPtot, cudaFluidStep
 %	cudahalo exchange: 	oh_god_why.jpg, it's a block of custom shit-code all its own
-% 66% coverage by unit tests
+% 50% coverage by unit tests (no fluid step, halo xchg)
 % SOURCE
 %	cudaSourceRotatingFrame, cudaAccretingStar, cudaSourceScalarPotential, cudaFreeRadiation
-% 25% coverage by unit tests (potential test works)
+% 50% coverage by unit tests (accreting star broken, free radiation under development)
 
 functests = [1 1 1 1];
 
@@ -114,3 +107,4 @@ else
 end
 
 
+end
