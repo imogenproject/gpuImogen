@@ -1,14 +1,12 @@
 % Run Advection test.
 
 %-- Initialize Imogen directory ---%
-starterRun();
-
 grid = [1024 64 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
-run.iterMax     = 25;
+run.iterMax     = 5;
 run.info        = 'Dry run: Start, run 25 steps, bug out.';
 run.notes       = 'Simple advection test in the x-direction.';
 
@@ -48,7 +46,7 @@ run.ppSave.dim3 =  100;
 if (true)
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    fprintf('Dry hydrodynamic run at %s\n', outpath);
+%    fprintf('Dry hydrodynamic run at %s\n', outpath);
 end
 
 run.backgroundB = [.5 .3 0];

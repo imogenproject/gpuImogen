@@ -1,8 +1,6 @@
 % Run Einfeldt Strong Rarefaction test.
 
 %-- Initialize Imogen directory ---%
-starterRun();
-
 grid = [1024 8 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 

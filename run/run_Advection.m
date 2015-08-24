@@ -1,9 +1,5 @@
-% Run Advection test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-
-grid = [256 2 1];
+grid = [256 256 1];
 GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
@@ -34,16 +30,22 @@ run.amplitude = .05;
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 
 % number of transverse wave periods in Y and Z directions
-run.wavenumber = [1 0 0];
+run.wavenumber = [2 1 0];
 %run.cycles = 5;
-run.forCriticalTimes(10);
+run.forCriticalTimes(1.0);
 
-%run.alias = sprintf('ADVECT_N%i_%i_%i',16,0,0);
-run.alias= '10TC';
+run.alias= 'sonic';
 
-% Store 8 steps for each time a sound wave goes past a given point
-%run.ppSave.dim3 =  100;
-run.ppSave.dim3 = 1;
+run.ppSave.dim3 = 50;
+
+
+        run.useInSituAnalysis = 0;
+        run.stepsPerInSitu = 10;
+        run.inSituHandle = @RealtimePlotter;
+instruct.plotmode = 4;
+instruct.plotDifference = 0;
+instruct.pause = 1;
+        run.inSituInstructions = instruct;
 
 run.waveLinearity(0);
 run.waveStationarity(0);
@@ -52,6 +54,7 @@ run.waveStationarity(0);
 if (true)
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    AdvectionAutoanalyze(outpath);
+%   AdvectionAutoanalyze(outpath);
+    if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
 end
 

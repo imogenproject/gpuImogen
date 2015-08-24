@@ -1,14 +1,18 @@
+
 % Run a Sedov Taylor blast wave test.
 
 %-- Initialize Imogen directory ---%
-starterRun();
-grid = [128 128 128];
+grid = [192 192 192];
+GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run         = SedovTaylorBlastWaveInitializer(grid);
+run.iterMax = 5000; % It only really matter that this > 2*resolution to be safe
 
-run.autoEndtime = 1; % Automatically run until R = 0.45
-run.iterMax = 10000;
+run.autoEndtime = 1;
+run.depositRadiusCells(2.5);
+
+run.ppSave.dim3 = 10;
 
 run.alias   = '';
 run.info    = 'Sedov-Taylor blast wave test.';
