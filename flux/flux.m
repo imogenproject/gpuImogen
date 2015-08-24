@@ -60,8 +60,6 @@ function flux(run, mass, mom, ener, mag, order)
 end
 
 function xchgIndices(isFluidOnly, mass, mom, ener, mag, toex)
-%l = [toex 2 3];
-%l(toex)=1;
 
 s = { mass, ener, mom(1), mom(2), mom(3) };
 
