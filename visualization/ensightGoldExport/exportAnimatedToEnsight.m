@@ -47,46 +47,28 @@ else
   minf = mpi_basicinfo();
 end
 
-% Attempt to most evenly partition work among workers
+nworkers = minf(1); myworker = minf(2);
+
 ntotal = numel(range); % number of frames to write
-nforme = floor(ntotal/minf(1)); % minimum each rank must take
-nadd = ntotal - nforme * minf(1); % number left over
+nstep = nworkers;
 
-fprintf('Work distributed among %i workers.\n', minf(1));
-
-if minf(2) < nadd % I must take one more
-  nforme = nforme + 1;
-  ninit = minf(2)*nforme;
-
-  localrange = (ninit+1):(ninit+nforme);
-else
-  ninit = nadd + minf(2)*nforme;
-  localrange = (ninit+1):(ninit+nforme);
-end
+fprintf('Work distributed among %i workers.\n', nworkers);
 
 tic;
-fprintf('Rank %i exporting frames %i to %i inclusive.\n', minf(2),localrange(1),localrange(end));
 
-%--- Loop over given frame range ---%
-for ITER = ninit+(1:nforme)
+%--- Loop over all frames ---%
+for ITER = (myworker+1):nstep:ntotal
     dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
 
- %   if (ITER == 1) && (pertonly == 1)
- %       equilframe = dataframe;
- %   end
-
-%    if pertonly == 1
-%        dataframe = subtractEquil(dataframe, equilframe);
-%    end
     writeEnsightDatafiles(outBasename, ITER-1, dataframe,varset);
     if range(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, range, dataframe, varset, timeNormalization);
     end
-    fprintf('%i',minf(2));
+    fprintf('%i',myworker);
 
 end
 
-fprintf('Rank %i finished. total %g.\n', minf(2), toc);
+fprintf('Rank %i finished in %g sec.\n', myworker, toc);
 
 end
 
