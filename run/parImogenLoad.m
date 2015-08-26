@@ -7,7 +7,6 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
 
 % Uncomment to enter a spin loop and attach debuggers
 % Feed a list of ranks to spin only those ranks
-% debugSpin();
 
     %-- Stand up the basics Imogen expects to be in place --%
     starterRun(gpuSet);
