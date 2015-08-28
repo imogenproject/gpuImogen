@@ -1,4 +1,14 @@
-function tortureTest(multidev)
+function tortureTest(multidev, dorad)
+
+if nargin < 1
+    multidev = [0];
+    disp('>>> WARNING: No input array of device IDs given; Defaulting to [0] and disabling multi-device');
+end
+
+if numel(unique(multidev)) ~= numel(multidev)
+    disp('>>> FATAL: The same device is named repeatedly.');
+    error('Multiple devices: Device IDs must be unique.');
+end
 
 disp('#########################');
 disp('Standing up test instance');
@@ -36,16 +46,25 @@ disp('manifestly defective). Proceeding to fuzz the following routines which hav
 % 100% coverage by unit tests
 % FLUX		
 % 	ARRAY_INDEX_EXCHANGE:	cudaArrayRotateB
-%	RELAXING_FLUID:		freezeAndPtot, cudaFluidStep
-%	cudahalo exchange: 	oh_god_why.jpg, it's a block of custom shit-code all its own
-% 50% coverage by unit tests (no fluid step, halo xchg)
+%	RELAXING_FLUID:		freezeAndPtot, cudaFluidStep, cudaHaloExchange
+% 75% coverage by unit tests (no fluid step test)
 % SOURCE
 %	cudaSourceRotatingFrame, cudaAccretingStar, cudaSourceScalarPotential, cudaFreeRadiation
-% 50% coverage by unit tests (accreting star broken, free radiation under development)
+% 50% coverage by unit tests (accreting star broken)
 
-functests = [1 1 1 1];
+if numel(multidev) < 2;
+    functest = [1 0 0 0];
+    disp('>>> WARNING: Only one device indicated. Will not perform multi-device fuzzing tests.');
+else
+    functests = [1 1 1 1];
+end
 
 names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
+if nargin < 2; 
+    dorad = input('Test cudaFreeRadiation? This will take longer than the rest combined (y/n): ', 's');
+end
+
+if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
 for N = 1:numel(names); disp(['	' names{N}]); end
 disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
@@ -94,7 +113,7 @@ if any(tests > 0);
     if devy > 0;   disp('	TWO DEVICES, Y PARTITION: FAILED'); end
     if devz > 0;   disp('	TWO DEVICES, Z PARTITION: FAILED'); end 
 
-    if any(functests == 0);
+    if any(functests == 0) || (dorad ~= 'y')
         disp('	>>> SOME UNIT TESTS WERE NOT RUN <<<');
 	disp('	>>>   FURTHER ERRORS MAY EXIST   <<<');
     end
@@ -103,6 +122,10 @@ else
     if any(functests == 0);
         disp('	>>>       SOME UNIT TESTS WERE NOT RUN        <<<');
         disp('	>>> DO NOT COMMIT CODE UNTIL _ALL_ TESTS PASS <<<');
+    end
+    if dorad ~= 'y'
+        disp('  >>>    FREE RADIATION UNIT TEST WAS NOT RUN    <<<');
+        disp('  >>> DO NOT COMMIT IF RADIATION CODE IS CHANGED <<<');
     end
 end
 
