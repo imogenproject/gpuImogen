@@ -29,6 +29,7 @@ function starterRun(gpuSet)
         error('Imogen:starterRun:ImogenRootFailure','Unable to find Imogen root directory. Run aborted.');
     end
 
+
     % Get us ready to talk to MPI
     if ~mpi_isinitialized()
         context = parallel_start();
@@ -43,9 +44,11 @@ function starterRun(gpuSet)
         if mpi_amirank0()==0; fprintf('---------- MPI Startup\nMPI is already ready.'); end
     end
 
+%debugSpin();
+
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    haloSize = 3; dimensionDistribute = 1;
+    haloSize = 3; dimensionDistribute = 3;
     gm.init(gpuSet, haloSize, dimensionDistribute);
 
     if ~gm.isInitd;

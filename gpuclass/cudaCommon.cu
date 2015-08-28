@@ -854,6 +854,44 @@ void MGA_exchangeLocalHalos(MGArray *a, int n)
 
 }
 
+int MGA_wholeFaceHaloNumel(MGArray *a, int direction, int h)
+{
+if(a == NULL) DROP_MEX_ERROR("In MGA_faceHaloNumel sanity checks: a is NULL!\n");
+
+int q = 0;
+
+if(a->partitionDir == direction) {
+	q = MGA_partitionHaloNumel(a, 0, direction, h);
+} else {
+	int i;
+	for(i = 0; i < a->nGPUs; i++) {
+		q += MGA_partitionHaloNumel(a, i, direction, h);
+	}
+}
+
+return q;
+
+}
+
+void MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehalo, int h, double **linear)
+{
+
+if(direction == a->partitionDir) {
+	MGA_partitionHaloToLinear(a, 0, direction, rightside, writehalo, h, linear);
+} else { // Fetch all halo partitions
+	int q = 0;
+	int ctr;
+	for(ctr = 0; ctr < a->nGPUs; ctr++) {
+		double *ptmp = linear[0] + q;
+		MGA_partitionHaloToLinear(a, ctr, direction, rightside, writehalo, 3, &ptmp);
+		q += MGA_partitionHaloNumel(a, ctr, direction, 3);
+	}
+}
+
+
+}
+
+
 /* Fetches the indicated face of a partition's cube to a linear swatch of memory,
  * suitable for memcpy or MPI internode halo exchange
  */
