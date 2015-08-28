@@ -53,7 +53,7 @@ for F = 1:nFuncs;
         case 1;  fprintf('Testing %s failed!\n', funcList{F}); result = 1;
         case 0;  fprintf('Testing %s successful!\n', funcList{F});
         case -1; fprintf('Test for function named %s not implemented\n', funcList{F});
-	case -2: fprintf('No function named %s...\n', funcList{F});
+        case -2: fprintf('No function named %s...\n', funcList{F});
     end
 
 end
@@ -182,48 +182,92 @@ function fail = testCudaFreeRadiation(res)
     rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest 1 0 1]));
     rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
 
-    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12; fail = 1; end
+    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+        fail = 1;
+        disp(['Failed calculating radiation rate in hydrodynamic gas. Theta: ' mat2str(thtest)]);
+    end
 
-    tau = .01*.5/max(rtest.array(:));
+    tau = .1*.5/max(rtest.array(:));
 
-    % Test HD radiation sinking
-    cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
-    P0 = gm1*(Ehydro - T);
+    % Test HD radiation sinking at various radiative exponents
+    % Key values of theta: 
+    for thtest = [-.3 0 .28 .5 1 1.3]
+        Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
 
-    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
-    COLD = (P0 < Tmin*rho);
-    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
+        cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
+        P0 = gm1*(Ehydro - T);
 
-    dE(COLD) = 0;
-    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
+% Apply the various algorithms here
+        if thtest == 0
+            % Radiation rate is independent of pressure:
+            Pf = P0 - gm1 * tau * rho.^2;
+        elseif thtest == 1
+            Pf = exp(log(P0) - gm1*tau*rho);
+        else
+            beta = gm1*(thtest-1)*tau*rho.^(2-thtest);
+            Pf = (P0.^(1-thtest)) + beta;
+            Pf(Pf > 0) = Pf(Pf > 0).^(1/(1-thtest));
+        end
+       
+        COLD = (P0 < Tmin*rho);
+        COOL = (Pf < Tmin*rho);
 
-    Enew = Ehydro - dE;
+        Pf(COOL) = Tmin*rho(COOL);
+        Pf(COLD) = P0(COLD);
 
-    if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12; fail = 1; end
+        Enew = T + Pf/gm1;
 
+        if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12;
+		fail = 1;
+		disp(['Failed calculating radiation loss in hydrodynamic gas. Theta: ' mat2str(thtest)]);
+	end
+    end
+
+    thtest = 0.5;
     % Test MHD radiation rate
     rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest 1 0 0]));
     rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
 
-    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12; fail = 1; end
+    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+        fail = 1;
+        disp(['Failed calculating radiation rate in MHD gas. Theta: ' mat2str(thtest)]);
+    end
 
     % Test MHD radiation sinking
-%    tau = .01*.5/max(rtest.array(:));
+    tau = .01*.5/max(rtest.array(:));
 
-%    cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau .2 0]);
-%    P0 = gm1*(Emhd - T - B);
+    for thtest = [-.3 0 .28 .5 1 1.3]
+        Emhdd = GPU_Type(Emhd); % Reload internal energy array
 
-%    dE = tau*(rho.^(2-thtest)).*P0.^thtest;
-%    COLD = (P0 < Tmin*rho);
-%    COOL = ((P0 - Tmin*rho) < dE*gm1) & (P0 > Tmin*rho);
+        cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau Tmin 0]);
+        P0 = gm1*(Emhd - T - B);
 
-    % No radiation below critical temp
-%    dE(COLD) = 0;
-%    dE(COOL) = (P0(COOL) - rho(COOL)*Tmin) / gm1;
+% Apply the various algorithms here
+        if thtest == 0
+            % Radiation rate is independent of pressure:
+            Pf = P0 - gm1 * tau * rho.^2;
+        elseif thtest == 1
+            Pf = exp(log(P0) - gm1*tau*rho);
+        else
+            beta = gm1*(thtest-1)*tau*rho.^(2-thtest);
+            Pf = (P0.^(1-thtest)) + beta;
+            Pf(Pf > 0) = Pf(Pf > 0).^(1/(1-thtest));
+        end
 
-%    Enew = Emhd - dE;
-%    if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12 fail = 1; end
-     %mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
+        COLD = (P0 < Tmin*rho);
+        COOL = (Pf < Tmin*rho);
+
+        Pf(COOL) = Tmin*rho(COOL);
+        Pf(COLD) = P0(COLD);
+
+        Enew = T + B + Pf/gm1;
+
+        if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12;
+                fail = 1;
+                disp(['Failed calculating radiation loss in hydrodynamic gas. Theta: ' mat2str(thtest)]);
+        end
+    end
+
 end
 
 function fail = testCudaFwdAverage(res)
