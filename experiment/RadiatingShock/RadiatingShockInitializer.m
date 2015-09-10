@@ -291,7 +291,6 @@ mass(postshock,:,:) = mass(postshock,:,:) + junk(postshock,:,:);
         ener = ener/(obj.gamma-1) + ...
                .5*squeeze(sum(mom.^2,1))./mass + .5*squeeze(sum(mag.^2,1));
 
-        if obj.useGPU == true
             statics = StaticsInitializer(); 
 
             %statics.setFluid_allConstantBC(mass, ener, mom, 1);
@@ -299,7 +298,6 @@ mass(postshock,:,:) = mass(postshock,:,:) + junk(postshock,:,:);
 
             %statics.setFluid_allConstantBC(mass, ener, mom, 2);
             %statics.setMag_allConstantBC(mag, 2);
-        end
 
         end
 

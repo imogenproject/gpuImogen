@@ -24,8 +24,6 @@ run.frameRotateOmega = ini.frameRotateOmega;
 run.frameRotateCenter = ini.frameRotateCenter;
 
 %% ===== GPU settings ===== %%
-% run.useGPU is legacy junk
-run.useGPU = true;
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
     run.pureHydro = 1;
 else

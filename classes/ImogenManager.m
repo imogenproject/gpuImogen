@@ -27,8 +27,6 @@ classdef ImogenManager < handle
         paths;          % Contains various paths needed for saving data.                Paths
         fades;          %
 
-        useGPU;         % GPUimogen always runs on the GPU, but we keep this so that initializers
-                        % do not fork (or at least fork much less)
         pureHydro;      % if true, stores no magnetic information and uses simpler flux kernels
         
         %--- Manager Classes ---%
@@ -359,8 +357,6 @@ classdef ImogenManager < handle
             obj.DGRID       = num2cell(ones(1,3));
             obj.MINDGRID    = ones(1,3);
             
-
-            obj.useGPU      = true;
             obj.pureHydro   = 0;
         end
         

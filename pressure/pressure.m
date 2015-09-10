@@ -17,7 +17,6 @@ function [result, aux] = pressure(mode, run, mass, momvel, ener, mag)
     aux   = [];
 
     % This runs the below code on the GPU, basically, but only reads each variable from memory once and generates a single write per cell.
-    if run.useGPU
         switch( mode )
             case ENUM.PRESSURE_TOTAL_AND_SOUND
                 [result aux] = cudaMHDKernels(5, mass, ener, momvel(1), momvel(2), momvel(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, GAMMA);                
@@ -32,7 +31,8 @@ function [result, aux] = pressure(mode, run, mass, momvel, ener, mag)
         end
 
         return;
-    end
+
+% FIXME: The rest of this can be pitched now, presumably
 
     % Prepare the velocity squared array
     if isa(momvel,'double')
@@ -77,10 +77,6 @@ function [result, aux] = pressure(mode, run, mass, momvel, ener, mag)
             end
         end 
 
-if run.useGPU        
     cudaArrayAtomic(result, 0.0, ENUM.CUATOMIC_SETMIN);
-else
-    result(result < 0) = 0;
-end
 
 end
