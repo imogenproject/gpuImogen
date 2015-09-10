@@ -17,7 +17,8 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     
     shutDownEverything = 0;
     if nargin < 5;
-        if mpi_myrank() == 0; fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
+        if mpi_myrank() == 0;
+            fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
         shutDownEverything = 1;
     end
 
