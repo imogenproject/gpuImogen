@@ -3,7 +3,7 @@ function massiveFrame = util_loadWholeFrame(basename, padding, framenum, precise
 if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single'; end
 
 if isa(basename,'double')
-    strnames={'X','Y','Z','XY','XZ','YZ','XYZ'};
+    strnames={'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
     try
         basename = strnames{basename};
     catch MERR
