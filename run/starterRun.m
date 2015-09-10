@@ -32,8 +32,10 @@ function starterRun(gpuSet)
 
     % Get us ready to talk to MPI
     if ~mpi_isinitialized()
+        % Start up PGW
         context = parallel_start();
         topology = parallel_topology(context, 3);
+        % Start up global indexing
         GIS = GlobalIndexSemantics(context, topology);
         if context.rank==0
             fprintf('\n---------- MPI Startup\nFirst start: MPI is now ready. Roll call:\n'); end
@@ -44,11 +46,13 @@ function starterRun(gpuSet)
         if mpi_amirank0()==0; fprintf('---------- MPI Startup\nMPI is already ready.'); end
     end
 
-%debugSpin();
+% If debugging compiled code:
+%debugSpin(); % will make all ranks spin
+%debugspin([list of rank #s]); // will make only those ranks spin
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    haloSize = 3; dimensionDistribute = 3;
+    haloSize = 3; dimensionDistribute = 2;
     gm.init(gpuSet, haloSize, dimensionDistribute);
 
     if ~gm.isInitd;
