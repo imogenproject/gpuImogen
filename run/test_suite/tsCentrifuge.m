@@ -72,7 +72,7 @@ for N = 1:doublings
     outdir   = imogen(icfile);
 
     % Get metric error norms
-    a = CentrifugeAnalysis(outdir);
+    a = CentrifugeAnalysis(outdir, 1);
 
     % Paste them together
     result.T(end+1,:)   = a.T;
@@ -84,6 +84,11 @@ for N = 1:doublings
     grid(3) = grid(3) / 2; % keep ini Z resolution, should be 1 anyway
 end
 
-save('~/tsCentrifugeResult2.mat','result');
+if mpi_amirank0()
+    d0 = pwd();
+    cd(outdir);
+    save('./tsCentrifugeResult.mat','centrifugeTestResult');
+    cd(d0);
+end
 
 %end

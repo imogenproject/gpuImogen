@@ -54,7 +54,7 @@ for D = 1:doublings;
     % Run simulation at present resolution & store results path
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    A = AdvectionAnalysis(outpath);
+    A = AdvectionAnalysis(outpath, 1);
     result.paths{end+1} = outpath;
 
     % Store error norms
