@@ -41,6 +41,10 @@ classdef GlobalIndexSemantics < handle
 
     methods
         function obj = GlobalIndexSemantics(context, topology)
+            % GlobalIndexSemantics sets up Imogen's global/local indexing
+            % system. Requires a context & topology from PGW's
+            % parallel_start; Will fudge serial operation if it does not
+            % get them.
             persistent instance;
 
             if ~(isempty(instance) || ~isvalid(instance))
@@ -48,7 +52,7 @@ classdef GlobalIndexSemantics < handle
             end
 
             if nargin < 2;
-                warning('desire GlobalIndexSemantics(parallelContext, parallelTopology): Fudging scalar operation...');
+                warning('desire GlobalIndexSemantics(parallelContext, parallelTopology): Fudging serial operation...');
                 [obj.context obj.topology] = fakeParallelStart();
             else
                 obj.topology = topology;
@@ -59,7 +63,8 @@ classdef GlobalIndexSemantics < handle
         end
 
         function obj = setup(obj, global_size)
-            % setup(global_resolution) sets the global resolution & does bookkeeping
+            % setup(global_resolution) establishes a global resolution &
+            % runs the bookkeeping for it.
             if numel(global_size) == 2; global_size(3) = 1; end
             
             obj.pGlobalDims = global_size + 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
@@ -92,6 +97,7 @@ classdef GlobalIndexSemantics < handle
 
         function makeDimCircular(obj, dim)
             % makeDimCircular(1 <= dim <= 3) declares a circular BC on dim
+            % Effect: Outer edge has a halo
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.circularBCs(dim) = 1;
             obj.updateGridVecs();
@@ -99,13 +105,16 @@ classdef GlobalIndexSemantics < handle
 
         function makeDimNotCircular(obj, dim)
             % makeDimNotCircular(1 <= dim <= 3) declares a noncircular BC on dim
+            % Effect: Outer edge does not have a halo.
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.circularBCs(dim) = 0;
             obj.updateGridVecs();
         end
 
-        % Converts a global set of coordinates to local coordinates, and keeps only those in the local domain
+        
         function [u v w] = toLocalIndices(obj, x, y, z)
+            % [u v w] = GIS.toLocalIndices(x, y, z) converts a global set of coordinates to 
+            % local coordinates, and keeps only those in the local domain
             u = []; v = []; w = [];
             if (nargin == 2) & (size(x,2) == 3);
                 z = x(:,3) - obj.pMyOffset(3);
@@ -127,6 +136,8 @@ classdef GlobalIndexSemantics < handle
         % (In - I0(n))*h(n) - x0(n), i.e.
         % I0 is an index offset, h the coordinate spacing and x0 the coordinate offset.
         % [] for I0 and x0 default to zero; [] for h defaults to 1; scalars are multiplied by [1 1 1]
+        % Especially useful during simulation setup, converting cell indices to physical positions
+        % to evaluate functions at.
 
         if nargin < 3; error('Must receive at least toCoordinates(I0, x)'); end
         % Throw duct tape at the arguments until glaring deficiencies are covered
@@ -145,13 +156,16 @@ classdef GlobalIndexSemantics < handle
         end
 
         function Y = evaluateFunctionOnGrid(obj, afunc)
+        % Y = evaluateFunctionOnGrid(@func) calls afunc(x,y,z) using the
+        % [x y z] returned by obj.ndgridSetXYZ.
             [x y z] = obj.ndgridSetXYZ();
             Y = afunc(x, y, z);
         end
         
         function localset = LocalIndexSet(obj, globalset, d)
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
-        % Renders the 3 edge cells into halo automatically    localset = [];
+        % Renders the 3 edge cells into halo automatically
+        
             pLocalMax = obj.pMyOffset + obj.pMySize;
 
             if nargin == 3;
@@ -177,7 +191,7 @@ classdef GlobalIndexSemantics < handle
         end
 
         function updateGridVecs(obj)
-            % Utility - upon change in global dims, recompute x/y/z index
+            % GIS.updateGridVecs(). Utility - upon change in global dims, recomputes x/y/z index
             % vectors
             ndim = numel(obj.pGlobalDims);
 
@@ -211,13 +225,14 @@ classdef GlobalIndexSemantics < handle
         end
 
         function [u v w] = ndgridVecs(obj)
+            % [u v w] = GIS.ndgridVecs() returns the x-, y- and z- index vectors
             u = obj.localXvector; v = obj.localYvector; w = obj.localZvector;
         end
 
         function [x y z] = ndgridSetXYZ(obj, offset, scale)
             % [x y z] = ndgridsetXYZ(offset, scale) returns the part of
             % ndgrid( 1:grid(1), ...) that lives on this node.
-            % Returns affine transform [X - offset(1)]*scale(1) if given;
+            % Returns affine transform [Xn - offset(n)]*scale(n) if given,
             % defaulting to offset = [0 0 0] and scale = [1 1 1].
             
             if nargin > 1; % Lets the user get affine-transformed coordinates conveniently
@@ -283,10 +298,10 @@ classdef GlobalIndexSemantics < handle
         function O = onesSetYZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(b) numel(c)]); end
         function O = onesSetXZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(c)]); end
         function O = onesSetXYZ(obj); [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b) numel(c)]); end
-
-        % Function returns an nx x ny x nz array whose (i,j,k) index contains the rank of the node residing on the
-        % nx by ny by nz topology at that location.
+        
         function G = getNodeGeometry(obj)
+            % Function returns an nx X ny X nz array whose (i,j,k) index contains the rank of the
+            % node residing on the nx X ny X nz topology at that location.
             G = zeros(obj.topology.nproc);
             xi = mpi_allgather( obj.topology.coord(1) );
             yi = mpi_allgather( obj.topology.coord(2) );
@@ -300,33 +315,22 @@ classdef GlobalIndexSemantics < handle
         end
 
         function slim = withoutHalo(obj, array)
-	    cantdo = any(size(array) ~= obj.pMySize);
-            cantdo = mpi_max(cando); % All nodes must receive an array of the appropriate size
+            % slim = GIS.withoutHalo(fat), when passed an array of size equal to the node's
+            % array size, returns the array with halos removed.
+
+            cantdo = 0;
+            for n = 1:3; cantdo = cantdo || (size(array,n) ~= obj.pMySize(n)); end
+	        
+            cantdo = mpi_max(cantdo); % All nodes must receive an array of the appropriate size
   
             if cantdo;
                 disp(obj.topology);
                 disp([size(array); obj.pMySize]);
-                error('Oh the noez, I received an array of invalid size!');
+                error('Oh teh noez, rank %i received an array of invalid size!', mpi_myrank());
             end
       
             slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
         end
-        
-        % Given a set of values to index a global-sized array, restrict it to those within the local domain.
-        %function [out index] = findIndicesInMyDomain(obj, in, indexMode)
-        %    if (nargin == 2) || (indexMode == 1); in = in - 1; end % convert to zero-based indexing
-
-            % Translate indices back to x-y-z coordinates.
-        %    delta = obj.pGlobalDims(1)*obj.pGlobalDims(2);
-        %    z = (in - mod(in, delta))/delta;
-        %    in = in - z*delta;
-        %    delta = obj.pGlobalDims(1);
-        %    y = (in - mod(in, delta))/delta;
-        %    x = in - y*delta;
-
-        %    i0 = find(
-
-        %end        
 
     end % generic methods
 
