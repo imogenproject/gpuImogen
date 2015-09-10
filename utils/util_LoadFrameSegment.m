@@ -1,20 +1,30 @@
-function dataframe = util_LoadFrameSegment(namebase, padsize, rank, frameno)
+function dataframe = util_LoadFrameSegment(basename, padsize, rank, frameno)
 
-    if frameno == 0; f1 = sprintf('%s_rank%i_START.nc', namebase,rank);
-                     f2 = sprintf('%s_rank%i_START.mat',namebase,rank);
+if isa(basename,'double')
+    strnames={'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
+    try
+        basename = strnames{basename};
+    catch MERR
+        basename
+        error('Numeric basename passed was not an integer [1, 7].');
+    end
+end
+
+    if frameno == 0; f1 = sprintf('%s_rank%i_START.nc', basename,rank);
+                     f2 = sprintf('%s_rank%i_START.mat',basename,rank);
     else
-                     f1 = sprintf('%s_rank%i_%0*i.nc', namebase,rank, padsize, frameno);
-                     f2 = sprintf('%s_rank%i_%0*i.mat',namebase,rank, padsize, frameno);
+                     f1 = sprintf('%s_rank%i_%0*i.nc', basename,rank, padsize, frameno);
+                     f2 = sprintf('%s_rank%i_%0*i.mat',basename,rank, padsize, frameno);
     end
 
     if exist(f1, 'file') == 0;
         if exist(f2, 'file') == 0
             % try end
-            f3 = sprintf('%s_rank%i_FINAL.nc', namebase,rank);
-            f4 = sprintf('%s_rank%i_FINAL.mat', namebase,rank);
+            f3 = sprintf('%s_rank%i_FINAL.nc', basename,rank);
+            f4 = sprintf('%s_rank%i_FINAL.mat', basename,rank);
             if exist(f3,'file') == 0
                 if exist(f4,'file') == 0
-                    % error
+                    error('Neither .mat or .nc with basename %s rank %i frame %i appears to exist.', basename, rank, frameno);
                 else
                     % load final.mat
                     fname = f4;

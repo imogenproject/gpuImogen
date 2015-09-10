@@ -19,6 +19,8 @@ classdef SavefilePortal < handle
         strnames={'X','Y','Z','XY','XZ','YZ','XYZ'};
 
 	directoryStack;
+
+	pParallelMode;
     end %PROTECTED
     
     %===================================================================================================
@@ -35,7 +37,21 @@ classdef SavefilePortal < handle
             self.changeDirectory(wd);
             self.rescanDirectory();
             self.typeToLoad = 7;
+
+	    self.setParallelMode(0);
         end
+
+	function setParallelMode(self, enable)
+	    if enable;
+		self.pParallelMode = 1;
+		if mpi_isinitialized() == 0;
+		    warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init() for sanity.');
+		    mpi_init();
+		end
+	    else;
+		self.pParallelMode = 0;
+	    end
+	end
 
         function changeDirectory(self, nwd)
             % changeDirectory(nwd) makes the portal operate on the New
@@ -104,7 +120,13 @@ classdef SavefilePortal < handle
             self.currentFrame(self.typeToLoad) = f;
             
             self.pushdir(self.savefileDirectory);
-            F = util_LoadWholeFrame(self.typeToLoad, self.savefileList.misc.padlen, b(f));
+	    if self.pParallelMode
+		r = mpi_myrank();
+                F = util_LoadFrameSegment(self.typeToLoad, self.savefileList.misc.padlen, r, b(f));
+	    else
+                F = util_LoadWholeFrame(self.typeToLoad, self.savefileList.misc.padlen, b(f));
+
+	    end
             self.popdir();
         end
             

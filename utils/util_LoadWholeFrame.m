@@ -3,23 +3,12 @@ function massiveFrame = util_loadWholeFrame(basename, padding, framenum, precise
 if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single'; end
 
 if isa(basename,'double')
-    switch basename;
-        case 1
-        basename = '1D_X';
-    case 2
-        basename = '1D_Y';
-    case 3
-        basename = '1D_Z';
-    case 4    
-        basename = '2D_XY';
-    case 5    
-        basename = '2D_XZ';
-    case 6
-        basename = '2D_YZ';
-    case 7
-        basename = '3D_XYZ';
-    otherwise 
-        error('Numeric basename must be 1-7 for X, Y, Z, XY, XZ, YZ, XYZ\n');
+    strnames={'X','Y','Z','XY','XZ','YZ','XYZ'};
+    try
+        basename = strnames{basename};
+    catch MERR
+        basename
+        error('Numeric basename passed was not an integer [1, 7].');
     end
 end
 
