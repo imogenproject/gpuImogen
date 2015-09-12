@@ -877,7 +877,10 @@ void MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writeha
 {
 
 if(direction == a->partitionDir) {
-	MGA_partitionHaloToLinear(a, 0, direction, rightside, writehalo, h, linear);
+	int part = 0;
+	if(rightside) part = a->nGPUs - 1;
+
+	MGA_partitionHaloToLinear(a, part, direction, rightside, writehalo, h, linear);
 } else { // Fetch all halo partitions
 	int q = 0;
 	int ctr;
@@ -1505,5 +1508,6 @@ cudaErrorOperatingSystem*/
 		// ... NOM, ASSHOLE!
 		return NULL;
 }
+
 
 
