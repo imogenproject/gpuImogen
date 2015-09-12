@@ -1,7 +1,10 @@
-function result = analyzeSedovTaylor(directory)
+function result = analyzeSedovTaylor(directory, runParallel)
 
 S = SavefilePortal(directory);
 S.setFrametype(7);
+
+if nargin < 2; runParallel = 0; end
+S.setParallelMode(runParallel);
 
 result.path = directory;
 result.time  = []; 
@@ -9,7 +12,7 @@ result.rhoL1 = [];
 result.rhoL2 = [];
 
 f = S.nextFrame();
-rez = size(f.mass); if numel(rez) == 2; rez(3) = 1; end
+rez = f.parallel.globalDims;
 
 GIS = GlobalIndexSemantics(); GIS.setup(rez);
 
@@ -34,11 +37,14 @@ for N = 1:S.numFrames()
     
     delta = f.mass - truerho;
 
+    if runParallel; delta = GIS.withoutHalo(delta); end
+
     result.time(end+1)  = sum(f.time.history);
-    result.rhoL1(end+1) = norm(delta(:),1) / numel(delta);
-    result.rhoL2(end+1) = norm(delta(:),2) / sqrt(numel(delta));
+    result.rhoL1(end+1) = mpi_sum(norm(delta(:),1)) / mpi_sum(numel(delta));
+    result.rhoL2(end+1) = sqrt(mpi_sum(norm(delta(:),2).^2) / mpi_sum(numel(delta)));
 
     f = S.nextFrame();
 end
+
 
 end
