@@ -31,7 +31,7 @@ if(nrhs > 1) { mexErrMsgTxt("call is debugSpin([array of ranks to spin, or empty
     if(doIspin) {
         printf("Rank %i IS ENTERING DEBUG SPINWAIT: ATTACH gdb/cuda-gdb TO PROCESS %i; break debugSpin.c:37\n", myrank, (int)P);
     } else {
-        printf("PROCESS %I IS NOT ENTERING DEBUG SPINWAIT\n");
+        printf("PROCESS %i IS NOT ENTERING DEBUG SPINWAIT\n", myrank);
     }
 
     while(doIspin) {
