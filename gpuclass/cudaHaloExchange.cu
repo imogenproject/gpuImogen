@@ -111,7 +111,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		cudaSetDevice(phi.deviceID[i]);
 		cudaDeviceSynchronize();
 	}
-	parallel_exchange_dim_contig(parallelTopo, 0, (void*)ptrHalo,
+	parallel_exchange_dim_contig(parallelTopo, xchg, (void*)ptrHalo,
 			(void*)(ptrHalo + numPerHalo),\
 			(void*)(ptrHalo+2*numPerHalo),\
 			(void*)(ptrHalo+3*numPerHalo), numPerHalo, MPI_DOUBLE);
