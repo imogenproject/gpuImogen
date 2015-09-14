@@ -112,7 +112,7 @@ classdef AdvectionInitializer < Initializer
         function C = get.cycles(self); C = self.pCycles; end
         
         function forCriticalTimes(self, NC)
-	    tc = 1/(self.amplitude*(self.gamma + 1));
+	    tc = 2/(self.amplitude*(self.gamma + 1));
 	    w_srf = norm(self.pWavenumber)*2*pi*sqrt(self.gamma*self.pPressure/self.pDensity);
             self.cycles = NC*tc/w_srf;
 	end
