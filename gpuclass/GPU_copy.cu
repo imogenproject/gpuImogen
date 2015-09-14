@@ -35,7 +35,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     cudaSetDevice(orig[0].deviceID[j]);
     CHECK_CUDA_ERROR("setdevice");
-    cudaMemcpy((void *)orig[0].devicePtr[j], (void*)orig[1].devicePtr[j], dan*sizeof(double), cudaMemcpyDeviceToDevice);
+    cudaMemcpyPeerAsync((void *)orig[0].devicePtr[j], orig[0].deviceID[j], (void*)orig[1].devicePtr[j], orig[1].deviceID[j], dan*sizeof(double));
     CHECK_CUDA_ERROR("cudamemcpy");
   }
 
