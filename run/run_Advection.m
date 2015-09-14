@@ -13,7 +13,7 @@ run.notes       = 'Simple advection test in the x-direction.';
 
 run.activeSlices.x = false;
 run.activeSlices.xy = false;
-run.activeSlices.xyz = true;
+run.activeSlices.xyz = false;
 
 run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 100;
@@ -28,16 +28,18 @@ run.backgroundMach = -1;
 run.waveType = 'sonic';
 run.amplitude = .05;
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
+%                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
-run.wavenumber = [2 1 0];
+run.wavenumber = [5 7 0];
+% 1st method of setting run duration: normalized by cycle time
 %run.cycles = 5;
-run.forCriticalTimes(1.0);
+% 2nd method of setting run duration: normalized by steepening critical time t*
+run.forCriticalTimes(0.2);
 
 run.alias= 'sonic';
 
-run.ppSave.dim3 = 50;
-
+run.ppSave.dim3 = 10;
 
         run.useInSituAnalysis = 0;
         run.stepsPerInSitu = 10;
@@ -54,7 +56,7 @@ run.waveStationarity(0);
 if (true)
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-%   AdvectionAutoanalyze(outpath);
+    AdvectionAnalysis(outpath, 1);
     if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
 end
 
