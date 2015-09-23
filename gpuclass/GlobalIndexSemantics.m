@@ -5,31 +5,34 @@ classdef GlobalIndexSemantics < handle
 % x = GlobalIndexSemantics(): Retreive
 
     properties (Constant = true, Transient = true)
+        haloAmt = 3;
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
     end % Public
 
-    properties (SetAccess = private, GetAccess = public)
+    properties (SetAccess = public, GetAccess = public)
         context;
         topology;
-        pGlobalDims; % The size of global input domain size + halo added on [e.g. 512 500]
-        pMySize;     % The size of the local domain + any added halo [256 500
-        pMyOffset;   % The offset of the local domain taking the lower left corner of the
+        pGlobalDomainRezPlusHalos; % The size of global input domain size + halo added on [e.g. 512 500]
+        pLocalDomainPlusHalo;     % The size of the local domain + any added halo [256 500
+        pLocalDomainOffset;   % The offset of the local domain taking the lower left corner of the
                      % input domain (excluding halo).
-        pHaloDims;   % The input global domain size, with no halo added [e.g. 500 500]
+        pGlobalDomainRez;   % The input global domain size, with no halo added [e.g. 500 500]
 
-        edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular or exterior
-
-        domainResolution;
-        domainOffset;
-
+        edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular, or exterior
+                      %                                          The Oxford comma, it matters!! -^
+	pMySize;
+	pMyOffset;
     end % Private
 
     properties (SetAccess = private, GetAccess = private)
         % The local parts of the x/y/z index counting vectors
         % Matlab format (from 1)
-        localXvector; localYvector; localZvector; circularBCs;
+        localXvector; localYvector; localZvector;
+
+        % Marks whether to wrap or continue counting at the exterior halo
+        circularBCs;
 
         % Local indices such that validArray(nohaloXindex, ...) contains everything but the halo cells
         % Useful for array reducing operations
@@ -66,31 +69,37 @@ classdef GlobalIndexSemantics < handle
             % setup(global_resolution) establishes a global resolution &
             % runs the bookkeeping for it.
             if numel(global_size) == 2; global_size(3) = 1; end
-            
-            obj.pGlobalDims = global_size + 6*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
 
-            pMySize = floor(obj.pGlobalDims ./ double(obj.topology.nproc));
+            dblhalo = 2*obj.haloAmt;
             
-            % Make up any deficit in size with the rightmost nodes in each dimension
+            obj.pGlobalDomainRez = global_size;
+            obj.pGlobalDomainRezPlusHalos   = global_size + dblhalo*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
+
+            % Default size: Ntotal / Nproc
+            propSize = floor(obj.pGlobalDomainRezPlusHalos ./ double(obj.topology.nproc));
+            
+            % Compute offset
+            obj.pLocalDomainOffset = (propSize-dblhalo).*double(obj.topology.coord);
+
+            % If we're at the plus end of the topology in a dimension, increase proposed size to meet global domain resolution.
             for i = 1:obj.topology.ndim;
-                if (double(obj.topology.coord(i)) == (obj.topology.nproc(i)+1)) && (pMySize(i)*obj.topology.nproc(i) < obj.pGlobalDims(i))
-                    pMySize(i) = pMySize(i) + obj.pGlobalDims(i) - pMySize(i)*obj.topology.nproc(i);
+                if (double(obj.topology.coord(i)) == (obj.topology.nproc(i)-1)) && (propSize(i)*obj.topology.nproc(i) < obj.pGlobalDomainRezPlusHalos(i))
+                    propSize(i) = propSize(i) + obj.pGlobalDomainRezPlusHalos(i) - propSize(i)*obj.topology.nproc(i);
                 end
             end
-            obj.pMySize = pMySize;
-            obj.pMyOffset = (obj.pMySize-6).*double(obj.topology.coord);
 
-            obj.pHaloDims = obj.pGlobalDims - (obj.topology.nproc > 1).*double((6*obj.topology.nproc));
+            obj.pLocalDomainPlusHalo = propSize;
 
             obj.edgeInterior(1,:) = double(obj.topology.coord > 0);
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
 
-            obj.domainResolution = global_size;
-            obj.domainOffset     = obj.pMyOffset;% - double(6*obj.topology.coord);
-
             obj.circularBCs = [1 1 1];
 
             obj.updateGridVecs();
+
+            % Oh god, so many things depend on this horrible variable name
+            obj.pMySize = obj.pLocalDomainPlusHalo;
+	    obj.pMyOffset = obj.pLocalDomainOffset;
 
             instance = obj;
         end % Constructor
@@ -117,17 +126,17 @@ classdef GlobalIndexSemantics < handle
             % local coordinates, and keeps only those in the local domain
             u = []; v = []; w = [];
             if (nargin == 2) & (size(x,2) == 3);
-                z = x(:,3) - obj.pMyOffset(3);
-                y = x(:,2) - obj.pMyOffset(2);
-                x = x(:,1) - obj.pMyOffset(1);
+                z = x(:,3) - obj.pLocalDomainOffset(3);
+                y = x(:,2) - obj.pLocalDomainOffset(2);
+                x = x(:,1) - obj.pLocalDomainOffset(1);
   
-                keep = (x>0) & (x<=obj.pMySize(1)) & (y>0) & (y<=obj.pMySize(2)) & (z>0) & (z<=obj.pMySize(3));
+                keep = (x>0) & (x<=obj.pLocalDomainPlusHalo(1)) & (y>0) & (y<=obj.pLocalDomainPlusHalo(2)) & (z>0) & (z<=obj.pLocalDomainPlusHalo(3));
                 u = [x(keep) y(keep) z(keep)];
                 return;
             end
-            if (nargin >= 2) & (~isempty(x)); x = x - obj.pMyOffset(1); u=x((x>0)&(x<=obj.pMySize(1))); end
-            if (nargin >= 3) & (~isempty(y)); y = y - obj.pMyOffset(2); v=y((y>0)&(y<=obj.pMySize(2))); end
-            if (nargin >= 4) & (~isempty(z)); z = z - obj.pMyOffset(3); w=z((z>0)&(z<=obj.pMySize(3))); end
+            if (nargin >= 2) & (~isempty(x)); x = x - obj.pLocalDomainOffset(1); u=x((x>0)&(x<=obj.pLocalDomainPlusHalo(1))); end
+            if (nargin >= 3) & (~isempty(y)); y = y - obj.pLocalDomainOffset(2); v=y((y>0)&(y<=obj.pLocalDomainPlusHalo(2))); end
+            if (nargin >= 4) & (~isempty(z)); z = z - obj.pLocalDomainOffset(3); w=z((z>0)&(z<=obj.pLocalDomainPlusHalo(3))); end
 
         end
 
@@ -166,14 +175,14 @@ classdef GlobalIndexSemantics < handle
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
         % Renders the 3 edge cells into halo automatically
         
-            pLocalMax = obj.pMyOffset + obj.pMySize;
+            pLocalMax = obj.pLocalDomainOffset + obj.pLocalDomainPlusHalo;
 
             if nargin == 3;
-                localset =  q((q >= obj.pMyOffset(d)) & (q <= pLocalMax(d))) - obj.pMyOffset(d) + 1;
+                localset =  q((q >= obj.pLocalDomainOffset(d)) & (q <= pLocalMax(d))) - obj.pLocalDomainOffset(d) + 1;
             else
-                for n = 1:min(numel(obj.pGlobalDims), numel(globalset));
+                for n = 1:min(numel(obj.pGlobalDomainRezPlusHalos), numel(globalset));
                     q = globalset{n};
-                    localset{n} = q((q >= obj.pMyOffset(n)) & (q <= pLocalMax(n))) - obj.pMyOffset(n) + 1;
+                    localset{n} = q((q >= obj.pLocalDomainOffset(n)) & (q <= pLocalMax(n))) - obj.pLocalDomainOffset(n) + 1;
                 end
             end
         end
@@ -181,9 +190,9 @@ classdef GlobalIndexSemantics < handle
         function LL = cornerIndices(obj)
         % Return the index of the lower left corner in both local and global coordinates
         % Such that subtracting them from a 1:size(array) will make the lower-left corner that isn't part of the halo [0 0 0] in local coords and whatever it is in global coords
-        ndim = numel(obj.pGlobalDims);
+        ndim = numel(obj.pGlobalDomainRezPlusHalos);
 
-            LL=[1 1 1; (obj.pMyOffset+1)]';
+            LL=[1 1 1; (obj.pLocalDomainOffset+1)]';
             for j = 1:ndim;
                 LL(j,:) = LL(j,:) - 3*(obj.topology.nproc(j) > 1);
             end
@@ -193,21 +202,21 @@ classdef GlobalIndexSemantics < handle
         function updateGridVecs(obj)
             % GIS.updateGridVecs(). Utility - upon change in global dims, recomputes x/y/z index
             % vectors
-            ndim = numel(obj.pGlobalDims);
+            ndim = numel(obj.pGlobalDomainRezPlusHalos);
 
             x=[]; lnh = [];
             for j = 1:ndim;
-                q = 1:obj.pMySize(j);
+                q = 1:obj.pLocalDomainPlusHalo(j);
                 % This line degerates to the identity operation if nproc(j) = 1
-                q = q + obj.pMyOffset(j) - 3*(obj.topology.nproc(j) > 1);
+                q = q + obj.pLocalDomainOffset(j) - 3*(obj.topology.nproc(j) > 1);
 
                 % If the edges are periodic, wrap coordinates around
                 if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
-                    q = mod(q + obj.pHaloDims(j) - 1, obj.pHaloDims(j)) + 1;
+                    q = mod(q + obj.pGlobalDomainRez(j) - 1, obj.pGlobalDomainRez(j)) + 1;
                 end
                 x{j} = q;
 
-                lmin = 1; lmax = obj.pMySize(j);
+                lmin = 1; lmax = obj.pLocalDomainPlusHalo(j);
                 if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
                     lmin = 4;
                 end
@@ -234,7 +243,7 @@ classdef GlobalIndexSemantics < handle
             % ndgrid( 1:grid(1), ...) that lives on this node.
             % Returns affine transform [Xn - offset(n)]*scale(n) if given,
             % defaulting to offset = [0 0 0] and scale = [1 1 1].
-            
+             
             if nargin > 1; % Lets the user get affine-transformed coordinates conveniently
                 if nargin < 3; scale  = [1 1 1]; end;
                 if nargin < 2; offset = [0 0 0]; end;
@@ -310,6 +319,7 @@ classdef GlobalIndexSemantics < handle
             G(i0) = 0:(numel(G)-1);
         end
 
+        % This is the only function in GIS that references any part of the topology execpt .nproc or .coord
         function index = getMyNodeIndex(obj)
             index = double(mod(obj.topology.neighbor_left+1, obj.topology.nproc));
         end
@@ -319,17 +329,31 @@ classdef GlobalIndexSemantics < handle
             % array size, returns the array with halos removed.
 
             cantdo = 0;
-            for n = 1:3; cantdo = cantdo || (size(array,n) ~= obj.pMySize(n)); end
+            for n = 1:3; cantdo = cantdo || (size(array,n) ~= obj.pLocalDomainPlusHalo(n)); end
 	        
             cantdo = mpi_max(cantdo); % All nodes must receive an array of the appropriate size
   
             if cantdo;
                 disp(obj.topology);
-                disp([size(array); obj.pMySize]);
+                disp([size(array); obj.pLocalDomainPlusHalo]);
                 error('Oh teh noez, rank %i received an array of invalid size!', mpi_myrank());
             end
       
             slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
+        end
+
+        function DEBUG_setTopoSize(obj, n);
+            obj.topology.nproc = n;
+
+            c = obj.circularBCs;
+            obj.setup(obj.pGlobalDomainRez);
+            for x = 1:n; if c(x) == 0; obj.makeDimNotCircular(x); end; end
+        end
+        function DEBUG_setTopoCoord(obj,c)
+            obj.topology.coord = c;
+            c = obj.circularBCs;
+            obj.setup(obj.pGlobalDomainRez);
+            for x = 1:n; if c(x) == 0; obj.makeDimNotCircular(x); end; end
         end
 
     end % generic methods
