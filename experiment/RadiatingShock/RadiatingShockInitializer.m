@@ -32,7 +32,7 @@ classdef RadiatingShockInitializer < Initializer
         sonicMach;
         alfvenMach; % Set to -1 for hydrodynamic
 
-	machY_boost; % Galiean transform makes everything slide sideways at this mach;
+        machY_boost; % Galiean transform makes everything slide sideways at this mach;
                      % Prevent HLLC from being a victim of its own success
 
         radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
@@ -69,7 +69,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.info             = 'Radiating HD shock';
             obj.fractionPreshock = .25;
             obj.fractionCold     = .1;
-            obj.Tcutoff          = 1;
+            obj.Tcutoff          = 1.05;
             % This is actually P2/rho2 == Tcutoff*(P1/rho1)
 
             obj.mode.fluid       = true;
@@ -100,7 +100,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.sonicMach        = 3;
             obj.alfvenMach       = -1;
 
-	    obj.machY_boost      = .02*obj.sonicMach;
+            obj.machY_boost      = .02*obj.sonicMach;
 
             obj.radTheta = .5;
             obj.radBeta = 1;
@@ -129,6 +129,7 @@ classdef RadiatingShockInitializer < Initializer
         potentialField = [];
         selfGravity = [];        
         GIS = GlobalIndexSemantics();
+        GIS.setup(obj.grid);
 
         GIS.makeDimNotCircular(1);
 
@@ -183,10 +184,7 @@ classdef RadiatingShockInitializer < Initializer
         Xshock = obj.dGrid(1)*numPre;
 
         % Generate blank slates
-        mass = zeros(GIS.pMySize);
-        ener = zeros(GIS.pMySize);
-        mom  = zeros([3 GIS.pMySize]);
-        mag  = zeros([3 GIS.pMySize]);
+        [mass mom mag ener] = GIS.basicFluidXYZ();
 
         % Fill in preshock values
         mass(preshock,:,:) = jump.rho(1);
@@ -227,19 +225,19 @@ classdef RadiatingShockInitializer < Initializer
         ener(coldlayer,:,:) = finstate(7);
 
         %----------- BOOST TRANSFORM ---------%
-	dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
+        dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
         yboost = mass*dvy;
 
-	ener = ener + (squeeze(mom(2,:,:,:)) + .5*yboost)*dvy;
-	mom(2,:,:,:) = squeeze(mom(2,:,:,:)) + yboost;
+        ener = ener + (squeeze(mom(2,:,:,:)) + .5*yboost)*dvy;
+        mom(2,:,:,:) = squeeze(mom(2,:,:,:)) + yboost;
 
         %--- Perturb mass density in pre-shock region ---%
         %       Mass density gets perturbed in the pre-shock region just before the shock front
         %       to seed the formation of any instabilities
 
 %{        delta       = ceil(0.12*obj.grid(1));
-        seedIndices = (1:10) + round(obj.grid(1)*obj.fractionPreshock) - 20 - GIS.pMyOffset(1);
-        mine = find((seedIndices >= 1) & (seedIndices < GIS.pMySize(1)));
+        seedIndices = (1:10) + round(obj.grid(1)*obj.fractionPreshock) - 20 - GIS.pLocalDomainOffset(1);
+        mine = find((seedIndices >= 1) & (seedIndices < GIS.pLocalRez(1)));
 
         if any(mine);
             switch (obj.perturbationType)

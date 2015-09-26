@@ -17,9 +17,9 @@ classdef KelvinHelmholtzInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         mach;
-	waveHeight;
-	numWave;
-	randAmp;
+        waveHeight;
+        numWave;
+        randAmp;
         massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
     end %PUBLIC
 
@@ -40,19 +40,19 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.gamma            = 5/3;
             obj.runCode          = 'KelHelm';
             obj.info             = 'Kelvin-Helmholtz instability test';
-	    obj.pureHydro        = true;
+            obj.pureHydro        = true;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
             obj.cfl              = 0.4;
             obj.iterMax          = 1500;
             obj.mach             = 0.25;
-	    obj.activeSlices.xy  = true;
+            obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
 
-	    obj.waveHeight	 = 0;
-	    obj.numWave	 	= 10;
-	    obj.randAmp	 	= .1;
+            obj.waveHeight         = 0;
+            obj.numWave                 = 10;
+            obj.randAmp                 = .1;
 
             obj.bcMode.x = 'circ';
             obj.bcMode.y = 'circ';
@@ -76,52 +76,47 @@ classdef KelvinHelmholtzInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics 		= [];
-            potentialField 	= [];
-            selfGravity 	= [];
-            GIS 		= GlobalIndexSemantics();
+            statics             = [];
+            potentialField      = [];
+            selfGravity         = [];
+            GIS                 = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	   % GIS.makeDimNotCircular(1);
-	   % GIS.makeDimNotCircular(2);
+           % GIS.makeDimNotCircular(1);
+           % GIS.makeDimNotCircular(2);
 
-	    % Set various variables
-            speed   		= speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0); % Gives the speed of the fluid in both directions
+            % Set various variables
+            speed               = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0); % Gives the speed of the fluid in both directions
 
-	    % Initialize Arrays
-            mass    		= ones(GIS.pMySize);
-            mom     		= zeros([3 GIS.pMySize]);
-            mag     		= zeros([3 GIS.pMySize]);
-            P	    		= ones(GIS.pMySize);
+            % Initialize Arrays
+            [mass mom mag ener] = GIS.basicFluidXYZ();
 
-	    % Initialize parallelized vectors
-	    [X Y Z] 		= GIS.ndgridSetXYZ();
-	    obj.dGrid 		= 1./obj.grid;
-	    X 			= X*obj.dGrid(1);
-	    Y 			= Y*obj.dGrid(2);
-	    Z 			= Z*obj.dGrid(3);
+            % Initialize parallelized vectors
+            obj.dGrid           = 1./obj.grid;
+            [X Y Z]             = GIS.ndgridSetXYZ([0 0 0], obj.dGrid);
 
-	    % Define the wave contact in parallel
-            topwave		= .33 + obj.waveHeight*sin(obj.numWave*2*pi*X);
-            bottomwave		= .66 + obj.waveHeight*sin(obj.numWave*2*pi*X);
-	    heavy		= (Y > topwave) & (Y < bottomwave);
+            % Define the wave contact in parallel
+            topwave             = .33 + obj.waveHeight*sin(obj.numWave*2*pi*X);
+            bottomwave          = .66 + obj.waveHeight*sin(obj.numWave*2*pi*X);
+            heavy               = (Y > topwave) & (Y < bottomwave);
 
-	    % Define properties of the various regions. The high-density region in the middle moves in positive X, while the low-density regions move in negative X.
-	    mom(1,:,:,:)	= -speed;
-	    mom(1,heavy)	= speed;
-	    mass(heavy) 	= obj.massRatio;
+            % Define properties of the various regions. The high-density region in the middle moves in positive X, while the low-density regions move in negative X.
+            mom(1,:,:,:)        = -speed;
+            mom(1,heavy)        = speed;
+            mass(heavy)         = obj.massRatio;
 
-	    % Give the grid a random velocity component in both X and Y of a size 'randamp', then multiply by the mass array to give momentum.
-	    mom(1,:,:,:)	= mom(1,:,:,:) + obj.randAmp*(2*rand(size(mom(1,:,:,:)))-1);
-	    mom(2,:,:,:)	= mom(2,:,:,:) + obj.randAmp*(2*rand(size(mom(2,:,:,:)))-1);
-	    mom(1,:,:,:) 	= squeeze(mom(1,:,:,:)).*mass;
-	    mom(2,:,:,:) 	= squeeze(mom(2,:,:,:)).*mass;
+            % Give the grid a random velocity component in both X and Y of a size 'randamp', then multiply by the mass array to give momentum.
+            mom(1,:,:,:)        = mom(1,:,:,:) + obj.randAmp*(2*rand(size(mom(1,:,:,:)))-1);
+            mom(2,:,:,:)        = mom(2,:,:,:) + obj.randAmp*(2*rand(size(mom(2,:,:,:)))-1);
+            mom(1,:,:,:)        = squeeze(mom(1,:,:,:)).*mass;
+            mom(2,:,:,:)        = squeeze(mom(2,:,:,:)).*mass;
 
-	    % Calculate energy density array
-	    ener = (maxFinderND(mass)^obj.gamma)/(obj.gamma - 1) ...     	% internal
-	    + 0.5*squeeze(sum(mom.*mom,1))./mass ...             		% kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));                      		% magnetic
+            % Calculate energy density array
+            ener = (maxFinderND(mass).^obj.gamma)/(obj.gamma - 1) ...             % internal
+            + 0.5*squeeze(sum(mom.*mom,1))./mass ...                             % kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));                                      % magnetic
             end
-	end%PROTECTED       
+        end%PROTECTED       
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
     end

@@ -11,6 +11,9 @@ function source(run, mass, mom, ener, mag, tFraction)
 
 GIS = GlobalIndexSemantics();
 
+% Allow operators to mark what variables need halo exchange after this
+dosync = zeros(5,3);
+
 % We observe that { radiation, self-gravity, other pure-mechanical forces } commute:
 % radiation acts only on internal energy,
 % while purely mechanical forces act only on kinetic energy + momentum
@@ -23,8 +26,7 @@ dTime = 2 * tFraction * run.time.dTime;
     if run.frameRotateOmega ~= 0
         [xg yg] = GIS.ndgridVecs;
         xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ], 1); 
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime, xyvector);
-        clear xyvector;
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime/2, xyvector);
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -37,13 +39,18 @@ dTime = 2 * tFraction * run.time.dTime;
         run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass, mom(1), mom(2), mom(3), ener, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, dTime, GIS.topology.nproc) );
     end
 
-
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
         cudaSourceScalarPotential(mass, ener, mom(1), mom(2), mom(3), run.potentialField.field, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+        dosync(3:5,1:3) = 1;
     end
 
-    % FIXME: This sequence is only first order accurate in the energy equation
+    
+    if run.frameRotateOmega ~= 0
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime/2, xyvector);
+        clear xyvector;
+    end
+
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.

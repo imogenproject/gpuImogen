@@ -60,7 +60,7 @@ classdef RealtimePlotter < handle
 	if isfield(instructions, 'plotmode'); obj.plotmode = instructions.plotmode; end
     if isfield(instructions, 'plotDifference'); obj.plotDifference = instructions.plotDifference; end
     
-    if isfield(instructions, 'pause'); obj.insertPause = true; end
+    if isfield(instructions, 'pause'); obj.insertPause = (instructions.pause ~= 0); end
     
     end
 

@@ -1,11 +1,7 @@
 %   Run 3D Corrugation instability shock test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-grid = [1024 16 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
+grid = [1024 16 1];
 run         = CorrugationShockInitializer(grid);
 
 run.iterMax     = 4000;
@@ -41,4 +37,3 @@ if (true) %Primary test
     imogen(IC);
 end
 
-enderRun();

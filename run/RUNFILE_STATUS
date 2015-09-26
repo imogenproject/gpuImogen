@@ -1,26 +1,31 @@
 Advection:    Works, initializer cleaned up and presentable
-bonner_ebert: Pending gravity support
-Bow Shock:    WORKING (20140523)
-Centrifuge:   WORKING (20140523)
-corrugation:  broken (magnetism)
-CPAW:         broken (not WORKING)
+Bonner-Ebert: Pending gravity support; Reworked 20150926
+Bow Shock:    WORKING (20150926)
+Centrifuge:   WORKING (20150926)
+corrugation:  broken (magnetism); Reworked 20150926
+CPAW:         broken (magnetism); Reworked 20150926
 dataFromFile: ?
+Double Blast  WORKING (20150926)
 Dryrun:       WORKING (20140523)
-fluidJet:     WORKING (20140523)
+Einfeldt      WORKING (20150926)
+Fluid Jet:    WORKING (20150926)
 Fromfile:     ?
 FullTestSuite:RUNS
-gravityToy:   pending gravity support
-gravJet:      pending gravity support
-hachisuDisk:  pending gravity support
-KH test:      WORKING (20140523)
-KojimaDisk:   WORKING (20140522)
-magJetTest:   broken (magnetism)
-Brio-Wu:      broken (magnetism)
-OTV test:     broken (magnetism)
-RHD shock:    WORKING (hydro, 20140523)
-RT:           unknown (should run)
-SedovTaylor:  Runs (claimed github 2/27/14)
-SodShockTube: Runs
+gravityToy:   broken (gravity); Reworked 20150926
+gravJet:      broken (gravity); Reworked 20150926
+hachisuDisk:  broken (gravity); Reworked 20150926
+2D Implosion  WORKING (20150926)
+KH test:      WORKING (20150926)
+KojimaDisk:   WORKING (20150926)
+magJetTest:   broken (magnetism); Reworked 20150926
+Brio-Wu:      broken (magnetism); Reworked 20150926
+OTV test:     broken (magnetism); Reworked 20150926
+RHD shock:    WORKING (20150926)
+RT:           broken (physics fails...)
+RM:           ?
+SedovTaylor   WORKING (20150926)
+Shu-Osher     WORKING (20150926)
+SodShockTube  WORKING (20150926)
 Resumer:      Runs
 
 pending - ought to work but needs gravity

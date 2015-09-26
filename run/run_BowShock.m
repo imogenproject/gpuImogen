@@ -1,13 +1,9 @@
-%-- Initialize Imogen directory ---%
-starterRun();
 
 %--- Initialize bow shock ---%
 grid = [512 512 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 run                 = BowShockInitializer(grid);
 run.iterMax         = 2000;
-%run.bcMode.z	    = 'circ';
+%run.bcMode.z            = 'circ';
 
 run.bcMode.x = 'const';
 run.bcMode.y = 'circ';
@@ -31,11 +27,7 @@ run.magY = 0;
 run.preshockRho = 1;
 run.preshockP   = 1;
 % And the mach of the incoming blastwave
-run.blastMach   = 0;
-        run.useInSituAnalysis = 1;
-        run.stepsPerInSitu = 1;
-        run.inSituHandle = @RealtimePlotter;
-	run.inSituInstructions.plotmode = 4;
+run.blastMach   = 2;
 
 % Set the parameters of the ball itself
 run.ballRho = 1;
@@ -45,8 +37,8 @@ run.ballThermalPressure = 1;
 run.ballLock = true;
 
 %--- Adjustable output parameters ---%
-run.image.interval  = 20;
-run.image.mass      = true;
+%run.image.interval  = 20;
+%run.image.mass      = true;
 %run.image.speed     = true;
 %run.image.pGas      = true;
 %run.image.magX      = true;
@@ -59,6 +51,13 @@ run.activeSlices.xy  = true;
 run.ppSave.dim2     = 100;
 %run.ppSave.dim3     = 20;
 
+run.useInSituAnalysis = 0;
+run.stepsPerInSitu = 20;
+run.inSituHandle = @RealtimePlotter;
+        instruct.plotmode = 4;
+        instruct.plotDifference = 0;
+        instruct.pause = 0;
+run.inSituInstructions = instruct;
 
 run.info            = 'Bow shock test.';
 run.notes           = '';

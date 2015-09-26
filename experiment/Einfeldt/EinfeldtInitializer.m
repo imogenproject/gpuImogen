@@ -96,10 +96,7 @@ classdef EinfeldtInitializer < Initializer
             right                 = (X >= obj.grid(1)/2);
 
             % Initialize Arrays
-            mass                  = ones(GIS.pMySize);
-            mom                   = zeros([3, GIS.pMySize]);
-            mag                   = zeros([3, GIS.pMySize]);
-            ener                  = ones(GIS.pMySize);
+            [mass mom mag ener] = GIS.basicFluidXYZ();
 
             %--- Set Array Values ---%
             mass(left)            = obj.rhol;         %Density of left half

@@ -112,6 +112,9 @@ classdef BonnerEbertInitializer < Initializer
             for i=1:3
                 if (bitget(obj.grid(i),1) && obj.grid(i) > 1);  obj.grid(i) = obj.grid(i) + 1; end
             end
+
+            GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
             
             % Numerically compute the hydrostatic density balance
             % Fine resolution appears important - 
@@ -120,18 +123,16 @@ classdef BonnerEbertInitializer < Initializer
                                             obj.sphereRmax, obj.sphereK, ...
                                             obj.rho0 * obj.pBgDensityCoeff);
 
-            [X Y Z]         = ndgrid(1:obj.grid(1), 1:obj.grid(2), 1:obj.grid(3));
-
             obj.dGrid       = 2.4*max(R) ./ obj.grid;
-            X               = (X - obj.grid(1)/2) * obj.dGrid(1);
-            Y               = (Y - obj.grid(2)/2) * obj.dGrid(2);
-            Z               = (Z - obj.grid(3)/2) * obj.dGrid(3);
+
+            [X Y Z]         = GIS.ndgridSetXYZ(obj.grid/2, obj.dGrid);
+
             sphereRadii     = sqrt(X.^2 + Y.^2 + Z.^2);
             
             mass            = pchip(R, RHO, sphereRadii);
-            mom             = zeros([3 obj.grid]);
+            mom             = GIS.zerosXYZ(GIS.VECTOR);
             ener            = pchip(R, E/(obj.gamma - 1), sphereRadii);
-            mag             = zeros([3 obj.grid]);
+            mag             = GIS.zerosXYZ(GIS.VECTOR);
 
             obj.minMass     = obj.rho0 * obj.pBgDensityCoeff;
             

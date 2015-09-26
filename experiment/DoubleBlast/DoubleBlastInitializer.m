@@ -15,9 +15,9 @@ classdef DoubleBlastInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-	pl;
-	pr;
-	pa;
+        pLeft;
+        pRight;
+        pMid;
     end %PUBLIC
 
 %===================================================================================================
@@ -37,11 +37,11 @@ classdef DoubleBlastInitializer < Initializer
             obj.gamma            = 1.4;
             obj.runCode          = 'DoubleBlast';
             obj.info             = '2 Dimensional Double Blast Wave test';
-            obj.mode.fluid	 = true;
-            obj.pureHydro 	 = 1;
-            obj.mode.magnet	 = false;
-            obj.mode.gravity	 = false;
-            obj.cfl		 = 0.7;
+            obj.mode.fluid       = true;
+            obj.pureHydro        = 1;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.45;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -50,13 +50,13 @@ classdef DoubleBlastInitializer < Initializer
             obj.bcMode.y         = 'circ';
             obj.bcMode.z         = 'circ';
 
-	    obj.pl		 = 1000;
-	    obj.pr		 = 100;
-	    obj.pa		 = .01;
+            obj.pLeft            = 1000;
+            obj.pRight           = 100;
+            obj.pMid             = .01;
             
             obj.operateOnInput(input, [1024, 4, 4]);      
 
-	end
+        end
         
     end%GET/SET
     
@@ -74,28 +74,28 @@ classdef DoubleBlastInitializer < Initializer
             statics               = []; % No statics used in this problem
             potentialField        = [];
             selfGravity           = [];
-	    GIS			  = GlobalIndexSemantics();
+            GIS                   = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	    % Initialize parallel vectors
+            % Initialize parallel vectors
             X = GIS.ndgridSetXY();
             obj.dGrid   = [1 obj.grid(2)/obj.grid(1) 1]./obj.grid;
-	    left = (X <= obj.grid(1)/10);
-	    right= (X > obj.grid(1)*9/10);
+            left = (X <= obj.grid(1)/10);
+            right= (X > obj.grid(1)*9/10);
 
             %--- Set array values ---%
-            mass                  = ones(GIS.pMySize);		%Density everywhere 	= 1
-            mom                   = zeros([3, GIS.pMySize]);
-            mag                   = zeros([3, GIS.pMySize]);
-            P                  	  = ones(GIS.pMySize)*obj.pa;	%Pressure of inner zone = .01
+            [mass mom mag ener]   = GIS.basicFluidXYZ();
 
-	    % Assign pressures of the two shockwaves
-	    P(left) = obj.pl;
-	    P(right) = obj.pr;
+            P                     = GIS.onesXYZ() * obj.pMid;        %Pressure of inner zone = .01
 
-	    % Compute energy density array
-	    ener = P/(obj.gamma - 1) ...
-	    + 0.5*squeeze(sum(mom.*mom,1))./mass...
-	    + 0.5*squeeze(sum(mag.*mag,1));
+            % Assign pressures of the two shockwave-creating regions
+            P(left) = obj.pLeft;
+            P(right) = obj.pRight;
+
+            % Compute energy density array
+            ener = P/(obj.gamma - 1) ...
+            + 0.5*squeeze(sum(mom.*mom,1))./mass...
+            + 0.5*squeeze(sum(mag.*mag,1));
     end
         
 end%PROTECTED

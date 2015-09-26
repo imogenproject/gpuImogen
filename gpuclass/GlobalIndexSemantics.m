@@ -6,6 +6,8 @@ classdef GlobalIndexSemantics < handle
 
     properties (Constant = true, Transient = true)
         haloAmt = 3;
+        SCALAR = 1000;
+        VECTOR = 1001;
     end
 
     properties (SetAccess = public, GetAccess = public, Transient = true)
@@ -15,15 +17,13 @@ classdef GlobalIndexSemantics < handle
         context;
         topology;
         pGlobalDomainRezPlusHalos; % The size of global input domain size + halo added on [e.g. 512 500]
-        pLocalDomainPlusHalo;     % The size of the local domain + any added halo [256 500
+        pLocalRez;     % The size of the local domain + any added halo [256 500
         pLocalDomainOffset;   % The offset of the local domain taking the lower left corner of the
                      % input domain (excluding halo).
         pGlobalDomainRez;   % The input global domain size, with no halo added [e.g. 500 500]
 
         edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular, or exterior
                       %                                          The Oxford comma, it matters!! -^
-	pMySize;
-	pMyOffset;
     end % Private
 
     properties (SetAccess = private, GetAccess = private)
@@ -88,7 +88,7 @@ classdef GlobalIndexSemantics < handle
                 end
             end
 
-            obj.pLocalDomainPlusHalo = propSize;
+            obj.pLocalRez = propSize;
 
             obj.edgeInterior(1,:) = double(obj.topology.coord > 0);
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
@@ -96,10 +96,6 @@ classdef GlobalIndexSemantics < handle
             obj.circularBCs = [1 1 1];
 
             obj.updateGridVecs();
-
-            % Oh god, so many things depend on this horrible variable name
-            obj.pMySize = obj.pLocalDomainPlusHalo;
-	    obj.pMyOffset = obj.pLocalDomainOffset;
 
             instance = obj;
         end % Constructor
@@ -130,13 +126,13 @@ classdef GlobalIndexSemantics < handle
                 y = x(:,2) - obj.pLocalDomainOffset(2);
                 x = x(:,1) - obj.pLocalDomainOffset(1);
   
-                keep = (x>0) & (x<=obj.pLocalDomainPlusHalo(1)) & (y>0) & (y<=obj.pLocalDomainPlusHalo(2)) & (z>0) & (z<=obj.pLocalDomainPlusHalo(3));
+                keep = (x>0) & (x<=obj.pLocalRez(1)) & (y>0) & (y<=obj.pLocalRez(2)) & (z>0) & (z<=obj.pLocalRez(3));
                 u = [x(keep) y(keep) z(keep)];
                 return;
             end
-            if (nargin >= 2) & (~isempty(x)); x = x - obj.pLocalDomainOffset(1); u=x((x>0)&(x<=obj.pLocalDomainPlusHalo(1))); end
-            if (nargin >= 3) & (~isempty(y)); y = y - obj.pLocalDomainOffset(2); v=y((y>0)&(y<=obj.pLocalDomainPlusHalo(2))); end
-            if (nargin >= 4) & (~isempty(z)); z = z - obj.pLocalDomainOffset(3); w=z((z>0)&(z<=obj.pLocalDomainPlusHalo(3))); end
+            if (nargin >= 2) & (~isempty(x)); x = x - obj.pLocalDomainOffset(1); u=x((x>0)&(x<=obj.pLocalRez(1))); end
+            if (nargin >= 3) & (~isempty(y)); y = y - obj.pLocalDomainOffset(2); v=y((y>0)&(y<=obj.pLocalRez(2))); end
+            if (nargin >= 4) & (~isempty(z)); z = z - obj.pLocalDomainOffset(3); w=z((z>0)&(z<=obj.pLocalRez(3))); end
 
         end
 
@@ -175,7 +171,7 @@ classdef GlobalIndexSemantics < handle
         % Extracts the portion of ndgrid(1:globalsize(1), ...) visible to this node
         % Renders the 3 edge cells into halo automatically
         
-            pLocalMax = obj.pLocalDomainOffset + obj.pLocalDomainPlusHalo;
+            pLocalMax = obj.pLocalDomainOffset + obj.pLocalRez;
 
             if nargin == 3;
                 localset =  q((q >= obj.pLocalDomainOffset(d)) & (q <= pLocalMax(d))) - obj.pLocalDomainOffset(d) + 1;
@@ -206,7 +202,7 @@ classdef GlobalIndexSemantics < handle
 
             x=[]; lnh = [];
             for j = 1:ndim;
-                q = 1:obj.pLocalDomainPlusHalo(j);
+                q = 1:obj.pLocalRez(j);
                 % This line degerates to the identity operation if nproc(j) = 1
                 q = q + obj.pLocalDomainOffset(j) - 3*(obj.topology.nproc(j) > 1);
 
@@ -216,7 +212,7 @@ classdef GlobalIndexSemantics < handle
                 end
                 x{j} = q;
 
-                lmin = 1; lmax = obj.pLocalDomainPlusHalo(j);
+                lmin = 1; lmax = obj.pLocalRez(j);
                 if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
                     lmin = 4;
                 end
@@ -302,11 +298,47 @@ classdef GlobalIndexSemantics < handle
             end
         end
 
-        % These generate a set of ones the size of the part of the global grid residing on this node
-        function O = onesSetXY(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b)]); end
-        function O = onesSetYZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(b) numel(c)]); end
-        function O = onesSetXZ(obj);  [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(c)]); end
-        function O = onesSetXYZ(obj); [a b c] = obj.ndgridVecs(); O = ones([numel(a) numel(b) numel(c)]); end
+        % Generic function that the functions below talk to
+        function out = makeValueArray(obj, dims, dtype, val)
+            makesize = [];
+            switch dims;
+                case 1; makesize = [obj.pLocalRez(1) 1 1];
+                case 2; makesize = [1 obj.pLocalRez(2) 1];
+                case 3; makesize = [1 1 obj.pLocalRez(3)];
+                case 4; makesize = [obj.pLocalRez(1:2) 1];
+                case 5; makesize = [obj.pLocalRez(1) 1 obj.pLocalRez(3)];
+                case 6; makesize = [1 obj.pLocalRez(2:3)];
+                case 7; makesize = obj.pLocalRez;
+            end
+            
+            % Slap a 3 on the first dim to build a vector
+            % This is stupid and REALLY should be exchanged (3 goes LAST)
+            if (nargin > 2) && (dtype == obj.VECTOR); makesize = [3 makesize]; end
+
+            % Generate an array of 0 if not given a value
+            if (nargin < 4); val = 0; end
+
+            out = val * ones(makesize);
+        end 
+
+        % These generate a set of zeros of the size of the part of the global grid residing on this node
+        function O = zerosXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 0); end
+        function O = zerosXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 0); end
+        function O = zerosYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 0); end
+        function O = zerosXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 0); end
+
+        % Or of ones
+        function O = onesXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 1); end
+        function O = onesXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 1); end
+        function O = onesYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 1); end
+        function O = onesXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 1); end
+        
+        function [rho mom mag ener] = basicFluidXYZ(obj)
+            rho = ones(obj.pLocalRez);
+            mom = zeros([3 obj.pLocalRez]);
+            mag = zeros([3 obj.pLocalRez]);
+            ener= ones(obj.pLocalRez);
+        end
         
         function G = getNodeGeometry(obj)
             % Function returns an nx X ny X nz array whose (i,j,k) index contains the rank of the
@@ -329,13 +361,13 @@ classdef GlobalIndexSemantics < handle
             % array size, returns the array with halos removed.
 
             cantdo = 0;
-            for n = 1:3; cantdo = cantdo || (size(array,n) ~= obj.pLocalDomainPlusHalo(n)); end
-	        
+            for n = 1:3; cantdo = cantdo || (size(array,n) ~= obj.pLocalRez(n)); end
+                
             cantdo = mpi_max(cantdo); % All nodes must receive an array of the appropriate size
   
             if cantdo;
                 disp(obj.topology);
-                disp([size(array); obj.pLocalDomainPlusHalo]);
+                disp([size(array); obj.pLocalRez]);
                 error('Oh teh noez, rank %i received an array of invalid size!', mpi_myrank());
             end
       

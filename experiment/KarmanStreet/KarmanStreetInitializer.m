@@ -10,7 +10,7 @@ classdef KarmanStreetInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-	mach;
+        mach;
     end %PUBLIC
 
 %===================================================================================================
@@ -42,9 +42,9 @@ classdef KarmanStreetInitializer < Initializer
             obj.bcMode.y = 'bcstatic';
             obj.bcMode.z = 'circ';
            
-	    obj.mach = .5; %this is a test number
+            obj.mach = .5; %this is a test number
  
-	    obj.pureHydro        = true;
+            obj.pureHydro        = true;
             obj.operateOnInput(input);
 
         end
@@ -66,43 +66,41 @@ classdef KarmanStreetInitializer < Initializer
             potentialField = [];
             selfGravity = [];
             GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	   % GIS.makeDimNotCircular(1);
-	   % GIS.makeDimNotCircular(2);
+           % GIS.makeDimNotCircular(1);
+           % GIS.makeDimNotCircular(2);
 
             [X Y] = GIS.ndgridSetXY();
-	    obj.dGrid = [1 1 1] / obj.grid(1);
+            obj.dGrid = [1 1 1] / obj.grid(1);
 
-	    % Initialize arrays
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-            P	    = ones(GIS.pMySize);
+            % Initialize arrays
+            [mass mom mag ener] = GIS.basicFluidXYZ();
 
-	    % Set various variables
-	    radius = max(obj.grid)/50;
+            % Set various variables
+            radius = max(obj.grid)/50;
             speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
-	    mom(1,:,:,:) = speed*mass(:,:,:);
+            mom(1,:,:,:) = speed*mass(:,:,:);
 
-	    % Form the cylindrical obstruction
-	    ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2) < radius^2;
+            % Form the cylindrical obstruction
+            ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2) < radius^2;
 
-	    % Temporarily create syntactically clearer variables for statics
-	    momx = squeeze(mom(1,:,:,:));
-	    momy = squeeze(mom(2,:,:,:));
-	    momz = squeeze(mom(3,:,:,:));
-	   
-	    % Set the momentum inside the obstruction to zero 
-	    momx(ball) = 0;
-	    mom(1,ball) = 0;
-	    
-	    % Calculate energy density array
-	    ener = P/(obj.gamma - 1) ...     		% internal
+            % Temporarily create syntactically clearer variables for statics
+            momx = squeeze(mom(1,:,:,:));
+            momy = squeeze(mom(2,:,:,:));
+            momz = squeeze(mom(3,:,:,:));
+           
+            % Set the momentum inside the obstruction to zero 
+            momx(ball) = 0;
+            mom(1,ball) = 0;
+            
+            % Calculate energy density array
+            ener = ener/(obj.gamma - 1) ...             % internal
             + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
             + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
           
-	    % Make the obstruction static
-	    statics.indexSet{1} = indexSet_fromLogical(ball); % ball
+            % Make the obstruction static
+            statics.indexSet{1} = indexSet_fromLogical(ball); % ball
             statics.valueSet = { mass(ball),  momx(ball), momy(ball), momz(ball), ener(ball) };
             clear momx; clear momy; clear momz
 
@@ -111,7 +109,7 @@ classdef KarmanStreetInitializer < Initializer
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 2);
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 3);
                 statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
-                if GIS.pMySize(3) > 1
+                if GIS.pLocalRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
 

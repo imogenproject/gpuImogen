@@ -1,6 +1,6 @@
+% Wave advection simulation
 
 grid = [256 256 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);

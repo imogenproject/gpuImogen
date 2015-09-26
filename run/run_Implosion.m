@@ -1,17 +1,12 @@
 % Run the implosion symmetry test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-
-grid = [512 512 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
+grid = [512 512 1];
 run                 = ImplosionInitializer(grid);
-run.iterMax         = 100;
+run.iterMax         = 250;
 
-obj.Mcorner 	    = 0.125;
-obj.Pcorner 	    = 0.14;
+obj.Mcorner         = 0.125;
+obj.Pcorner         = 0.14;
 
 run.image.interval  = 100;
 run.image.mass      = true;
@@ -21,9 +16,15 @@ run.notes           = '';
 run.ppSave.dim2     = 10;
 
 % The following tracks the asymmetry of the implosion over time
-run.useInSituAnalysis = 1;
-run.inSituHandle = @ImplosionAnalyzer.getInstance;
-run.stepsPerInSitu = 100;
+
+run.useInSituAnalysis = 0;
+run.stepsPerInSitu = 20;
+run.inSituHandle = @RealtimePlotter;
+        instruct.plotmode = 4;
+        instruct.plotDifference = 0;
+        instruct.pause = 0;
+run.inSituInstructions = instruct;
+
 
 %--- Run tests ---%
 if (true)

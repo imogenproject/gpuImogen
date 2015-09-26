@@ -12,9 +12,9 @@ classdef ShuOsherTubeInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-   	lambda;
-	mach;
-	waveAmplitude;
+           lambda;
+        mach;
+        waveAmplitude;
     end %PUBLIC
 
 %===================================================================================================
@@ -34,11 +34,11 @@ classdef ShuOsherTubeInitializer < Initializer
             obj.gamma            = 1.4;
             obj.runCode          = 'ShuOsher';
             obj.info             = 'Shu and Osher''s Shock tube test';
-            obj.pureHydro 	 = 1;
-            obj.mode.fluid	 = true;
-            obj.mode.magnet	 = false;
-            obj.mode.gravity	 = false;
-            obj.cfl		 = 0.45;
+            obj.pureHydro        = 1;
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.45;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -49,11 +49,11 @@ classdef ShuOsherTubeInitializer < Initializer
             
             obj.operateOnInput(input, [1024, 4, 4]);
 
-   	    obj.lambda 		 = 8;
-	    obj.mach 		 = 3;
-	    obj.waveAmplitude 	 = .2;
+               obj.lambda        = 8;
+            obj.mach             = 3;
+            obj.waveAmplitude    = .2;
 
-	end
+        end
 
     end%GET/SET
     
@@ -71,39 +71,38 @@ classdef ShuOsherTubeInitializer < Initializer
             statics             = []; % No statics used in this problem
             potentialField      = [];
             selfGravity         = [];
-	    GIS = GlobalIndexSemantics();
-	    X = GIS.ndgridSetXY();
+            GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	    % Initialize parallel vectors and logicals
-	    X = X/obj.grid(1);
-	    left = (X < 1/obj.lambda);
-	    right = (X >= 1/obj.lambda);
-	    obj.dGrid = 1/obj.grid(1);
+            X = GIS.ndgridSetXY();
+
+            % Initialize parallel vectors and logicals
+            X = X/obj.grid(1);
+            left = (X < 1/obj.lambda);
+            right = (X >= 1/obj.lambda);
+            obj.dGrid = 1/obj.grid(1);
 
             %--- Set array values ---%
-            mass                = ones(GIS.pMySize);
-            mom                 = zeros([3, GIS.pMySize]);
-            mag                 = zeros([3, GIS.pMySize]);
-            P                  	= ones(GIS.pMySize)*.01;% / (obj.gamma - 1);
+            [mass mom mag ener] = GIS.basicFluidXYZ();
 
-	    % Compute shockwave
-	    j 			= HDJumpSolver(obj.mach,0,obj.gamma);
-	    Vxl 		= j.v(1,1)-j.v(1,2);
+            % Compute shockwave
+            j                   = HDJumpSolver(obj.mach,0,obj.gamma);
+            Vxl                 = j.v(1,1)-j.v(1,2);
 
-	    % Define structure for the left half of the grid
-	    P(left) 	  	= j.Pgas(2); 	
-	    mass(left)		= j.rho(2);
-	    mom(1,left)		= Vxl*mass(left);
+            % Define structure for the left half of the grid
+            ener(left)          = j.Pgas(2);         
+            mass(left)          = j.rho(2);
+            mom(1,left)         = Vxl*mass(left);
 
-	    % Define right-hand structures
-	    P(right)		= 1;
-	    mass(right)		= 1 + obj.waveAmplitude * sin(2*pi*X(right)*obj.lambda);
-	    mom(1,right)	= 0;
-			
-	    % Compute energy density array
-	    ener = P/(obj.gamma - 1) ...
-	    + 0.5*squeeze(sum(mom.*mom,1))./mass...
-	    + 0.5*squeeze(sum(mag.*mag,1));    
+            % Define right-hand structures
+            P(right)            = 1;
+            mass(right)         = 1 + obj.waveAmplitude * sin(2*pi*X(right)*obj.lambda);
+            mom(1,right)        = 0;
+                        
+            % Compute energy density array
+            ener = ener/(obj.gamma - 1) ...
+            + 0.5*squeeze(sum(mom.*mom,1))./mass...
+            + 0.5*squeeze(sum(mag.*mag,1));    
     end
         
 end%PROTECTED

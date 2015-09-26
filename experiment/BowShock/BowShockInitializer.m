@@ -152,15 +152,14 @@ classdef BowShockInitializer < Initializer
             potentialField = [];
             selfGravity = [];
             
+            GIS.setup(obj.grid);
+
             %--- Background Values ---%
-            mass        = ones(GIS.pMySize);
-            mom         = zeros([3 GIS.pMySize]);
-            mag         = zeros([3 GIS.pMySize]);
-            ener        = ones(GIS.pMySize);
-            
-            momx = zeros(GIS.pMySize);
-            momy = zeros(GIS.pMySize);
-            momz = zeros(GIS.pMySize);
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+
+            momx = GIS.zerosXYZ(GIS.SCALAR);
+            momy = GIS.zerosXYZ(GIS.SCALAR);
+            momz = GIS.zerosXYZ(GIS.SCALAR);
             
             %--- Static Values ---%
             statics = StaticsInitializer();
@@ -236,7 +235,7 @@ classdef BowShockInitializer < Initializer
                 %    statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(1), statics.CELLVAR, 1, 10);
                 %    statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(2), statics.CELLVAR, 1, 11);
                 %end
-                if GIS.pMySize(3) > 1
+                if GIS.pLocalRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                     %if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 1, 1); end;
                 end

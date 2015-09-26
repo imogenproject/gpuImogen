@@ -1,10 +1,7 @@
 % Run Sod shock tube test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-
 %--- Initialize test ---%
-grid = [8192 2 1];
+grid = [1024 2 1];
 run             = SodShockTubeInitializer(grid);
 run.normal([1 0 0]);
 
@@ -18,11 +15,15 @@ run.alias       = '';
 run.info        = 'Sod shock tube test.';
 run.notes       = 'Simple axis aligned shock tube test';
 
-run.ppSave.dim2 = 12.5;
+run.ppSave.dim3 = 100;
 
-        run.useInSituAnalysis = 1;
-        run.stepsPerInSitu = 20;
-        run.inSituHandle = @RealtimePlotter;
+run.useInSituAnalysis = 0;
+run.stepsPerInSitu = 20;
+run.inSituHandle = @RealtimePlotter;
+        instruct.plotmode = 1;
+        instruct.plotDifference = 0;
+        instruct.pause = 0;
+run.inSituInstructions = instruct;
 
 run.saveFormat = ENUM.FORMAT_MAT;
 

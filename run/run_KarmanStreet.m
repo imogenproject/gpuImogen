@@ -1,12 +1,7 @@
-% Run the Karman Vortex street test.
-
-%-- Initialize Imogen directory ---%
-starterRun();
-
-grid = [1024 512 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
+% Generate some von Karman vortices
 
 %--- Initialize test ---%
+grid = [1024 512 1];
 run                 = KarmanStreetInitializer(grid);
 run.iterMax         = 400;
 

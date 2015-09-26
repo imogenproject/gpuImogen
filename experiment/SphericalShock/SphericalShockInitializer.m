@@ -33,7 +33,7 @@ classdef SphericalShockInitializer < Initializer
             obj.gamma            = 5/3;
             obj.runCode          = 'Sphere';
             obj.info             = 'Spherical Shock test';
-	    obj.pureHydro        = true;
+            obj.pureHydro        = true;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
@@ -67,29 +67,28 @@ classdef SphericalShockInitializer < Initializer
             potentialField = [];
             selfGravity = [];
             GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	   % GIS.makeDimNotCircular(1);
-	   % GIS.makeDimNotCircular(2);
+           % GIS.makeDimNotCircular(1);
+           % GIS.makeDimNotCircular(2);
 
-	    % Initialize arrays
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-	    P 	    = ones(GIS.pMySize)*.1;
+            % Initialize arrays
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+            ener = .1*ener; % P = 0.1 by default
 
-	    % Define structure variables
-	    Psphere = 10;
-	    radius = obj.grid(1)/5;
+            % Define structure variables
+            Psphere = 10;
+            radius = obj.grid(1)/5;
 
-	    % Initialize parallel vectors and logicals
-	    [X Y Z] = GIS.ndgridSetXYZ();
-	    sphere = (sqrt((X-round(obj.grid(1)/2)).^2+(Y-round(obj.grid(2)/2)).^2)<=radius);
-	    P(sphere) = Psphere;
+            % Initialize parallel vectors and logicals
+            [X Y Z] = GIS.ndgridSetXYZ();
+            sphere = (sqrt((X-round(obj.grid(1)/2)).^2+(Y-round(obj.grid(2)/2)).^2)<=radius);
+            ener(sphere) = Psphere;
 
-	    % Calculate energy density array
-	    ener = P/(obj.gamma - 1) ...     				% internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...           		% kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));                    		% magnetic
+            % Calculate energy density array
+            ener = ener/(obj.gamma - 1) ...             % internal
+            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
         end
     end%PROTECTED       
 %===================================================================================================    

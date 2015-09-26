@@ -1,10 +1,8 @@
-%  Run a fluid jet test.
-
-%-- Initialize Imogen directory ---%
-starterRun();
+% Construct a self-gravitating hydrostatic equilibrium
 
 %--- Initialize test ---%
-run                 = BonnerEbertInitializer([96 96 96]);
+grid = [96 96 96];
+run                 = BonnerEbertInitializer(grid);
 run.iterMax         = 10;
 
 %run.sphereK        = 1;  % Set pressure scaling constant
@@ -25,23 +23,16 @@ run.ppSave.dim2 = 10;
 run.info            = 'Bonner-Ebert sphere test.';
 run.notes           = '';
 
+% Oh this is SO old and broken and won't work it's not even funny.
 run.gravity.solver = 'biconj';
 run.gravity.tolerance = 1e-10;
 run.gravity.iterMax   = 150;
 
 %--- Run tests ---%
 if (true)
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
+    IC      = run.saveInitialCondsToFile();
+    outpath = imogen(IC);
 
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
-    imogen(icfile);
+    % yay!
 end
 

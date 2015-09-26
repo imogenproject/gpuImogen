@@ -36,9 +36,9 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     %--- Initialization ---%
     GIS = GlobalIndexSemantics();
 
-    mass = zeros(GIS.pMySize);
-    momX = zeros(GIS.pMySize);
-    momY = zeros(GIS.pMySize);
+    mass = GIS.onesXYZ();
+    momX = GIS.onesXYZ();
+    momY = GIS.onesXYZ();
 
     info        = '';
     discMass    = 0;
@@ -130,7 +130,7 @@ function [mass, momX, momY, dR, info] = kojimaDisc2(q, GAMMA, radiusRatio, grid,
     Zblk = (Zblk - .5 - floor(grid(3)/2)*(useZMirror == 1))*rdinf.dr;
     Rblk = sqrt(Xblk.^2+Yblk.^2);
 
-    zd = GIS.pMyOffset(3);
+    zd = GIS.pLocalDomainOffset(3);
 
     for zct = 1:size(Xblk,3);
         mass(:,:,zct) = interp1(rdinf.axialRadius(:,zct+zd), rho(:,zct+zd), Rblk(:,:,zct));

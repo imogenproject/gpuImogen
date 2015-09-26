@@ -1,18 +1,15 @@
 %   Run 3D Corrugation instability shock test.
 
-%-- Initialize Imogen directory ---%
-grid = [512 2 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
 run         = RadiatingShockInitializer(grid);
+grid = [512 2 1];
 
-run.iterMax     = 20;
+run.iterMax     = 2000;
 run.theta       = 0;
 run.sonicMach   = 4;
 
 % This sets the radiation prefactor in the parameterized equation
-%	\Gamma = -beta rho^2 T^theta
+%        \Gamma = -beta rho^2 T^theta
 % It's irrelevant outside of changing output units because this parameter has a fixed relation 
 % to the cooling length and the simulation automatically renormalizes dx based on the 
 % fractionPreshock and fractionCold parameters.
@@ -47,10 +44,10 @@ run.image.mass = true;
 %run.image.pGas = true;
 
 run.useInSituAnalysis = 1;
-run.stepsPerInSitu = 5;
-	instruct.plotmode = 1;
-	instruct.plotDifference = 1;
-	instruct.pause = 0;
+run.stepsPerInSitu = 10;
+        instruct.plotmode = 1;
+        instruct.plotDifference = 1;
+        instruct.pause = 0;
 run.inSituInstructions = instruct;
 run.inSituHandle = @RealtimePlotter;
 
@@ -62,6 +59,6 @@ run.info        = sprintf('Radiating hydrodynamic shock test [Th=%g, Ms=%g] with
 %--- Run tests ---%
 if (true) %Primary test
     IC = run.saveInitialCondsToStructure();
-    imogen(IC);
+    outdir = imogen(IC);
 end
 

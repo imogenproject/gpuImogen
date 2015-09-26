@@ -1,11 +1,9 @@
-%  Run a fluid jet test.
-
-%-- Initialize Imogen directory ---%
-starterRun();
+% Simulate the evolution of a Hachisu self-gravitating rotates-on-cylinders equilibrium
 
 %--- Initialize test ---%
 %        The number of X cells is the controlling variable in grid step size.
-run                 = HachisuDiskInitializer([192 192 128]);
+grid = [192 192 128];
+run                 = HachisuDiskInitializer(grid);
 run.iterMax         = 200;
 
 run.q = 2;
@@ -29,6 +27,7 @@ run.ppSave.dim3 = 10; % every 10 steps
 run.info            = 'Toy gravity problem test';
 run.notes           = '';
 
+% lol broken
 run.gravity.solver = 'biconj_gpu';
 run.gravity.tolerance = 1e-10;
 run.gravity.iterMax = 150;
@@ -39,4 +38,3 @@ if (true)
     imogen(icfile);
 end
 
-enderRun();

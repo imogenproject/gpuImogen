@@ -1,7 +1,4 @@
-%  Run a fluid jet test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
 
 %--- Initialize test ---%
 %        The number of X cells is the controlling variable in grid step size.
@@ -32,24 +29,14 @@ run.ppSave.dim3 = 5; % every 10 steps
 run.info            = 'Toy gravity problem test';
 run.notes           = '';
 
+% lol broken
 run.gravity.solver = 'biconj';
 run.gravity.tolerance = 1e-10;
 run.gravity.iterMax = 150;
 
 %--- Run tests ---%
 if (true)
-    [mass, mom, ener, magnet, statics, ini] = run.getInitialConditions();
-    IC.mass = mass;
-    IC.mom = mom;
-    IC.ener = ener;
-    IC.magnet = magnet;
-    IC.statics = statics;
-    IC.ini = ini;
-    icfile = [tempname '.mat'];
-
-    save(icfile, 'IC');
-    clear IC mass mom ener magnet statics ini run;
-    imogen(icfile);
+    IC = run.saveInitialCondsToFile();
+    outpath = imogen(IC);
 end
 
-enderRun();

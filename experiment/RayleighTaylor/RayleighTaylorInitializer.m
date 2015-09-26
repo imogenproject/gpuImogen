@@ -43,20 +43,20 @@ classdef RayleighTaylorInitializer < Initializer
             obj.runCode             = 'RAYLEIGH_TAYLOR';
             obj.info                = 'Rayleigh-Taylor instability test';
             obj.mode.fluid          = true;
-   	    obj.pureHydro	    = true;	
+             obj.pureHydro          = true;        
             obj.mode.magnet         = false;
             obj.mode.gravity        = false;
             obj.iterMax             = 300;
             obj.gamma               = 1.4;
             obj.bcMode.x            = 'circ';
-            obj.bcMode.y            = 'circ';
+            obj.bcMode.y            = 'mirror';
             obj.bcMode.z            = 'circ';
 
             obj.bcInfinity          = 4;
 
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
-            obj.gravConstant 	    = 1;
+            obj.gravConstant        = 1;
             obj.gravity.constant    = .1;
             obj.gravity.solver      = ENUM.GRAV_SOLVER_EMPTY;
 
@@ -64,7 +64,7 @@ classdef RayleighTaylorInitializer < Initializer
             obj.rhoBottom           = 1;
             obj.P0                  = 2.5;
             obj.Bx                  = 0;
-            obj.Bz		    = 0;
+            obj.Bz                  = 0;
 
             obj.pertAmplitude = .0001;
             obj.Kx = 1;
@@ -87,58 +87,54 @@ classdef RayleighTaylorInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            GIS = GlobalIndexSemantics();
             potentialField = PotentialFieldInitializer();
             selfGravity = [];
-	    statics = [];
+            statics = [];
 
-	    % Initialize Parallelized X,Y,Z vectors
-            [X Y Z] = GIS.ndgridSetXYZ();
-            obj.dGrid   = [.5 (.5*obj.grid(2)/obj.grid(1)) .5] ./ obj.grid;
-            X = X * obj.dGrid(1);
-            Y = Y * obj.dGrid(2);
-            Z = Z * obj.dGrid(3);
+            GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	    % Define boundary
-            Y0 = .5*obj.dGrid(2)*GIS.pMySize(2);
+            % Initialize Parallelized X,Y,Z vectors
+            obj.dGrid   = [1 1 1]/obj.grid(2);
+            [X Y Z] = GIS.ndgridSetXYZ([0 0 0], obj.dGrid);
 
-	    % Initialize Arrays
-            mass             	= zeros(GIS.pMySize);
-            mom         	= zeros([3 GIS.pMySize]);
-	    P			= ones(GIS.pMySize);
-            mag 		= zeros([3 GIS.pMySize]);
+            % Define boundary
+            Y0 = .5*obj.dGrid(2)*GIS.pLocalRez(2);
+
+            % Initialize Arrays
+            [mass mom mag ener] = GIS.basicFluidXYZ();
 
             % Establish low density below, high density above
             mass(Y < Y0)     = obj.rhoBottom;
             mass(Y >= Y0)    = obj.rhoTop;
 
-	    % Establish variable to define pressure gradient
+            % Establish variable to define pressure gradient
             if Y(1,1,1) < Y0
-	        Pnode 	     = Y(1,1,1)*obj.rhoBottom*obj.gravConstant;
-	    else
-	        Pnode 	     = obj.gravConstant*(Y0*obj.rhoBottom+(Y(1,1,1)-Y0)*obj.rhoTop);
-      	    end
+                Pnode              = Y(1,1,1)*obj.rhoBottom*obj.gravConstant;
+            else
+                Pnode              = obj.gravConstant*(Y0*obj.rhoBottom+(Y(1,1,1)-Y0)*obj.rhoTop);
+                  end
 
             obj.minMass = .0001*obj.rhoBottom;
 
             % Set gas pressure gradient to balance gravity
-            P = (obj.P0 - Pnode - obj.gravConstant * (cumsum(mass,2)-mass(1,1,1)) * obj.dGrid(2) );
+            ener = (obj.P0 - Pnode - obj.gravConstant * (cumsum(mass,2)-mass(1,1,1)) * obj.dGrid(2) );
 
-	    % Create gravity field
-	    potentialField.field = Y;
-	    potentialField.constant = obj.gravConstant;
+            % Create gravity field
+            potentialField.field = Y;
+            potentialField.constant = obj.gravConstant;
 
-	% If random perturbations are selected, it will impart random y-velocity to each column of the grid.
-	% Otherwise, it will create a sinusoid of wavenumber Kx,Ky,Kz.
+        % If random perturbations are selected, it will impart random y-velocity to each column of the grid.
+        % Otherwise, it will create a sinusoid of wavenumber Kx,Ky,Kz.
             if obj.randomPert == 0
-                if GIS.pMySize(3) == 1;
+                if GIS.pLocalRez(3) == 1;
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5))/ 4;
                 else
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5)) .* (1+cos(2*pi*obj.Kz*Z/.5))/ 8;
                 end
             else
-                w = (rand([GIS.pMySize(1) GIS.pMySize(3)])*-1) * obj.pertAmplitude;
-                for y = 1:GIS.pMySize(2); mom(2,:,y,:) = w; end
+                w = (rand([GIS.pLocalRez(1) GIS.pLocalRez(3)])*-1) * obj.pertAmplitude;
+                for y = 1:GIS.pLocalRez(2); mom(2,:,y,:) = w; end
             end
             mom(2,:,:,:) = squeeze(mom(2,:,:,:)).*mass;
 
@@ -147,12 +143,12 @@ classdef RayleighTaylorInitializer < Initializer
             if (obj.Bx ~= 0.0) || (obj.Bz ~= 0.0)
                 obj.mode.magnet = true;
                 mag(1,:,:,:) = obj.Bx;
-		mag(3,:,:,:) = obj.Bz;
+                mag(3,:,:,:) = obj.Bz;
             end
 
-	    % Calculate Energy Density
-	    ener = P/(obj.gamma - 1) ...
-	    + 0.5*squeeze(sum(mom.*mom,1))./mass...	
+            % Calculate Energy Density
+            ener = ener/(obj.gamma - 1) ...
+            + 0.5*squeeze(sum(mom.*mom,1))./mass...        
             + 0.5*squeeze(sum(mag.*mag,1));
         end
     end%PROTECTED

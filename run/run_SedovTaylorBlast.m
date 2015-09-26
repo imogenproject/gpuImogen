@@ -2,11 +2,8 @@
 % Imogen's ST analyzer is capable of handling 1- 2- and 3-D explosions
 % with our uniform background case
 
-%-- Initialize Imogen directory ---%
-grid = [128 128 128];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
+grid = [128 128 128];
 run         = SedovTaylorBlastWaveInitializer(grid);
 % There is a nominally easy way to calculate what this should be
 % but I don't have it on hand. Just put in a large number...

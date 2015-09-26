@@ -110,12 +110,12 @@ classdef JetInitializer < Initializer
 
             GIS = GlobalIndexSemantics();
  
-            mass    = obj.backMass * ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
+            mass    = obj.backMass * ones(GIS.pLocalRez);
+            mom     = zeros([3 GIS.pLocalRez]);
+            mag     = zeros([3 GIS.pLocalRez]);
             
             %--- Magnetic background ---%
-            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pMySize); end
+            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pLocalRez); end
             
             %--- Total energy ---%
             magSquared    = squeeze( sum(mag .* mag, 1) );

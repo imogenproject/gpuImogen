@@ -159,11 +159,12 @@ fmin = 0;
 
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
-            mygrid = GIS.pMySize;
+
+            mygrid = GIS.pLocalRez;
 
             obj.dGrid = (1+obj.pEdgeFraction)*2./obj.grid;
  
-            mom     = zeros([3 mygrid]);
+            mom     = GIS.zerosXYZ(GIS.VECTOR);
             
             [Xv Yv] = GIS.ndgridSetXY([obj.grid(1)/2 + .5, obj.grid(2)/2 + .5, 0], obj.dGrid);
 
@@ -176,6 +177,7 @@ fmin = 0;
             % Compute density resulting from centrifuge potential
             [rho Pgas] = obj.thermo(Rphi);
 
+	    % Plug end values in to make sure the interpolator flatlines outside the rotating region
             rho(10001:10002) = obj.pRho0;
             rads = [rads 1.5*(1+obj.pEdgeFraction)];
             momphi = rho .* rads .* obj.pOmegaCurve(rads);
@@ -183,19 +185,25 @@ fmin = 0;
             % Tack on static boundary region
             momphi(10001:10002) = 0;
 
-            % FIXME: This will take a dump if Nz > 1...
             gridR = sqrt(Xv.^2+Yv.^2);
             mass(:,:,1) = interp1(rads, rho, gridR);
             
             mom(1,:,:,1) = -Yv .* interp1(rads, momphi, gridR) ./ gridR;
             mom(2,:,:,1) = Xv  .* interp1(rads, momphi, gridR) ./ gridR;
 
+	    ener(:,:,1)  = interp1(rads, Pgas, gridR) / (obj.gamma-1);
+
+	    % Oh, lawd
+	    for c = 2:size(mass,3);
+		mass(:,:,c)  = mass(:,:,1);
+		mom(:,:,:,c) = mom(:,:,:,1);
+		ener(:,:,c)  = ener(:,:,1);
+	    end
+
             mass    = max(mass, obj.minMass);
             mag     = zeros([3 mygrid]);
-            
-            pressure = interp1(rads, Pgas, gridR);
 
-            ener    = pressure / (obj.gamma-1) ...
+            ener    = ener + ...
                         + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
                         + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
             
@@ -203,6 +211,7 @@ fmin = 0;
             selfGravity = [];
             potentialField = [];%PotentialFieldInitializer();
         end
+
     % Given the centrifuge potential, integral(r w(r)^2), 
     % Solves the integral(P' / rho) side 
     function [rho, Pgas] = thermo(obj, rphi)

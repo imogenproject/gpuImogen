@@ -1,10 +1,6 @@
-% Run Advection test.
-
-%-- Initialize Imogen directory ---%
-starterRun();
 
 % Run sonic advection test at 3 different resolutions,
-% Check raw accuracy & scaling
+% Check accuracy & scaling
 
 TestResults.name = 'Imogen Master Test Suite';
 

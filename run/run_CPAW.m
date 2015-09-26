@@ -1,11 +1,8 @@
-%   Run 3D Corrugation instability shock test.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-grid = [256 128 128];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
+%   Simulate a circularly polarized alfen wave, which has an exact analytic solution.
 
 %--- Initialize test ---%
+grid = [256 128 128];
 run         = CPAlfvenWave(grid);
 
 %run.iterMax     = 2000;

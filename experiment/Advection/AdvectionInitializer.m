@@ -30,9 +30,9 @@ classdef AdvectionInitializer < Initializer
         pDensity;
         pPressure;
 
-	pBeLinear; % If true, uses infinitesmal wave eigenvectors; If false, uses exact characteristics
-	pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the exact translational velocity
-	% to keep the wave exactly stationary
+        pBeLinear; % If true, uses infinitesmal wave eigenvectors; If false, uses exact characteristics
+        pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the exact translational velocity
+        % to keep the wave exactly stationary
     end %PROTECTED
     
     properties (Dependent = true)
@@ -55,7 +55,7 @@ classdef AdvectionInitializer < Initializer
             obj.pPhase = 0; % FIXME: not put in yet because redundant for tests & lazy
             obj.cycles          = 2;
 
-	    obj.waveLinearity(true);
+            obj.waveLinearity(true);
 
             
             obj.runCode         = 'ADVEC';
@@ -112,10 +112,10 @@ classdef AdvectionInitializer < Initializer
         function C = get.cycles(self); C = self.pCycles; end
         
         function forCriticalTimes(self, NC)
-	    tc = 2/(self.amplitude*(self.gamma + 1));
-	    w_srf = norm(self.pWavenumber)*2*pi*sqrt(self.gamma*self.pPressure/self.pDensity);
+            tc = 2/(self.amplitude*(self.gamma + 1));
+            w_srf = norm(self.pWavenumber)*2*pi*sqrt(self.gamma*self.pPressure/self.pDensity);
             self.cycles = NC*tc/w_srf;
-	end
+        end
 
         function setBackground(self, rho, pPressure)
             if nargin < 3; error('background requires (rho, pPressure) both be present.'); end
@@ -132,14 +132,14 @@ classdef AdvectionInitializer < Initializer
     %===================================================================================================
     methods (Access = public) %                                                                      P U B L I C  [M]
         function waveLinearity(self, tf)
-	% If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact stationary frame
-	    if tf; self.pBeLinear = 1; self.pUseStationaryFrame = 0; else; self.pBeLinear = 0; end
-	end
+        % If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact stationary frame
+            if tf; self.pBeLinear = 1; self.pUseStationaryFrame = 0; else; self.pBeLinear = 0; end
+        end
 
-	function waveStationarity(self, tf)
-	% If called with true, regardless of use of linear wavevector, will ignore backgroundMach and put the wave in an exactly stationary frame
-	    if tf; self.pUseStationaryFrame = 1; else; self.pUseStationaryFrame = 0; end
-	end
+        function waveStationarity(self, tf)
+        % If called with true, regardless of use of linear wavevector, will ignore backgroundMach and put the wave in an exactly stationary frame
+            if tf; self.pUseStationaryFrame = 1; else; self.pUseStationaryFrame = 0; end
+        end
     end%PUBLIC
     
     %===================================================================================================
@@ -150,19 +150,18 @@ classdef AdvectionInitializer < Initializer
             selfGravity = [];
             
             GIS = GlobalIndexSemantics();
-	    GIS.setup(obj.grid);
+            GIS.setup(obj.grid);
             
             obj.dGrid = 1 ./ obj.grid; % set the total grid length to be 1.
             
             [xGrid yGrid zGrid] = GIS.ndgridSetXYZ([1 1 1], obj.dGrid);
             
             % Store equilibrium parameters
-            mass     = obj.pDensity*ones(GIS.pMySize);
-            mom      = zeros([3, GIS.pMySize]);
-            mag      = zeros([3, GIS.pMySize]);
-            ener     = ones(GIS.pMySize)*obj.pPressure/(obj.gamma-1);
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+            mass     = mass * obj.pDensity;
+            ener     = ener*obj.pPressure / (obj.gamma-1);
             
-	    % Assert the background magnetic field
+            % Assert the background magnetic field
             for i = 1:3; mag(i,:,:,:) = obj.backgroundB(i); end
 
             % omega = c_wave k
@@ -172,37 +171,37 @@ classdef AdvectionInitializer < Initializer
             
             % Calculate the background velocity
             c_s      = sqrt(obj.gamma*obj.pPressure); % The infinitesmal soundspeed
-	    if obj.pUseStationaryFrame;
-		bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude, obj.gamma)*K/norm(K);
-	    else
-		bgvelocity = c_s * obj.pBackgroundMach;
-	    end
+            if obj.pUseStationaryFrame;
+                bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude, obj.gamma)*K/norm(K);
+            else
+                bgvelocity = c_s * obj.pBackgroundMach;
+            end
             
-	    FW = FluidWaveGenerator(obj.pDensity, bgvelocity, obj.pPressure, obj.backgroundB, obj.gamma);
+            FW = FluidWaveGenerator(obj.pDensity, bgvelocity, obj.pPressure, obj.backgroundB, obj.gamma);
 
-	    % Someday we'll do magnetic fields again...
+            % Someday we'll do magnetic fields again...
             if strcmp(obj.waveType, 'sonic') && norm(obj.backgroundB) > 0
                 obj.waveType = 'fast ma';
                 disp('WARNING: sonic wave selected with nonzero B. Changing to fast MA.');
             end
             
             if strcmp(obj.waveType, 'entropy')
-		amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
-		FW.entropyExact(amp, K);
+                amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
+                FW.entropyExact(amp, K);
             elseif strcmp(obj.waveType, 'sonic')
-		amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
-		if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else
-				  FW.sonicExact(amp, K); end
+                amp = abs(obj.pAmplitude) * cos(KdotX + angle(obj.pAmplitude));
+                if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else
+                                  FW.sonicExact(amp, K); end
 
-	        omega = 2*pi*sqrt(5/3); % FIXME HACK!
+                omega = 2*pi*sqrt(5/3); % FIXME HACK!
             elseif strcmp(obj.waveType, 'fast ma')
                 [waveEigenvector omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
                 waveEigenvector(8) = c_s^2 * waveEigenvector(1);
             end
 
-	    mass = FW.waveRho;
-	    mom  = FW.waveMomentum();
-	    ener = FW.waveTotalEnergy();
+            mass = FW.waveRho;
+            mom  = FW.waveMomentum();
+            ener = FW.waveTotalEnergy();
             
             obj.waveOmega = omega;
             wavespeed = omega / norm(K);

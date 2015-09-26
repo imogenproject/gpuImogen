@@ -87,12 +87,13 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             potentialField  = [];
             selfGravity     = [];
             obj.dGrid       = 1./obj.grid;
-            mass            = obj.backgroundDensity*GIS.onesSetXYZ();
-            mom             = zeros([3, GIS.pMySize]);
-            mag             = zeros([3, GIS.pMySize]);
+
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+
+            mass            = mass * obj.backgroundDensity;
 
             if obj.autoEndtime
-                disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)');
+                if mpi_amirank0(); disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)'); end
                 obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1));
             end
 

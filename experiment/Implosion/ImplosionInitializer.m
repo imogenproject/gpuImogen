@@ -15,8 +15,8 @@ classdef ImplosionInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-	Mcorner;
-	Pcorner;
+        Mcorner;
+        Pcorner;
     end %PUBLIC
 
 %===================================================================================================
@@ -36,11 +36,11 @@ classdef ImplosionInitializer < Initializer
             obj.gamma            = 1.4;
             obj.runCode          = 'IMPLOSION';
             obj.info             = 'Implosion symmetry test';
-	    obj.pureHydro        = true;
+            obj.pureHydro        = true;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
+            obj.cfl              = 0.45;
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
@@ -49,7 +49,7 @@ classdef ImplosionInitializer < Initializer
             obj.bcMode.y = 'mirror';
             obj.bcMode.z = 'mirror';
             
-	    obj.Mcorner = 0.125;
+            obj.Mcorner = 0.125;
             obj.Pcorner = 0.14;
 
             obj.operateOnInput(input);
@@ -73,35 +73,33 @@ classdef ImplosionInitializer < Initializer
             potentialField = [];
             selfGravity = [];
             GIS = GlobalIndexSemantics();
+            GIS.setup(obj.grid);
 
-	   % GIS.makeDimNotCircular(1);
-	   % GIS.makeDimNotCircular(2);
+           % GIS.makeDimNotCircular(1);
+           % GIS.makeDimNotCircular(2);
 
-	    % Ensure that the grid is square.
+            % Ensure that the grid is square.
             if obj.grid(1) ~= obj.grid(2)
-		warning(sprintf('WARNING: grid [%g %g %g] was not square. grid(2) set to grid(1).\n', obj.grid(1), obj.grid(2), obj.grid(3)));
-		obj.grid(2) = obj.grid(1);
-	    end
-	    obj.dGrid = 0.3 / obj.grid(1);
+                warning(sprintf('WARNING: grid [%g %g %g] was not square. grid(2) set to grid(1).\n', obj.grid(1), obj.grid(2), obj.grid(3)));
+                obj.grid(2) = obj.grid(1);
+            end
+            obj.dGrid = 0.3 / obj.grid(1);
 
-	    % Initialize arrays
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-            P	    = ones(GIS.pMySize);
-	    
-	    % Setup parallel vectors and structures
+            % Initialize arrays
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+
+            % Setup parallel vectors and structures
             [X Y] = GIS.ndgridSetXY();
-	    corn = (X + Y < obj.grid(1)/2);
+            corn = (X + Y < obj.grid(1)/2);
 
-	    % Define the properties of the perturbed corner
-	    mass(corn) = obj.Mcorner;
-	    P(corn)    = obj.Pcorner;
+            % Define the properties of the perturbed corner
+            mass(corn) = obj.Mcorner;
+            ener(corn)    = obj.Pcorner;
 
-	    % Calculate the energy density array
-	    ener = P/(obj.gamma - 1) ...     		% internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
+            % Calculate the energy density array
+            ener = ener/(obj.gamma - 1) ...           % internal
+            + 0.5*squeeze(sum(mom.*mom,1))./mass ...  % kinetic
+            + 0.5*squeeze(sum(mag.*mag,1));           % magnetic
         end
     end%PROTECTED       
 %===================================================================================================    

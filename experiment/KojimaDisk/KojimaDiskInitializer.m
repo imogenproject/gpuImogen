@@ -126,9 +126,9 @@ classdef KojimaDiskInitializer < Initializer
             obj.frameRotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
             GIS = GlobalIndexSemantics();
-            mygrid = GIS.pMySize;
-            
-            mom     = zeros([3 mygrid]);
+            GIS.setup(obj.grid);
+
+            mom     = GIS.zerosXYZ(GIS.VECTOR);
             
             [mass, mom(1,:,:,:), mom(2,:,:,:), dGrid] = kojimaDisc1(obj.q, obj.gamma, ...
                             obj.radiusRatio, obj.grid, 1, obj.edgePadding, obj.pointRadius, ...
@@ -143,7 +143,7 @@ classdef KojimaDiskInitializer < Initializer
             obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
 
             mass    = max(mass, obj.minMass);
-            mag     = zeros([3 mygrid]);
+            mag     = GIS.zerosXYZ(GIS.VECTOR);
             
             if obj.inflatePressure
                 minDiskMass = minFinderND(mass(mass > obj.minMass));

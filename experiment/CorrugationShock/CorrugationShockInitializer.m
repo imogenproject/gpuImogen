@@ -67,7 +67,7 @@ classdef CorrugationShockInitializer < Initializer
             obj.info             = 'Corrugation shock trial.';
             obj.mode.fluid       = true;
             obj.mode.magnet      = true;
-            obj.mode.gravity	 = false;
+            obj.mode.gravity     = false;
             obj.treadmill        = false;
             obj.cfl              = 0.35;
             obj.iterMax          = 10;
@@ -134,6 +134,7 @@ classdef CorrugationShockInitializer < Initializer
         potentialField = [];
         selfGravity = [];        
         GIS = GlobalIndexSemantics();
+        GIS.setup(obj.grid);
 
         %--- Attempt to load data from file ---%
             result = [];
@@ -193,12 +194,12 @@ classdef CorrugationShockInitializer < Initializer
             postIndeces = { half(1):obj.grid(1), 1:obj.grid(2), 1:obj.grid(3) };
             
             %--- Create and populate data arrays ---%
-            mass                 = zeros(GIS.pMySize);
+            mass                 = GIS.onesXYZ(GIS.SCALAR);
             mass(preX,:,:)  = obj.mass(1);
             mass(postX,:,:) = obj.mass(2);
             
-            mom                  = zeros([3 GIS.pMySize]);
-            mag                  = zeros([3 GIS.pMySize]);
+            mom                  = GIS.zerosXYZ(GIS.VECTOR);
+            mag                  = GIS.zerosXYZ(GIS.VECTOR);
             for i=1:3
                 mom(i,preX,  :, :) = obj.velocity(i,1);
                 mom(i,postX, :, :) = obj.velocity(i,2);
@@ -216,14 +217,14 @@ classdef CorrugationShockInitializer < Initializer
             TMpost = .5*obj.mass(2)*norm(obj.velocity(:,2))^2 + .5*norm(obj.magnet(:,2))^2;
 
             % Calculate total energy (internal + kinetic + magnetic) 
-            ener              = zeros(GIS.pMySize);
+            ener              = GIS.zerosXYZ(GIS.SCALAR);
             ener(preX,  :, :) = obj.pressure(1)/(obj.gamma - 1) + TMpre; 
             ener(postX, :, :) = obj.pressure(2)/(obj.gamma - 1) + TMpost;
 
             % Find the 32 cells near the shock, in local coordinates
-            x0 = (round(obj.grid(1)/2) - 16 - GIS.pMyOffset(1) ) + (1:32);
+            x0 = (round(obj.grid(1)/2) - 16 - GIS.pLocalDomainOffset(1) ) + (1:32);
             % Find the set which are actually on my part of the grid
-            mine = find((x0 >= 1) & (x0 < GIS.pMySize(1)) );
+            mine = find((x0 >= 1) & (x0 < GIS.pLocalRez(1)) );
             
             if ~isempty(relaxed) & any(mine)
                 x0 = x0(mine);
@@ -253,8 +254,8 @@ classdef CorrugationShockInitializer < Initializer
             %       to seed the formation of the instability.
 
             delta       = ceil(0.12*obj.grid(1));
-            seedIndices = (1:10) + obj.grid(1)/2 - 20 - GIS.pMyOffset(1);
-            mine = find((seedIndices >= 1) & (seedIndices < GIS.pMySize(1)));
+            seedIndices = (1:10) + obj.grid(1)/2 - 20 - GIS.pLocalDomainOffset(1);
+            mine = find((seedIndices >= 1) & (seedIndices < GIS.pLocalRez(1)));
 
             if any(mine);
                 switch (obj.perturbationType)

@@ -1,10 +1,7 @@
 % Run Advection test.
 
-%-- Initialize Imogen directory ---%
-grid = [1024 64 1];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 %--- Initialize test ---%
+grid = [1024 64 1];
 run             = AdvectionInitializer(grid);
 run.iterMax     = 5;
 run.info        = 'Dry run: Start, run 25 steps, bug out.';

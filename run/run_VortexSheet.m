@@ -1,12 +1,7 @@
-% Run the 3D Karman Vortex sheet test.
-
-%-- Initialize Imogen directory ---%
-starterRun();
-
-grid = [16 9 9];
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
+% Plow fluid past an obstacle, generating a von Karman vortex street.
 
 %--- Initialize test ---%
+grid = [16 9 9];
 run                 = VortexSheetInitializer(grid);
 run.iterMax         = 40;
 
@@ -16,7 +11,7 @@ run.activeSlices.xyz = true;
 run.info            = 'Vortex Sheet test';
 run.notes           = '';
 run.ppSave.dim3     = 25;
-run.mach	    = .8;
+run.mach            = .8;
 
 %--- Run tests ---%
 if (true)
