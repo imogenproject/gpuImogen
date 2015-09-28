@@ -1,20 +1,4 @@
 #!/bin/bash
-# 1: "serial"
-# +- 2: runfile 
-# +- 3: output stream #
-# +- 4: GPU # to use
-#
-# 1: "parallel"
-# +- 2 = runfile
-# +- 3 = output stream #
-# +- 4 = optionally np
-#
-# 1: "cluster"
-# +- 2 = runfile
-# +- 3 = output stream #
-# +- 4 = #nodes
-# +- 5 = PPN
-# +- 6 = optionally np (default = nodes*ppn)
 
 # --- Test for results directory --- #
 resDir="${HOME}/Results"
@@ -38,7 +22,7 @@ if [ ${1} = "help" ]; then
   echo "|"
   echo "| Serial operation: ./imogen serial   runfile streamnumber GPUn"
   echo "| Local parallel:   ./imogen parallel runfile streamnumber GPUs #procs"
-  echo "| Cluster submit:   ./imogen cluster  runfile streamnumber nodes ppn [np] [queue]"
+  echo "| Cluster submit:   ./imogen cluster  runfile streamnumber [GPUs [nodes [ppn [queue [np]]]]]"
   echo "|                   (tees realtime output to ~/imogenout)"
   echo "|"
   echo "|    Serial and local parallel operation execute directly; Cluster"
@@ -102,35 +86,62 @@ fi
 
 if [ ${1} = "cluster" ]; then
 # ./imogen cluster runfile stream #nodes PPN [np] queue
-  nnodes=${4};
-  if [ -z "$4" ]; then nnodes="1"; fi
+  gpuset=${4};
+  if [ -z "$4" ]; then
+    gpuset="[0]";
+    echo ">>> WARNING: GPU selection defaulted to $gpuset"
+  fi
 
-  procpn=${5};
-  if [ -z "$5" ]; then procpn="1"; fi;
+  nnodes=${5};
+  if [ -z "$5" ]; then
+    nnodes="1";
+    echo ">>> WARNING: # nodes defaulting to 1"
+  fi
 
-  NP=${6}
-  if [ -z "$6" ]; then NP=$(expr $nnodes \* $procpn); fi
+  procpn=${6};
+  if [ -z "$6" ]; then
+    procpn="1";
+    echo ">>> WARNING: Processes/node defaulting to 1"
+  fi
 
   QUEUE=${7}
-  if [ -z "$7" ]; then QUEUE="gpu"; fi
+  if [ -z "$7" ]; then
+    QUEUE="gputest";
+  fi
+
+  NP=${8}
+  if [ -z "$8" ]; then
+    NP=$(expr $nnodes \* $procpn);
+  fi
+
 
   TFILE=$(mktemp);
-  echo "module load mpi-tor/openmpi-1.4.5_gcc-4.4.6" >> $TFILE
+
   echo "module load matlab/r2012b" >> $TFILE
-  echo "module load cuda" >> $TFILE
+  echo "module load mpi-tor/openmpi-1.5.4_gcc-4.5.3" >> $TFILE
+  echo "module load cuda/5.5" >> $TFILE
   echo "echo PATH: \$PATH" >> $TFILE
   echo "cd $(pwd)" >> $TFILE
-  echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', 0);\" | tee -a ~/imogenoutB " >> $TFILE
+  echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuset);\" " >> $TFILE
 
-  echo -n "DOING: qsub -q $QUEUE -l nodes=$nnodes:ppn=$procpn, calling mpirun with -np $NP in 4... "
-#  echo "Submitting job with -l nodes=$nnodes:ppn=$procpn and mpirun with -np $NP; 4 seconds to abort:"
-  sleep 1; echo -n "3... "; sleep 1; echo -n "2... "; sleep 1; echo -n "1... "; sleep 1
+# This might be important, tell the user precisely how we're about to flush their cycles down the drain:
+echo "CLUSTER IMOGEN RUN SETUP:"
+echo "  $nnodes nodes"
+echo "  $procpn processes/node"
+echo "  Exact script that will be submitted to qsub:"
+echo "------------------------------------------------------------"
+cat $TFILE
+echo "------------------------------------------------------------"
+echo "  Into to queue $QUEUE"
+echo "  using the following invocation:"
+echo "qsub -q $QUEUE -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr"
+echo -n "  In 5...";  sleep 1; echo -n "4... "; sleep 1; echo -n "3... "; sleep 1; echo -n "2... "; sleep 1; echo -n "1..."; sleep 1;
 
   qsub -j oe -q $QUEUE -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
   #rm $TFILE
   exit 0
 fi
 
-echo ">>> ERROR: See top of 'imogen' file for input instructions."
-head -n18 imogen
+echo ">>> ERROR: Did not receive usable arguments. See ./imogen help:"
+./imogen help
 
