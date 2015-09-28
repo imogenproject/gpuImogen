@@ -80,6 +80,13 @@ classdef SavefilePortal < handle
         function accessYZ(self); self.setFrametype(6); end
         function accessXYZ(self); self.setFrametype(7); end
 
+	function IC = returnInitializer(self)
+            self.pushdir(self.savefileDirectory);
+            load('SimInitializer_rank0');
+            self.popdir();
+	    return;
+	end
+
         % Next/previous/start/last to make raw setFrame() friendlier
         function [F glitch] = nextFrame(self)
             % F = nextFrame() returns the next Imogen saveframe of the
