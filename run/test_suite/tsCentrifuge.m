@@ -1,4 +1,4 @@
-function result = tsCentrifuge(iniResolution, doublings, w0)
+function result = tsCentrifuge(iniResolution, w0, doublings)
 %iniResolution = [512 512 1];
 %doublings = 7; % will run from 32x32 to 2Kx2K
 %w0 = 1.5;
@@ -87,8 +87,8 @@ end
 if mpi_amirank0()
     d0 = pwd();
     cd(outdir);
-    save('./tsCentrifugeResult.mat','centrifugeTestResult');
+    save('./tsCentrifugeResult.mat','result');
     cd(d0);
 end
 
-%end
+end

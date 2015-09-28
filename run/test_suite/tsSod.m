@@ -36,8 +36,8 @@ for p = 1:doublings;
     T = sum(u.time.history);
     X = SodShockSolution(run.grid(direct), T);
 
-    result.L2(p)    = norm(u.mass(:,1)-X.mass') / sqrt(numel(X.mass));
-    result.L1(p)    = norm(u.mass(:,1)-X.mass',1) / numel(X.mass);
+    result.L2(p)    = sqrt(mpi_sum(norm(u.mass(:,1)-X.mass',2).^2) / mpi_sum(numel(X.mass)) );
+    result.L1(p)    = mpi_sum(norm(u.mass(:,1)-X.mass',1)) / mpi_sum(numel(X.mass));
     result.res(p)   = run.grid(direct);
     result.paths{p} = outpath;
 

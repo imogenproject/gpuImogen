@@ -1,7 +1,12 @@
-function result = tsEinfeldt(N0, doublings, gamma, M)
+function result = tsEinfeldt(N0, gamma, M, doublings)
 % result = tsEinfeldt(N0, doublings, M) runs a sequence of Einfeldt tests with
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
+
+if nargin < 4;
+    disp('Number of doublings not given; Defaultd to 3.');
+    doublings = 3;
+end
 
 %--- Initialize test ---%
 run             = EinfeldtInitializer([N0 2 1]);
@@ -55,9 +60,8 @@ for R = 1:doublings;
     [rho v P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
 
     result.N(end+1) = run.grid(1);
-    result.L1(end+1) = norm(f.mass(:,1) - rho,1)/run.grid(1);
-    result.L2(end+1) = norm(f.mass(:,1) - rho,2)/sqrt(run.grid(1));
-
+    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.grid(1);
+    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.grid(1));
 end
 
 

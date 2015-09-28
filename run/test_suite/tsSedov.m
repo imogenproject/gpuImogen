@@ -25,7 +25,7 @@ for N = 1:numel(multiples)
     run.grid = grid;
     icfile = run.saveInitialCondsToFile();
     outdir = imogen(icfile);
-    status = analyzeSedovTaylor(outdir);
+    status = analyzeSedovTaylor(outdir, 1);
 
     result.paths{end+1} = outdir;
 

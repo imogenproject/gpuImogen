@@ -5,8 +5,6 @@ if nargin < 6
     doublings = 3;
 end
 
-GIS = GlobalIndexSemantics(); GIS.setup(grid);
-
 run         = AdvectionInitializer(grid);
 run.iterMax = 99999;
 run.info    = 'Advection test.';
@@ -33,6 +31,7 @@ run.backgroundMach = V0;
 run.waveType = wavetype;
 run.amplitude = .01;
 run.waveLinearity(0);
+run.waveStationarity(0);
 % FWIW an amplitude of .01 corresponds to a roughly 154dB sound in air
 
 run.backgroundB = B0;
@@ -41,7 +40,7 @@ run.ppSave.dim3 =  100;
 run.wavenumber = N0;
 % run for only 1/3 because this will decrease by factor of 3 at 3x the wavenumber
 
-run.forCriticalTimes(.90);
+run.forCriticalTimes(.95);
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
 
 result.firstGrid = grid;
@@ -54,6 +53,7 @@ for D = 1:doublings;
     % Run simulation at present resolution & store results path
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
+    pause(35); % Aciss' file system sucks
     A = AdvectionAnalysis(outpath, 1);
     result.paths{end+1} = outpath;
 
