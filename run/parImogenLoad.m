@@ -25,13 +25,8 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     try
         eval(runFile);
     catch ME
-        ME
-        ME.cause
-        for n = 1:numel(ME.stack);
-            fprintf('In %s:%s at %i\n', ME.stack(n).file, ME.stack(n).name, ME.stack(n).line);
-        end
-        GIS = GlobalIndexSemantics();
-        fprintf('DISASTER: Evaluation of runfile failed for me; rank %i aborting!\n', GIS.context.rank);
+	prettyprintException(ME);
+        fprintf('FATAL: Runfile has thrown an exception back to loader.\nRANK %i ABORTING!\n', mpi_myrank());
         shutDownEverything = 1;
     end
 
