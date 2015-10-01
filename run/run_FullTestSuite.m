@@ -16,37 +16,63 @@ doEntropyAdvect       = 0;
 
 % 1D tests
 doSodTubeTests        = 0;
-doEinfeldtTests       = 1;
+doEinfeldtTests       = 0;
 
 % 2D tests
 doCentrifugeTests     = 0;
 
 % 3D tests
-doSedovTests          = 0 ;
+doSedovTests          = 1;
 
 % As regards the choices of arbitrary inputs like Machs...
 % If it works for $RANDOM_NUMBER_WITH_NO_PARTICULAR_SIGNIFICANCE
 % It's probably right
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 6;
+advectionDoublings  = 5;
 einfeldtDoublings   = 9;
 sodDoublings        = 9;
 centrifugeDoublings = 6;
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
-    TestResult.advection.Xalign_mach0 = tsAdvection('sonic',[128 2 1], [1 0 0], [0 0 0], 0, advectionDoublings);
+    disp('Testing advection against stationary background.');
+    try
+        x = tsAdvection('sonic',[128 2 1], [1 0 0], [0 0 0], 0, advectionDoublings);
+    catch ME
+        fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+    TestResult.advection.Xalign_mach0 = x;
 end
 
 %--- Test advection of a sound wave with the background translating at half the speed of sound ---%
 if doSonicAdvectMovingBG || doALLTheTests
-    TestResult.advection.Xalign_mach0p5 = tsAdvection('sonic',[32 2 1], [1 0 0], [0 0 0], -.526172, advectionDoublings);
+    disp('Testing advection against moving background');
+    try
+        x = tsAdvection('sonic',[32 2 1], [1 0 0], [0 0 0], -.526172, advectionDoublings);
+    catch ME
+        fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
+        prettyprintExecption(ME);
+        x = 'FAILED';
+    end
+        
+    TestResult.advection.Xalign_mach0p5 = x;
 end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doALLTheTests
-    TestResult.advection.XY = tsAdvection('sonic',[64 64 1], [7 5 0], [0 0 0], .4387, advectionDoublings);
+    disp('Testing advection in 2D across moving background');
+    try
+        x = tsAdvection('sonic',[64 64 1], [7 5 0], [0 0 0], .4387, advectionDoublings);
+    catch ME
+        fprintf('2D Advection test simulation barfed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+
+    TestResult.advection.XY = x;
 end
 
 % This one is unhappy. It expects to have a variable defined (the self-rest-frame oscillation frequency) that isn't set for this type
@@ -57,19 +83,44 @@ end
 
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
 if doEinfeldtTests || doALLTheTests
-    TestResult.einfeldt = tsEinfeldt(32, 1.4, 5, einfeldtDoublings);
+    disp('Testing convergence of Einfeldt tube');
+    try
+        x = tsEinfeldt(32, 1.4, 5, einfeldtDoublings);
+    catch ME
+        fprintf('Einfeldt tube test has failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+    TestResult.einfeldt = x;
 end
 
 %--- Test the Sod shock tube for basic shock-capturingness ---%
 if doSodTubeTests || doALLTheTests
-    TestResult.sod.X = tsSod(32,1,sodDoublings);
+    disp('Testing convergence of Sod tube');
+    try
+        x = tsSod(32,1,sodDoublings);
+    catch ME
+        fprintf('Sod shock tube test has failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+    
+    TestResult.sod.X = x
 end
 
 if doCentrifugeTests || doALLTheTests
+    disp('Testing centrifuge equilibrium-maintainence.');
     % Test centrifuge starting from 32x32 up to 1024x1024 with mildly
     % supersonic conditions
-    TestResult.centrifuge = tsCentrifuge([32 32 1], 1.5, centrifugeDoublings); 
+    try
+        x = tsCentrifuge([32 32 1], 1.5, centrifugeDoublings); 
+    catch ME
+        disp('Centrifuge test has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
 
+    TestResult.centrifuge = x;
     % FIXME: Run a centrifuge with a rotating frame term!
 end
 
@@ -86,8 +137,26 @@ end
 
 %%% 3D tests
 if doSedovTests || doALLTheTests
-	TestResult.sedov3d = tsSedov([32 32 32], [1 2 4 8]);
-	TestResult.sedov2d = tsSedov([32 32 1], [1 2 4 8 16 32]);
+    disp('Testing 2D Sedov-Taylor explosion');
+    try
+        x = tsSedov([32 32 1], [1 2 4]);
+    catch ME
+        disp('2D Sedov-Taylor test has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+    TestResult.sedov2d = x;
+
+    disp('Testing 3D Sedov-Taylor explosion');
+    try
+        x = tsSedov([32 32 32], [1 2]);
+    catch ME
+        disp('3D Sedov-Taylor test has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+
+    TestResult.sedov3d = x;
 end
 
 %%%%%
