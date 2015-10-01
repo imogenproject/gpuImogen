@@ -1,0 +1,41 @@
+
+\subsection{Radiative Hydrodynamic Shock Simulation}
+
+Gasses subjected to a strong adiabatic shock will be heated very strongly. If the level of heating is sufficient,
+the shocked fluid may be expected to radiate.
+
+This creates an extended `shock' region consisting of the adiabatic jump, followed by a radiating region with
+increasing density. Eventually a cutoff is reached, either physically (optical opacity) or numerically (temperature floor
+in radiation function).
+
+In the limit where the radiation time is taken to be extremely short compared to the flow time, the familiar
+adiabatic Rankine-Hugoniot condition that $E_2 = E_1$ is replaced by the isothermal condition $T_2 = T_1$, resulting
+in an isothermal shock.
+
+\subsubsection{Initial Conditions}
+
+The radiating shock simulation divides the X component of a 1-, 2- or 3-dimensional grid up into three
+sections, the preshock, cooling, and cold gas layers.
+
+Imogen accepts as input the parameters \begin{tt}fractionPreshock\end{tt} and \begin{tt}fractionCold\end{tt}.
+The remainder forms the cooling region; Imogen chooses the grid spacing such that the distance from the shock
+to the cold layer matches the length returned by the \begin{tt}RadiatingFlowSolver\end{tt} class.
+
+This distance is approximately equal to the cooling length $L_{\text{cool}} \approx v_x \frac{\dot{P}}{P}$ which
+in turn is defined by the shock's Mach number.
+
+Imogen chooses frames such that the shock is initially stationary.
+
+The \begin{tt}RadiatingFlowSolver\end{tt} class will generate a cooling region solution that is effectively exact, far
+more accurate than the CFD code's truncation error.
+
+Imogen requires an artificial parameter \begin{tt}Tcutoff\end{tt} which is the temperature that the cooling flow is allowed
+to reach, in units of the preshock temperature. This value must be at LEAST one. In practice, it should be slightly
+larger ($1.02-1.05$) to make both the shock jump discontinuity and the cold cutoff $\mathbb{C}^0$ points better behaved.
+
+Without a temperature cutoff, a hydrodynamic radiating flow with a reasonable radiation law will cool to zero temperature,
+infinite density and zero velocity in finite time and distance.
+
+\subsubsection{Analysis}
+
+...

@@ -1,0 +1,34 @@
+
+\subsection{Rayleigh-Taylor Test}
+
+The Rayleigh-Taylor test simulates a compressible form of the RT instability: lighter fluid which is
+supporting (or being accelerated into) denser fluid is locally unstable.
+
+In the inviscid case, any condition of pressure and density gradients pointing opposite ways will be
+unstable in this manner.
+
+\subsubsection{Initial Conditions}
+
+Imogen sets up its RT simulation in a rectangular box, with circular conditions on X and Z and a fixed
+potential field ('gravity') pulling in the -Y direction. The light/dense contact discontinuity is placed
+at $Y = .5$. The parameters are
+\begin{itemize}
+\item \begin{tt}rhoTop\end{tt} - density of top fluid
+\item \begin{tt}rhoBottom\end{tt} - density of lower fluid
+\item \begin{tt}P0\end{tt} - the gas pressure at the BOTTOM of the column*
+\item \begin{tt}pertAmplitude\end{tt} - the magitude of velocity perturbations
+\item \begin{tt}Kx, Ky, Kz\end{tt} - wave vector for coherent perturbations
+\item \begin{tt}randomPert\end{tt} - if true, uses random-per-cell velocities instead
+\end{itemize}
+
+\subsection{Analysis}
+
+Lord Rayleigh's famous 1883 paper diagnosed the linear instability of the above described situation in the
+incompressible case.
+
+If the fluid is inviscid and the change of density is instant (contact discontinuity), the growth rate of
+the linear instability in fact increases unboundedly with wavenumber and the system has \textit{zero} lifetime.
+
+Viscosity, finite density gradient, and surface tension all establish short-wavelength cutoffs and regularize
+the problem.
+

@@ -1,0 +1,40 @@
+
+\subsection{Implosion Symmetry Test}
+
+The implosion symmetry test begins with initial conditions which have mirror symmetry
+about the $x=y$ axis. Fluid mechanics dictates that then the exact solution will 
+hold this symmetry forever.
+
+Dimension-split codes are virtually never able to reproduce this condition forever
+because their error commutators inevitably contain asymmetry-generating terms.
+
+Because Imogen is dimensionally split, its error in this test is tracked by comparing
+the ratio of the antisymmetric to symmetric components of the density.
+
+\subsubsection{Initial Conditions}
+
+Nominally any condition of mirror symmetry will do. The condition used by Athena consists of
+a square domain of size 1x1, with
+\begin{itemize}
+\item $\rho(x+y < 1) = \rho_a$
+\item $\rho(x+y \ge 1) = 1$
+\item $P(x+y < 1) = P_a$
+\item $P(x+y \ge 1) = 1$
+\item $\vec{v} = 0$
+\end{itemize}
+By default the gas gamma is set to $7/5$ with $\rho_a = .125$ and $P_a = .14$.
+All boundary conditions are mirrored.
+
+The Imogen parameters are \begin{tt}Mcorner\end{tt} and \begin{tt}Pcorner\end{tt}.
+
+This results in a standard Sod-like behavior in the middle of the corner/bulk region,
+and a `jet' being launched along both edges, where the mirror boundary collides the two jets.
+These jets promptly develop shear-flow instabilities. When they meet in the corner, they 
+expel a two-lobed vortex down the $x=y$ line.
+
+This is typically the point where the asymmetry component becomes obvious as this vortex is
+intensely unstable to $x=y$-asymmetric disturbances.
+
+\subsubsection{Analysis}
+
+

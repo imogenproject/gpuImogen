@@ -1,0 +1,25 @@
+
+\subsection{Sod Tube Test}
+
+This test was used by Gary Sod in his 1976 paper that compared numerous then-in-use schemes
+for 1D simulation of compressible supersonic dynamics.
+
+While the original test parameters are no longer particularly challenging for any modern 
+shock-capturing code, the Sod test is an enduring part of any test suite.
+
+\subsubsection{Initial Conditions}
+
+The Sod test refers to the solution of a particular Riemann problem:
+\begin{itemize}
+\item $\rho(x) = \{ 1, x < 0; .125, x \ge 0 \}$
+\item $P(x) = \{ 1, x < 0; .1, x \ge 0 \} $
+\item $\vec{v} = \vec{0}$
+\end{itemize}
+in an ideal gas with $\gamma = 7/5$.
+
+Imogen uses a box of length 1, constant BCs, and runs to a time of 0.25.
+
+\subsubsection{Analysis}
+
+...
+

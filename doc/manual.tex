@@ -1,4 +1,4 @@
-\documentclass[letterpaper,12pt,twocolumn]{article}
+\documentclass[letterpaper,12pt]{article}
 \pagestyle{empty}
 
 \pdfpagewidth 8.5in
@@ -372,12 +372,12 @@ ener, mom, newOmega)
 in the user's in-situ analysis function. This has no physical effect (outside truncation error)
 and will not e.g. generate the Euler term, it simply alters the rate at which the grid traverses
 the fluid in the lab frame. Note also that the alterFrameRotation function is not GPU accelerated
-and probably shouldn't called willy nilly.
+and should thus be called rarely.
 
-One \textit{could} directly alter \begin{tt}run.frameRotateOmega\end{tt} during the run,
-and this will generate physical consequences. However the sourcing function assumes the
-rotation rate is constant and therefore will \textit{not} account for the Euler term caused
-by varying rotation rate.
+It is not acceptable to simply alter \begin{tt}run.frameRotateOmega\end{tt} during the run.
+This will alter the behavior of the sourcing function, however it will NOT update the
+\textit{frame-dependent} kinetic energy density. Among other deleterious effects, increasing the rotation
+rate in this manner is therefore likely to cause negative pressure and crash the simulation.
 
 \subsection{How to setup radiation}
 
@@ -398,21 +398,31 @@ two public members:
 They must be set at initialization time with these three parameters in the initializer:
 \begin{itemize}
 \item \begin{tt}useInSituAnalysis\end{tt} - Set to nonzero to enable
-\item \begin{tt}inSituHandle\end{tt} - @AnalyzerClass which must meet the requirements of an
+\item \begin{tt}inSituHandle\end{tt} - @Class which must meet the requirements of an
 in-situ analyzer (see above)
 \item \begin{tt}stepsPerInSitu\end{tt} - Number of timesteps between calls to the .FrameAnalyzer() function
 \end{itemize}
 
-The \begin{tt}.finish\end{tt} member is called when the simulation is exiting and presumably should
-take the data that has been gathered and safely flush it to disk since Imogen is about to return.
+Imogen calls the \begin{tt}.finish\end{tt} method after exiting the CFD iteration loop. At this point the
+ISA needs to write to disk any data not already written because \begin{tt}imogen()\end{tt} is about to 
+return.
 
 \section{Experiments}
 
+\input{../experiment/Advection/advectionDoc.tex}
+\input{../experiment/BowShock/bowDoc.tex}
 \input{../experiment/CentrifugeTest/centrifugeDoc.tex}
 \input{../experiment/DoubleBlast/doubleblastDoc.tex}
 \input{../experiment/Einfeldt/einfeldtDoc.tex}
+\input{../experiment/HachisuDisk/hachisuDoc.tex}
+\input{../experiment/Implosion/implosionDoc.tex}
+\input{../experiment/Jet/jetDoc.tex}
+\input{../experiment/KelvinHelmholtz/khDoc.tex}
+\input{../experiment/RadiatingShock/radiativeShockDoc.tex}
+\input{../experiment/RayleighTaylor/RT_Doc.tex}
 \input{../experiment/RichtmyerMeshkov/richtmyermeshkovDoc.tex}
+\input{../experiment/SedovTaylorBlastWave/sedovDoc.tex}
+\input{../experiment/SodShockTube/sodDoc.tex}
 \input{../experiment/ShuOsherTube/shuoshertubeDoc.tex}
-
 
 \end{document}

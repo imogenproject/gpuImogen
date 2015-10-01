@@ -1,0 +1,29 @@
+
+
+\subsection{Sedov-Taylor Explosion Test}
+
+The ST test measures the code's ability to capture high-Mach shocks and its ability to handle
+them in multiple dimensions.
+
+The initial conditions (analytically) for a Sedov-Taylor explosion consist of a spherically symmetric
+fluid in N dimensions with
+\begin{itemize}
+\item $\rho(r) = \rho_0 r^-j$
+\item $v(r) = 0$
+\item $E_{\text{tot}}(r) = E / (\frac{4}{3} \pi \epsilon^3)$
+\end{itemize}
+In the standard classical ST case, $j=0$ and $N=3$ (producing a spherical explosion that models
+the adiabatic phase of a nuclear explosion or supernova).
+
+
+Details are in Sedov (1950), the best known of the original 3 ST papers. A modern derivation
+which includes a walk-through explanation of the analysis and model code can be found in
+Timmes 2000 \& Kamm \& Timmes (2002).
+
+Under most conditions, the result is expected to maintain N-spherical symmetry.
+
+KT also describe the existence of choices of physical ($j < N + 1$, resulting in finite mass within 
+finite volume) solutions which have opposing pressure \& density gradients; These would be unstable 
+to Rayleigh-Taylor induced convection.
+
+
