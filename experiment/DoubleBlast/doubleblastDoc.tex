@@ -1,15 +1,27 @@
 
-
 \subsection{Double Blast Test}
 
-Two interacting blast waves on a 1-dimensional grid. This test is very difficult to solve on an Eulerian grid due to the 
-strong shocks and multiple interactions with rarefactions and contact discontinuities, and is useful in measuring a 
-solver's ability to handle these types of events. 
+The double blast test was introduced by Woodward \& Colella in 1984. It is a one-dimensional test of two strongly
+interacting shock fronts. Except for very early times, it does not have an analytic solution \& convergence is
+usually measured by comparison to a very highly refined grid.
+
+\subsubsection{Initial conditions}
+
+The domain consists of a grid $x \in [0, 1]$. The initial conditions for the test are:
+\begin{itemize}
+\item $\rho(x) = 1$
+\item $\vec{v}(x) = \vec{0}$
+\item $P(x < 0.1) = 100$
+\item $P(0.1 \le x \le 0.9) = .01$
+\item $P(x > 0.9) = 1000$
+\item Gamma-law gas, $\gamma = 7/5$
+\end{itemize}
+
+Two extremely strong shocks are launched towards the center. Repeated collisions between shocks and contact
+discontinuities generate an extremely complex flow with very fine details which is extremely difficult to reproduce
+on an Eulerian grid without immense levels of refinement.
 
 \subsubsection{Analysis}
-
-The two blast waves propogate toward one another and collide, producing more contact discontinuities.
-Could calculate the exact time they collide. Solve sod problem.
 
 \begin{figure*}
 \begin{center}
@@ -19,15 +31,17 @@ Could calculate the exact time they collide. Solve sod problem.
 \end{figure*}
 \subsubsection{Initial Conditions}
 
-Boundary conditions are mirrored around the X axis and periodic everywhere else.
+Boundary conditions on both ends of the domain are mirror.
 
-The physical input parameters to the double blast test are:
+Imogen's runfile parameters are
 \begin{itemize}
-\item \tt{Pl} - Sets the pressure of the blastwave originating in the left-most tenth of the grid
-\item \tt{Pr} - Similarly sets the pressure of the right-most blastwave
-\item \tt{Pa} - Sets the ambient pressure
+\item \tt{pLeft} - Sets the initial pressure in the left tenth of the grid
+\item \tt{pMid} - Sets the ambient pressure
+\item \tt{pRight} - Similarly sets the pressure in the right tenth of the grid
 \end{itemize}
 
+The default values are those of Woodward/Colella, \begin{tt}pLeft = 100\end{tt}, \begin{tt}pMid = .01\end{tt}
+and \begin{tt}pRight = 1000\end{tt}.
 
-with the initial conditions set by each of the three zones being defined as an adiabatic gas with $\gamma$ = 1.4 everywhere. 
-We set $\tt{Pl} = 1000$, $\tt{Pr} = 100$, and $\tt{Pa} = 0.01$. Initial momenta are zero everywhere.
+Further reading:
+Woodward/Colella 1984

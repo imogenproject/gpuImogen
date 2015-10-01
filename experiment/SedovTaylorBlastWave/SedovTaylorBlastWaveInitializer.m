@@ -13,6 +13,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
         autoEndtime;
 
         backgroundDensity;
+	sedovAlphaValue;
+	sedovExplosionEnergy;
     end %PUBLIC
 
 %===================================================================================================
@@ -23,6 +25,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         pDepositRadius; % Radius (in cell) inside which energy will be deposited
         pBlastEnergy;
+
+        pSedovAlpha;
     end %PROTECTED
     
 %===================================================================================================
@@ -92,9 +96,11 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 
             mass            = mass * obj.backgroundDensity;
 
+            obj.pSedovAlpha = SedovSolver.findAlpha(obj.pBlastEnergy, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1));
+
             if obj.autoEndtime
                 if mpi_amirank0(); disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)'); end
-                obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1));
+                obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1), obj.pSedovAlpha);
             end
 
             %--- Calculate Radial Distance ---%
@@ -117,6 +123,9 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             end
  
             nDepositCells = numel(find(activeCells));
+
+            obj.sedovAlphaValue = obj.pSedovAlpha; % Public parameter that will be saved
+            obj.sedovExplosionEnergy = obj.pBlastEnergy;
             
             %--- Determine Energy Distribution ---%
             ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure

@@ -88,7 +88,7 @@ classdef SedovSolver < handle
             alpha = I1+I2;
         end
 
-        function [rho vradial p] = FlowSolution(E, t, radii, rho0, gamma, j)
+        function [rho vradial p] = FlowSolution(E, t, radii, rho0, gamma, j, alpha)
             % [rho V p] = SolutionGenerator(E, t, radii, rho0, gamma, j) computes the exact solution
             % of the Sedov-Taylor explosion (see Kamm & Timmes 2007) of energy E at time t > 0 at
             % the radial points given by 'radii' with preshock fluid density rho0, polytropic index 
@@ -126,7 +126,9 @@ classdef SedovSolver < handle
             
             % We shovel this off into a separate function to reduce code duplication
             % even though here virtually all the preceeding definitions are needed anyway
-            alpha = SedovSolver.findAlpha(E, rho0, gamma, j);
+            if nargin < 7
+                alpha = SedovSolver.findAlpha(E, rho0, gamma, j);
+            end
             
             % shock position (eq 14)
             r2 = (E*t^2/(rho0*alpha))^(1/j2w);
@@ -172,13 +174,16 @@ classdef SedovSolver < handle
             
         end
         
-        function t = timeUntilSize(E, R, rho0, gamma, j)
+        function t = timeUntilSize(E, R, rho0, gamma, j, alpha)
             % tSize = Sedov_timeToReachSize(E, R, rho0, gamma, j)
             % exact solution of the Sedov-Taylor explosion (see Kamm & Timmes 2007)
             % at the r points given by radii in the j-dimension symmetry (1=plane,
             % 2=cylindrical, 3=spherical) in a polytropic gas of index gamma
 
-            alpha = SedovSolver.findAlpha(E, rho0, gamma, j);
+            if nargin < 6;
+                alpha = SedovSolver.findAlpha(E, rho0, gamma, j);
+            end
+
             % shock position (eq 14) solved for t given r
             w=0;
             j2w = j+2-w;

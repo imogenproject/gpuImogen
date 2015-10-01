@@ -22,16 +22,21 @@ R = x.^2+y.^2; if rez(3) > 1; R = R + z.^2; end
 R = sqrt(R);
 clear x y z;
 
-% HACKS
-rho0 = 1;
-Eblast = 1;
+IC = S.returnInitializer();
+
+rho0 = IC.ini.backgroundDensity;
+Eblast = IC.ini.sedovExplosionEnergy;
+sedovAlpha = IC.ini.sedovAlphaValue;
+% Avoid recalculating the scaling prefactor which makes integral() whine
 
 % Pick an appropriate number of radial cells; Resulting truncation error O(h^3) will be effectively 0.
 nRadial = max(size(f.mass));
 radii = (0:nRadial)/nRadial;
 
+spatialDimension = 1 + 1*(rez(2) > 2) + 1*(rez(3) > 1);
+
 for N = 1:S.numFrames()
-    [rho vradial P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, 3);
+    [rho vradial P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);
     

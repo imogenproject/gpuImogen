@@ -6,6 +6,30 @@ The centrifuge test checks the ability of the code to evolve an analytically tim
 hydrodynamic flow and maintain its original time-independent values, and also provides a
 valuable test of the rotating frame's implementation.
 
+\subsubsection{Initial Conditions}
+
+The physical input parameters to the centifuge test are:
+\begin{itemize}
+\item \begin{tt}rho\_0\end{tt} specifies the density at either the center (Isochoric) or edge (isothermal
+or adiabatic) of the simulation region
+\item \begin{tt}P\_0\end{tt} specifies the pressure at the same points. The isothermal $c_s$ and adiabatic $k$
+are defined through the pressure.
+\item \begin{tt}omegaCurve\end{tt} is an anonymous function of an array $r$ which gives $\omega(r)$. This is 
+assumed to obey the constraints given. $r$ is normalized between 0 (center) and 1 (edge).
+\item \begin{tt}eqnOfState\end{tt} must be symbolically set to one of the \tt{CentrifugeInitializer} class' 
+symbolic values \tt{EOS\_ISOTHERMAL}, \tt{EOS\_ISOCHORIC} or \tt{EOS\_ADIABATIC}.
+\end{itemize}
+
+Two additional numeric parameters are
+\begin{itemize}
+\item \begin{tt}edgeFraction\end{tt} - Sets how far the simulation domain extends past the edge of the
+rotating region, as a multiple of the radius of the centrifuge: $2(1+e) = Nx$
+\item \begin{tt}frameRotateOmega\end{tt} - Sets the rate at which the simulation frame is rotated. This can improve the 
+timestep considerably if rotation is in one direction and advection speed is high. In fluid velocities,
+positive $\omega$ about $\hat{z}$ is such that particles on $+\hat{x}$ have momentum $+\hat{y}$. The fluid frame is opposite, such
+that positive \begin{tt}frameRotateOmega\end{tt} will create the appearance of points on $\hat{x}$ swinging towards $-\hat{y}$.
+\end{itemize}
+
 \subsubsection{Analysis}
 
 The centrifuge test balances centripetal acceleration against a pressure gradient,
@@ -57,27 +81,4 @@ with solution
 Defining $\rho_0$ at $r_0$ and given $K$, a solution exists for all sane inputs; Imogen
 defines it at the outer edge.
 
-\subsubsection{Initial Conditions}
-
-The physical input parameters to the centifuge test are:
-\begin{itemize}
-\item \begin{tt}rho\_0\end{tt} specifies the density at either the center (Isochoric) or edge (isothermal
-or adiabatic) of the simulation region
-\item \begin{tt}P\_0\end{tt} specifies the pressure at the same points. The isothermal $c_s$ and adiabatic $k$
-are defined through the pressure.
-\item \begin{tt}omegaCurve\end{tt} is an anonymous function of an array $r$ which gives $\omega(r)$. This is 
-assumed to obey the constraints given. $r$ is normalized between 0 (center) and 1 (edge).
-\item \begin{tt}eqnOfState\end{tt} must be symbolically set to one of the \tt{CentrifugeInitializer} class' 
-symbolic values \tt{EOS\_ISOTHERMAL}, \tt{EOS\_ISOCHORIC} or \tt{EOS\_ADIABATIC}.
-\end{itemize}
-
-Two additional numeric parameters are
-\begin{itemize}
-\item \begin{tt}edgeFraction\end{tt} - Sets how far the simulation domain extends past the edge of the
-rotating region, as a multiple of the radius of the centrifuge: $2(1+e) = Nx$
-\item \begin{tt}frameRotateOmega\end{tt} - Sets the rate at which the simulation frame is rotated. This can improve the 
-timestep considerably if rotation is in one direction and advection speed is high. In fluid velocities,
-positive $\omega$ about $\hat{z}$ is such that particles on $+\hat{x}$ have momentum $+\hat{y}$. The fluid frame is opposite, such
-that positive \begin{tt}frameRotateOmega\end{tt} will create the appearance of points on $\hat{x}$ swinging towards $-\hat{y}$.
-\end{itemize}
 
