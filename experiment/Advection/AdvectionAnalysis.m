@@ -50,10 +50,13 @@ tCritical = 2/((IC.ini.gamma + 1)*c0*Kmag*IC.ini.amplitude);
 % Iterating over all frames in sequence,
 for N = 1:S.numFrames();
     F = S.nextFrame();
-    t = sum(F.time.history);
+    % In actuality, our 'error' is asserting that the length of a wave is
+    % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
+    t = sum(F.time.history) * norm(IC.ini.pWavenumber);
+    
     % Compute the displacement of a reference wave through circular BCs 
     % Parameterized by original phase
-    backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*(0:.0001:.9999)), t);
+backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*(0:.0001:.9999)), t);
 
     % Map this onto the full 3D space by referring to original phases
     rhoAnalytic = interp1(2*pi*(0:.0001:.9999), backMap, mod(KdotX,2*pi),'cubic');
