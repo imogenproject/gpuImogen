@@ -95,7 +95,7 @@ function resultsHandler(run, mass, mom, ener, mag)
 
                 % Saves the layout of nodes, the global array size, and this subset's offset
                 pInfo.geometry   = GIS.getNodeGeometry();
-                pInfo.globalDims = GIS.pLocalRez;
+                pInfo.globalDims = GIS.pGlobalDomainRez;
                 pInfo.myOffset   = GIS.pLocalDomainOffset;
 
                 sl.parallel = pInfo;
