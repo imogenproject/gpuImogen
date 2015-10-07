@@ -12,9 +12,11 @@ result.rhoL1 = [];
 result.rhoL2 = [];
 
 f = S.nextFrame();
-rez = f.parallel.globalDims;
 
-GIS = GlobalIndexSemantics(); GIS.setup(rez);
+rez = f.parallel.globalDims
+
+GIS = GlobalIndexSemantics();
+GIS.setup(rez);
 
 [x y z] = GIS.ndgridSetXYZ(floor(rez/2), 1./rez);
 R = x.^2+y.^2; if rez(3) > 1; R = R + z.^2; end
@@ -39,7 +41,9 @@ for N = 1:S.numFrames()
     [rho vradial P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);
-    
+size(f.mass)
+size(truerho)    
+
     delta = f.mass - truerho;
 
     if runParallel; delta = GIS.withoutHalo(delta); end
