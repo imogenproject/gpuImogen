@@ -1,4 +1,4 @@
-function frame = util_Frame2NCD(nfile)
+function frame = util_NCD2Frame(nfile)
 % Serializes an Imogen saveframe 'frame' into NetCDF 4 format file 'nfile'
 
 % Deserialize time substructure
