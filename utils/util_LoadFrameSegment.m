@@ -55,8 +55,9 @@ end
             dataframe = getfield(tempname,nom_de_plume{1});
         end
     catch ERR
-        fprintf('SERIOUS on %s: Frame in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), pwd());
-        ERR
+        str = sprintf('SERIOUS on %s: Frame in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), pwd());
+        prettyprintException(ERR, 0, str);
+
         dataframe = -1;
     end
 
