@@ -12,28 +12,48 @@ run.alias   = 'SEDOV_ts';
 run.info    = 'Sedov-Taylor blast wave convergence test.';
 run.notes   = 'Eblast=1, box diameter = [1 1 1], Rend = 0.45';
 
+run.activeSlices.xy = false;
+run.ppSave.xyz      = 10;
+
 result.paths = {};
 result.times = [];
 result.rhoL1 = [];
 result.rhoL2 = [];
 
+ydim = [];
+
 %--- Run tests ---%
 for N = 1:numel(multiples)
     grid = iniResolution*multiples(N);
+    if iniResolution(2) <= 2; grid(2) = iniResolution(2); end % Keep 1D, 1D
     if iniResolution(3) == 1; grid(3) = 1; end % keep 2D, 2D
 
-    run.grid = grid;
-    icfile = run.saveInitialCondsToFile();
-    outdir = imogen(icfile);
-    status = analyzeSedovTaylor(outdir, 1);
+    run.grid    = grid;
+    run.iterMax = 100 * max(grid); % Safely make sure that saving is set by time, not iteration
+    icfile      = run.saveInitialCondsToFile();
+    outdir      = imogen(icfile);
+    pause(35);
+    status      = analyzeSedovTaylor(outdir, 1);
 
     result.paths{end+1} = outdir;
 
     % Take times from the first run
-    if N == 1; result.times = status.time; end
+    if N == 1;
+        result.times = status.time;
+        ydim = numel(status.rhoL1);
+    end
     
-    result.rhoL1(end+1,:) = status.rhoL1;
-    result.rhoL2(end+1,:) = status.rhoL2;
+    if numel(status.rhoL1) > ydim
+        warning('\nCurrent ST convergence test run stored at %s was expected to save %i 3D data frames.\nDirectory actually contains %i\nLikely cause: Insufficient run.iterMax\nRow has been truncated to fit.', outdir, int32(ydim), int32(numel(status.rhoL1)) );
+    end
+    if numel(status.rhoL1) < ydim
+        warning('\nCurrent ST convergence test run stored at %s was expected to save %I 3D data frames.\nDirectory actually contains %i\nLikely cause unknown; Run crashed? Extreme low resolution?\nRow padded with zeros to fit.\n', outdir, int32(ydim), int32(numel(status.rhoL1)) );
+        status.rhoL1((end+1):ydim) = 0;
+        status.rhoL2((end+1):ydim) = 0;
+    end
+
+    result.rhoL1(end+1,:) = status.rhoL1(1:ydim);
+    result.rhoL2(end+1,:) = status.rhoL2(1:ydim);
 end
 
 end
