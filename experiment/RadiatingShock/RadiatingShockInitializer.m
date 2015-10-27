@@ -186,7 +186,7 @@ classdef RadiatingShockInitializer < Initializer
         % Generate blank slates
         [mass mom mag ener] = GIS.basicFluidXYZ();
 
-        % Fill in preshock values
+        % Fill in preshock values of uniform flow
         mass(preshock,:,:) = jump.rho(1);
         ener(preshock,:,:) = jump.Pgas(1);
         mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
@@ -199,47 +199,39 @@ classdef RadiatingShockInitializer < Initializer
         flowValues(:,1) = flowValues(:,1) + Xshock;
         xinterps = vecX*obj.dGrid(1);
         minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
-            % px is constant
+        %px is exactly constant
         pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
-            % bx is constant
+        %bx is exactly constant
         byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps,'cubic');
         Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps,'cubic');
 
         for xp = find(postshock)
             mass(xp,:,:) = minterp(xp);
-            % momx is constant
             mom(2,xp,:,:) = pyinterp(xp);
-            % bx is constant
             mag(2,xp,:,:) = byinterp(xp);
             ener(xp,:,:)  = Pinterp(xp);
         end
  
         % Fill in cold gas layer adiabatic values again
-        finstate = flowValues(end,:);
+        endstate = flowValues(end,:);
 
-        mass(coldlayer,:,:) = finstate(2);
+        mass(coldlayer,:,:) = endstate(2);
         % px is constant
-        mom(2,coldlayer,:,:) = finstate(2)*finstate(4);
+        mom(2,coldlayer,:,:) = endstate(2)*endstate(4);
         % bx is constant 
-        mag(2,coldlayer,:,:) = finstate(6);
-        ener(coldlayer,:,:) = finstate(7);
+        mag(2,coldlayer,:,:) = endstate(6);
+        ener(coldlayer,:,:) = endstate(7);
 
         %----------- BOOST TRANSFORM ---------%
         dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
         yboost = mass*dvy;
-
-        ener = ener + (squeeze(mom(2,:,:,:)) + .5*yboost)*dvy;
         mom(2,:,:,:) = squeeze(mom(2,:,:,:)) + yboost;
 
-        %--- Perturb mass density in pre-shock region ---%
-        %       Mass density gets perturbed in the pre-shock region just before the shock front
-        %       to seed the formation of any instabilities
+        %----------- SALT TO SEED INSTABILITIES -----------%
+	% Salt everything from half the preshock region to half the cooling region.
+	fracRadiate = 1.0-obj.fractionPreshock-obj.fractionCold;
+	Xsalt = (vecX >= (.5*obj.grid(1)*obj.fractionPreshock)) & (vecX < obj.grid(1)*(obj.fractionPreshock + .5*fracRadiate));
 
-%{        delta       = ceil(0.12*obj.grid(1));
-        seedIndices = (1:10) + round(obj.grid(1)*obj.fractionPreshock) - 20 - GIS.pLocalDomainOffset(1);
-        mine = find((seedIndices >= 1) & (seedIndices < GIS.pLocalRez(1)));
-
-        if any(mine);
             switch (obj.perturbationType)
                 % RANDOM Seeds ____________________________________________________________________
                 case RadiatingShockInitializer.RANDOM
@@ -254,11 +246,11 @@ classdef RadiatingShockInitializer < Initializer
 %                    for xp = 1:size(perturb,1)
 %                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
 %                    end
-junk = obj.seedAmplitude*(rand(size(mass))-.5);
-mass(postshock,:,:) = mass(postshock,:,:) + junk(postshock,:,:);
-
+                     junk = obj.seedAmplitude*(rand(size(mass))-.5);
+                     mass(Xsalt,:,:) = mass(Xsalt,:,:) + junk(Xsalt,:,:);
 
                 case RadiatingShockInitializer.COSINE
+%                   perturb = GIS.evaluateFunctionOnGrid(@(x,y,z) obj.seedAmplitude*
                     [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
                                     .*sin(pi*(X - 1)/(delta - 1));
@@ -284,7 +276,6 @@ mass(postshock,:,:) = mass(postshock,:,:) + junk(postshock,:,:);
             % a large density fluctuation resulting in negative internal energy
 %            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
 %            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
-        end
         
         ener = ener/(obj.gamma-1) + ...
                .5*squeeze(sum(mom.^2,1))./mass + .5*squeeze(sum(mag.^2,1));
