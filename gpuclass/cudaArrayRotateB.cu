@@ -162,7 +162,7 @@ __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny
 __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, int nz)
 {
 
-	__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM+1];
 
 	int myx = threadIdx.x + BDIM*blockIdx.x;
 	int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
@@ -192,7 +192,7 @@ __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, 
 
 __global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, int nz)
 {
-	__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM+1];
 
 	int myx = threadIdx.x + BDIM*blockIdx.x;
 	int myz = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
