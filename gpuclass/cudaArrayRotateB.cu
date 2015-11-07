@@ -125,9 +125,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	// If performing transpose in place, move transposed data back to original array.
 	if(makeNew == 0) {
 		for(i = 0; i < trans.nGPUs; i++) {
-			cudaMemcpy(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+			cudaSetDevice(trans.deviceID[i]);
+			cudaMemcpyAsync(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
 			CHECK_CUDA_ERROR("cudaMemcpy");
 		}
+
 		MGA_delete(nuClone);
 	}
 
