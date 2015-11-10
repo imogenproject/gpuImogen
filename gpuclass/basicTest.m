@@ -1,4 +1,6 @@
 function result = basicTest(multidevice, REZ)
+% result = basicTest([device list], [nx ny nz])
+% Runs some fundamental unit tests on Imogen GPU functionality
 
 x = GPUManager.getInstance();
 

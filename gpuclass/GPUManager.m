@@ -35,6 +35,8 @@ classdef GPUManager < handle
             g.cudaStreamsPtr = int64(0); % initialize to NULL
 
             g.GIS = GlobalIndexSemantics();
+            
+            g.init([0], 3, 1);
         end
 
         function init(obj, devlist, halo, partitionDirection)
