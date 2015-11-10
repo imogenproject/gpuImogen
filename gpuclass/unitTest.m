@@ -2,6 +2,13 @@ function result = unitTest(n2d, max2d, n3d, max3d, funcList)
 
 result = 0;
 
+if(nargin == 2)
+    funcList = max2d;
+    specificRez = 1;
+    disp('Running one test using resolution:');
+    disp(n2d)
+else
+
 if(nargin < 4)
     disp('unitTest help:');
     disp('unitTest(n2d, max2d, n3d, max3d, funcList):');
@@ -13,14 +20,23 @@ if(nargin < 4)
     return;
 end
 
+    specificRez = 0;
+
+end
+
 if(nargin == 4)
     funcList = { 'cudaArrayAtomic', 'cudaArrayRotateB', 'freezeAndPtot', 'cudaFwdAverage', 'cudaFwdDifference', 'freezeAndPtot'};
 end
 
 nFuncs = numel(funcList);
 
-D = [2*ones(n2d,1); 3*ones(n3d,1)];
-R = [ones(n2d,1)*max2d; ones(n3d,1)*max3d];
+if specificRez
+    D = -1;
+    R = n2d;
+else
+    D = [2*ones(n2d,1); 3*ones(n3d,1)];
+    R = [ones(n2d,1)*max2d; ones(n3d,1)*max3d];
+end
 
 tic;
 for F = 1:nFuncs;
@@ -64,16 +80,24 @@ end
 function outcome = iterateOnFunction(fname, D, R)
     outcome = 0;
     for n = 1:numel(D)
-        res = randomResolution(D(n), R(n));
-        outcome = fname(res); fprintf('.');
-        if outcome ~= 0; break; end
+        res = randomResolution(D(n), R(n,:));
+        outcome = fname(res);
+        if outcome ~= 0;
+            fprintf('To rerun this exact test:\n\tunitTest([%i %i %i], {''%s''})\n', int32(res(1)), int32(res(2)), int32(res(3)), 'umdunno');
+            break;
+        end
+        fprintf('.');
     end
 end
 
 function R = randomResolution(dim, nmax)
-    R = round(nmax*rand(1,3));
-    R(R < 6) = 6;
-    if dim < 3; R(3) = 1; end
+    if dim == -1 % Runs a specific resolution
+        R = nmax;
+    else
+        R = round(nmax.*rand(1,3));
+        R(R < 6) = 6;
+        if dim < 3; R(3) = 1; end
+    end
 end
 
 % Provide a default 'return does-not-exist' target
@@ -111,10 +135,16 @@ function fail = testCudaArrayRotateB(res)
     if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
     clear Yg;
 
-    if res(3) > 1
+    if res(3) > 1 % Test further transpositions in higher dimensions
         Yg = GPU_Type(cudaArrayRotateB(Xg,3));
-        Xp = []; for z = 1:res(2); Xp(:,z,:) = squeeze(X(:,z,:))'; end
+        Xp = permute(X, [3 2 1]);
+
         if any(any(any(Yg.array ~= Xp))); disp('   !!! Test failed: XZ transpose !!!'); fail = 1; end
+
+        Zg = GPU_Type(cudaArrayRotateB(Xg, 4));
+        Xp = permute(X, [1 3 2]);
+        if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: YZ transpose !!!'); fail = 1; end
+	
      end
 
 end
@@ -194,6 +224,7 @@ function fail = testCudaFreeRadiation(res)
     for thtest = [-.3 0 .28 .5 1 1.3]
         Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
 
+
         cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
         P0 = gm1*(Ehydro - T);
 
@@ -214,7 +245,6 @@ function fail = testCudaFreeRadiation(res)
 
         Pf(COOL) = Tmin*rho(COOL);
         Pf(COLD) = P0(COLD);
-
         Enew = T + Pf/gm1;
 
         if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12;

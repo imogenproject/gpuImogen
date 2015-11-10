@@ -15,8 +15,10 @@
 #include "cudaCommon.h"
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);
-__global__ void cukern_ArrayExchangeY(double *src, double *dst,   int nx, int ny, int nz);
-__global__ void cukern_ArrayExchangeZ(double *src, double *dst,   int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeXY(double *src, double *dst,   int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeXZ(double *src, double *dst,   int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int ny, int nz);
+
 
 #define BDIM 16
 
@@ -35,9 +37,6 @@ __global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-
-	dim3 blocksize; blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-	dim3 gridsize;
 	int makeNew = 0;
 
         if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotateB(GPU array, dir to transpose with X)"); }
@@ -63,28 +62,36 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	MGArray trans = src;
 
-	int indExchange = (int)*mxGetPr(prhs[1]);
+	int indExchange = (int)*mxGetPr(prhs[1]) - 1;
 	int i, sub[6];
 
-	indExchange -= 1;
 	int is3d = (src.dim[2] > 1);
-	int newPartDirect;
 
-	if(indExchange == 1) { newPartDirect = PARTITION_Y; } else { newPartDirect = PARTITION_Z; }
+	// Transpose XY or XZ
+	switch(indExchange) {
+	case 1: /* flip X <-> Y */
+		trans.dim[0] = src.dim[1];
+		trans.dim[1] = src.dim[0];
 
-	gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
-	gridsize.y = src.dim[indExchange] / BDIM; if(gridsize.y*BDIM < src.dim[indExchange]) gridsize.y++;
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
+		break;
+	case 2: /* flip X <-> Z */
+		trans.dim[0] = src.dim[2];
+		trans.dim[2] = src.dim[0];
 
-	blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-
-	// Transpose X and Y sizes
-	trans.dim[0] = src.dim[indExchange];
-	trans.dim[indExchange] = src.dim[0];
-	// Flip the partition direction if appropriate
-	if(trans.partitionDir == PARTITION_X) {
-		trans.partitionDir = newPartDirect;
-	} else if(trans.partitionDir == newPartDirect) {
-		trans.partitionDir = PARTITION_X;
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
+		break;
+	case 3: /* flip Y <-> Z */
+		trans.dim[2] = src.dim[1];
+		trans.dim[1] = src.dim[2];
+		// Flip the partition direction if appropriate
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
+		break;
+	default:
+		mexErrMsgTxt("Index to exchange is invalid!");
 	}
 
 	// Recalculate the partition sizes
@@ -105,19 +112,46 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		serializeMGArrayToTag(&trans, (int64_t *)mxGetData(prhs[0]));
 	}
 
+	dim3 blocksize, gridsize;
+
 	for(i = 0; i < trans.nGPUs; i++) {
 		cudaSetDevice(trans.deviceID[i]);
 		CHECK_CUDA_ERROR("cudaSetDevice()");
 		calcPartitionExtent(&src, i, sub);
 
-		if(indExchange == 2) {
-			cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
-		} else {
+		switch(indExchange) {
+		case 1:
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+			gridsize.x = ROUNDUPTO(src.dim[0], BDIM) / BDIM;
+			gridsize.y = ROUNDUPTO(src.dim[1], BDIM) / BDIM;
+			gridsize.z = 1;
+
 			if(is3d) {
-				cukern_ArrayExchangeY<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
+				cukern_ArrayExchangeXY<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
 			} else {
 				cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4]);
 			}
+			break;
+		case 2:
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+			gridsize.x = ROUNDUPTO(src.dim[0], BDIM) / BDIM;
+			gridsize.y = ROUNDUPTO(src.dim[2], BDIM) / BDIM;
+			gridsize.z = 1;
+
+			cukern_ArrayExchangeXZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+			break;
+
+		case 3:
+			blocksize.x = 32;
+			blocksize.y = blocksize.z = 4;
+
+			gridsize.x = ROUNDUPTO(sub[3], blocksize.x) / blocksize.x;
+			gridsize.y = ROUNDUPTO(sub[4], blocksize.y) / blocksize.y;
+			gridsize.z = 1;
+
+			cukern_ArrayExchangeYZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
+
+			break;
 		}
 		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
 	}
@@ -161,7 +195,7 @@ __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny
 
 }
 
-__global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, int nz)
+__global__ void cukern_ArrayExchangeXY(double *src, double *dst, int nx, int ny, int nz)
 {
 
 	__shared__ double tmp[BDIM][BDIM+1];
@@ -192,7 +226,7 @@ __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, 
 
 }
 
-__global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, int nz)
+__global__ void cukern_ArrayExchangeXZ(double*src, double *dst, int nx, int ny, int nz)
 {
 	__shared__ double tmp[BDIM][BDIM+1];
 
@@ -223,3 +257,27 @@ __global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, i
 
 }
 
+/* Assume we have threads that span X and input Y; step in input Z */
+__global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int ny, int nz)
+{
+int myx = threadIdx.x + blockDim.x*blockIdx.x;
+if(myx >= nx) return;
+
+int inputY = threadIdx.y + blockDim.y*blockIdx.y;
+if(inputY >= ny) return;
+
+int inputZ;
+int outputY, outputZ;
+
+/* Because the natively aligned index doesn't change, no need to stream through shmem to maintain global r/w coalescence */
+for(inputZ = threadIdx.z; inputZ < nz; inputZ += blockDim.z) {
+	outputY = inputZ;
+	outputZ = inputY;
+	
+	dst[myx + outputY*nx + outputZ*nx*nz] = 
+	src[myx + inputY*nx + inputZ *nx*ny];
+
+}
+
+
+}
