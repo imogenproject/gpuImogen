@@ -15,10 +15,11 @@
 #include "cudaCommon.h"
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);
-__global__ void cukern_ArrayExchangeXY(double *src, double *dst,   int nx, int ny, int nz);
-__global__ void cukern_ArrayExchangeXZ(double *src, double *dst,   int nx, int ny, int nz);
-__global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int ny, int nz);
-
+__global__ void cukern_ArrayExchangeXY(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeXZ(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeYZ(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayRotateRight(double *src, double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny, int nz);
 
 #define BDIM 16
 
@@ -65,13 +66,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	int indExchange = (int)*mxGetPr(prhs[1]) - 1;
 	int i, sub[6];
 
-	int is3d = (src.dim[2] > 1);
+	int is3d = (src.dim[2] > 3);
+
+	if((is3d == 0) && (indExchange != 1)) return; // The only valid operation on a 2D matrix is transpose!
 
 	// Transpose XY or XZ
 	switch(indExchange) {
 	case 1: /* flip X <-> Y */
 		trans.dim[0] = src.dim[1];
 		trans.dim[1] = src.dim[0];
+
+		trans.currentPermutation[0] = src.currentPermutation[1];
+		trans.currentPermutation[1] = src.currentPermutation[0];
 
 		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
 		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
@@ -80,26 +86,52 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		trans.dim[0] = src.dim[2];
 		trans.dim[2] = src.dim[0];
 
+		trans.currentPermutation[0] = src.currentPermutation[2];
+		trans.currentPermutation[2] = src.currentPermutation[0];
+
 		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
 		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
 		break;
 	case 3: /* flip Y <-> Z */
-		trans.dim[2] = src.dim[1];
 		trans.dim[1] = src.dim[2];
-		// Flip the partition direction if appropriate
+		trans.dim[2] = src.dim[1];
+
+		trans.currentPermutation[1] = src.currentPermutation[2];
+		trans.currentPermutation[2] = src.currentPermutation[1];
+
 		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
+		break;
+	case 4: /* Rotate XYZ left to YZX */
+		for(i = 0; i < 3; i++) trans.dim[i] = src.dim[(i+1)%3];
+
+		for(i = 0; i < 3; i++) trans.currentPermutation[i] = src.currentPermutation[(i+1)%3];
+
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
+		break;
+	case 5: /* Rotate XYZ right to ZXY */
+		for(i = 0; i < 3; i++) trans.dim[i] = src.dim[(i+2)%3];
+
+		for(i = 0; i < 3; i++) trans.currentPermutation[i] = src.currentPermutation[(i+2)%3];
+
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
 		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
 		break;
 	default:
 		mexErrMsgTxt("Index to exchange is invalid!");
 	}
 
+	trans.permtag = MGA_numsToPermtag(&trans.currentPermutation[0]);
+
 	// Recalculate the partition sizes
+	// FIXME: This... remains the same, n'est ce pas?
 	for(i = 0; i < trans.nGPUs; i++) {
 		calcPartitionExtent(&trans, i, sub);
 		trans.partNumel[i] = sub[3]*sub[4]*sub[5];
 	}
-
 
 	MGArray *nuClone;
 
@@ -150,6 +182,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			gridsize.z = 1;
 
 			cukern_ArrayExchangeYZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
+
+			break;
+		case 4:
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+			gridsize.x = ROUNDUPTO(src.dim[0], BDIM)/BDIM;
+			gridsize.y = ROUNDUPTO(src.dim[1], BDIM)/BDIM;
+			gridsize.z = 1;
+
+			cukern_ArrayRotateLeft<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+
+			break;
+		case 5:
+			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+			gridsize.x = ROUNDUPTO(src.dim[0], BDIM)/BDIM;
+			gridsize.y = ROUNDUPTO(src.dim[2], BDIM)/BDIM;
+			gridsize.z = 1;
+
+			cukern_ArrayRotateRight<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
 
 			break;
 		}
@@ -260,24 +312,86 @@ __global__ void cukern_ArrayExchangeXZ(double*src, double *dst, int nx, int ny, 
 /* Assume we have threads that span X and input Y; step in input Z */
 __global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int ny, int nz)
 {
-int myx = threadIdx.x + blockDim.x*blockIdx.x;
-if(myx >= nx) return;
+	int myx = threadIdx.x + blockDim.x*blockIdx.x;
+	if(myx >= nx) return;
 
-int inputY = threadIdx.y + blockDim.y*blockIdx.y;
-if(inputY >= ny) return;
+	int inputY = threadIdx.y + blockDim.y*blockIdx.y;
+	if(inputY >= ny) return;
 
-int inputZ;
-int outputY, outputZ;
+	int inputZ;
+	int outputY, outputZ;
 
-/* Because the natively aligned index doesn't change, no need to stream through shmem to maintain global r/w coalescence */
-for(inputZ = threadIdx.z; inputZ < nz; inputZ += blockDim.z) {
-	outputY = inputZ;
-	outputZ = inputY;
-	
-	dst[myx + outputY*nx + outputZ*nx*nz] = 
-	src[myx + inputY*nx + inputZ *nx*ny];
+	/* Because the natively aligned index doesn't change, no need to stream through shmem to maintain global r/w coalescence */
+	for(inputZ = threadIdx.z; inputZ < nz; inputZ += blockDim.z) {
+		outputY = inputZ;
+		outputZ = inputY;
+
+		dst[myx + outputY*nx + outputZ*nx*nz] =
+				src[myx + inputY*nx + inputZ *nx*ny];
+
+	}
 
 }
 
 
+/* This kernel takes an input array src[i + nx(j+ny k)] and writes dst[k + nz(i + nx j)]
+ * such that for input indices ordered [123] output indices are ordered [312]
+ *
+ * Strategy: blocks span I-K space and walk in J.
+ */
+__global__ void cukern_ArrayRotateRight(double *src, double *dst,  int nx, int ny, int nz)
+{
+	int i, j, k;
+	i = threadIdx.x + blockDim.x*blockIdx.x;
+	k = threadIdx.y + blockDim.y*blockIdx.y;
+	bool doread = (i < nx) && (k < nz);
+	src += (i + nx*ny*k);
+
+	i = threadIdx.y + blockDim.x*blockIdx.x;
+	k = threadIdx.x + blockDim.y*blockIdx.y;
+	bool dowrite = (i < nx) && (k < nz);
+	dst += (k + nz*i);
+
+	__shared__ double tile[BDIM][BDIM+1];
+
+	for(j = 0; j < ny; j++) {
+		if(doread)
+			tile[threadIdx.y][threadIdx.x] = src[nx*j];
+		__syncthreads();
+		if(dowrite)
+			dst[nz*nx*j] = tile[threadIdx.x][threadIdx.y];
+		__syncthreads();
+	}
+	
+}
+
+/* This kernel takes input array src[i + nx(j + ny k)] and writes dst[j + ny(k + nz i)]
+ * such that input indices ordered [123] give output indices ordered [231]
+ *
+ * Strategy: Blocks span I-J space and walk K
+ */
+__global__ void cukern_ArrayRotateLeft(double *src, double *dst,  int nx, int ny, int nz)
+{
+
+	int i,j,k;
+	i = threadIdx.x + blockDim.x*blockIdx.x;
+	j = threadIdx.y + blockDim.y*blockIdx.y;
+	bool doread = (i < nx) && (j < ny);
+	src += (i + nx*j);
+
+	i = threadIdx.y + blockDim.x*blockIdx.x;
+	j = threadIdx.x + blockDim.y*blockIdx.y;
+	bool dowrite = (i < nx) && (j < ny);
+	dst += (j + ny*nz*i);
+
+	__shared__ double tile[BDIM][BDIM+1];
+
+	for(k = 0; k < nz; k++) {
+		if(doread)
+			tile[threadIdx.x][threadIdx.y] = src[nx*ny*k];
+		__syncthreads();
+		if(dowrite)
+			dst[ny*k] = tile[threadIdx.y][threadIdx.x];
+		__syncthreads();
+	}
 }

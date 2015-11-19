@@ -52,7 +52,7 @@ typedef struct {
 #define PARTITION_Z 3
 
 // Never ever don't use these
-#define GPU_TAG_LENGTH 8
+#define GPU_TAG_LENGTH 9
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
@@ -61,6 +61,7 @@ typedef struct {
 #define GPU_TAG_PARTDIR 5
 #define GPU_TAG_NGPUS 6
 #define GPU_TAG_EXTERIORHALO 7
+#define GPU_TAG_DIMPERMUTATION 8
 
 // Templates seem to dislike MPI_Op? Switches definitely do.
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
@@ -86,6 +87,9 @@ typedef struct {
     // so we do NOT need to.
     int addExteriorHalo;
 
+    int permtag;
+    int currentPermutation[3];
+
     int nGPUs;
     int deviceID[MAX_GPUS_USED];
     double *devicePtr[MAX_GPUS_USED];
@@ -97,6 +101,9 @@ cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
 bool     sanityCheckTag(const mxArray *tag);     // sanity
 
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
+
+void MGA_permtagToNums(int permtag, int *p);
+int MGA_numsToPermtag(int *nums);
 
 void     deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
 void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array

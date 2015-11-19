@@ -135,7 +135,7 @@ function fail = testCudaArrayRotateB(res)
     if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
     clear Yg;
 
-    if res(3) > 1 % Test further transpositions in higher dimensions
+    if res(3) > 3 % Test further transpositions in higher dimensions
         Yg = GPU_Type(cudaArrayRotateB(Xg,3));
         Xp = permute(X, [3 2 1]);
 
@@ -145,6 +145,16 @@ function fail = testCudaArrayRotateB(res)
         Xp = permute(X, [1 3 2]);
         if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: YZ transpose !!!'); fail = 1; end
 	
+	Zg = GPU_Type(cudaArrayRotateB(Xg, 5);
+	cudaArrayRotateB(Zg,5);
+	cudaArrayRotateB(Zg,5);
+	if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: Permute indices left !!!'); fail = 1; end 
+
+	Zg = GPU_Type(cudaArrayRotateB(Xg, 6);
+	cudaArrayRotateB(Zg,6);
+	cudaArrayRotateB(Zg,6);
+	if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: Permute indices right !!!'); fail = 1; end 
+
      end
 
 end

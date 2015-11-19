@@ -38,18 +38,41 @@ bool sanityCheckTag(const mxArray *tag)
 	int partitionDir = x[GPU_TAG_PARTDIR];
 	int nDevs        = x[GPU_TAG_NGPUS];
 
+        int permtag      = x[GPU_TAG_DIMPERMUTATION];
+
 	// Some basic does-this-make-sense
-	if(nDevs < 1) return false;
-	if(nDevs > MAX_GPUS_USED) return false;
+	if(nDevs < 1) {
+		printf("Tag indicates less than one GPU in use.\n");
+		return false;
+	}
+	if(nDevs > MAX_GPUS_USED) {
+		printf("Tag indicates %i GPUs in use, current config only supports %i.\n", nDevs, MAX_GPUS_USED);
+		return false;
+	}
 	if(halo < 0) { // check it is sane to clone
 		if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
 	}
 
-	if((partitionDir < 1) || (partitionDir > 3)) return false;
+        if((permtag < 1) || (permtag > 6)) {
+        	if(permtag == 0) {
+        		// meh
+        	} else {
+        		printf("Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
+        		return false;
+        	}
+	}
+
+	if((partitionDir < 1) || (partitionDir > 3)) {
+		printf("Indicated partition direction of %i is not 1, 2, or 3.\n", partitionDir);
+		return false;
+	}
 
 	// Require there be exactly the storage required
 	int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
-	if(tagsize != requisiteNumel) return false;
+	if(tagsize != requisiteNumel) {
+		printf("Tag length is %i: Must be %i base + 2*nDevs = %i\n", tagsize, GPU_TAG_LENGTH, requisiteNumel);
+		return false;
+	}
 
 	int j;
 	x += GPU_TAG_LENGTH;
@@ -172,6 +195,9 @@ void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 
 	mg->addExteriorHalo = tag[GPU_TAG_EXTERIORHALO];
 
+	mg->permtag = tag[GPU_TAG_DIMPERMUTATION];
+    MGA_permtagToNums(mg->permtag, &mg->currentPermutation[0]);
+
 	int sub[6];
 
 	tag += GPU_TAG_LENGTH;
@@ -201,6 +227,8 @@ void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
      halo size on shared edges
      Direction to parition in [1 = x, 2 = y, 3 = x]
      # of GPU paritions being used
+     Halo exterior, if true
+     current in-memory orientation
      device ID 0
      device memory* 0
      device ID 1
@@ -211,14 +239,15 @@ void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
  */
 void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 {
-	tag[GPU_TAG_DIM0] = mg->dim[0];
-	tag[GPU_TAG_DIM1] = mg->dim[1];
-	tag[GPU_TAG_DIM2] = mg->dim[2];
+	tag[GPU_TAG_DIM0]    = mg->dim[0];
+	tag[GPU_TAG_DIM1]    = mg->dim[1];
+	tag[GPU_TAG_DIM2]    = mg->dim[2];
 	tag[GPU_TAG_DIMSLAB] = mg->numSlabs;
-	tag[GPU_TAG_HALO] = mg->haloSize;
+	tag[GPU_TAG_HALO]    = mg->haloSize;
 	tag[GPU_TAG_PARTDIR] = mg->partitionDir;
-	tag[GPU_TAG_NGPUS] = mg->nGPUs;
-	tag[GPU_TAG_EXTERIORHALO] = mg->addExteriorHalo;
+	tag[GPU_TAG_NGPUS]   = mg->nGPUs;
+	tag[GPU_TAG_EXTERIORHALO]   = mg->addExteriorHalo;
+	tag[GPU_TAG_DIMPERMUTATION] = mg->permtag;
 
 	int i;
 	for(i = 0; i < mg->nGPUs; i++) {
@@ -227,6 +256,43 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 	}
 
 	return;
+}
+
+void MGA_permtagToNums(int permtag, int *p)
+{
+	if(p == NULL) return;
+
+	switch(permtag) {
+	case 1: p[0] = 1; p[1] = 2; p[2] = 3; break;
+	case 2: p[0] = 1; p[1] = 3; p[2] = 2; break;
+	case 3: p[0] = 2; p[1] = 1; p[2] = 3; break;
+	case 4: p[0] = 2; p[1] = 3; p[2] = 1; break;
+	case 5: p[0] = 3; p[1] = 1; p[2] = 2; break;
+	case 6: p[0] = 3; p[1] = 2; p[2] = 1; break;
+	}
+
+}
+
+int MGA_numsToPermtag(int *nums)
+{
+	if(nums == NULL) return -1;
+
+	switch(nums[0]) {
+	case 1: { // x first
+		if((nums[1] == 2) && (nums[2] == 3)) return 1; // XYZ
+		if((nums[1] == 3) && (nums[2] == 2)) return 2; // XZY
+	} break;
+	case 2: { // y first
+		if((nums[1] == 1) && (nums[2] == 3)) return 3; // YXZ
+		if((nums[1] == 3) && (nums[2] == 1)) return 4; // YXZ
+	} break;
+	case 3: { // z first
+		if((nums[1] == 1) && (nums[2] == 2)) return 5; // ZXY
+		if((nums[1] == 2) && (nums[2] == 1)) return 6; // ZYX
+	} break;
+	}
+
+return 0;
 }
 
 // Helpers to easily access/create multiple arrays

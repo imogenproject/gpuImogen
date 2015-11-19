@@ -41,6 +41,8 @@
 This function calculates a first order accurate upwind step of the conserved transport part of the 
 Euler equations (CFD or MHD) which is used as the half-step predictor in the Runge-Kutta timestep
 
+For simple CFD, the magnetic terms are identically zero.
+
 The 1D fluid equations solved are the conserved transport equations,
      | rho |         | px                       |
      | px  |         | vx px + P - bx^2         |
@@ -65,10 +67,10 @@ and considerably speeds up the process.
 //__device__ void __syncthreads(void);
 
 /* This is my handwritten assembly version of the Osher function
- * It is observed to to save some 10% on execution time if used
+ * It is not now observed to execute faster than the -O2 version of same.
  */
 
-/*__device__ double slopeLimiter_Osher(double A, double B)
+__device__ double slopeLimiter_Osher_asm(double A, double B)
 {
 double retval;
 asm(    ".reg .f64 s;\n\t"      // hold sum
@@ -87,7 +89,7 @@ asm(    ".reg .f64 s;\n\t"      // hold sum
         "div.rn.f64     %0, p, q;\n\t" // Store that / the quotient in return register
         "endline:\n\t" : "=d"(retval) : "d"(A), "d"(B) );
 return retval;
-}*/
+}
 
 pParallelTopology topoStructureToC(const mxArray *prhs);
 void cfSync(double *cfArray, int cfNumel, const mxArray *topo);
@@ -136,7 +138,7 @@ __constant__ __device__ double fluidQtys[8];
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
-#define SLOPEFUNC slopeLimiter_Osher
+#define SLOPEFUNC slopeLimiter_Osher_asm
 //#define SLOPEFUNC slopeLimiter_Zero
 //#define SLOPEFUNC slopeLimiter_minmod
 //#define SLOPEFUNC slopeLimiter_VanLeer
@@ -177,7 +179,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	//cudaStream_t *GPUStreamList = getGPUTypeStreams(prhs[0]);
 
-	// The sanity checker tended to barf on the 6 [allzeros] that represent "no array" before.
+	// The sanity checker tended to barf on the 9 [allzeros] that represent "no array" before.
 	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 5, 7, &mag[0]);
 	worked = MGA_accessMatlabArrays(prhs, 8, 9, &PC[0]);
 
@@ -509,8 +511,9 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 
 #define N_SHMEM_BLOCKS 5
 
+
 template <unsigned int fluxDirection>
-__global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
+__global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 {
 	// Create center, look-left and look-right indexes
 	int IC = threadIdx.x;
@@ -526,6 +529,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 	/* Declare shared variable array */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
+	double *shptr = &shblk[IC];
 
 	/* Declare tons of doubles and hope optimizer can sort this out */
 	double A, B, C, D, E, F, G, H;
@@ -577,11 +581,11 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		D *= F;
 		E *= F;
 
-		shblk[IC+BOS0] = A; /* Upload rho  to shmem */
-		shblk[IC+BOS1] = FLUID_GM1*B; /* pressure */
-		shblk[IC+BOS2] = C; /* vx */
-		shblk[IC+BOS3] = D; /* vy */
-		shblk[IC+BOS4] = E; /* vz */
+		shptr[BOS0] = A; /* Upload rho  to shmem */
+		shptr[BOS1] = FLUID_GM1*B; /* pressure */
+		shptr[BOS2] = C; /* vx */
+		shptr[BOS3] = D; /* vy */
+		shptr[BOS4] = E; /* vz */
 
 		__syncthreads();
 
@@ -592,13 +596,13 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 		C = C*C+D*D+E*E; /* velocity jump, squared */
 
-		A = shblk[IC+BOS0]; /* rho_le */
+		A = shptr[BOS0]; /* rho_le */
 		B = shblk[IR+BOS0]; /* rho_re */
 		F = sqrt(B/A); /* = batten et al's R */
 
 		A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
 
-		C = shblk[IC+BOS1]/shblk[IC+BOS0]; /* Pl/rhol = csq_l / gamma */
+		C = shptr[BOS1]/shptr[BOS0]; /* Pl/rhol = csq_l / gamma */
 		D = shblk[IR+BOS1]/B; /* Pr/rhor = csq_r / gamma */
 
 		E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
@@ -608,7 +612,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		C = sqrt(FLUID_GAMMA * C); // left c_s
 		D = sqrt(FLUID_GAMMA * D); // right c_s
 
-		A = shblk[IC+BOS2]; /* vx_le */
+		A = shptr[BOS2]; /* vx_le */
 		B = shblk[IR+BOS2]; /* vx_re */
 
 		F = (A + F*B)/(1.0+F); /* vx_tilde */
@@ -630,7 +634,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
 		__syncthreads(); // I don't think this is necessary...
 
-		A = shblk[IC+BOS0]*(C-A); // rho*(S-v) left
+		A = shptr[BOS0]*(C-A); // rho*(S-v) left
 		B = shblk[IR+BOS0]*(D-B); // rho*(S-v) right
 
 		/* Batten et al, Eqn 34 for S_M:
@@ -638,7 +642,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
 			 -------------------------------------------
 		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
-		E = (B*shblk[IR+BOS2] - shblk[IR+BOS1] - A*shblk[IC+BOS2] + shblk[IC+BOS1]) / (B-A);
+		E = (B*shblk[IR+BOS2] - shblk[IR+BOS1] - A*shptr[BOS2] + shptr[BOS1]) / (B-A);
 		__syncthreads();
 		#ifdef DBG_FIRSTORDER
 			DBGSAVE(1, E);
@@ -658,12 +662,12 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 		switch(fluxmode) {
 			case 0:
-				A = shblk[IC+BOS0]; // rho
-				B = shblk[IC+BOS2]; // vx
-				C = shblk[IC+BOS3]; // vy
-				D = shblk[IC+BOS4]; // vz
+				A = shptr[BOS0]; // rho
+				B = shptr[BOS2]; // vx
+				C = shptr[BOS3]; // vy
+				D = shptr[BOS4]; // vz
 				E = .5*(B*B+C*C+D*D)*A; // .5 v^2
-				F = shblk[IC+BOS1]; // P
+				F = shptr[BOS1]; // P
 
 				A *= B; // rho vx           = RHO FLUX
 				C *= A; // rho vx vy        = PY FLUX
@@ -673,19 +677,19 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 				break;
 			case 2: 
 /* Case 3 differs from case 2 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
-				A = shblk[IC+BOS0]; // rho
-				B = shblk[IC+BOS2]; // vx
+				A = shptr[BOS0]; // rho
+				B = shptr[BOS2]; // vx
 				D = A*(C-B)/(C-E);  // rho*beta
-				F = shblk[IC+BOS3]; // vy
-				H = shblk[IC+BOS4]; // vz
+				F = shptr[BOS3]; // vy
+				H = shptr[BOS4]; // vz
 				G = .5*(B*B+F*F+H*H); // .5v^2
 				A = D*E; // RHO FLUX
 				F *= A; // PY FLUX
 				H *= A; // PZ FLUX
 
 				C *= (E-B); // S(Sstar-vx)
-				B = shblk[IC+BOS1] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
-				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS1]/shblk[IC+BOS0] + G + C);
+				B = shptr[BOS1] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shptr[BOS1]/shptr[BOS0] + G + C);
 				break;
 			case 3:
 				A = shblk[IR+BOS0]; // rho
@@ -724,49 +728,49 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		switch(fluxmode) {
 			case 0:
 			case 1:
-				shblk[IC+BOS0] = A;
-				shblk[IC+BOS1] = B;
-				shblk[IC+BOS2] = G;
-				shblk[IC+BOS3] = C;
-				shblk[IC+BOS4] = D;
+				shptr[BOS0] = A;
+				shptr[BOS1] = B;
+				shptr[BOS2] = G;
+				shptr[BOS3] = C;
+				shptr[BOS4] = D;
 			break;
 			case 2:
 			case 3:
-				shblk[IC+BOS0] = A;
-				shblk[IC+BOS1] = G;
-				shblk[IC+BOS2] = B;
-				shblk[IC+BOS3] = F;
-				shblk[IC+BOS4] = H;
+				shptr[BOS0] = A;
+				shptr[BOS1] = G;
+				shptr[BOS2] = B;
+				shptr[BOS3] = F;
+				shptr[BOS4] = H;
 			break;
 		}
 
 		__syncthreads();
 		// All fluxes are now uploaded to shmem:
-		// shblk[IC+BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
+		// shptr[BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
 
 #ifdef DBG_FIRSTORDER
-	DBGSAVE(4, shblk[IC+BOS2]); // px flux
-	DBGSAVE(5, shblk[IC+BOS1]); // E flux
+	DBGSAVE(4, shptr[BOS2]); // px flux
+	DBGSAVE(5, shptr[BOS1]); // E flux
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              = Qin[0           ] - lambda * (shblk[IC+BOS0]-shblk[IL+BOS0]);
-			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * (shblk[IC+BOS1]-shblk[IL+BOS1]);
+			Qout[0]              = Qin[0           ] - lambda * (shptr[BOS0]-shblk[IL+BOS0]);
+			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * (shptr[BOS1]-shblk[IL+BOS1]);
 			switch(fluxDirection) {
 			case FLUX_X:
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			case FLUX_Y:
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			case FLUX_Z:
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			}
 		}
@@ -797,6 +801,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 
 	/* Declare shared variable array */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
+	double *shptr = &shblk[IC];
 
 	/* Declare tons of doubles and hope optimizer can sort this out */
 	double A, B, C, D, E, F, G, H;
@@ -846,70 +851,70 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		D *= F;
 		E *= F;
 
-		shblk[IC+BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
-		shblk[IC+BOS2] = B;
-		shblk[IC+BOS4] = C;
-		shblk[IC+BOS6] = D;
-		shblk[IC+BOS8] = E;
+		shptr[BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
+		shptr[BOS2] = B;
+		shptr[BOS4] = C;
+		shptr[BOS6] = D;
+		shptr[BOS8] = E;
 
 		__syncthreads();
 		/* Perform monotonic reconstruction */
 
 		F = A - shblk[IL+BOS0];           // take backwards derivative
-		shblk[IC+BOS1] = F;               // upload
+		shptr[BOS1] = F;               // upload
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS1]); // Compute monotonic slope
 		__syncthreads();
-		shblk[IC+BOS0] = A-F;             // apply left/right corrections
-		shblk[IC+BOS1] = A+F;
+		shptr[BOS0] = A-F;             // apply left/right corrections
+		shptr[BOS1] = A+F;
 
 		F = B - shblk[IL+BOS2]; 
-		shblk[IC+BOS3] = F;
+		shptr[BOS3] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS3]);
 		__syncthreads();
-		shblk[IC+BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
-		shblk[IC+BOS3] = FLUID_GM1*(B+F);
+		shptr[BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
+		shptr[BOS3] = FLUID_GM1*(B+F);
 
 		F = C - shblk[IL+BOS4];
-		shblk[IC+BOS5] = F;
+		shptr[BOS5] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS5]);
 		__syncthreads();
-		shblk[IC+BOS4] = C-F;
-		shblk[IC+BOS5] = C+F;
+		shptr[BOS4] = C-F;
+		shptr[BOS5] = C+F;
 
 		F = D - shblk[IL+BOS6]; 
-		shblk[IC+BOS7] = F;
+		shptr[BOS7] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS7]);
 		__syncthreads();
-		shblk[IC+BOS6] = D-F;
-		shblk[IC+BOS7] = D+F;
+		shptr[BOS6] = D-F;
+		shptr[BOS7] = D+F;
 
 		F = E - shblk[IL+BOS8];
-		shblk[IC+BOS9] = F;
+		shptr[BOS9] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS9]);
 		__syncthreads();
-		shblk[IC+BOS8] = E-F;
-		shblk[IC+BOS9] = E+F;
+		shptr[BOS8] = E-F;
+		shptr[BOS9] = E+F;
 		__syncthreads();
 
 		/* CALCULATE WAVESPEED ESTIMATE */
-		C = shblk[IC+BOS5]-shblk[IR+BOS4]; /* Calculate Vleft - Vright */
-                D = shblk[IC+BOS7]-shblk[IR+BOS6];
-                E = shblk[IC+BOS9]-shblk[IR+BOS8];
+		C = shptr[BOS5]-shblk[IR+BOS4]; /* Calculate Vleft - Vright */
+                D = shptr[BOS7]-shblk[IR+BOS6];
+                E = shptr[BOS9]-shblk[IR+BOS8];
 
                 C = C*C+D*D+E*E; /* velocity jump, squared */
 
-                A = shblk[IC+BOS1]; /* rho_le */
+                A = shptr[BOS1]; /* rho_le */
                 B = shblk[IR+BOS0]; /* rho_re */
                 F = sqrt(B/A); /* = batten et al's R */
 
                 A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
 
-                C = shblk[IC+BOS3]/shblk[IC+BOS1]; /* Pl/rhol = csq_l / gamma */
+                C = shptr[BOS3]/shptr[BOS1]; /* Pl/rhol = csq_l / gamma */
                 D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
 
                 E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
@@ -919,7 +924,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		C = sqrt(FLUID_GAMMA * C); // left c_s
 		D = sqrt(FLUID_GAMMA * D); // right c_s
 
-		A = shblk[IC+BOS5]; /* vx_le */
+		A = shptr[BOS5]; /* vx_le */
 		B = shblk[IR+BOS4]; /* vx_re */
 
 		F = (A + F*B)/(1.0+F); /* vx_tilde */
@@ -942,14 +947,14 @@ DBGSAVE(2, D);
 		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
 		__syncthreads(); // I don't think this is necessary...
 
-		A = shblk[IC+BOS1]*(C-A); // rho_le*(Sleft - vx_le)
+		A = shptr[BOS1]*(C-A); // rho_le*(Sleft - vx_le)
 		B = shblk[IR+BOS0]*(D-B); // rho_re*(Sright- vx_re)
 		/* Batten et al, Eqn 34 for S_M:
 		Speed of HLLC contact
 		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
 			 -------------------------------------------
 		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
-		E = (B*shblk[IR+BOS4] - shblk[IR+BOS2] - A*shblk[IC+BOS5] + shblk[IC+BOS3]) / (B-A);
+		E = (B*shblk[IR+BOS4] - shblk[IR+BOS2] - A*shptr[BOS5] + shptr[BOS3]) / (B-A);
 		__syncthreads();
 #ifdef DBG_SECONDODER
 DBGSAVE(1, E);
@@ -965,12 +970,12 @@ DBGSAVE(1, E);
 
 		switch(fluxmode) {
 			case 0:
-				A = shblk[IC+BOS1]; // rho
-				B = shblk[IC+BOS5]; // vx
-				C = shblk[IC+BOS7]; // vy
-				D = shblk[IC+BOS9]; // vz
+				A = shptr[BOS1]; // rho
+				B = shptr[BOS5]; // vx
+				C = shptr[BOS7]; // vy
+				D = shptr[BOS9]; // vz
 				E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2 = KE
-				F = shblk[IC+BOS3]; // P
+				F = shptr[BOS3]; // P
 
 				A *= B; // rho vx           = RHO FLUX
 				C *= A; // rho vx vy        = PY FLUX
@@ -980,19 +985,19 @@ DBGSAVE(1, E);
 				break;
 			case 2: 
 /* Case two differs from case 1 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
-				A = shblk[IC+BOS1]; // rho
-				B = shblk[IC+BOS5]; // vx
+				A = shptr[BOS1]; // rho
+				B = shptr[BOS5]; // vx
 				D = A*(C-B)/(C-E);  // rho*beta
-				F = shblk[IC+BOS7]; // vy
-				H = shblk[IC+BOS9]; // vz
+				F = shptr[BOS7]; // vy
+				H = shptr[BOS9]; // vz
 				G = .5*(B*B+F*F+H*H); // .5v^2
 				A = D*E; // RHO FLUX
 				F *= A; // PY FLUX
 				H *= A; // PZ FLUX
 
 				C *= (E-B); // S(Sstar-vx)
-				B = shblk[IC+BOS3] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
-				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS3]/shblk[IC+BOS1] + G + C);
+				B = shptr[BOS3] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shptr[BOS3]/shptr[BOS1] + G + C);
 				break;
 			case 3:
 				A = shblk[IR+BOS0]; // rho
@@ -1010,19 +1015,19 @@ DBGSAVE(1, E);
 				G = C*E*(FLUID_GOVERGM1 * shblk[IR+BOS2]/shblk[IR+BOS0] + G + D);
 				break;
 			case 1:
-                                A = shblk[IR+BOS0]; // rho
-                                B = shblk[IR+BOS4]; // vx
-                                C = shblk[IR+BOS6]; // vy
-                                D = shblk[IR+BOS8]; // vz
-                                E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2
-                                F = shblk[IR+BOS2]; // P
-                                
-                                A *= B; // rho vx           = RHO FLUX
-                                C *= A; // rho vx vy        = PY FLUX
-                                D *= A; // rho vx vz        = PZ FLUX
-                                G = A*B+F; // rho vx vx + P = PX FLUX
-                                B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
-			break;
+				A = shblk[IR+BOS0]; // rho
+				B = shblk[IR+BOS4]; // vx
+				C = shblk[IR+BOS6]; // vy
+				D = shblk[IR+BOS8]; // vz
+				E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2
+				F = shblk[IR+BOS2]; // P
+
+				A *= B; // rho vx           = RHO FLUX
+				C *= A; // rho vx vy        = PY FLUX
+				D *= A; // rho vx vz        = PZ FLUX
+				G = A*B+F; // rho vx vx + P = PX FLUX
+				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				break;
 
 		}
 
@@ -1030,46 +1035,46 @@ DBGSAVE(1, E);
 		switch(fluxmode) {
 			case 0:
 			case 1:
-				shblk[IC+BOS7] = A;
-				shblk[IC+BOS5] = B;
-				shblk[IC+BOS6] = G;
-				shblk[IC+BOS8] = C;
-				shblk[IC+BOS9] = D;
+				shptr[BOS7] = A;
+				shptr[BOS5] = B;
+				shptr[BOS6] = G;
+				shptr[BOS8] = C;
+				shptr[BOS9] = D;
 			break;
 			case 2:
 			case 3:
-				shblk[IC+BOS7] = A;
-				shblk[IC+BOS5] = G;
-				shblk[IC+BOS6] = B;
-				shblk[IC+BOS8] = F;
-				shblk[IC+BOS9] = H;
+				shptr[BOS7] = A;
+				shptr[BOS5] = G;
+				shptr[BOS6] = B;
+				shptr[BOS8] = F;
+				shptr[BOS9] = H;
 			break;
 		}
 
 #ifdef DBG_SECONDORDER
-//DBGSAVE(3, shblk[IC+BOS7]); // rho
-//DBGSAVE(4, shblk[IC+BOS6]); // px
-//DBGSAVE(5, shblk[IC+BOS5]); // E
+//DBGSAVE(3, shptr[BOS7]); // rho
+//DBGSAVE(4, shptr[BOS6]); // px
+//DBGSAVE(5, shptr[BOS5]); // E
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              -= lambda * (shblk[IC+BOS7]-shblk[IL+BOS7]);
-			Qout[DEV_SLABSIZE]   -= lambda * (shblk[IC+BOS5]-shblk[IL+BOS5]);
+			Qout[0]              -= lambda * (shptr[BOS7]-shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * (shptr[BOS5]-shblk[IL+BOS5]);
 			switch(fluxDirection) {
 			case FLUX_X:
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			case FLUX_Y:
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			case FLUX_Z:
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			}
 		}

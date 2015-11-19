@@ -146,7 +146,7 @@ classdef GPU_Type < handle
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
-            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0 0]);
+            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0 0 0]);
             obj.asize = [0 0 0];
             obj.numdims = 2;
         end

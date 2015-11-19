@@ -45,7 +45,7 @@ __global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int n
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	/* Functional form:
-    cudaHaloExchange(arraytag, [orientation 3x1], dimension_to_exchange, parallel topology information)
+    cudaHaloExchange(arraytag, dimension_to_exchange, parallel topology information, circularity)
 
     1. get neighbors from halo library in dimension_to_exchange direction
     2. determine which memory direction that currently is
@@ -54,15 +54,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     5. pass that host pointer to halo_exchange
     6. wait for MPI to return control
 	 */
-	if (nrhs!=5) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, [3x1 orientation], dimension_to_xchg, topology, circularity\n");
-	if(mxGetNumberOfElements(prhs[1]) != 3) mexErrMsgTxt("2nd argument must be a 3-element array\n");
+	if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, dimension_to_xchg, topology, circularity).\n");
 
 	CHECK_CUDA_ERROR("entering cudaHaloExchange");
-	int xchg = (int)*mxGetPr(prhs[2]) - 1;
+	int xchg = (int)*mxGetPr(prhs[1]) - 1;
 	int mgadir = xchg+1;
 	int orient[3];
 
-	pParallelTopology parallelTopo = topoStructureToC(prhs[3]);
+	pParallelTopology parallelTopo = topoStructureToC(prhs[2]);
 
 	if(parallelTopo->nproc[xchg] == 1) return;
 	// Do not waste time if we can't possibly have any work to do
@@ -70,9 +69,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray phi;
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
 
-	int ctr;	for(ctr = 0; ctr < 3; ctr++) { orient[ctr] = (int)*(mxGetPr(prhs[1]) + ctr); }
-
-	int memDimension = orient[xchg]-1; // The actual in-memory direction we're gonna be exchanging
+	int memDimension = phi.currentPermutation[xchg-1]; // The actual in-memory direction we're gonna be exchanging
 
 	CHECK_CUDA_ERROR("Entering cudaHaloExchange");
 	cudaError_t fail;
@@ -83,7 +80,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *ptrHalo;
 
 	/* Be told if the left and right sides of the dimension are circular or not */
-	double *interior = mxGetPr(prhs[4]);
+	double *interior = mxGetPr(prhs[3]);
 	int leftCircular  = (int)interior[2*memDimension];
 	int rightCircular = (int)interior[2*memDimension+1];
 

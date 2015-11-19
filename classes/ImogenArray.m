@@ -25,8 +25,8 @@ classdef ImogenArray < handle
         edgeshifts;     % Handles to shifting functions for each grid direction.    handle(2,3)
         isZero;         % Specifies that the array is statically zero.              logical
         
-        indexGriddim;
-        indexPermute;
+%        indexGriddim;
+%        indexPermute;
     end %PROPERTIES
     
     %===================================================================================================
@@ -80,7 +80,7 @@ classdef ImogenArray < handle
             
             run.bc.attachBoundaryConditions(obj);
             
-            obj.indexPermute = [1 2 3];
+%            obj.indexPermute = [1 2 3];
         end
         
         %___________________________________________________________________________________________________ GS: fades
@@ -108,9 +108,9 @@ classdef ImogenArray < handle
             if obj.pBCUninitialized;
                 % Make certain everyone is on board & shares the same view before setting up BCs
 		GIS = GlobalIndexSemantics();
-                cudaHaloExchange(obj, [1 2 3], 1, GIS.topology, obj.bcHaloShare); 
-                cudaHaloExchange(obj, [1 2 3], 2, GIS.topology, obj.bcHaloShare); 
-                cudaHaloExchange(obj, [1 2 3], 3, GIS.topology, obj.bcHaloShare); 
+                cudaHaloExchange(obj, 1, GIS.topology, obj.bcHaloShare); 
+                cudaHaloExchange(obj, 2, GIS.topology, obj.bcHaloShare); 
+                cudaHaloExchange(obj, 3, GIS.topology, obj.bcHaloShare); 
 
                 obj.setupBoundaries();
                 obj.pBCUninitialized = false;
@@ -231,13 +231,18 @@ classdef ImogenArray < handle
         % Flips the array and all associated subarrays such that direction i and the x (stride-of-1) direction
         % exchange places. Updates the array, all subarrays, and the static indices.
         function arrayIndexExchange(obj, toex, type)
-            if numel(obj.indexGriddim) < 3; obj.indexGriddim = obj.gridSize; end
-            
-            if toex == 1; return; end
-            
-            l = [toex 2 3]; l(toex) = 1;
-            obj.indexGriddim = obj.indexGriddim(l);
-            obj.indexPermute = obj.indexPermute(l);
+%            if numel(obj.indexGriddim) < 3; obj.indexGriddim = obj.gridSize; end
+%
+%	    l = [];
+%            switch toex;
+%                case 1; return;
+%		case 2; l = [2 1 3];
+%		case 3; l = [3 2 1];
+%		case 4; l = [1 3 2];
+%            end
+%            
+%            obj.indexGriddim = obj.indexGriddim(l);
+%            obj.indexPermute = obj.indexPermute(l);
             if type == 1;
                 cudaArrayRotateB(obj.gputag, toex); obj.pArray.flushTag();
             end
@@ -247,9 +252,7 @@ classdef ImogenArray < handle
         % Applies the static conditions for the ImogenArray to the data array. This method is called during
         % array assignment (set.array).
         function applyBoundaryConditions(obj, direction)
-            %    if numel(obj.boundaryData.staticsData) > 0
             cudaStatics(obj, 8, direction);
-            %    end
         end
         
         %___________________________________________________________________________________________________ setupBoundaries

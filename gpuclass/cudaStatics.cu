@@ -72,10 +72,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
 	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
 
-	/* The indexPermute property tells us how the array's indices are currently oriented. */
-	mxArray *permArray =  mxGetProperty(prhs[0], 0, "indexPermute");
-	if(permArray == NULL) mexErrMsgTxt("FATAL: field 'indexPermute' D.N.E. in class. Not an ImogenArray?\n");
-	double *perm = mxGetPr(permArray);
+	int *perm = &phi.currentPermutation[0];
 	int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
 
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
@@ -117,7 +114,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int j;
 	for(j = 0; j < numDirections; j++) {
 		if((int)directionToSet[j] == 0) continue; /* Skips edge BCs if desired. */
-		int trueDirect = (int)perm[(int)directionToSet[j]-1];
+		int trueDirect = perm[(int)directionToSet[j]-1];
 
 		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';

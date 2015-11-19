@@ -1,4 +1,7 @@
 function tortureTest(multidev, dorad)
+% tortureTest([device list], 'y'/'n' to radiative cooling test)
+% > device list: Set of integers naming GPUs to use, as enumerated by GPU_ctrl('info')
+% > dorad: If == 'y' tests cudaFreeRadiation
 
 if nargin < 1
     multidev = [0];
@@ -53,7 +56,7 @@ disp('manifestly defective). Proceeding to fuzz the following routines which hav
 % 50% coverage by unit tests (accreting star broken)
 
 if numel(multidev) < 2;
-    functest = [1 0 0 0];
+    functests = [1 0 0 0];
     disp('>>> WARNING: Only one device indicated. Will not perform multi-device fuzzing tests.');
 else
     functests = [1 1 1 1];
@@ -73,7 +76,7 @@ disp('#########################');
 randSeed = 5418;
 res2d = [2048 2048 1];
 res3d = [192 192 192];
-nTests = 25;
+nTests = 15;
 
 % Test single-device operation
 if functests(1)

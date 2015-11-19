@@ -3,12 +3,10 @@
 include ../Make.config
 
 # Don't mess with any of this. Modify the above config file instead
-GEN_OPTS = 
 
-#NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 $(GEN_OPTS)
-#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
 # To get debuggability & ptxas chatter...
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -g -G 
+#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G 
 #-Xptxas="-v" # Put this back on opts line if you really enjoy compiler output
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 

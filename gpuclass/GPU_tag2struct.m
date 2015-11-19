@@ -9,15 +9,26 @@ switch(double(t(6)) );
 	case 3; partdir = 'Z';
 end
 
-b = (numel(t) - 8)/2;
+memlay = '';
+switch(double(t(9)));
+    case 1; memlay = 'XYZ';
+    case 2; memlay = 'XZY';
+    case 3; memlay = 'YXZ';
+    case 4; memlay = 'YZX';
+    case 5; memlay = 'ZXY';
+    case 6; memlay = 'ZYX';
+end
 
-x = reshape(t(9:end), [2 b]);
+b = (numel(t) - 9)/2;
+
+x = reshape(t(10:end), [2 b]);
 
 s = struct('arrayDimensions', double(t(1:3)'), ...
            'numel', prod(double(t(1:3))), ...
            'haloSize', double(t(5)), ...
            'exteriorHalos', double(t(8)), ...
            'partitionDirection', partdir, ...
+           'memoryLayout', memlay, ...
            'numGPUs', double(t(7)), ...
            'slabInfo', double(t(4)), ...
            'pointers', x);
