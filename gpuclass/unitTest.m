@@ -131,7 +131,7 @@ function fail = testCudaArrayRotateB(res)
     Xg = GPU_Type(X);
     Yg = GPU_Type(cudaArrayRotateB(Xg,2));
     Yg.array(1);
-    Xp = []; for z = 1:res(3); Xp(:,:,z) = transpose(X(:,:,z)); end
+    Xp = permute(X, [2 1 3]);
     if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
     clear Yg;
 
@@ -145,15 +145,17 @@ function fail = testCudaArrayRotateB(res)
         Xp = permute(X, [1 3 2]);
         if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: YZ transpose !!!'); fail = 1; end
 	
-	Zg = GPU_Type(cudaArrayRotateB(Xg, 5);
+	Zg = cudaArrayRotateB(Xg, 5);
 	cudaArrayRotateB(Zg,5);
 	cudaArrayRotateB(Zg,5);
-	if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: Permute indices left !!!'); fail = 1; end 
+	if any(any(any(GPU_download(Zg) ~= X))); disp('   !!! Test failed: Permute indices left !!!'); fail = 1; end 
+	GPU_free(Zg);
 
-	Zg = GPU_Type(cudaArrayRotateB(Xg, 6);
+	Zg = cudaArrayRotateB(Xg, 6);
 	cudaArrayRotateB(Zg,6);
 	cudaArrayRotateB(Zg,6);
-	if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: Permute indices right !!!'); fail = 1; end 
+	if any(any(any(GPU_download(Zg) ~= X))); disp('   !!! Test failed: Permute indices right !!!'); fail = 1; end 
+	GPU_free(Zg);
 
      end
 
