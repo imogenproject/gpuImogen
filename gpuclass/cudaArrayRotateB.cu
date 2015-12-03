@@ -23,19 +23,6 @@ __global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny
 
 #define BDIM 16
 
-__global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz);
-
-__global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz)
-{
-	//int myx = threadIdx.x + BDIM*blockIdx.x;
-	//int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-	//int myaddr = myx + nx*myy;
-
-	//if((myx < nx) && (myy < ny)) dst[myaddr] = src[myaddr];
-	return;
-
-}
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	int makeNew = 0;
@@ -68,7 +55,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	int is3d = (src.dim[2] > 3);
 
-	if((is3d == 0) && (indExchange != 1)) return; // The only valid operation on a 2D matrix is transpose!
+	// These choices assure that the 3D rotation semantics reduce properly for 2D
+	if(is3d == 0) {
+		if(indExchange == 2) return;
+		if(indExchange == 3) return;
+
+		if(indExchange == 4) indExchange = 1; // Index rotate becomes XY transpose
+		if(indExchange == 5) indExchange = 1;
+	}
 
 	// Transpose XY or XZ
 	switch(indExchange) {
@@ -107,18 +101,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 		for(i = 0; i < 3; i++) trans.currentPermutation[i] = src.currentPermutation[(i+1)%3];
 
-		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
-		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
-		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
 		break;
 	case 5: /* Rotate XYZ right to ZXY */
 		for(i = 0; i < 3; i++) trans.dim[i] = src.dim[(i+2)%3];
 
 		for(i = 0; i < 3; i++) trans.currentPermutation[i] = src.currentPermutation[(i+2)%3];
 
-		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
-		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
-		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
+		if(src.partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
+		if(src.partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+		if(src.partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
 		break;
 	default:
 		mexErrMsgTxt("Index to exchange is invalid!");
@@ -152,7 +146,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		calcPartitionExtent(&src, i, sub);
 
 		switch(indExchange) {
-		case 1:
+		case 1: // Flip XY
 			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 			gridsize.x = ROUNDUPTO(src.dim[0], BDIM) / BDIM;
 			gridsize.y = ROUNDUPTO(src.dim[1], BDIM) / BDIM;
@@ -164,7 +158,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 				cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4]);
 			}
 			break;
-		case 2:
+		case 2: // Flip XZ
 			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 			gridsize.x = ROUNDUPTO(src.dim[0], BDIM) / BDIM;
 			gridsize.y = ROUNDUPTO(src.dim[2], BDIM) / BDIM;
@@ -173,7 +167,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			cukern_ArrayExchangeXZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
 			break;
 
-		case 3:
+		case 3: // Flip YZ
 			blocksize.x = 32;
 			blocksize.y = blocksize.z = 4;
 
@@ -184,7 +178,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			cukern_ArrayExchangeYZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
 
 			break;
-		case 4:
+		case 4: // Rotate left
 			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
 			gridsize.x = ROUNDUPTO(src.dim[0], BDIM)/BDIM;
@@ -194,7 +188,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			cukern_ArrayRotateLeft<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
 
 			break;
-		case 5:
+		case 5: // Rotate right
 			blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
 
 			gridsize.x = ROUNDUPTO(src.dim[0], BDIM)/BDIM;

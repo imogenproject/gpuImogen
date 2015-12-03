@@ -939,6 +939,11 @@ return q;
 
 }
 
+/* FIXME: This routine is potentially dangerous when called to fetch halos for outside-MGA purposes
+ * FIXME: Reason: it assumes that ranks A and B have identical partitioning, in which case the metadata
+ * FIXME: associated with MGA_partitionHaloToLinear output will be the same (i.e. partition i on rank B
+ * FIXME: will have the same size, halo size and index permutation as partition i on rank A)
+ */
 void MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehalo, int h, double **linear)
 {
 

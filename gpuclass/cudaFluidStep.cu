@@ -31,6 +31,7 @@
 #define STEPTYPE_XINJIN 1
 #define STEPTYPE_HLL 2
 #define STEPTYPE_HLLC 3
+//#define STEPTYPE_AUSM 4
 
 #define FLUX_X 1
 #define FLUX_Y 2
@@ -70,7 +71,7 @@ and considerably speeds up the process.
  * It is not now observed to execute faster than the -O2 version of same.
  */
 
-__device__ double slopeLimiter_Osher_asm(double A, double B)
+__device__ __noinline__ double slopeLimiter_Osher_asm(double A, double B)
 {
 double retval;
 asm(    ".reg .f64 s;\n\t"      // hold sum
@@ -103,7 +104,7 @@ template <unsigned int PCswitch>
 __global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny);
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny);
 
 template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda);
@@ -117,8 +118,10 @@ template <unsigned int PCswitch>
 __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
 
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
-__global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel);
-__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
+__global__ void cukern_PressureSolverHydro(double *state, double *gasPressure, int devArrayNumel);
+__global__ void cukern_PressureFreezeSolverHydro(double *state, double *gasPressure, double *Cfreeze, int nx, int ny, int devArrayNumel);
+
+// FIXME: this needs to be rewritten like the above...
 __global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
 
 #define BLOCKLEN 28
@@ -138,7 +141,7 @@ __constant__ __device__ double fluidQtys[8];
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
-#define SLOPEFUNC slopeLimiter_Osher_asm
+#define SLOPEFUNC slopeLimiter_Osher
 //#define SLOPEFUNC slopeLimiter_Zero
 //#define SLOPEFUNC slopeLimiter_minmod
 //#define SLOPEFUNC slopeLimiter_VanLeer
@@ -257,9 +260,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
+				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->slabPitch[i]*sizeof(double)); // [rho px py pz E P]_.5dt
 				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
 			}
+
+// Step 1: Compute freezing speed
+
+// Step 2: Compute
 
 
 			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
@@ -279,7 +286,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
-			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[0], hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
+			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[0], wStepValues[0] + (5*fluid->slabPitch[i])/8, hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
 			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
 			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
@@ -300,7 +307,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
+				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->slabPitch[i]); // [rho px py pz E P]_.5dt
 				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
 			}
 
@@ -314,9 +321,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				gridsize.y = sub[5];
 
 				// Fire off the fluid update step
-				if(steptype == STEPTYPE_HLL)
-					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i]);
-				else switch(stepdirect) {
+				if(steptype == STEPTYPE_HLL) {
+					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3], fluid->partNumel[i]);
+					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]);
+				} else switch(stepdirect) {
 				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 3: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
@@ -331,11 +340,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					#endif
 				#else // runs at 2nd order
 
-
 				if(steptype == STEPTYPE_HLL) {
-					cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
+					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3], fluid->partNumel[i]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i]);
+					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]);
 				} else switch(stepdirect) {
 				case 1: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
@@ -496,7 +504,7 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 
 }
 
-// These tell the HLL and HLLC solvers how to dereference their shmem block
+// These tell the HLL and HLLC solvers how to dereference their shmem blocks
 // 16 threads, 8 circshifted shmem arrays
 #define BOS0 (0*BLOCKLENP4)
 #define BOS1 (1*BLOCKLENP4)
@@ -1094,7 +1102,7 @@ DBGSAVE(1, E);
 #define HLL_HLL  1
 #define HLL_RIGHT 2
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel)
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny)
 {
 	// Create center, rotate-left and rotate-right indexes
 	int IC = threadIdx.x;
@@ -1117,7 +1125,6 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 	double Fa, Fb; /* temp vars */
 
 	/* My x index: thread + blocksize block, wrapped circularly */
-	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
@@ -1133,16 +1140,17 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 
 		if(PCswitch == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Ale = Are = inputPointers[0][x0]; /* load rho */
-			Bre = inputPointers[2][x0]; /* load px */
-			Cle = Cre = inputPointers[8][x0]; /* load pressure */
+			Ale = Are = Qin[0*DEV_SLABSIZE + x0]; /* load rho */
+			Bre =       Qin[2*DEV_SLABSIZE + x0]; /* load px */
+			// We calculated the gas pressure into temp array # 6 before calling
+			Cle = Cre = Qstore[5*DEV_SLABSIZE + x0]; /* load gas pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 			Bre = Ble;
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
-			Ale = Qstore[x0 + 0*devArrayNumel]; /* load rho */
-			Bre = Qstore[x0 + 2*devArrayNumel]; /* load px */
-			Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
+			Ale = Qstore[x0 + 0*DEV_SLABSIZE]; /* load rho */
+			Bre = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px */
+			Cle = Qstore[x0 + 5*DEV_SLABSIZE]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 
 			shblk[IC + BOS0] = Ale;
@@ -1247,11 +1255,11 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
                    therefore Ale = Acentered. */
 		if(thisThreadDelivers) {
 			if(PCswitch == RK_PREDICT) {
-				Qstore[x0                  ] = Ale + lambda * shblk[IC + BOS2];
-				Qstore[x0 + 2*devArrayNumel] = Fa  + lambda * shblk[IC + BOS4];
+				Qstore[x0                 ] = Ale + lambda * shblk[IC + BOS2];
+				Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4];
 			} else {
-				inputPointers[0][x0] += lambda * shblk[IC + BOS2];
-				inputPointers[2][x0] += lambda * shblk[IC + BOS4];
+				Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
+				Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4];
 			}
 		}
 
@@ -1259,12 +1267,12 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		// 55 registers
 		if(PCswitch == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Fa =  inputPointers[3][x0]; /* load py */
-			Utilde = inputPointers[4][x0]; /* load pz */
+			Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
+			Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */
 		} else {
 			/* If making correction, perform 1st order MUSCL reconstruction */
-			Fa = Qstore[x0 + 3*devArrayNumel]; /* load py */
-			Utilde = Qstore[x0 + 4*devArrayNumel]; /* load pz */
+			Fa =     Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
+			Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */
 
 			shblk[IC + BOS0] = Fa;
 			shblk[IC + BOS2] = Utilde;
@@ -1306,14 +1314,9 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 			Utilde = Atilde; Atilde = shblk[IR + BOS1];
 		}
 
-		// 55 registers
-
 		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
 		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
-		// 57 registers
 
-		// FATAL: This code section causes register utilization to jump from 57 to 63.
-		// FUCK THAT NOISE, this must be stopped ;-(
 		switch(HLL_FluxMode) {
 		case HLL_LEFT:  shblk[IC + BOS2] = Fa * Ble; /* py flux */
 		shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
@@ -1329,25 +1332,23 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		break;
 
 		}
-		// 63 registers
+
 		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
 
 		if(thisThreadDelivers) {
 			if(PCswitch == RK_PREDICT) {
-				Qstore[x0 +   devArrayNumel] = inputPointers[1][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qstore[x0 + 3*devArrayNumel] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qstore[x0 + 4*devArrayNumel] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			} else {
-				inputPointers[1][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				inputPointers[3][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				inputPointers[4][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+				Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
 			}
 		}
 
 		x0 += blockDim.y*nx;
 		__syncthreads();
-
-
 	}
 
 }
@@ -1736,7 +1737,11 @@ __global__ void cukern_AUSM_firstorder_uniform(double *P, double *Qout, double l
 
 /* Read Qstore and calculate pressure in it */
 /* invoke with nx threads and nb blocks, whatever's best for the arch */
-__global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
+/* Note, state and gasPressure are not necessarily separate allocations
+ * they will, in fact, usually be the first 5 slabs of the fluid state & the sixth, respectively
+ * However all reads/writes are safely nonoverlapping
+ */
+__global__ void cukern_PressureSolverHydro(double *state, double *gasPressure, int devArrayNumel)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -1746,16 +1751,16 @@ __global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
 	int DAN = devArrayNumel;
 
 	while(x < DAN) {
-		rho = Qstore[x      ];
-		E   = Qstore[x + DAN];
-		z   = Qstore[x+2*DAN];
+		rho = state[x      ];
+		E   = state[x + DAN];
+		z   = state[x+2*DAN];
 		momsq = z*z;
-		z   = Qstore[x+3*DAN];
+		z   = state[x+3*DAN];
 		momsq += z*z;
-		z   = Qstore[x+4*DAN];
+		z   = state[x+4*DAN];
 		momsq += z*z;
 		P = FLUID_GM1 * (E - .5*momsq/rho);
-		Qstore[x + 5*DAN] = P;
+		gasPressure[x] = P;
 		x += hx;
 	}
 
@@ -1763,11 +1768,12 @@ __global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
 
 
 /* Invoke with [64 x N] threads and [ny/N nz 1] blocks */
-__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel)
+__global__ void cukern_PressureFreezeSolverHydro(double *state, double *gasPressure, double *Cfreeze, int nx, int ny, int devArrayNumel)
 {
 	__shared__ double Cfshared[64*FREEZE_NY];
 
-	Qstore += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+	state += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+	gasPressure += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
 
 	int x = threadIdx.x;
 	int i = threadIdx.x + 64*threadIdx.y;
@@ -1778,20 +1784,22 @@ __global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze
 	cmax = 0.0;
 
 	for(; x < nx; x += 64) {
-		invrho = 1.0/Qstore[0]; // load inverse of density
-		psq = Qstore[3*devArrayNumel]; // accumulate p^2 and end with px
-		px =  Qstore[4*devArrayNumel];
+		invrho = 1.0/state[0]; // load inverse of density
+		psq = state[3*devArrayNumel]; // accumulate p^2 and end with px
+		px =  state[4*devArrayNumel];
 		psq = psq*psq + px*px;
-		px = Qstore[2*devArrayNumel];
+		px = state[2*devArrayNumel];
 		psq += px*px;
 
 		// Store pressure
-		Qstore[5*devArrayNumel] = P = (Qstore[devArrayNumel] - .5*psq*invrho)*FLUID_GM1;
+		*gasPressure = P = (state[devArrayNumel] - .5*psq*invrho)*FLUID_GM1;
 
 		locCf = fabs(px)*invrho + sqrt(FLUID_GAMMA*P*invrho);
 
 		cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
-		Qstore += 64;
+
+		state += 64;
+		gasPressure += 64;
 	}
 
 	Cfshared[i] = cmax;

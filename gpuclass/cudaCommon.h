@@ -75,7 +75,7 @@ typedef struct {
     int dim[3];
     int64_t numel; // = nx ny nz of the global array, not # allocated
     int numSlabs; // = dim[4] if positive, which zero-indexed slab # if <= 0
-    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition] rounded up to nearest 256
+    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition]*sizeof(double) (BYTES ALLOCATED PER SLAB), rounded up to nearest 256
 
     int haloSize;
     int partitionDir;
