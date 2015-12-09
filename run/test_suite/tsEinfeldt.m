@@ -4,7 +4,7 @@ function result = tsEinfeldt(N0, gamma, M, doublings)
 % The normalization rho = P = 1 is used.
 
 if nargin < 4;
-    disp('Number of doublings not given; Defaultd to 3.');
+    disp('Number of doublings not given; Defaulted to 3.');
     doublings = 3;
 end
 
