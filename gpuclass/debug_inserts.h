@@ -20,7 +20,7 @@
 #endif
 
 // Assuming debug has been put on the wStepValues array, download it to a Matlab array
-void returnDebugArray(MGArray *ref, int x, double **wStepValues, mxArray *plhs[])
+void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray *plhs[])
 {
   CHECK_CUDA_ERROR("entering returnDebugArray");
 
@@ -45,51 +45,19 @@ void returnDebugArray(MGArray *ref, int x, double **wStepValues, mxArray *plhs[]
 
   double *result = mxGetPr(plhs[0]);
 
-  int sub[6];
-  int htrim[6];
+  // Create a sacrificial MGA
+  MGArray scratch = ref[0];
+  // wStepValues is otherwise identical so overwrite the new one's pointers
+  int j, k;
+  for(j = 0; j < scratch.nGPUs; j++) scratch.devicePtr[j] = dbgArrays[j];
 
-  int u, v, w, i;
-  int64_t iT, iS;
-  double *gmem = NULL;
-
-  if(m.haloSize == PARTITION_CLONED) {
-    printf("Dude, can't return debug stuff from cloned partitions. How did this even happen? cudaFluidStep is the only function that's such a douchebag this is needed\n");
-    return;
-  }
-
-int y;
-for(y = 0; y < x; y++) {
-  for(i = 0; i < m.nGPUs; i++) {
-    // Get this partition's extent
-    calcPartitionExtent(&m, i, &sub[0]);
-    // allocate CPU memory to dump it back
-    gmem = (double *)realloc((void *)gmem, m.partNumel[i]*sizeof(double));
-
-    // Trim the halo away when copying back to CPU
-    for(u = 0; u < 6; u++) { htrim[u] = sub[u]; }
-    if(i < (m.nGPUs-1)) { htrim[3+m.partitionDir-1] -= m.haloSize; }
-    if(i > 0)           { htrim[m.partitionDir-1] += m.haloSize; htrim[3+m.partitionDir-1] -= m.haloSize; }
-
-    // Download the whole thing from the GPU to CPU
-    //cudaSetDevice(m.deviceID[i]);
-    CHECK_CUDA_ERROR("cudaSetDevice()");
-    cudaError_t fail = cudaMemcpy((void *)gmem, (void *)(wStepValues[i] + (y+6)*m.slabPitch[i]/sizeof(double)), m.partNumel[i]*sizeof(double), cudaMemcpyDeviceToHost);
-    CHECK_CUDA_ERROR("GPU_download to host.");
-
-    // Copy into the output array
-    for(w = htrim[2]; w < htrim[2]+htrim[5]; w++)
-      for(v = htrim[1]; v < htrim[1]+htrim[4]; v++)
-        for(u = htrim[0]; u < htrim[0] + htrim[3]; u++) {
-          iT = (u-sub[0]) + sub[3]*(v - sub[1]  + sub[4]*(w-sub[2]));
-          iS = u+m.dim[0]*(v+m.dim[1]*w);
-
-          result[iS] = gmem[iT];
-        }
+  for(k = 0; k < x; k++) {
+	  // download
+	  MGA_downloadArrayToCPU(&scratch, &result, 0);
+	  // move over and repeat
+	  result += scratch.numel;
+	  for(j = 0; j < scratch.nGPUs; j++) { scratch.devicePtr[j] += scratch.slabPitch[j] / 8; }
 
   }
-result += m.dim[0]*m.dim[1]*m.dim[2];
-}
-  free(gmem);
-
   return;
 }

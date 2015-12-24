@@ -13,6 +13,8 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "compiled_common.h"
+#include "cudaStatics.h"
 
 /* THIS FUNCTION:
    cudaStatics is used in the imposition of several kinds of boundary conditions
@@ -23,8 +25,9 @@
    causing phi[I] to fade to V[i] at an exponential rate.
 
    It is also able to set mirror boundary conditions (FIXME: Not fully tested!)
-   */
+ */
 
+/* FIXME: rewrite this crap with template<>s */
 /* X DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS FOR MIRROR BCS */
 /* Assume a block size of [3 A B] */
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz);
@@ -55,16 +58,26 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 
 void setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
+#ifdef STANDALONE_MEX_FUNCTION
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if( (nlhs != 0) || (nrhs != 3)) { mexErrMsgTxt("cudaStatics operator is cudaStatics(ImogenArray, blockdim, direction)"); }
 
 	CHECK_CUDA_ERROR("entering cudaStatics");
 
+	setBoundaryConditions(prhs[0], (int)*mxGetPr(prhs[2]));
+}
+#endif
+
+int setBoundaryConditions(const mxArray *matlabhandle, int direction)
+{
+	CHECK_CUDA_ERROR("entering setBoundaryConditions");
+
 	MGArray phi, statics;
-	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
+	int worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
-	mxArray *boundaryData = mxGetProperty(prhs[0], 0, "boundaryData");
+	mxArray *boundaryData = mxGetProperty(matlabhandle, 0, "boundaryData");
 	if(boundaryData == NULL) mexErrMsgTxt("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not a FluidArray/MagnetArray/InitializedArray?\n");
 
 	/* The statics describe "solid" structures which we force the grid to have */
@@ -83,7 +96,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
 
 	/* Parameter describes what block size to launch with... */
-	int blockdim = (int)*mxGetPr(prhs[1]);
+	int blockdim = 8;
 
 	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
 	if(griddim.x > 32768) {
@@ -99,57 +112,55 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	/* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
-	int vectorComponent = (int)(*mxGetPr(mxGetProperty(prhs[0], 0, "component")) );
+	int vectorComponent = (int)(*mxGetPr(mxGetProperty(matlabhandle, 0, "component")) );
 
 	/* BEGIN DETERMINATION OF ANALYTIC BOUNDARY CONDITIONS */
-	int numDirections = mxGetNumberOfElements(prhs[2]);
-	if(numDirections > 3) {
-		mexErrMsgTxt("More than 3 directions specified to apply boundary conditions to. We only have 3...?\n");
-	}
-	double *directionToSet = mxGetPr(prhs[2]);
+	int numDirections = 1;
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
 	if(bcModes == NULL) mexErrMsgTxt("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
 
 	int j;
 	for(j = 0; j < numDirections; j++) {
-		if((int)directionToSet[j] == 0) continue; /* Skips edge BCs if desired. */
-		int trueDirect = perm[(int)directionToSet[j]-1];
+		if(direction == 0) continue; /* Skips edge BCs if desired. */
+		int memoryDirection = perm[direction-1];
 
 		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
          'type plus  x', 'type plus y',  'type plus z'};
        Yes, strings in a cell array. */
+		/* Okay, that's not kinda, it's straight-up stupid. */
 
 		mxArray *bcstr; char *bs;
 
 		int d; for(d = 0; d < 2; d++) {
-			bcstr = mxGetCell(bcModes, 2*(trueDirect-1) + d);
+			bcstr = mxGetCell(bcModes, 2*(memoryDirection-1) + d);
 			bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
 			mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
 
 			// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
 			if(strcmp(bs, "mirror") == 0)
-				setBoundarySAS(&phi, d, (int)directionToSet[j], vectorComponent == trueDirect);
+				setBoundarySAS(&phi, d, direction, vectorComponent == memoryDirection);
 
 			// Extrapolates f(b+x) = f(b)
 			if(strcmp(bs, "const") == 0) {
-				setBoundarySAS(&phi, d, (int)directionToSet[j], 2);
+				setBoundarySAS(&phi, d, direction, 2);
 			}
 
 			// Extrapolates f(b+x) = f(b) + x f'(b)
 			// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
 			if(strcmp(bs, "linear") == 0) {
-				setBoundarySAS(&phi, d, (int)directionToSet[j], 3);
+				setBoundarySAS(&phi, d, direction, 3);
 			}
 
 			if(strcmp(bs, "wall") == 0) {
-				
+
 			} 
 
 		}
 	}
 
+	return SUCCESSFUL;
 }
 
 /* Sets the given array+AMD's boundary in the following manner:
@@ -201,34 +212,34 @@ void *getBCKernel(int X)
 	void *PLACEHOLDER = NULL;
 
 	void *kerntable[24] = {(void *)&cukern_xminusSymmetrize, \
-				(void *)&cukern_xminusAntisymmetrize, \
-				(void *)&cukern_extrapolateConstBdyXMinus, \
-				(void *)&cukern_extrapolateLinearBdyXMinus, \
+			(void *)&cukern_xminusAntisymmetrize, \
+			(void *)&cukern_extrapolateConstBdyXMinus, \
+			(void *)&cukern_extrapolateLinearBdyXMinus, \
 
-				(void *)&cukern_xplusSymmetrize, \
-				(void *)&cukern_xplusAntisymmetrize,
-				(void *)&cukern_extrapolateConstBdyXPlus, \
-				(void *)&cukern_extrapolateLinearBdyXPlus, \
+			(void *)&cukern_xplusSymmetrize, \
+			(void *)&cukern_xplusAntisymmetrize,
+			(void *)&cukern_extrapolateConstBdyXPlus, \
+			(void *)&cukern_extrapolateLinearBdyXPlus, \
 
-				(void *)&cukern_yminusSymmetrize, \
-				(void *)&cukern_yminusAntisymmetrize, \
-				PLACEHOLDER, \
-				PLACEHOLDER, \
+			(void *)&cukern_yminusSymmetrize, \
+			(void *)&cukern_yminusAntisymmetrize, \
+			PLACEHOLDER, \
+			PLACEHOLDER, \
 
-				(void *)&cukern_yplusSymmetrize, \
-				(void *)&cukern_yplusAntisymmetrize,
-				PLACEHOLDER, \
-				PLACEHOLDER, \
+			(void *)&cukern_yplusSymmetrize, \
+			(void *)&cukern_yplusAntisymmetrize,
+			PLACEHOLDER, \
+			PLACEHOLDER, \
 
-				(void *)&cukern_zminusSymmetrize, \
-				(void *)&cukern_zminusAntisymmetrize, \
-				PLACEHOLDER, \
-				PLACEHOLDER, \
+			(void *)&cukern_zminusSymmetrize, \
+			(void *)&cukern_zminusAntisymmetrize, \
+			PLACEHOLDER, \
+			PLACEHOLDER, \
 
-				(void *)&cukern_zplusSymmetrize, \
-				(void *)&cukern_zplusAntisymmetrize, \
-				PLACEHOLDER, \
-				PLACEHOLDER };
+			(void *)&cukern_zplusSymmetrize, \
+			(void *)&cukern_zplusAntisymmetrize, \
+			PLACEHOLDER, \
+			PLACEHOLDER };
 
 	return kerntable[X];
 }
@@ -325,18 +336,19 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 	double f0      =           statics[blkOffset];
 	double c       =           statics[blkOffset*2];
 
-//	if(c >= 0) {
-		// Fade condition: Exponentially pulls cell towards c with rate constant f0;
-		phi[xaddr] = f0*c + (1.0-c)*phi[xaddr];
-//	} else {
-		// Wall condition: Any transfer between the marked cells is reversed
-		// Assumptions: 2nd cell (xprimeaddr) must be in a stationary, no-flux region
-//		long int xprimeaddr = (long int) statics[myAddr + blkOffset*3];
-//		phi[xaddr] += (phi[xprimeaddr]-f0);
-//		phi[xprimaddr] = f0;
-//	}
+	//	if(c >= 0) {
+	// Fade condition: Exponentially pulls cell towards c with rate constant f0;
+	phi[xaddr] = f0*c + (1.0-c)*phi[xaddr];
+	//	} else {
+	// Wall condition: Any transfer between the marked cells is reversed
+	// Assumptions: 2nd cell (xprimeaddr) must be in a stationary, no-flux region
+	//		long int xprimeaddr = (long int) statics[myAddr + blkOffset*3];
+	//		phi[xaddr] += (phi[xprimeaddr]-f0);
+	//		phi[xprimaddr] = f0;
+	//	}
 
 }
+
 
 /* X DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS FOR MIRROR BCS */
 /* Assume a block size of [3 A B] with grid dimensions [M N 1] s.t. AM >= ny, BN >= nz*/
@@ -525,5 +537,4 @@ __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 	phi[6*stride] = -p[0];
 
 }
-
 

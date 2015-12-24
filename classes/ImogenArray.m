@@ -108,6 +108,11 @@ classdef ImogenArray < handle
             if obj.pBCUninitialized;
                 % Make certain everyone is on board & shares the same view before setting up BCs
 		GIS = GlobalIndexSemantics();
+
+		% This reads the Matlab class's bcHaloShare and sets the bits in the MGArray structure
+		obj.pArray.makeBCHalos(obj.bcHaloShare);
+
+		% Make sure we have a globally coherent view before beginning
                 cudaHaloExchange(obj, 1, GIS.topology, obj.bcHaloShare); 
                 cudaHaloExchange(obj, 2, GIS.topology, obj.bcHaloShare); 
                 cudaHaloExchange(obj, 3, GIS.topology, obj.bcHaloShare); 

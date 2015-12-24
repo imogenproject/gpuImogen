@@ -38,7 +38,9 @@ bool sanityCheckTag(const mxArray *tag)
 	int partitionDir = x[GPU_TAG_PARTDIR];
 	int nDevs        = x[GPU_TAG_NGPUS];
 
-        int permtag      = x[GPU_TAG_DIMPERMUTATION];
+	int permtag      = x[GPU_TAG_DIMPERMUTATION];
+
+	int circlebits   = x[GPU_TAG_CIRCULARBITS];
 
 	// Some basic does-this-make-sense
 	if(nDevs < 1) {
@@ -53,13 +55,19 @@ bool sanityCheckTag(const mxArray *tag)
 		if(halo != PARTITION_CLONED) return false; // if it's actually marked as cloned and not just FUBAR
 	}
 
-        if((permtag < 1) || (permtag > 6)) {
-        	if(permtag == 0) {
-        		// meh
-        	} else {
-        		printf("Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
-        		return false;
-        	}
+	if((permtag < 1) || (permtag > 6)) {
+		if(permtag == 0) {
+			// meh
+		} else {
+			printf("Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
+			return false;
+		}
+	}
+
+	if((circlebits < 0) || (circlebits > 63)) {
+		printf("halo sharing bits have value %i, valid range is 0-63!\n", circlebits);
+		return false;
+
 	}
 
 	if((partitionDir < 1) || (partitionDir > 3)) {
@@ -67,7 +75,7 @@ bool sanityCheckTag(const mxArray *tag)
 		return false;
 	}
 
-	// Require there be exactly the storage required
+	// Require there be enough additional elements to hold the physical device pointers & cuda device IDs
 	int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
 	if(tagsize != requisiteNumel) {
 		printf("Tag length is %i: Must be %i base + 2*nDevs = %i\n", tagsize, GPU_TAG_LENGTH, requisiteNumel);
@@ -198,6 +206,8 @@ void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 	mg->permtag = tag[GPU_TAG_DIMPERMUTATION];
     MGA_permtagToNums(mg->permtag, &mg->currentPermutation[0]);
 
+    mg->circularBoundaryBits = tag[GPU_TAG_CIRCULARBITS];
+
 	int sub[6];
 
 	tag += GPU_TAG_LENGTH;
@@ -219,24 +229,6 @@ void deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 	return;
 }
 
-/* Serialized tag form:
-   [ Nx
-     Ny
-     Nz
-     Nslabs
-     halo size on shared edges
-     Direction to parition in [1 = x, 2 = y, 3 = x]
-     # of GPU paritions being used
-     Halo exterior, if true
-     current in-memory orientation
-     device ID 0
-     device memory* 0
-     device ID 1
-     device memory* 1
-     (...)
-     device ID N-1
-     device memory* N-1]
- */
 void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 {
 	tag[GPU_TAG_DIM0]    = mg->dim[0];
@@ -248,6 +240,7 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 	tag[GPU_TAG_NGPUS]   = mg->nGPUs;
 	tag[GPU_TAG_EXTERIORHALO]   = mg->addExteriorHalo;
 	tag[GPU_TAG_DIMPERMUTATION] = mg->permtag;
+	tag[GPU_TAG_CIRCULARBITS] = mg->circularBoundaryBits;
 
 	int i;
 	for(i = 0; i < mg->nGPUs; i++) {
@@ -306,6 +299,8 @@ int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArra
 	for(i = 0; i < (idxTo + 1 - idxFrom); i++) {
 		tag = getGPUTypeTag(prhs[i]);
 		deserializeTagToMGArray(tag, &mg[i]);
+		mg[i].matlabClassHandle = prhs[i]; // FIXME: This is a craptastic hack
+		// This is just because I am lazy and suck at boundary conditions
 	}
 
 	return 0;
@@ -346,8 +341,6 @@ MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 			calcPartitionExtent(m+i, j, sub);
 			m[i].partNumel[j] = sub[3]*sub[4]*sub[5];
 			m[i].slabPitch[j] = ROUNDUPTO(m[i].partNumel[j]*sizeof(double), 256);
-
-
 
 			/* Differs if we have slabs... */
 			int64_t num2alloc = m[i].partNumel[j] * sizeof(double);

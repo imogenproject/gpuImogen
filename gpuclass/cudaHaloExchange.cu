@@ -12,37 +12,22 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 #include "cublas.h"
-#include "cudaCommon.h"
+
+// PGW
 #include "parallel_halo_arrays.h"
+
+// My stuff
+#include "cudaCommon.h"
+#include "compiled_common.h"
+#include "cudaHaloExchange.h"
 
 /* THIS ROUTINE
    This routine interfaces with the parallel gateway halo routines
-   */
-void haloTransfer(MGArray *phi, double *hostmem, int haloDir, int oneIffLeft, int oneIffToHost);
-void memBlockCopy(double *S, dim3 sDim, dim3 sOffset, double *D, dim3 dDim, dim3 dOffset, dim3 num2cpy);
-__global__ void cukern_MemBlockCopy(double *S, dim3 sDim, double *D, dim3 dDim, dim3 num2cpy);
+   The N MGArrays *ed to by phi swap ghost cells as described by topo
+   circularity[
+ */
 
-/* X halo routines */
-/* These are the suck; We have to grab 24-byte wide chunks en masse */
-/* Fork ny by nz threads to do the job */
-__global__ void cukern_HaloXToLinearL(double *mainarray, double *linarray, int nx);
-__global__ void cukern_LinearToHaloXL(double *mainarray, double *linarray, int nx);
-__global__ void cukern_HaloXToLinearR(double *mainarray, double *linarray, int nx);
-__global__ void cukern_LinearToHaloXR(double *mainarray, double *linarray, int nx);
-
-/* Y halo routines */
-/* We grab an X-Z plane, making it easy to copy N linear strips of memory */
-/* Fork off nz by 3 blocks to do the job */
-__global__ void cukern_HaloYToLinearL(double *mainarray, double *linarray, int nx, int ny);
-__global__ void cukern_LinearToHaloYL(double *mainarray, double *linarray, int nx, int ny);
-
-__global__ void cukern_HaloYToLinearR(double *mainarray, double *linarray, int nx, int ny);
-__global__ void cukern_LinearToHaloYR(double *mainarray, double *linarray, int nx, int ny);
-
-/* Z halo routines */
-/* The easiest; We make one copy of an Nx by Ny by 3 slab of memory */
-/* No kernels necessary, we can simply memcpy our hearts out */
-
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	/* Functional form:
     cudaHaloExchange(arraytag, dimension_to_exchange, parallel topology information, circularity)
@@ -58,8 +43,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	CHECK_CUDA_ERROR("entering cudaHaloExchange");
 	int xchg = (int)*mxGetPr(prhs[1]) - 1;
-	int mgadir = xchg+1;
-	int orient[3];
 
 	pParallelTopology parallelTopo = topoStructureToC(prhs[2]);
 
@@ -69,63 +52,94 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray phi;
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
 
-	int memDimension = phi.currentPermutation[xchg-1]; // The actual in-memory direction we're gonna be exchanging
+	exchange_MPI_Halos(&phi, 1, parallelTopo, xchg);
+}
+#endif
 
-	CHECK_CUDA_ERROR("Entering cudaHaloExchange");
-	cudaError_t fail;
+int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xchgDir)
+{
+	CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
+	xchgDir -= 1; // Convert 1-2-3 index into 0-1-2 memory index
 
-	if(xchg+1 > parallelTopo->ndim) return; // The topology does not extend in this dimension
-	if(parallelTopo->nproc[xchg] == 1) return; // Only 1 block in this direction.
+	// Avoid wasting time...
+	if(xchgDir+1 > topo->ndim) return ERROR_NULL_OPERATION;
+	if(topo->nproc[xchgDir] == 1) return ERROR_NULL_OPERATION;
 
-	double *ptrHalo;
+	int memDir;
 
-	/* Be told if the left and right sides of the dimension are circular or not */
-	double *interior = mxGetPr(prhs[3]);
-	int leftCircular  = (int)interior[2*memDimension];
-	int rightCircular = (int)interior[2*memDimension+1];
-
-	// Find the size of the swap buffer
-	int numPerHalo = MGA_wholeFaceHaloNumel(&phi, mgadir, 3);
-
-	fail = cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
-	CHECK_CUDA_ERROR("cudaHostAlloc");
-
-	MPI_Comm commune = MPI_Comm_f2c(parallelTopo->comm);
-
-	double *ptmp = ptrHalo;
-	// Fetch left face
-	if(leftCircular)
-		MGA_wholeFaceToLinear(&phi, mgadir, 0, 0, 3, &ptmp);
-
-	ptmp = ptrHalo + numPerHalo;
-	// Fetch right face
-	if(rightCircular)
-		MGA_wholeFaceToLinear(&phi, mgadir, 1, 0, 3, &ptmp);
-
-	// synchronize to make sure host sees what was uploaded
 	int i;
-	for(i = 0; i < phi.nGPUs; i++) {
-		cudaSetDevice(phi.deviceID[i]);
-		cudaDeviceSynchronize();
+	for(i = 0; i < nArrays; i++) {
+		memDir = phi->currentPermutation[xchgDir]; // The actual in-memory direction we're gonna be exchanging
+
+		double *ptrHalo;
+
+		/* Be told if the left and right sides of the dimension are circular or not */
+		int leftCircular, rightCircular;
+		switch(xchgDir) {
+		case 0:
+			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_XMINUS) ? 1 : 0;
+			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_XPLUS) ? 1 : 0;
+			break;
+		case 1:
+			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
+			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
+			break;
+
+		case 2:
+			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
+			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
+			break;
+		}
+
+		// Find the size of the swap buffer
+		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, 3);
+
+		cudaError fail = cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
+		CHECK_CUDA_ERROR("cudaHostAlloc");
+
+		MPI_Comm commune = MPI_Comm_f2c(topo->comm);
+
+		double *ptmp = ptrHalo;
+		// Fetch left face
+		if(leftCircular)
+			MGA_wholeFaceToLinear(phi, memDir, 0, 0, 3, &ptmp);
+
+		ptmp = ptrHalo + numPerHalo;
+		// Fetch right face
+		if(rightCircular)
+			MGA_wholeFaceToLinear(phi, memDir, 1, 0, 3, &ptmp);
+
+		// synchronize to make sure host sees what was uploaded
+		int j;
+		for(j = 0; j < phi->nGPUs; j++) {
+			cudaSetDevice(phi->deviceID[j]);
+			cudaDeviceSynchronize();
+		}
+
+		parallel_exchange_dim_contig(topo, xchgDir, (void*)ptrHalo,
+				(void*)(ptrHalo + numPerHalo),\
+				(void*)(ptrHalo+2*numPerHalo),\
+				(void*)(ptrHalo+3*numPerHalo), numPerHalo, MPI_DOUBLE);
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		// write left face
+		ptmp = ptrHalo + 2*numPerHalo;
+		if(leftCircular)
+			MGA_wholeFaceToLinear(phi, memDir, 0, 1, 3, &ptmp);
+
+		ptmp = ptrHalo + 3*numPerHalo;
+		// Fetch right face
+		if(rightCircular)
+			MGA_wholeFaceToLinear(phi, memDir, 1, 1, 3, &ptmp);
+
+		cudaFreeHost((void **)ptrHalo);
+
+		// Move to the next array to exchange
+		phi++;
 	}
-	parallel_exchange_dim_contig(parallelTopo, xchg, (void*)ptrHalo,
-			(void*)(ptrHalo + numPerHalo),\
-			(void*)(ptrHalo+2*numPerHalo),\
-			(void*)(ptrHalo+3*numPerHalo), numPerHalo, MPI_DOUBLE);
-	MPI_Barrier(MPI_COMM_WORLD);
 
-	// write left face
-	ptmp = ptrHalo + 2*numPerHalo;
-	if(leftCircular)
-		MGA_wholeFaceToLinear(&phi, mgadir, 0, 1, 3, &ptmp);
+	return SUCCESSFUL;
 
-	ptmp = ptrHalo + 3*numPerHalo;
-	// Fetch right face
-	if(rightCircular)
-		MGA_wholeFaceToLinear(&phi, mgadir, 1, 1, 3, &ptmp);
-
-	free(parallelTopo);
-	cudaFreeHost((void **)ptrHalo);
 }
 
 

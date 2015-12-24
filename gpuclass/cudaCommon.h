@@ -52,7 +52,8 @@ typedef struct {
 #define PARTITION_Z 3
 
 // Never ever don't use these
-#define GPU_TAG_LENGTH 9
+        // NOTE: If this length is changed you MUST change
+#define GPU_TAG_LENGTH 10
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
@@ -62,6 +63,15 @@ typedef struct {
 #define GPU_TAG_NGPUS 6
 #define GPU_TAG_EXTERIORHALO 7
 #define GPU_TAG_DIMPERMUTATION 8
+#define GPU_TAG_CIRCULARBITS 9
+
+        // These mask the bits in the MGArray.circularBoundaryBits field
+#define MGA_BOUNDARY_XMINUS 1
+#define MGA_BOUNDARY_XPLUS 2
+#define MGA_BOUNDARY_YMINUS 4
+#define MGA_BOUNDARY_YPLUS 8
+#define MGA_BOUNDARY_ZMINUS 16
+#define MGA_BOUNDARY_ZPLUS 32
 
 // Templates seem to dislike MPI_Op? Switches definitely do.
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
@@ -80,11 +90,15 @@ typedef struct {
     int haloSize;
     int partitionDir;
 
-    // For mpi-serial runs, GIS will NOT supply halo cells at the edge of the array and
-    // GIS must add them: addExteriorHalo is true
-
-    // For mpi-parallel runs with >1 nodes in partition direct, GIS adds the parallel halo
-    // so we do NOT need to.
+    /* MGArrays don't concern themselves with the cluster-wide partitioning scheme. While we always
+     * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
+     * at the exterior interfaces:
+     *
+     * When there is only 1 node in our partitioning direction, GIS will NOT supply halo cells and it is
+     * necessary that we do. When there is more than 1, the higher-level partitioning will supply
+     * halo cells at the outside boundaries so we should not add them.
+     * Ergo, this value is TRUE iff there is exactly one rank in the partition direction.
+     */
     int addExteriorHalo;
 
     int permtag;
@@ -94,6 +108,13 @@ typedef struct {
     int deviceID[MAX_GPUS_USED];
     double *devicePtr[MAX_GPUS_USED];
     int partNumel[MAX_GPUS_USED];
+
+    // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
+    int circularBoundaryBits;
+
+    // Continuing my long tradition of bad boundary condition handling,
+    // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
+    const mxArray *matlabClassHandle;
     } MGArray; 
 
 int64_t *getGPUTypeTag (const mxArray *gputype); // matlab -> c

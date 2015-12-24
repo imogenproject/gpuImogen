@@ -2,12 +2,12 @@
 
 include ../Make.config
 
-# Don't mess with any of this. Modify the above config file instead
+#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
+# Debuggable code
+NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G 
+# If you enjoy verbose assembler output
+#NVCC_OPTS = $(NVCC_OPTS) -Xptxas="-v"
 
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
-# To get debuggability & ptxas chatter...
-#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G 
-#-Xptxas="-v" # Put this back on opts line if you really enjoy compiler output
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
@@ -20,7 +20,7 @@ PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
 PAR_LIBS = -lpgw -lmpi
 
 ###############################################################################
-all: base fluids parallel lambda
+all: base fluids lambda
 	echo "Finished compiling GPU support."
 	rm -f *cpp
 
@@ -28,9 +28,13 @@ all: base fluids parallel lambda
 #	echo "Done building base operations!"
 
 base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
+	
 
-fluids: cudaArrayRotateB cudaArrayAtomic cudaBasicOperations cudaStatics directionalMaxFinder freezeAndPtot cudaFluidStep cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD cudaSoundspeed
+fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones 
 	echo "Done building fluid kernels."
+
+magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
+	echo "Done building MHD kernels"
 
 lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
 	echo "Done building source/sink term kernels"
@@ -38,14 +42,95 @@ lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cuda
 thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidStep
 	echo "Rebuilt pressure/thermo related routines"
 
-parallel: cudaHaloExchange
-	echo "Done building parallel support."
-
 # Key point: builds the cudaCommon.o that everything else needs
 cudaCommon.o: cudaCommon.cu cudaCommon.h
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaCommon.cu -o cudaCommon.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaCommon.cpp
-	rm -f cudaCommon.cpp
+
+
+############# Routines that are part of the "compiled core" and have a different
+standalones: cudaArrayRotateB cudaHaloExchange cudaFluidStep cudaStatics cudaSoundspeed
+
+# build procedure from the rest
+# Remove all object code once done to prevent standalone/not-standalone cross contamination
+fluidstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+
+flux.o: flux.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux.cu -o flux.cpp
+	mex $(MEX_OPTS) -c flux.cpp
+
+iface.o: flux_ML_iface.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux_ML_iface.cu -o iface.cpp
+	mex $(MEX_OPTS) -c iface.cpp
+
+######## CUDA FLUID ROUTINES
+
+# Array index transposition
+cudaArrayRotateFcn.o: cudaArrayRotateB.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateFcn.cpp
+	mex $(MEX_OPTS) -c cudaArrayRotateFcn.cpp
+	
+rotate_standalone: cudaArrayRotateB.cu
+	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateB.cpp
+	mex $(MEX_OPTS) -c cudaArrayRotateB.cpp
+
+cudaArrayRotateB: rotate_standalone
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o -o cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	rm cudaArrayRotateB.o
+	
+# Parallel halo exchanges
+cudaHaloExchangeFcn.o: cudaHaloExchange.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL)  -cuda cudaHaloExchange.cu -o cudaHaloExchangeFcn.cpp
+	mex $(MEX_OPTS) $(PAR_INCL) -c cudaHaloExchangeFcn.cpp
+
+halo_standalone: cudaHaloExchange.cu
+	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL)  -cuda cudaHaloExchange.cu -o cudaHaloExchange.cpp
+	mex $(MEX_OPTS) $(PAR_INCL) -c cudaHaloExchange.cpp
+
+cudaHaloExchange: halo_standalone
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaHaloExchange.o cudaCommon.o -o cudaHaloExchange $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	rm cudaHaloExchange.o
+
+# Fluid step
+cudaFluidStepFcn.o: cudaFluidStep.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStepFcn.cpp
+	mex $(MEX_OPTS) -c cudaFluidStepFcn.cpp
+
+fluid_standalone: cudaFluidStep.cu
+	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
+	mex $(MEX_OPTS) -c cudaFluidStep.cpp
+
+cudaFluidStep: fluid_standalone
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o -o cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	rm cudaFluidStep.o
+
+# Statics / boundary condition settings
+cudaStaticsFcn.o: cudaStatics.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaStatics.cu -o cudaStaticsFcn.cpp
+	mex $(MEX_OPTS) -c cudaStaticsFcn.cpp
+
+statics_standalone: cudaStatics.cu
+	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaStatics.cu -o cudaStatics.cpp
+	mex $(MEX_OPTS) -c cudaStatics.cpp
+
+cudaStatics: statics_standalone
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaCommon.o -o cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	rm cudaStatics.o
+	
+# Standalone EOS solver
+cudaSoundspeedFcn.o: cudaSoundspeed.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSoundspeed.cu -o cudaSoundspeedFcn.cpp
+	mex $(MEX_OPTS) -c cudaSoundspeedFcn.cpp
+
+soundspeed_standalone: cudaSoundspeed.cu
+	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaSoundspeed.cu -o cudaSoundspeed.cpp
+	mex $(MEX_OPTS) -c cudaSoundspeed.cpp
+
+cudaSoundspeed: soundspeed_standalone
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaSoundspeed.o cudaCommon.o -o cudaSoundspeed $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	rm cudaSoundspeed.o
+
 
 ############# GPU CONTROL ROUTINES
 
@@ -127,12 +212,6 @@ GPU_memavail: GPU_memavail.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 ######## CUDA FLUID ROUTINES
-cudaArrayRotateB.o: cudaArrayRotateB.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateB.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayRotateB.cpp
-cudaArrayRotateB: cudaCommon.o cudaArrayRotateB.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
 cudaArrayAtomic.o: cudaArrayAtomic.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaArrayAtomic.cu -o cudaArrayAtomic.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayAtomic.cpp
@@ -151,12 +230,6 @@ cudaShift.o: cudaShift.cu
 cudaShift: cudaCommon.o cudaShift.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
-cudaStatics.o: cudaStatics.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaStatics.cu -o cudaStatics.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaStatics.cpp
-cudaStatics: cudaCommon.o cudaStatics.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
 directionalMaxFinder.o: directionalMaxFinder.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda directionalMaxFinder.cu -o directionalMaxFinder.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c directionalMaxFinder.cpp
@@ -168,31 +241,6 @@ freezeAndPtot.o: freezeAndPtot.cu
 	mex $(MEX_OPTS) $(MEX_INCL) -c freezeAndPtot.cpp
 freezeAndPtot: cudaCommon.o freezeAndPtot.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
-cudaFluidW.o: cudaFluidW.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFluidW.cu -o cudaFluidW.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFluidW.cpp
-cudaFluidW: cudaCommon.o cudaFluidW.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
-cudaFluidW_dumb.o: cudaFluidW_dumb.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFluidW_dumb.cu -o cudaFluidW_dumb.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFluidW_dumb.cpp
-cudaFluidW_dumb: cudaCommon.o cudaFluidW_dumb.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
-
-cudaFluidTVD.o: cudaFluidTVD.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFluidTVD.cu -o cudaFluidTVD.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFluidTVD.cpp
-cudaFluidTVD: cudaCommon.o cudaFluidTVD.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
-cudaFluidStep.o: cudaFluidStep.cu debug_inserts.h
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
-	mex $(MEX_OPTS)  -c cudaFluidStep.cpp
-cudaFluidStep: cudaCommon.o cudaFluidStep.o
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 
 cudaMHDKernels.o: cudaMHDKernels.cu
@@ -231,12 +279,6 @@ cudaMagTVD.o: cudaMagTVD.cu
 cudaMagTVD: cudaCommon.o cudaMagTVD.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
-cudaSoundspeed.o: cudaSoundspeed.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSoundspeed.cu -o cudaSoundspeed.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSoundspeed.cpp
-cudaSoundspeed: cudaCommon.o cudaSoundspeed.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
 # SOURCE/SINK ROUTINES
 cudaSourceScalarPotential.o: cudaSourceScalarPotential.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceScalarPotential.cu -o cudaSourceScalarPotential.cpp
@@ -261,13 +303,6 @@ cudaAccretingStar.o: cudaAccretingStar.cu
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaAccretingStar.cpp
 cudaAccretingStar: cudaCommon.o cudaAccretingStar.o
 	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@
-
-# PARALLEL OPERATION ROUTINES **********
-cudaHaloExchange.o: cudaHaloExchange.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL)  -cuda cudaHaloExchange.cu -o cudaHaloExchange.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaHaloExchange.cpp
-cudaHaloExchange: cudaCommon.o cudaHaloExchange.o
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS) -cxx $@.o cudaCommon.o -o $@
 
 
 clean:

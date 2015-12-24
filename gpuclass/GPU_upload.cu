@@ -47,6 +47,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			m.addExteriorHalo = (int)d[2];
 		}
 	}
+
+	// Default to circular boundary conditions
+	m.circularBoundaryBits = 63;
+
 	// With any new upload, assume this is the XYZ orientation
 	m.permtag = 1;
 	MGA_permtagToNums(m.permtag, &m.currentPermutation[0]);
