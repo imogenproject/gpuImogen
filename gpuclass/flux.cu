@@ -29,7 +29,7 @@ int fluxcall[3][6] = {{1,2,1,2,3,3},{3,1,2,3,1,2},{2,3,3,1,2,1}};
 int permcall[3][6] = {{3,2,2,3,3,2},{2,3,3,5,2,6},{6,3,5,0,2,0}};
 
 int n;
-int stepResult;
+int returnCode = SUCCESSFUL;
 int nowDir;
 
 FluidStepParams stepParameters;
@@ -39,8 +39,8 @@ stepParameters.minimumRho = 1e-8; // FIXME HAX HAX HAX
 stepParameters.stepMethod = stepMethod;
 
 if(order > 0) { /* If we are doing forward sweep */
-	stepResult = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
-	if(stepResult == ERROR_CRASH) return stepResult;
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
+	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
 		nowDir = fluxcall[n][sweep];
@@ -48,22 +48,22 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
-			stepResult = performFluidUpdate_1D(fluid, stepParameters);
-			if(stepResult == ERROR_CRASH) return stepResult;
-			stepResult = setFluidBoundaries(fluid, 5, nowDir);
-			if(stepResult == ERROR_CRASH) return stepResult;
-			stepResult = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
-			if(stepResult == ERROR_CRASH) return stepResult;
+			returnCode = performFluidUpdate_1D(fluid, stepParameters);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+			returnCode = setFluidBoundaries(fluid, 5, nowDir);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		stepResult = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL );
-		if(stepResult == ERROR_CRASH) return stepResult;
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL );
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
 } else { /* If we are doing backwards sweep */
-	stepResult = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
-	if(stepResult == ERROR_CRASH) return stepResult;
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
+	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
 		nowDir = fluxcall[n][sweep];
@@ -73,20 +73,20 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
-			stepResult = performFluidUpdate_1D(fluid, stepParameters);
-			if(stepResult == ERROR_CRASH) return stepResult;
-			stepResult = setFluidBoundaries(fluid, 5, nowDir);
-			if(stepResult == ERROR_CRASH) return stepResult;
-			stepResult = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
-			if(stepResult == ERROR_CRASH) return stepResult;
+			returnCode = performFluidUpdate_1D(fluid, stepParameters);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+			returnCode = setFluidBoundaries(fluid, 5, nowDir);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 
-		stepResult = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL ); 
-		if(stepResult == ERROR_CRASH) return stepResult;
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL );
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 }
 
-return SUCCESSFUL;
+return CHECK_IMOGEN_ERROR(returnCode);
 
 /* Fluid half-step completed 
  * If order > 0, next call sourcing terms

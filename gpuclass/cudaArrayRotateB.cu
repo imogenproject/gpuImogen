@@ -9,6 +9,9 @@
 
 // CUDA
 #include "cuda.h"
+#include "device_functions.h"
+
+
 #include "cuda_runtime.h"
 #include "cublas.h"
 
@@ -30,21 +33,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	int makeNew = 0;
 
-        if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotateB(GPU array, dir to transpose with X)"); }
+	if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotateB(GPU array, dir to transpose with X)"); }
 	switch(nlhs) {
-		case 0: makeNew = 0; break;
-		case 1: makeNew = 1; break;
-		default: mexErrMsgTxt("cudaArrayRotate must return zero (in-place transpose) or one (new array) arguments."); break;
+	case 0: makeNew = 0; break;
+	case 1: makeNew = 1; break;
+	default: mexErrMsgTxt("cudaArrayRotate must return zero (in-place transpose) or one (new array) arguments."); break;
 	}
-	CHECK_CUDA_ERROR("entering cudaArrayRotateB");
+
+	if(CHECK_CUDA_ERROR("entering cudaArrayRotateB") != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting due to errors at entry.\n"); }
 
 	MGArray src;
-	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &src);
+	int returnCode = CHECK_IMOGEN_ERROR(MGA_accessMatlabArrays(prhs, 0, 0, &src));
+	if(returnCode != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Unable to access array.\n"); }
 	int indExchange = (int)*mxGetPr(prhs[1]);
 
 	MGArray *novelty;
-
-	flipArrayIndices(&src, (makeNew ? &novelty : NULL), 1, indExchange);
+	returnCode = CHECK_IMOGEN_ERROR(flipArrayIndices(&src, (makeNew ? &novelty : NULL), 1, indExchange));
+	if(returnCode != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Index transposition failed.\n"); }
 
 	if(makeNew) { // return new tags
 		MGA_returnOneArray(plhs, novelty);
@@ -56,7 +64,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 #endif
 
 /* phi: MGArray pointer to nArrays input MGArrays
- * psi: MGArray **.
+ * psi: MGArray *.
  *   IF NOT NULL: allocates nArrays arrays & returns completely new MGArrays
  *   IF NULL:     overwrites phi[*], reusing original data *ers
  * nArrays: Positive integer
@@ -71,6 +79,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
  */
 int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode)
 {
+	int returnCode = SUCCESSFUL;
+
 	MGArray trans = *phi;
 
 	int i, sub[6];
@@ -93,7 +103,6 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 	int j;
 	for(j = 0; j < nArrays; j++) {
-
 		// Transpose XY or XZ
 		switch(exchangeCode) {
 		case 2: /* Transform XYZ -> YXZ */
@@ -145,7 +154,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
 			break;
 		default:
-			printf("In cudaArrayRotateB: Index to exchange is invalid: %i is not in 2-6\n", exchangeCode);
+			printf("In cudaArrayRotateB: Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
 			fflush(stdout);
 			return ERROR_INVALID_ARGS;
 		}
@@ -165,7 +174,9 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 		for(i = 0; i < trans.nGPUs; i++) {
 			cudaSetDevice(trans.deviceID[i]);
-			CHECK_CUDA_ERROR("cudaSetDevice()");
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaSetDevice()"));
+			if(returnCode != SUCCESSFUL) break;
+
 			calcPartitionExtent(phi, i, sub);
 
 			switch(exchangeCode) {
@@ -222,20 +233,26 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 				break;
 			}
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, phi, i, "array transposition call");
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, phi, i, "array transposition call"));
+			if(returnCode != SUCCESSFUL) break;
 		}
+
+		if(returnCode != SUCCESSFUL) break;
 
 		if(psi == NULL) { // Overwrite original data:
 			MGArray tmp = phi[0];
 			phi[0] = *nuClone; // Nuke original MGArray
 
+			phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
+
 			for(i = 0; i < trans.nGPUs; i++) {
 				phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers
 				cudaSetDevice(tmp.deviceID[i]); // And overwrite original data
 				cudaMemcpyAsync(phi->devicePtr[i], nuClone->devicePtr[i], phi->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
-				CHECK_CUDA_ERROR("cudaMemcpy");
+				returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaMemcpyAsync()"));
+				if(returnCode != SUCCESSFUL) break;
 			}
-			MGA_delete(nuClone); // Before deleting new pointer
+			if(returnCode == SUCCESSFUL) returnCode = MGA_delete(nuClone); // Before deleting new pointer
 			free(nuClone);
 		} else { // Otherwise, simply write the new MGArray to the output pointer.
 			psi[0] = *nuClone;
@@ -245,10 +262,8 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		if(psi != NULL) psi++;
 	}
 
-	CHECK_CUDA_ERROR("Departing cudaArrayRotateB");
-
-	return SUCCESSFUL;
-
+	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
+	return returnCode;
 }
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)

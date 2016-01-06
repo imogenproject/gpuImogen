@@ -13,7 +13,6 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-#include "compiled_common.h"
 #include "cudaStatics.h"
 
 /* THIS FUNCTION:
@@ -56,7 +55,7 @@ __global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
-void setBoundarySAS(MGArray *phi, int side, int direction, int sas);
+int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
 #ifdef STANDALONE_MEX_FUNCTION
 
@@ -69,28 +68,42 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 }
 #endif
 
+/* FIXME: This is terrible.
+ * FIXME: MGArray needs to provision carrying its own boundary condition metadata around somehow.
+ */
 int setBoundaryConditions(const mxArray *matlabhandle, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
 	MGArray phi, statics;
 	int worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
+	BAIL_ON_FAIL(worked)
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, 0, "boundaryData");
-	if(boundaryData == NULL) mexErrMsgTxt("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not a FluidArray/MagnetArray/InitializedArray?\n");
+	if(boundaryData == NULL) {
+		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not a FluidArray/MagnetArray/InitializedArray?\n");
+		return ERROR_INVALID_ARGS;
+	}
 
 	/* The statics describe "solid" structures which we force the grid to have */
 	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
-	if(gpuStatics == NULL) mexErrMsgTxt("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+	if(gpuStatics == NULL) {
+		printf("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
 	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
+	BAIL_ON_FAIL(worked)
 
 	int *perm = &phi.currentPermutation[0];
 	int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
 
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
 	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
-	if(offsets == NULL) mexErrMsgTxt("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+	if(offsets == NULL) {
+		printf("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
 	double *offsetcount = mxGetPr(offsets);
 	long int staticsOffset = (long int)offsetcount[2*offsetidx];
 	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
@@ -108,17 +121,28 @@ int setBoundaryConditions(const mxArray *matlabhandle, int direction)
 	if(statics.numel > 0) {
 		PAR_WARN(phi);
 		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, statics.numel, statics.dim[0]);
-		CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
+		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
+		if(worked != SUCCESSFUL) return worked;
 	}
 
 	/* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
-	int vectorComponent = (int)(*mxGetPr(mxGetProperty(matlabhandle, 0, "component")) );
+	mxArray *comp = mxGetProperty(matlabhandle, 0, "component");
+	int vectorComponent;
+	if(comp != NULL) {
+		vectorComponent = (int)(*mxGetPr(comp));
+	} else {
+		printf("Failed to fetch 'component' field of class: Not an ImogenArray? Bailing.\n");
+		return ERROR_INVALID_ARGS;
+	}
 
 	/* BEGIN DETERMINATION OF ANALYTIC BOUNDARY CONDITIONS */
 	int numDirections = 1;
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
-	if(bcModes == NULL) mexErrMsgTxt("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
+	if(bcModes == NULL) {
+		printf("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
+		return ERROR_INVALID_ARGS;
+	}
 
 	int j;
 	for(j = 0; j < numDirections; j++) {
@@ -140,24 +164,26 @@ int setBoundaryConditions(const mxArray *matlabhandle, int direction)
 
 			// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
 			if(strcmp(bs, "mirror") == 0)
-				setBoundarySAS(&phi, d, direction, vectorComponent == memoryDirection);
+				worked = setBoundarySAS(&phi, d, memoryDirection, vectorComponent == direction);
 
 			// Extrapolates f(b+x) = f(b)
 			if(strcmp(bs, "const") == 0) {
-				setBoundarySAS(&phi, d, direction, 2);
+				worked = setBoundarySAS(&phi, d, memoryDirection, 2);
 			}
 
 			// Extrapolates f(b+x) = f(b) + x f'(b)
 			// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
 			if(strcmp(bs, "linear") == 0) {
-				setBoundarySAS(&phi, d, direction, 3);
+				worked = setBoundarySAS(&phi, d, memoryDirection, 3);
 			}
 
 			if(strcmp(bs, "wall") == 0) {
-
+				printf("Wall BC is not implemented!\n");
+				return ERROR_INVALID_ARGS;
 			} 
 
 		}
+		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 	}
 
 	return SUCCESSFUL;
@@ -244,11 +270,13 @@ void *getBCKernel(int X)
 	return kerntable[X];
 }
 
-void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
+int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 {
 	dim3 blockdim, griddim;
 	void (* bckernel)(double *, int, int, int);
 	int i, sub[6];
+
+	int returnCode;
 
 	switch(direction) {
 	case 1: { blockdim.x = 3; blockdim.y = 16; blockdim.z = 8; } break;
@@ -275,7 +303,8 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 		}
 		i = (side == 0) ? 0 : (phi->nGPUs - 1);
 		cudaSetDevice(phi->deviceID[i]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
+		returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+		if(returnCode != SUCCESSFUL) return returnCode;
 
 		//bckernel = (void (*)(double *, int, int, int))getBCKernel(sas + 4*side + 8*(direction-1));
 		//if((void *)bckernel == NULL) mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet.");
@@ -284,7 +313,8 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 		calcPartitionExtent(phi, i, sub);
 
 		callBCKernel(griddim, blockdim, phi->devicePtr[i], sub[3], sub[4], sub[5], sas + 4*side + 8*(direction-1));
-		CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 2*side + 4*direction, "In setBoundarySAS; integer -> cukern table index");
+		if(returnCode != SUCCESSFUL) return returnCode;
 	} else {
 		// If the BC isn't on a face that's aimed in the partitioned direction,
 		// we have to loop and apply it to all partitions.
@@ -305,9 +335,9 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 				griddim.y = sub[4] / blockdim.y; griddim.y += (griddim.y*blockdim.y < sub[4]);
 			} break;
 			}
-			// And fire it off, boom boom boomity boom.
 			cudaSetDevice(phi->deviceID[i]);
-			CHECK_CUDA_ERROR("cudaSetDevice()");
+			returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+			if(returnCode != SUCCESSFUL) return returnCode;
 
 			//bckernel = (void (*)(double *, int, int, int))getBCKernel(sas + 4*side + 8*(direction-1));
 			//if((void *)bckernel == NULL)
@@ -315,13 +345,13 @@ void setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 			callBCKernel(griddim, blockdim, phi->devicePtr[i], sub[3], sub[4], sub[5], sas + 4*side + 8*(direction-1));
 
 			//bckernel<<<griddim, blockdim>>>(phi->devicePtr[i], sub[3], sub[4], sub[5]);
-			CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 4*side + 8*(direction-1), "In setBoundarySAS; integer -> cukern table index");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 4*side + 8*(direction-1), "In setBoundarySAS; integer -> cukern table index");
+			if(returnCode != SUCCESSFUL) return returnCode;
 		}
 
 	}
 
-
-	return;
+	return SUCCESSFUL;
 }
 
 

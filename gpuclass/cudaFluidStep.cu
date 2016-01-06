@@ -9,6 +9,7 @@
 
 // CUDA
 #include "cuda.h"
+
 #include "cuda_runtime.h"
 #include "cublas.h"
 
@@ -283,6 +284,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 
 	int stepdirect = params.stepDirection;
 
+	int returnCode = SUCCESSFUL;
+
 	/* Precalculate thermodynamic values which we'll dump to __constant__ mem
 	 */
 	double gamHost[8];
@@ -339,6 +342,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 
 		cudaMemcpyToSymbol(inputPointers, hostptrs, PTRS_PER_KERN*sizeof(double *), 0, cudaMemcpyHostToDevice);
 	}
+	returnCode = CHECK_CUDA_ERROR("Parameter upload");
+	if(returnCode != SUCCESSFUL) return returnCode;
 
 	if(hydroOnly == 1) {
 		// Switches between various prediction steps
@@ -348,15 +353,16 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 			int numarrays = 6 ;
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
-				CHECK_CUDA_ERROR("cudaSetDevice()");
 				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
-				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 //			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the parallel topology
 
 			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y, (int)fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+			if(returnCode != SUCCESSFUL) return returnCode;
 
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
 
@@ -372,11 +378,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
 			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[0], wStepValues[0] + (5*fluid->slabPitch[i])/8, hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			if(returnCode != SUCCESSFUL) return returnCode;
+
 			//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the topology structure
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
 			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+			if(returnCode != SUCCESSFUL) return returnCode;
 #endif
 		} break;
 		case METHOD_HLL:
@@ -393,7 +402,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
 				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->slabPitch[i]); // [rho px py pz E P]_.5dt
-				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 			// Launch zee kernels
@@ -415,7 +425,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 3: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				}
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
+				if(returnCode != SUCCESSFUL) return returnCode;
+
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
 				printf("WARNING: Operating at first order for debug purposes!\n");
 				cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
@@ -433,7 +445,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 3: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				}
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+				if(returnCode != SUCCESSFUL) return returnCode;
 #ifdef DBG_SECONDORDER
 				returnDebugArray(fluid, 6, wStepValues, dbOutput);
 #endif
@@ -445,29 +458,35 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice();");
 				cudaFree(wStepValues[i]);
-				CHECK_CUDA_ERROR("cudaFree()");
+				returnCode = CHECK_CUDA_ERROR("cudaFree()");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 		} break;
 		}
-		if(fluid->partitionDir == PARTITION_X) MGA_exchangeLocalHalos(fluid, 5);
-		CHECK_CUDA_ERROR("after exchange halos");
+		if(fluid->partitionDir == PARTITION_X) returnCode = MGA_exchangeLocalHalos(fluid, 5);
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 	} else {
+//		int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+		//worked = MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
 		//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the parallel topo
 		CHECK_CUDA_ERROR("In cudaFluidStep: first mhd c_f sync");
 
 		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd predict step");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd predict step");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 		dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
 		dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 		cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 		cukern_PressureFreezeSolverMHD<<<cfgrid, cfblk>>>(wStepValues[0], hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 		//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: second mhd c_f sync");
 		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 	}
 
 	return SUCCESSFUL;

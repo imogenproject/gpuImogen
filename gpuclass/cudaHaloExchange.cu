@@ -18,7 +18,6 @@
 
 // My stuff
 #include "cudaCommon.h"
-#include "compiled_common.h"
 #include "cudaHaloExchange.h"
 
 /* THIS ROUTINE
@@ -42,7 +41,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if (nrhs!=4) mexErrMsgTxt("call form is cudaHaloExchange(arraytag, dimension_to_xchg, topology, circularity).\n");
 
 	CHECK_CUDA_ERROR("entering cudaHaloExchange");
-	int xchg = (int)*mxGetPr(prhs[1]) - 1;
+	int xchg = (int)*mxGetPr(prhs[1]);
 
 	pParallelTopology parallelTopo = topoStructureToC(prhs[2]);
 
@@ -51,28 +50,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray phi;
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
+	CHECK_IMOGEN_ERROR(worked);
 
-	exchange_MPI_Halos(&phi, 1, parallelTopo, xchg);
+	if(worked == SUCCESSFUL)
+		CHECK_IMOGEN_ERROR(exchange_MPI_Halos(&phi, 1, parallelTopo, xchg));
 }
 #endif
 
 int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xchgDir)
 {
+	int returnCode = SUCCESSFUL;
+
 	CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	xchgDir -= 1; // Convert 1-2-3 index into 0-1-2 memory index
 
 	// Avoid wasting time...
-	if(xchgDir+1 > topo->ndim) return ERROR_NULL_OPERATION;
-	if(topo->nproc[xchgDir] == 1) return ERROR_NULL_OPERATION;
+	if(xchgDir+1 > topo->ndim) return SUCCESSFUL;
+	if(topo->nproc[xchgDir] == 1) return SUCCESSFUL;
 
 	int memDir;
 
 	int i;
 	for(i = 0; i < nArrays; i++) {
-		memDir = phi->currentPermutation[xchgDir]; // The actual in-memory direction we're gonna be exchanging
-
-		double *ptrHalo;
-
 		/* Be told if the left and right sides of the dimension are circular or not */
 		int leftCircular, rightCircular;
 		switch(xchgDir) {
@@ -89,25 +88,38 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xc
 			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
 			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
 			break;
+		default:
+			int mpirank;
+			MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+			printf("============= FAULT IN COMPILED CODE: RANK %i\nValid exchange directions are 1/2/3\nI was called with %i\n=================\n", xchgDir + 1);
+			return ERROR_INVALID_ARGS;
 		}
+
+		memDir = phi->currentPermutation[xchgDir]; // The actual in-memory direction we're gonna be exchanging
+
+		double *ptrHalo;
 
 		// Find the size of the swap buffer
 		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, 3);
 
-		cudaError fail = cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
-		CHECK_CUDA_ERROR("cudaHostAlloc");
+		cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
+		returnCode = CHECK_CUDA_ERROR("cudaHostAlloc");
+		if(returnCode != SUCCESSFUL) return returnCode;
 
 		MPI_Comm commune = MPI_Comm_f2c(topo->comm);
 
 		double *ptmp = ptrHalo;
 		// Fetch left face
 		if(leftCircular)
-			MGA_wholeFaceToLinear(phi, memDir, 0, 0, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 0, 3, &ptmp);
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+
 
 		ptmp = ptrHalo + numPerHalo;
 		// Fetch right face
 		if(rightCircular)
-			MGA_wholeFaceToLinear(phi, memDir, 1, 0, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 0, 3, &ptmp);
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		// synchronize to make sure host sees what was uploaded
 		int j;
@@ -125,12 +137,14 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xc
 		// write left face
 		ptmp = ptrHalo + 2*numPerHalo;
 		if(leftCircular)
-			MGA_wholeFaceToLinear(phi, memDir, 0, 1, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 1, 3, &ptmp);
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		ptmp = ptrHalo + 3*numPerHalo;
 		// Fetch right face
 		if(rightCircular)
-			MGA_wholeFaceToLinear(phi, memDir, 1, 1, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 1, 3, &ptmp);
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		cudaFreeHost((void **)ptrHalo);
 
