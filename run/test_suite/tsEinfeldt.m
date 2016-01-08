@@ -47,6 +47,7 @@ for R = 1:doublings;
     run.grid = [N0*2^R 2 1];
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
+    enforceConsistentView(dirout);
 
     % Access final state
     S = SavefilePortal(dirout);

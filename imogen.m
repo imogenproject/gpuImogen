@@ -44,6 +44,8 @@ function outdirectory = imogen(srcData, resumeinfo)
     gm = GPUManager.getInstance();
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
+    GIS = GlobalIndexSemantics();
+
     if RESTARTING
         % If reloading from time-evolved point,
         % garner important values from saved files:
@@ -57,7 +59,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         run.image.frame = resumeinfo.imgframe;
 
         % (4) Recall and give a somewhat late init to indexing semantics.
-        GIS = GlobalIndexSemantics(); GIS.setup(dframe.parallel.globalDims);
+        GIS.setup(dframe.parallel.globalDims);
 
         cd(origpath); clear origpath;
         FieldSource = dframe;
@@ -69,7 +71,9 @@ function outdirectory = imogen(srcData, resumeinfo)
     DataHolder.createSlabs(5); % [rho E px py pz] slabs
 
     a = GPU_getslab(DataHolder, 0);
+
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, run, statics);
+
     a = GPU_setslab(DataHolder, 1, FieldSource.ener);
     ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, run, statics);
 
@@ -102,7 +106,6 @@ function outdirectory = imogen(srcData, resumeinfo)
     IC.amResuming = 1;
     IC.originalPathStruct = run.paths.serialize();
 
-    GIS = GlobalIndexSemantics();
     if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
 
     doInSitu = ini.useInSituAnalysis;
@@ -134,15 +137,18 @@ function outdirectory = imogen(srcData, resumeinfo)
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(mass, mom, ener, mag, i);
-        for i=1:2 % Two timesteps per iteration, forward & backward
-            flux(run, mass, mom, ener, mag, direction(i));
-            treadmillGrid(run, mass, mom, ener, mag);
-            if i == 1; source(run, mass, mom, ener, mag, 1); end
-        end
+%        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration 2], GIS.topology, run.DGRID);
+        flux(run, mass, mom, ener, mag, 1);
+%        treadmillGrid(run, mass, mom, ener, mag);
+
+        source(run, mass, mom, ener, mag, 1.0);
+
+%        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration 2], GIS.topology, run.DGRID);
+        flux(run, mass, mom, ener, mag, -1);
+%        treadmillGrid(run, mass, mom, ener, mag);
 
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
-
         %--- Analysis done as simulation runs ---%
         if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
             inSituAnalyzer.FrameAnalyzer(run, mass, mom, ener, mag);
@@ -163,6 +169,7 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
 end
 
     % Delete GPU arrays to make Matlab happy
+    % Note though, this should be auto-handled
     % Though I think mexlocking the master file to keep it from losing its context
     % solved the actual problem...
     mass.cleanup(); ener.cleanup();

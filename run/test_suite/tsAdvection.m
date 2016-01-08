@@ -53,7 +53,8 @@ for D = 1:doublings;
     % Run simulation at present resolution & store results path
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    pause(35); % Aciss' file system sucks
+
+    enforceConsistentView(outpath); 
     A = AdvectionAnalysis(outpath, 1);
     result.paths{end+1} = outpath;
 

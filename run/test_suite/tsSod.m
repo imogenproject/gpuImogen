@@ -26,6 +26,7 @@ for p = 1:doublings;
     run.grid(direct) = N*2^(p-1);
     icfile           = run.saveInitialCondsToFile();
     outpath          = imogen(icfile);
+    enforceConsistentView(outpath);
 
     % Load last frame
     S = SavefilePortal(outpath);

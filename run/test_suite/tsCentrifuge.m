@@ -72,6 +72,7 @@ for N = 1:doublings
     outdir   = imogen(icfile);
 
     % Get metric error norms
+    enforceConsistentView(outdir);
     a = CentrifugeAnalysis(outdir, 1);
 
     % Paste them together

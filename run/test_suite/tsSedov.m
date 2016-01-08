@@ -32,7 +32,8 @@ for N = 1:numel(multiples)
     run.iterMax = 100 * max(grid); % Safely make sure that saving is set by time, not iteration
     icfile      = run.saveInitialCondsToFile();
     outdir      = imogen(icfile);
-    pause(35);
+
+    enforceConsistentView(outdir);
     status      = analyzeSedovTaylor(outdir, 1);
 
     result.paths{end+1} = outdir;
