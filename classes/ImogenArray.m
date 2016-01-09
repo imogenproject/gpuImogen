@@ -172,10 +172,10 @@ classdef ImogenArray < handle
         end
         
         function delete(obj)
+	    obj.cleanup();
             if isfield(obj, 'boundaryData')
                 obj.boundaryData.staticsData.clearArray();
             end
-            obj.pArray.clearArray();
         end
         
         %___________________________________________________________________________________________________ shift
