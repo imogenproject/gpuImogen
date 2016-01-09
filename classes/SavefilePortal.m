@@ -18,9 +18,9 @@ classdef SavefilePortal < handle
         savefileList;
         strnames={'X','Y','Z','XY','XZ','YZ','XYZ'};
 
-	directoryStack;
+        directoryStack;
 
-	pParallelMode;
+        pParallelMode;
     end %PROTECTED
     
     %===================================================================================================
@@ -38,29 +38,29 @@ classdef SavefilePortal < handle
             self.rescanDirectory();
             self.typeToLoad = 7;
 
-	    self.setParallelMode(0);
+            self.setParallelMode(0);
         end
 
-	function setParallelMode(self, enable)
-	    if enable;
-		self.pParallelMode = 1;
-		if mpi_isinitialized() == 0;
-		    warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init() for sanity.');
-		    mpi_init();
-		end
-	    else;
-		self.pParallelMode = 0;
-	    end
-	end
+        function setParallelMode(self, enable)
+            if enable;
+                self.pParallelMode = 1;
+                if mpi_isinitialized() == 0;
+                    warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init() for sanity.');
+                    mpi_init();
+                end
+            else;
+                self.pParallelMode = 0;
+            end
+        end
 
         function changeDirectory(self, nwd)
             % changeDirectory(nwd) makes the portal operate on the New
             % Working Directory; Resets the portal (all frames -> first).
             % Does not corrupt caller's PWD.
             self.savefileDirectory = nwd;
-	    self.pushdir(nwd);
+            self.pushdir(nwd);
             
-	    self.currentFrame = [0 0 0 0 0 0 0];
+            self.currentFrame = [0 0 0 0 0 0 0];
 
             self.popdir();
         end
@@ -68,8 +68,27 @@ classdef SavefilePortal < handle
         function setFrametype(self, id)
         % setFrametype(id) sets the frame used to X, Y, Z, XY, XZ, YZ, XYZ
         % for id values 1-7 respectively.
-	    if id < 1; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
-	    if id > 7; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
+            if isa(id, 'double')
+                problem = 0;
+                if id < 1; problem = id; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
+                if id > 7; problem = id; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
+                if problem; % U jelly?
+                    fprintf('Got id of %i, valid values are 1 (X), 2 (Y), 3 (Z), 4 (XY), 5 (XZ), 6 (YZ), 7 (XYZ)\n', int32(problem));
+                end
+            else
+                if strcmp(id,'X'); id = 1; end
+                if strcmp(id,'Y'); id = 2; end
+                if strcmp(id,'Z'); id = 3; end
+                if strcmp(id,'XY');id = 4; end
+                if strcmp(id,'XZ');id = 5; end
+                if strcmp(id,'YZ');id = 6; end
+                if strcmp(id,'XYZ');id = 7; end
+                if isa(id,'double') == false;
+                    fprintf('Received string ''%s'' for ID. Valid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\nDefaulting to XYZ.\n');
+                    id = 7;
+                end
+            end
+
             self.typeToLoad = id;
         end
         function accessX(self); self.setFrametype(1); end
@@ -80,12 +99,12 @@ classdef SavefilePortal < handle
         function accessYZ(self); self.setFrametype(6); end
         function accessXYZ(self); self.setFrametype(7); end
 
-	function IC = returnInitializer(self)
+        function IC = returnInitializer(self)
             self.pushdir(self.savefileDirectory);
             load('SimInitializer_rank0');
             self.popdir();
-	    return;
-	end
+            return;
+        end
 
         % Next/previous/start/last to make raw setFrame() friendlier
         function [F glitch] = nextFrame(self)
@@ -104,7 +123,7 @@ classdef SavefilePortal < handle
         
         function [F glitch] = jumpToFirstFrame(self)
             % Resets the current frame to the first
-    	    [F glitch] = self.setFrame(1);
+                [F glitch] = self.setFrame(1);
         end
         
         function [F glitch] = jumpToLastFrame(self)
@@ -127,13 +146,13 @@ classdef SavefilePortal < handle
             self.currentFrame(self.typeToLoad) = f;
             
             self.pushdir(self.savefileDirectory);
-	    if self.pParallelMode
-		r = mpi_myrank();
+            if self.pParallelMode
+                r = mpi_myrank();
                 F = util_LoadFrameSegment(self.typeToLoad, self.savefileList.misc.padlen, r, b(f));
-	    else
+            else
                 F = util_LoadWholeFrame(self.typeToLoad, self.savefileList.misc.padlen, b(f));
 
-	    end
+            end
             self.popdir();
         end
             
@@ -149,11 +168,11 @@ classdef SavefilePortal < handle
             n = self.currentFrame(self.typeToLoad);
        end
 
-	function n = numFrames(self)
+        function n = numFrames(self)
         % n = numFrames() returns how many frames of the current type are
         % accessible in the current directory
-	    n = numel(getfield(self.savefileList,self.strnames{self.typeToLoad}));
-	end
+            n = numel(getfield(self.savefileList,self.strnames{self.typeToLoad}));
+        end
 
         function rescanDirectory(self)
             self.pushdir(self.savefileDirectory);
@@ -165,15 +184,15 @@ classdef SavefilePortal < handle
     
     %===================================================================================================
     methods (Access = protected) %                                      P R O T E C T E D    [M]
-	function pushdir(self, D)
-	    self.directoryStack{end+1} = pwd();
-	    cd(D);
-	end
+        function pushdir(self, D)
+            self.directoryStack{end+1} = pwd();
+            cd(D);
+        end
 
-	function popdir(self)
-	    cd(self.directoryStack{end});
-	    self.directoryStack = self.directoryStack(1:(end-1));
-	end
+        function popdir(self)
+            cd(self.directoryStack{end});
+            self.directoryStack = self.directoryStack(1:(end-1));
+        end
     end%PROTECTED
     
     %===================================================================================================
