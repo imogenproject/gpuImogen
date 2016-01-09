@@ -95,6 +95,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     asize = mass.gridSize();
     run.save.logAllPrint('rank %i: %06.3fMB used by fluid state arrays of size [%i %i %i] partitioned on %i GPUs\n', mpi_myrank(), usedGPUMem, asize(1), asize(2), asize(3), int32(numel(gm.deviceList)) );
 
+    mpi_barrier();
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
     run.selfGravity.initialize(IC.selfGravity, mass);
