@@ -7,9 +7,11 @@ function enforceConsistentView(directory, timeout)
 if nargin == 0;
     directory = pwd();
 end
+
+warnAboutTimeout = 0;
 if nargin < 2
-    timeout = 600
-    if mpi_amirank0(); warning('No timeout given: Defaulting to TEN WALLCLOCK MINUTES'); end
+    timeout = 600;
+    if mpi_amirank0(); warnAboutTimeout = 1; end
 end
 
 % List everything this node sees on the F.S.
@@ -49,8 +51,10 @@ while theSame == 0
     end
 end
 
-if mpi_amirank0();
-    elapsed = toc();
+elapsed = toc();
+
+if mpi_amirank0() && (elapsed > 0.05) % do not blather about short times.
+    if warnAboutTimeout; fprintf('enforceConsistentView: No timeout given, defaulted to 10 wallclock minutes.\n'); end
     fprintf('All ranks saw consistent size/name/filecount in %s in %f sec\n', directory, elapsed);
 end
 
