@@ -178,10 +178,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int stepdir  = (int)thermo[3];
 
 	FluidStepParams stepParameters;
-	stepParameters.onlyHydro = 1;
+	stepParameters.lambda      = lambda;
+	stepParameters.onlyHydro   = 1;
 	stepParameters.thermoGamma = gamma;
-	stepParameters.minimumRho = rhomin;
-	stepParameters.stepMethod = method;
+	stepParameters.minimumRho  = rhomin;
+	stepParameters.stepMethod  = method;
 	stepParameters.stepDirection = stepdir;
 
 	#ifdef DEBUGMODE
