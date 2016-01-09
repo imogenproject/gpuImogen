@@ -80,7 +80,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	CHECK_CUDA_ERROR("entering compiled fluid step");
-	performFluidUpdate_3D(&fluid[0], topo, sweepDirect, stepNum, &lambda[0], gamma, stepMethod);
-	CHECK_CUDA_ERROR("exiting compiled fluid step");
+	int returnCode = performFluidUpdate_3D(&fluid[0], topo, sweepDirect, stepNum, &lambda[0], gamma, stepMethod);
+	CHECK_IMOGEN_ERROR(returnCode);
+
+	if(returnCode != SUCCESSFUL) mexErrMsgTxt("Fluid update code returned unsuccessfully!");
 
 }
