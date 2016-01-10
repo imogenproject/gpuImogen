@@ -1,7 +1,7 @@
 function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings)
 
 if nargin < 6
-    disp('Number of grid resolution doublings not given: defaulted to 3');
+    if mpi_amirank0(); disp('Number of grid resolution doublings not given: defaulted to 3'); end 
     doublings = 3;
 end
 
