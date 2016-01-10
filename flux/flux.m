@@ -9,6 +9,11 @@ function flux(run, mass, mom, ener, mag, order)
 %>< mag         magnetic field                                                          MagnetArray(3)
 %>> order       direction of flux sweep (1 forward/-1 backward)                         int     +/-1
 
+    isOneDimensional = (numel(find(mass.gridSize > 3)) == 1);
+    if isOneDimensional
+	relaxingFluid(run, mass, mom, ener, mag, 1);
+        return;
+    end
     %-----------------------------------------------------------------------------------------------
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
