@@ -23,7 +23,8 @@
 /* THIS ROUTINE
    This routine interfaces with the parallel gateway halo routines
    The N MGArrays *ed to by phi swap ghost cells as described by topo
-   circularity[
+   circularity[...
+
  */
 
 #ifdef STANDALONE_MEX_FUNCTION
@@ -50,18 +51,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray phi;
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
-	CHECK_IMOGEN_ERROR(worked);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array."); }
 
-	if(worked == SUCCESSFUL)
-		CHECK_IMOGEN_ERROR(exchange_MPI_Halos(&phi, 1, parallelTopo, xchg));
+	if(CHECK_IMOGEN_ERROR(exchange_MPI_Halos(&phi, 1, parallelTopo, xchg)) != SUCCESSFUL) {
+		DROP_MEX_ERROR("Failed to perform MPI halo exchange!");
+	}
 }
 #endif
 
 int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xchgDir)
 {
-	int returnCode = SUCCESSFUL;
+	int returnCode = CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
+	if(returnCode != SUCCESSFUL) { return returnCode; }
 
-	CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	xchgDir -= 1; // Convert 1-2-3 index into 0-1-2 memory index
 
 	// Avoid wasting time...

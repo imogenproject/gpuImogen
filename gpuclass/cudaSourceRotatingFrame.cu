@@ -13,6 +13,8 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "cudaSourceRotatingFrame.h"
+
 
 #define BLOCKDIMX 16
 #define BLOCKDIMY 16
@@ -40,57 +42,78 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
 	// Get source array info and create destination arrays
-        MGArray fluid[4];
-        int worked = MGA_accessMatlabArrays(prhs, 0, 3, &fluid[0]);
+	MGArray fluid[4];
+	int worked = MGA_accessMatlabArrays(prhs, 0, 3, &fluid[0]);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access fluid arrays."); }
 
-/* FIXME: accept this as a matlab array instead
- * FIXME: Transfer appropriate segments to __constant__ memory
- * FIXME: that seems the only reasonable way to avoid partitioning hell
- */
-        MGArray xyvec;
-        worked     = MGA_accessMatlabArrays(prhs, 6, 6, &xyvec);
+	/* FIXME: accept this as a matlab array instead
+	 * FIXME: Transfer appropriate segments to __constant__ memory
+	 * FIXME: that seems the only reasonable way to avoid partitioning hell
+	 */
+	MGArray xyvec;
+	worked     = MGA_accessMatlabArrays(prhs, 6, 6, &xyvec);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access X-Y vector."); }
 
 	dim3 gridsize, blocksize;
 	int3 arraysize;
 
-
 	double omega = *mxGetPr(prhs[4]);
 	double dt    = *mxGetPr(prhs[5]);
+
+	worked = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
+
+}
+
+int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double omega, double dt)
+{
+	dim3 gridsize, blocksize;
+	int3 arraysize;
+
 	double lambda[4];
 	lambda[0] = omega;
 	lambda[1] = dt;
 
 	int i;
+	int worked;
 
-	double *devXYset[fluid->nGPUs];
+	double *devXYset[fluidXY->nGPUs];
 	int sub[6];
 
 
-	for(i = 0; i < fluid->nGPUs; i++) {
-		cudaSetDevice(fluid->deviceID[i]);
-		CHECK_CUDA_ERROR("cudaSetDevice");
+	for(i = 0; i < fluidXY->nGPUs; i++) {
+		cudaSetDevice(fluidXY->deviceID[i]);
+		worked = CHECK_CUDA_ERROR("cudaSetDevice");
+		if(worked != SUCCESSFUL) break;
+
 
 		// Upload rotation parameters
 		cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
-		CHECK_CUDA_ERROR("memcpy to symbol");
+		worked = CHECK_CUDA_ERROR("memcpy to symbol");
+		if(worked != SUCCESSFUL) break;
 
 		// Upload partition size
-		calcPartitionExtent(fluid, i, &sub[0]);
+		calcPartitionExtent(fluidXY, i, &sub[0]);
 		cudaMemcpyToSymbol(devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
-		CHECK_CUDA_ERROR("memcpy to symbol");
+		worked = CHECK_CUDA_ERROR("memcpy to symbol");
+		if(worked != SUCCESSFUL) break;
 
 		// Swipe the needed subsegments of the X/Y vectors from the supplied node-wide array
 		cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
-		CHECK_CUDA_ERROR("cudaMalloc");
+		worked = CHECK_CUDA_ERROR("cudaMalloc");
+		if(worked != SUCCESSFUL) break;
 
 		blocksize = makeDim3(128, 1, 1);
                 gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
 		gridsize.y = gridsize.z = 1;
-		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(xyvec.devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &xyvec, -1, "cukern_FetchPartitionSubset1D, X");
+		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluidXY->dim[0], devXYset[i], sub[0], sub[3]);
+		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
+		if(worked != SUCCESSFUL) break;
+
 		gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
-		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(xyvec.devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &xyvec, -1, "cukern_FetchPartitionSubset1D, Y");
+		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluidXY->dim[0], fluidXY->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
+		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
+		if(worked != SUCCESSFUL) break;
 
 		arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
@@ -100,23 +123,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		gridsize.z = 1;
 
 		cukern_sourceRotatingFrame<<<gridsize, blocksize>>>(
-        	    fluid[0].devicePtr[i],
-	            fluid[1].devicePtr[i],
-        	    fluid[2].devicePtr[i],
-	            fluid[3].devicePtr[i],
+				fluidXY[0].devicePtr[i],
+				fluidXY[1].devicePtr[i],
+				fluidXY[2].devicePtr[i],
+				fluidXY[3].devicePtr[i],
         	    devXYset[i]);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, -1, "applyScalarPotential");
-
+		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluidXY, i, "applyScalarPotential");
+		if(worked != SUCCESSFUL) break;
 	}
 
-	for(i = 0; i < fluid->nGPUs; i++) { 
-		cudaFree(devXYset[i]);
-		CHECK_CUDA_ERROR("cudaFree");
+	if(worked == SUCCESSFUL) {
+		for(i = 0; i < fluidXY->nGPUs; i++) {
+			cudaFree(devXYset[i]);
+			worked = CHECK_CUDA_ERROR("cudaFree");
+		}
 	}
 
-        // Differencing has corrupted the energy and momentum halos: Restore them
-	MGA_exchangeLocalHalos(fluid + 1, 3);
+	// Differencing has corrupted the energy and momentum halos: Restore them
+	if(worked == SUCCESSFUL)
+	    worked = MGA_exchangeLocalHalos(fluidXY + 1, 3);
 
+	return CHECK_IMOGEN_ERROR(worked);
 }
 
 /* 

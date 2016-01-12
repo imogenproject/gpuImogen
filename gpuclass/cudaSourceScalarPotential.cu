@@ -13,6 +13,7 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "cudaSourceScalarPotential.h"
 
 #define BLOCKDIMX 18
 #define BLOCKDIMY 18
@@ -47,43 +48,59 @@ __constant__ __device__ double devLambda[7];
 // rho_c / (rho_g - rho_c)
 #define G2 devLambda[6]
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-    // At least 2 arguments expected
-    // Input and result
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
+{
+
     if ((nrhs!=10) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, phi, dt, d3x, rhomin, rho_fullg)\n");
 
-  CHECK_CUDA_ERROR("entering cudaSourceScalarPotential");
+    if(CHECK_CUDA_ERROR("entering cudaSourceScalarPotential") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceScalarPotential."); }
     
     // Get source array info and create destination arrays
     MGArray fluid[6];
     int worked = MGA_accessMatlabArrays(prhs, 0, 5, fluid);
-
-    dim3 gridsize, blocksize;
-    int3 arraysize;
-    int i, sub[6];
+    if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access input arrays."); }
 
     // Each partition uses the same common parameters
     double dt = *mxGetPr(prhs[6]);
     double *dx = mxGetPr(prhs[7]);    
     double lambda[7];
+    double rhoMinimum = *mxGetPr(prhs[8]); /* minimum rho, rho_c */
+    double rhoFull    = *mxGetPr(prhs[9]); /* rho_g */
+
+    worked = sourcefunction_ScalarPotential(&fluid[0], dt, dx, rhoMinimum, rhoFull);
+
+}
+
+int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double minRho, double rhoFullGravity)
+{
+    dim3 gridsize, blocksize;
+    int3 arraysize;
+    int i, sub[6];
+    int worked;
+
+    double lambda[8];
     lambda[0] = dt/(2.0*dx[0]);
     lambda[1] = dt/(2.0*dx[1]);
     lambda[2] = dt/(2.0*dx[2]);
-    lambda[3] = *mxGetPr(prhs[8]); /* minimum rho, rho_c */
-    lambda[4] = *mxGetPr(prhs[9]); /* rho_g */
+    lambda[3] = minRho; /* minimum rho, rho_c */
+    lambda[4] = rhoFullGravity; /* rho_g */
 
     lambda[5] = 1.0/(lambda[4] - lambda[3]); /* 1/(rho_g - rho_c) */
     lambda[6] = lambda[3]*lambda[5];
 
+    for(i = 0; i < fluid->nGPUs; i++) {
+    	cudaSetDevice(fluid->deviceID[i]);
+    	cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
+    	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
+    	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+    }
 
+    if(worked != SUCCESSFUL) return worked;
 
     // Iterate over all partitions, and here we GO!
     for(i = 0; i < fluid->nGPUs; i++) {
         calcPartitionExtent(fluid, i, sub);
-        cudaSetDevice(fluid->deviceID[i]);
-        CHECK_CUDA_ERROR("cudaSetDevice()");
-        cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
-        CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
+
 
         arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
@@ -99,8 +116,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             fluid[3].devicePtr[i],
             fluid[4].devicePtr[i],
             fluid[5].devicePtr[i], arraysize);
-        CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");
+        if(worked != SUCCESSFUL) break;
     }
+
+    return CHECK_IMOGEN_ERROR(worked);
 
 }
 

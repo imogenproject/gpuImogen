@@ -81,6 +81,8 @@ griddim.y = griddim.z = 1;
 return griddim;
 }
 
+/* This collection of cookie-cutter functions is so GPU_Type can overload the basic math
+ * functions expected of any Matlab array */
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   dim3 blocksize; blocksize.x = BLEN; blocksize.y = blocksize.z = 1;
@@ -99,6 +101,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     MGArray srcArray;
     MGArray *dstArray;
     int worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcArray);
+    if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array!"); }
     dstArray = MGA_createReturnedArrays(plhs, 1, &srcArray);
 
     int j;
@@ -108,6 +111,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         gridsize = setLaunchParams(sub+3);
         cudaSetDevice(srcArray.deviceID[j]);
         baskern<<<gridsize, blocksize>>>(srcArray.devicePtr[j], dstArray->devicePtr[j], srcArray.partNumel[j]);
+        worked = CHECK_CUDA_ERROR("In basic operations");
+        if(worked != SUCCESSFUL) { DROP_MEX_ERROR("Failed to perform operation on GPu arrays."); }
     }
 
     free(dstArray);
@@ -128,6 +133,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
       n = *mxGetPr(prhs[1]);
       worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcA);
+      if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array!"); }
       optype = 1;
     } else if(mxGetClassID(prhs[0]) == mxDOUBLE_CLASS) {
       int64_t ne = mxGetNumberOfElements(prhs[0]);
@@ -135,10 +141,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
       n = *mxGetPr(prhs[0]);
       worked = MGA_accessMatlabArrays(prhs, 1, 1, &srcA);
+      if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array!"); }
       optype = 2;
     } else {
       worked = MGA_accessMatlabArrays(prhs, 0, 0, &srcA);
+      if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array!"); }
       worked = MGA_accessMatlabArrays(prhs, 1, 1, &srcB);
+      if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array!"); }
       optype = 3;
     }
     
@@ -184,6 +193,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
           default: mexErrMsgTxt("cudaBasicOperations: fatal, y=f(a,b) operation code invalid"); break;
         } break;
       }
+      if(CHECK_CUDA_ERROR("After basicOperations kernel launch") != SUCCESSFUL) { DROP_MEX_ERROR("Failed to perform GPU operation!"); }
 
     }
   free(dest);

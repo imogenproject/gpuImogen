@@ -91,6 +91,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray *dest = MGA_createReturnedArrays(plhs, 1, &m);
 
-	MGA_uploadArrayToGPU(hmem, dest, 0);
+	int worked = MGA_uploadArrayToGPU(hmem, dest, 0);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+		mexErrMsgTxt("Attempt to upload Matlab array to GPU was unsuccessful.\n");
+		return;
+	}
+
 	return;
 }
