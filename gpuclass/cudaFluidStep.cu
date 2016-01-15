@@ -14,7 +14,6 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-#include "compiled_common.h"
 #include "cudaFluidStep.h"
 
 // Only uncomment this if you plan to debug this file.

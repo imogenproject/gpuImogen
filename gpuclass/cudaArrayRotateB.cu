@@ -16,7 +16,6 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-#include "compiled_common.h"
 #include "cudaArrayRotateB.h"
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);

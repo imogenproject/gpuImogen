@@ -13,7 +13,6 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-#include "compiled_common.h"
 #include "cudaSoundspeed.h"
 
 /* THIS FUNCTION:
