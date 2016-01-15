@@ -113,7 +113,7 @@ classdef Paths < handle
 
 %___________________________________________________________________________________________________ printHostVariables
 		function printHostVariables(obj, startTime)
-                    fprintf('\nRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
+                    fprintf('\n\tRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
 		    fprintf('\tRunning on %s\n',            obj.hostName);
 			fprintf('\tImogen directory: %s\n',     obj.imogen);
 			fprintf('\tOutput directory: %s\n',	obj.results);
