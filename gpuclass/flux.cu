@@ -1,7 +1,8 @@
 
 #include "mex.h"
+
 #include "cudaCommon.h"
-#include "compiled_common.h"
+
 #include "cudaFluidStep.h"
 #include "cudaArrayRotateB.h"
 #include "cudaHaloExchange.h"
