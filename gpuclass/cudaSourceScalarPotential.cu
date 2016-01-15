@@ -21,6 +21,8 @@
 __global__ void  cukern_applyScalarPotential(double *rho, double *E, double *px, double *py, double *pz, double *phi, int3 arraysize);
 /*mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.potentialField.gputag, 2*run.time.dTime);*/
 
+__global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *px, double *py, double *phi, int3 arraysize);
+
 __constant__ __device__ double devLambda[7];
 
 #define LAMX devLambda[0]
@@ -63,7 +65,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     // Each partition uses the same common parameters
     double dt = *mxGetPr(prhs[6]);
     double *dx = mxGetPr(prhs[7]);    
-    double lambda[7];
     double rhoMinimum = *mxGetPr(prhs[8]); /* minimum rho, rho_c */
     double rhoFull    = *mxGetPr(prhs[9]); /* rho_g */
 
@@ -97,8 +98,11 @@ int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double
 
     if(worked != SUCCESSFUL) return worked;
 
+    int isThreeD = (fluid->dim[2] > 1);
+
     // Iterate over all partitions, and here we GO!
     for(i = 0; i < fluid->nGPUs; i++) {
+    	cudaSetDevice(fluid->deviceID[i]);
         calcPartitionExtent(fluid, i, sub);
 
 
@@ -109,6 +113,7 @@ int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double
         gridsize.y = arraysize.y / (blocksize.y - 2); gridsize.y += ((blocksize.y-2) * gridsize.y < arraysize.y);
         gridsize.z = 1;
 
+        if(isThreeD) {
         cukern_applyScalarPotential<<<gridsize, blocksize>>>(
             fluid[0].devicePtr[i],
             fluid[1].devicePtr[i],
@@ -116,6 +121,15 @@ int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double
             fluid[3].devicePtr[i],
             fluid[4].devicePtr[i],
             fluid[5].devicePtr[i], arraysize);
+        } else {
+        	cukern_applyScalarPotential_2D<<<gridsize, blocksize>>>(
+        	            fluid[0].devicePtr[i],
+        	            fluid[1].devicePtr[i],
+        	            fluid[2].devicePtr[i],
+        	            fluid[3].devicePtr[i],
+        	            fluid[5].devicePtr[i], arraysize);
+
+        }
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");
         if(worked != SUCCESSFUL) break;
     }
@@ -210,6 +224,73 @@ for(z = 0; z < arraysize.z; z++) {
   globAddr += arraysize.x * arraysize.y;
 
 }
+
+}
+
+
+
+
+/*
+ * dP = -rho grad(phi) dt
+ * dE = -rho v \cdot grad(phi) dt
+ */
+__global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *px, double *py, double *phi, int3 arraysize)
+{
+
+	int myLocAddr = threadIdx.x + BLOCKDIMX*threadIdx.y;
+
+	int myX = threadIdx.x + (BLOCKDIMX-2)*blockIdx.x - 1;
+	int myY = threadIdx.y + (BLOCKDIMY-2)*blockIdx.y - 1;
+
+	if((myX > arraysize.x) || (myY > arraysize.y)) return;
+
+	bool IWrite = (threadIdx.x > 0) && (threadIdx.x < (BLOCKDIMX-1)) && (threadIdx.y > 0) && (threadIdx.y < (BLOCKDIMY-1));
+	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
+
+	myX = (myX + arraysize.x) % arraysize.x;
+	myY = (myY + arraysize.y) % arraysize.y;
+
+	int globAddr = myX + arraysize.x*myY;
+
+	double deltaphi; // Store derivative of phi in one direction
+	double rhomin = devLambda[3];
+	double tmpMom;
+
+	__shared__ double phiLoc[BLOCKDIMX*BLOCKDIMY];
+	__shared__ double rhoLoc[BLOCKDIMX*BLOCKDIMY];
+	double enerLoc = 0.0;
+
+	rhoLoc[myLocAddr] = rho[globAddr]; // rho(z) -> rho
+	phiLoc[myLocAddr] = phi[globAddr];
+
+	__syncthreads(); // Make sure loaded phi is visible
+
+
+
+	// coupling is exactly zero if rho <= rhomin
+	if(IWrite && (rhoLoc[myLocAddr] > rhomin)) {
+		// compute dt * (dphi/dx)
+		deltaphi         = devLambda[0]*(phiLoc[myLocAddr+1]-phiLoc[myLocAddr-1]);
+		// reduce coupling for low densities
+		if(rhoLoc[myLocAddr] < RHOGRAV) { deltaphi *= (rhoLoc[myLocAddr]*G1 - G2); }
+		// Load px
+		tmpMom = px[globAddr];
+		// Store delta-E due to change in x momentum: ener -= (dt * dphi/dx) * (px = rho vx) -= rho delta-phi
+		enerLoc -= deltaphi*tmpMom;
+		// Update X momentum
+		px[globAddr]     = tmpMom - deltaphi*rhoLoc[myLocAddr]; // store px <- px - dt * rho dphi/dx;
+		// Calculate dt*(dphi/dy)
+		deltaphi         = devLambda[1]*(phiLoc[myLocAddr+BLOCKDIMX]-phiLoc[myLocAddr-BLOCKDIMX]);
+		// reduce G for low density
+		if(rhoLoc[myLocAddr] < RHOGRAV) { deltaphi *= (rhoLoc[myLocAddr]*G1 - G2); }
+		// Load py
+		tmpMom = py[globAddr];
+		// Update global energy array with this & previous delta-E values
+		E[globAddr] += enerLoc - deltaphi*tmpMom; // ener -= dt * py * dphi/dy
+		// Update Y momentum array
+		py[globAddr]     = tmpMom - deltaphi*rhoLoc[myLocAddr]; // store py <- py - rho dphi/dy;
+	}
+
 
 
 }
