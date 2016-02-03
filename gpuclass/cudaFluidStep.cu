@@ -304,6 +304,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
 
+	if(fluid->dim[0] < 3) return SUCCESSFUL;
+
 	// And here...
 	// We...
 	// Go!
@@ -1202,6 +1204,11 @@ DBGSAVE(1, E);
 #define HLL_LEFT 0
 #define HLL_HLL  1
 #define HLL_RIGHT 2
+
+#define HLLTEMPLATE_XDIR 0
+#define HLLTEMPLATE_YDIR 2
+#define HLLTEMPLATE_ZDIR 4
+
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny)
 {
@@ -1239,10 +1246,16 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 
 	for(; j < ny; j += blockDim.y) {
 
-		if(PCswitch == RK_PREDICT) {
+		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
 			Ale = Are = Qin[0*DEV_SLABSIZE + x0]; /* load rho */
-			Bre =       Qin[2*DEV_SLABSIZE + x0]; /* load px */
+
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR: Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+			case HLLTEMPLATE_YDIR: Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+			case HLLTEMPLATE_ZDIR: Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			}
+
 			// We calculated the gas pressure into temp array # 6 before calling
 			Cle = Cre = Qstore[5*DEV_SLABSIZE + x0]; /* load gas pressure */
 			Ble = Bre / Ale; /* Calculate vx */
@@ -1250,7 +1263,12 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
 			Ale = Qstore[x0 + 0*DEV_SLABSIZE]; /* load rho */
-			Bre = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px */
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR: Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+			case HLLTEMPLATE_YDIR: Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+			case HLLTEMPLATE_ZDIR: Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			}
+
 			Cle = Qstore[x0 + 5*DEV_SLABSIZE]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 
@@ -1355,25 +1373,51 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 		/* Flux density and momentum... for prediction we explicitly did not use MUSCL and
                    therefore Ale = Acentered. */
 		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
-				Qstore[x0                 ] = Ale + lambda * shblk[IC + BOS2];
-				Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4];
+			if((PCswitch & 1) == RK_PREDICT) {
+				                       Qstore[x0 + 0*DEV_SLABSIZE] = Ale + lambda * shblk[IC + BOS2];
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR: Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_YDIR: Qstore[x0 + 3*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_ZDIR: Qstore[x0 + 4*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				}
 			} else {
-				Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
-				Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4];
+				                       Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR: Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_YDIR: Qin[x0 + 3*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_ZDIR: Qin[x0 + 4*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				}
 			}
 		}
 
 		__syncthreads();
 		// 55 registers
-		if(PCswitch == RK_PREDICT) {
+		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
-			Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR:
+				Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
+				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case HLLTEMPLATE_YDIR:
+				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case HLLTEMPLATE_ZDIR:
+				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qin[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
+			}
 		} else {
 			/* If making correction, perform 1st order MUSCL reconstruction */
-			Fa =     Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
-			Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */
+			switch(PCswitch & 6) {
+						case HLLTEMPLATE_XDIR:
+							Fa     = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
+							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+						case HLLTEMPLATE_YDIR:
+							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+						case HLLTEMPLATE_ZDIR:
+							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+							Utilde = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
+			}
 
 			shblk[IC + BOS0] = Fa;
 			shblk[IC + BOS2] = Utilde;
@@ -1406,8 +1450,7 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 		shblk[IC + BOS1] = Utilde;
 
 		__syncthreads();
-		if(PCswitch == RK_PREDICT) {
-
+		if((PCswitch & 1) == RK_PREDICT) {
 			Fb = shblk[IR + BOS0];
 			Atilde = shblk[IR + BOS1];
 		} else {
@@ -1437,14 +1480,32 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
 
 		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
+			if((PCswitch & 1) == RK_PREDICT) {
 				Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR:
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_YDIR:
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_ZDIR:
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				}
 			} else {
 				Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR:
+					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_YDIR:
+					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_ZDIR:
+					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				}
 			}
 		}
 

@@ -50,8 +50,13 @@ __global__ void cukern_zplusAntisymmetrize(double *Phi, int nx, int ny, int nz);
 /* Launch size [3 A B] */
 __global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz);
 __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, int nz);
+
 __global__ void cukern_extrapolateConstBdyXMinus(double *phi, int nx, int ny, int nz);
 __global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyYMinus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyYPlus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyZMinus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateConstBdyZPlus(double *phi, int nx, int ny, int nz);
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
@@ -151,7 +156,7 @@ int setBoundaryConditions(const mxArray *matlabhandle, int direction)
 
 		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
-         'type plus  x', 'type plus y',  'type plus z'};
+	 'type plus  x', 'type plus y',  'type plus z'};
        Yes, strings in a cell array. */
 		/* Okay, that's not kinda, it's straight-up stupid. */
 
@@ -191,9 +196,9 @@ int setBoundaryConditions(const mxArray *matlabhandle, int direction)
 
 /* Sets the given array+AMD's boundary in the following manner:
    side      -> 0 = negative edge  1 = positive edge
-   direction -> 1 = X              2 = Y               3 = Z*
+   direction -> 1 = X	      2 = Y               3 = Z*
    sas       -> 0 = symmetrize      1 => antisymmetrize
-             -> 2 = extrap constant 3-> extrap linear
+	     -> 2 = extrap constant 3-> extrap linear
 
  *: As passed, assuming ImogenArray's indexPermute has been handled for us.
  */
@@ -213,23 +218,23 @@ void callBCKernel(dim3 griddim, dim3 blockdim, double *x, int nx, int ny, int nz
 
 	case 8: cukern_yminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 9: cukern_yminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 10: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
-	case 11: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
+	case 10: cukern_extrapolateConstBdyYMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 11: mexErrMsgTxt("Fatal: This boundary condition (y-minus, linear) has not been implemented yet."); break;
 
 	case 12: cukern_yplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 13: cukern_yplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 14: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
-	case 15: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
+	case 14: cukern_extrapolateConstBdyYPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 15: mexErrMsgTxt("Fatal: This boundary condition (y-plus, linear) has not been implemented yet."); break;
 
 	case 16: cukern_zminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 17: cukern_zminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 18: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
-	case 19: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
+	case 18: cukern_extrapolateConstBdyZMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 19: mexErrMsgTxt("Fatal: This boundary condition (z-minus linear) has not been implemented yet."); break;
 
 	case 20: cukern_zplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 21: cukern_zplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 22: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
-	case 23: mexErrMsgTxt("Fatal: This boundary condition has not been implemented yet."); break;
+	case 22: cukern_extrapolateConstBdyZPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 23: mexErrMsgTxt("Fatal: This boundary condition (z-plus linear) has not been implemented yet."); break;
 	}
 
 }
@@ -363,8 +368,8 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 	statics += myAddr;
 
 	long int xaddr = (long int)statics[0];
-	double f0      =           statics[blkOffset];
-	double c       =           statics[blkOffset*2];
+	double f0      =	   statics[blkOffset];
+	double c       =	   statics[blkOffset*2];
 
 	//	if(c >= 0) {
 	// Fade condition: Exponentially pulls cell towards c with rate constant f0;
@@ -388,6 +393,11 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 		int yidx = threadIdx.y + blockIdx.x*blockDim.y; \
 		int zidx = threadIdx.z + blockIdx.y*blockDim.z; \
 		if(yidx >= ny) return; if(zidx >= nz) return;
+
+/* The mirror condition is such that we end with
+ * [... A B C D  C  B  A] for scalar & transverse vector components and
+ * [... A B C D -C -B -A] for normal vector components,
+ * i.e. symmetry is about the 4th cell from the boundary */
 
 /* These are combined with vector/scalar type information to implement mirror BCs */
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz)
@@ -434,8 +444,8 @@ __global__ void cukern_extrapolateConstBdyXMinus(double *phi, int nx, int ny, in
 __global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi += stridey*yidx + stridez*zidx + nx - 3;
-	phi[threadIdx.x] = phi[-1];
+	phi += stridey*yidx + stridez*zidx + nx - 4;
+	phi[1+threadIdx.x] = phi[0];
 }
 
 __global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz)
@@ -484,15 +494,34 @@ __global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 __global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
+	phi += nx*(ny-7);
 	int q;
-	for(q = 0; q < 3; q++) { phi[xidx-nx*q] = phi[xidx+nx*(q-6)]; }
+	for(q = 0; q < 3; q++) { phi[xidx+nx*(6-q)] = phi[xidx+nx*q]; }
 }
 
 __global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
+	phi += nx*(ny-7);
 	int q;
-	for(q = 0; q < 3; q++) { phi[xidx-nx*q] = -phi[xidx+nx*(q-6)]; }
+	for(q = 0; q < 3; q++) { phi[xidx+nx*(6-q)] = phi[xidx+nx*q]; }
+}
+
+__global__ void cukern_extrapolateConstBdyYMinus(double *phi, int nx, int ny, int nz)
+{
+	YSASKERN_PREAMBLE
+	int q;
+	double f = phi[xidx + nx*3];
+	for(q = 0; q < 3; q++) { phi[xidx+nx*q] = f; }
+}
+
+__global__ void cukern_extrapolateConstBdyYPlus(double *phi, int nx, int ny, int nz)
+{
+	YSASKERN_PREAMBLE
+	phi += nx*(ny-4);
+	int q;
+	double f = phi[xidx];
+	for(q = 1; q < 4; q++) { phi[xidx+nx*q] = f; }
 }
 
 /* Z DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
@@ -542,6 +571,8 @@ __global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz)
 	double p[3];
 	int stride = nx*ny;
 
+	phi += stride*(nz-7);
+
 	p[0] = phi[0];
 	p[1] = phi[stride];
 	p[2] = phi[2*stride];
@@ -558,6 +589,8 @@ __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 	double p[3];
 	int stride = nx*ny;
 
+	phi += stride*(nz-7);
+
 	p[0] = phi[0];
 	p[1] = phi[stride];
 	p[2] = phi[2*stride];
@@ -567,4 +600,35 @@ __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 	phi[6*stride] = -p[0];
 
 }
+
+__global__ void cukern_extrapolateConstBdyZMinus(double *phi, int nx, int ny, int nz)
+{
+	ZSASKERN_PREAMBLE
+
+	double p;
+	int stride = nx*ny;
+
+	p = phi[3*stride];
+
+	phi[  0     ] = p;
+	phi[  stride] = p;
+	phi[2*stride] = p;
+}
+
+__global__ void cukern_extrapolateConstBdyZPlus(double *phi, int nx, int ny, int nz)
+{
+	ZSASKERN_PREAMBLE
+
+	double p;
+	int stride = nx*ny;
+
+	phi += stride*(nz-4);
+
+	p = phi[0];
+
+	phi[  stride] = p;
+	phi[2*stride] = p;
+	phi[3*stride] = p;
+}
+
 
