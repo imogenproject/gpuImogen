@@ -43,8 +43,7 @@ classdef ImogenManager < handle
         potentialField; % Manages a scalar potential                                PotentialFieldManager
         treadmill;      % Manages treadmill actions.                                TreadmillManager
 
-        frameRotateOmega;
-        frameRotateCenter;
+	frameTracking;  %							    FrameTracker class
 
         %--- Saving/output
         image;          % Manages image generation and saving.                      ImageManager
@@ -128,17 +127,10 @@ classdef ImogenManager < handle
 %___________________________________________________________________________________________________ initialize
 % Run pre-simulation initialization actions that require already initialized initial conditions for
 % the primary array objects.
-        function initialize(obj, mass, mom, ener, mag)
-%            obj.gravity.initialize(obj, mass);
-            
-	    if obj.frameRotateOmega ~= 0
-		% This is necessary because the alter routine assumes we're _already_
-		% turning at that rate
-		j = obj.frameRotateOmega;
-		obj.frameRotateOmega = 0;
-		alterFrameRotation(obj, mass, ener, mom, j);
-            end
-
+        function initialize(obj, IC, mass, mom, ener, mag)
+                obj.selfGravity.initialize(IC.selfGravity, mass);
+             obj.potentialField.initialize(IC.potentialField);
+              obj.frameTracking.initialize(IC.ini.frameParameters, mass, ener, mom)            
             obj.fluid.radiation.initialize(obj, mass, mom, ener, mag);
         end
         
@@ -345,6 +337,8 @@ classdef ImogenManager < handle
 
             obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;
             obj.magnet      = MagnetManager.getInstance();      obj.magnet.parent       = obj;
+
+            obj.frameTracking = FrameTracker();
 
             obj.paths       = Paths();
             obj.info        = cell(30,2);

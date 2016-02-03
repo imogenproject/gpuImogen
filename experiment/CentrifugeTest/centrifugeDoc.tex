@@ -24,10 +24,10 @@ Two additional numeric parameters are
 \begin{itemize}
 \item \begin{tt}edgeFraction\end{tt} - Sets how far the simulation domain extends past the edge of the
 rotating region, as a multiple of the radius of the centrifuge: $2(1+e) = Nx$
-\item \begin{tt}frameRotateOmega\end{tt} - Sets the rate at which the simulation frame is rotated. This can improve the 
+\item \begin{tt}frameParameters.omega\end{tt} - Sets the rate at which the simulation frame is rotated. This can improve the 
 timestep considerably if rotation is in one direction and advection speed is high. In fluid velocities,
 positive $\omega$ about $\hat{z}$ is such that particles on $+\hat{x}$ have momentum $+\hat{y}$. The fluid frame is opposite, such
-that positive \begin{tt}frameRotateOmega\end{tt} will create the appearance of points on $\hat{x}$ swinging towards $-\hat{y}$.
+that positive \begin{tt}frameParameters.omega\end{tt} will create the appearance of points on $\hat{x}$ swinging towards $-\hat{y}$.
 \end{itemize}
 
 \subsubsection{Analysis}

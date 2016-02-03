@@ -20,8 +20,6 @@ function run = initialize(ini)
     [run.version, run.detailedVersion]                        = versionInfo();
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
-run.frameRotateOmega = ini.frameRotateOmega;
-run.frameRotateCenter = ini.frameRotateCenter;
 
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
@@ -352,9 +350,8 @@ try
     end
 catch MERR, loc_initializationError('treadmill',MERR);
 end
-    
-%% .fades                       Fade objects
 
+%% .fades                       Fade objects
 try
     run.addFades(ini.fades);
 catch MERR, loc_initializationError('fades',MERR);

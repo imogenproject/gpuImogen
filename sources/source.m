@@ -23,10 +23,10 @@ dosync = zeros(5,3);
 dTime = 2 * tFraction * run.time.dTime;
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
-    if run.frameRotateOmega ~= 0
+    if run.frameTracking.omega ~= 0
         [xg yg] = GIS.ndgridVecs;
-        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameRotateCenter(1)) run.DGRID{2}*(yg-run.frameRotateCenter(2)) ], 1); 
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime/2, xyvector);
+        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameTracking.rotateCenter(1)) run.DGRID{2}*(yg-run.frameTracking.rotateCenter(2)) ], 1); 
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameTracking.omega, dTime/2, xyvector);
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -46,8 +46,8 @@ dTime = 2 * tFraction * run.time.dTime;
     end
 
     
-    if run.frameRotateOmega ~= 0
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameRotateOmega, dTime/2, xyvector);
+    if run.frameTracking.omega ~= 0
+        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameTracking.omega, dTime/2, xyvector);
         clear xyvector;
     end
 

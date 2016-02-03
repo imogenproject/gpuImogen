@@ -41,12 +41,10 @@ function outdirectory = imogen(srcData, resumeinfo)
     mpi_barrier();
     run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
 
-    gm = GPUManager.getInstance();
-    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
-
     GIS = GlobalIndexSemantics();
 
     if RESTARTING
+        run.save.logPrint('   Accessing restart data files\n');
         % If reloading from time-evolved point,
         % garner important values from saved files:
         % (1) save paths [above]
@@ -67,29 +65,10 @@ function outdirectory = imogen(srcData, resumeinfo)
         FieldSource = IC;
     end
 
-    DataHolder = GPU_Type(FieldSource.mass);
-    DataHolder.createSlabs(5); % [rho E px py pz] slabs
+    gm = GPUManager.getInstance();
+    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
-    a = GPU_getslab(DataHolder, 0);
-
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, run, statics);
-
-    a = GPU_setslab(DataHolder, 1, FieldSource.ener);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, run, statics);
-
-    mom  = FluidArray.empty(3,0);
-    mag  = MagnetArray.empty(3,0);
-    fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
-
-    for i = 1:3;
-        a = GPU_setslab(DataHolder, 1+i, getfield(FieldSource, fieldnames{i}) );
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, run, statics);
-        if run.pureHydro == 0
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
-        else
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
-        end
-     end
+    [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
@@ -98,16 +77,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     mpi_barrier();
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
-    run.selfGravity.initialize(IC.selfGravity, mass);
-    run.potentialField.initialize(IC.potentialField);
-
-    %--- Store everything but Q(x,t0) in a new IC file in the save directory ---%
-    IC.mass = []; IC.ener   = [];
-    IC.mom = [];  IC.magnet = [];
-    IC.amResuming = 1;
-    IC.originalPathStruct = run.paths.serialize();
-
-    if run.save.FSAVE; save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,GIS.context.rank),'IC'); end
+    writeSimInitializer(run, IC);
 
     doInSitu = ini.useInSituAnalysis;
     if doInSitu;
@@ -117,8 +87,9 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
 
     %--- Pre-loop actions ---%
+    run.initialize(IC, mass, mom, ener, mag);
+
     clear('IC', 'ini', 'statics');    
-    run.initialize(mass, mom, ener, mag);
 
     mpi_barrier();
     run.save.logPrint('---------- Entering simulation loop\n');
@@ -135,21 +106,25 @@ function outdirectory = imogen(srcData, resumeinfo)
     direction           = [1 -1];
     run.time.recordWallclock();
 
+% method: 1 = hll, 2 = hllc, 3 = xin/jin
+    cfdMethod = 1;
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
-        run.time.update(mass, mom, ener, mag, i);
-%        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration 2], GIS.topology, run.DGRID);
-        flux(run, mass, mom, ener, mag, 1);
+        run.time.update(mass, mom, ener, mag, 1);
+        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration cfdMethod], GIS.topology, run.DGRID);
+%        flux(run, mass, mom, ener, mag, 1);
 %        treadmillGrid(run, mass, mom, ener, mag);
 
         source(run, mass, mom, ener, mag, 1.0);
 
-%        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration 2], GIS.topology, run.DGRID);
-        flux(run, mass, mom, ener, mag, -1);
+        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration cfdMethod], GIS.topology, run.DGRID);
+%        flux(run, mass, mom, ener, mag, -1);
 %        treadmillGrid(run, mass, mom, ener, mag);
 
         %--- Intermediate file saves ---%
         resultsHandler(run, mass, mom, ener, mag);
+
         %--- Analysis done as simulation runs ---%
         if doInSitu && (mod(run.time.iteration, inSituSteps) == 0);
             inSituAnalyzer.FrameAnalyzer(run, mass, mom, ener, mag);

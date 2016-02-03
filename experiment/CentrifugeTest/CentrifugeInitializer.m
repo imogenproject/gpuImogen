@@ -155,7 +155,7 @@ fmin = 0;
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            obj.frameRotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
+            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
@@ -252,7 +252,7 @@ fmin = 0;
             disp('');
             disp('Key simulation parameters include the equation of state (.eqnOfState = EOS_ISOTHERMAL, EOS_ADIABATIC or EOS_ISOCHORIC) and the constraints .rho0 and .P0. Adiabatic and isothermal simulations specify P and rho at the outer edge (normalized to r = 1), isochoric specifies the uniform density and the central pressure. The .gamma parameter is important too, as regardless of the initial EoS the fluid is evolved adiabatically.');
             disp('');
-            disp('Key numeric parameters include .edgeFraction [2(1+edgeFraction) = resolution] and .frameRotateOmega (this simulation''s original purpose was to test the implementation of a rotating frame!)');
+            disp('Key numeric parameters include .edgeFraction [2(1+edgeFraction) = resolution] and .frameParameters.omega (this simulation''s original purpose was to test the implementation of a rotating frame!)');
         end
 
     end
