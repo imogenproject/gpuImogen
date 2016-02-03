@@ -1,4 +1,4 @@
-function result = tsCentrifuge(iniResolution, w0, doublings)
+function result = tsCentrifuge(iniResolution, w0, doublings, prettyPictures)
 %iniResolution = [512 512 1];
 %doublings = 7; % will run from 32x32 to 2Kx2K
 %w0 = 1.5;
@@ -10,6 +10,10 @@ function result = tsCentrifuge(iniResolution, w0, doublings)
 %
 % This system is inextricably unstable (Rayleigh criterion locally, global
 % eigenmodes exist also)
+
+if nargin < 4
+    prettyPictures = 0;
+end
 
 grid = iniResolution;
 run                 = CentrifugeInitializer(grid);
@@ -40,19 +44,23 @@ run.omega0          = w0; % Sets the w0 of w(r) = w0 (1-cos(2 pi r)) in the defa
 run.rho0            = 1; % Sets the density at r >= 1 & the BC for the centrifuge region
 run.P0              = 1;
 run.minMass         = 1e-5; % enforced minimum density
-run.frameRotateOmega= 0; % The rate at which the frame is rotating
+run.frameParameters.omega= 0; % The rate at which the frame is rotating
 run.eqnOfState      = run.EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
 
 run.pureHydro = true;
 run.cfl = .40;
 
-% This is turned off for the test suite unit
-        run.useInSituAnalysis = 0;
-        run.stepsPerInSitu = 5;
-        run.inSituHandle = @RealtimePlotter;
-instruct.plotmode = 4;
-instruct.plotDifference = 1;
-	run.inSituInstructions = instruct;
+if prettyPictures
+    run.useInSituAnalysis = 1;
+    run.stepsPerInSitu = 25;
+    run.inSituHandle = @RealtimePlotter;
+    instruct.plotmode = 4;
+
+    instruct.plotDifference = 1;
+    instruct.pause = 0;
+
+    run.inSituInstructions = instruct;
+end
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';
 run.notes       = '';

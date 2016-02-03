@@ -1,4 +1,4 @@
-function result = tsEinfeldt(N0, gamma, M, doublings)
+function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures)
 % result = tsEinfeldt(N0, doublings, M) runs a sequence of Einfeldt tests with
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
@@ -6,6 +6,9 @@ function result = tsEinfeldt(N0, gamma, M, doublings)
 if nargin < 4;
     disp('Number of doublings not given; Defaulted to 3.');
     doublings = 3;
+end
+if nargin < 5
+    prettyPictures = 0;
 end
 
 %--- Initialize test ---%
@@ -36,6 +39,18 @@ run.alias       = '';
 run.info        = 'Einfeldt Strong Rarefaction test.';
 run.notes	= '';
 run.ppSave.dim3 = 100;
+
+if prettyPictures
+    run.useInSituAnalysis = 1;
+    run.stepsPerInSitu = 25;
+    run.inSituHandle = @RealtimePlotter;
+    instruct.plotmode = 1;
+
+    instruct.plotDifference = 0;
+    instruct.pause = 0;
+
+    run.inSituInstructions = instruct;
+end
 
 result.N = [];
 result.L1 = [];

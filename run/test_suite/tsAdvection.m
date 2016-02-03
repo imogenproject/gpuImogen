@@ -1,8 +1,11 @@
-function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings)
+function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings, prettyPictures)
 
 if nargin < 6
     if mpi_amirank0(); disp('Number of grid resolution doublings not given: defaulted to 3'); end 
     doublings = 3;
+end
+if nargin < 7
+    prettyPictures = 0;
 end
 
 run         = AdvectionInitializer(grid);
@@ -42,6 +45,19 @@ run.wavenumber = N0;
 
 run.forCriticalTimes(.95);
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
+
+if prettyPictures
+    run.useInSituAnalysis = 1;
+    run.stepsPerInSitu = 25;
+    run.inSituHandle = @RealtimePlotter;
+    instruct.plotmode = 1;
+    if grid(2) > 3; instruct.plotmode = 4; end
+
+    instruct.plotDifference = 0;
+    instruct.pause = 0;
+
+    run.inSituInstructions = instruct;
+end
 
 result.firstGrid = grid;
 result.doublings = doublings;
