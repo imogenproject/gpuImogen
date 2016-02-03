@@ -266,7 +266,7 @@ classdef GlobalIndexSemantics < handle
             end
         end
         
-        function [y z] = ndgridSetYZ(obj)
+        function [y z] = ndgridSetYZ(obj, offset, scale)
             % See ndgridSetXYZ doc; Returns [y z] arrays. 
             % Note that offset/scale, if vector, must be 3 elements or
             % x(1)*[1 1 1] will be used instead
@@ -282,7 +282,7 @@ classdef GlobalIndexSemantics < handle
             end
         end
         
-        function [x z] = ndgridSetXZ(obj)
+        function [x z] = ndgridSetXZ(obj, offset, scale)
             % See ndgridSetXYZ doc; Returns [x z] arrays. 
             % Note that offset/scale, if vector, must be 3 elements or
             % x(1)*[1 1 1] will be used instead
