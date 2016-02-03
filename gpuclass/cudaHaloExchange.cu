@@ -91,9 +91,10 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xc
 			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
 			break;
 		default:
-			int mpirank;
-			MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
-			printf("============= FAULT IN COMPILED CODE: RANK %i\nValid exchange directions are 1/2/3\nI was called with %i\n=================\n", xchgDir + 1);
+			PRINT_FAULT_HEADER;
+			printf("Valid exchange directions are 1/2/3\nI was called with %i\n", xchgDir + 1);
+			PRINT_FAULT_FOOTER;
+
 			return ERROR_INVALID_ARGS;
 		}
 

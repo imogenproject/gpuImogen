@@ -153,7 +153,9 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
 			break;
 		default:
-			printf("In cudaArrayRotateB: Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
+			PRINT_FAULT_HEADER;
+			printf("Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
+			PRINT_FAULT_FOOTER;
 			fflush(stdout);
 			return ERROR_INVALID_ARGS;
 		}

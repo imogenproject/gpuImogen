@@ -156,7 +156,12 @@ void calcPartitionExtent(MGArray *m, int P, int *sub)
 // This does the "ugly" work of deciding what was passed and getting a hold of the raw data pointer
 int getGPUTypeTag(const mxArray *gputype, int64_t **tagPointer)
 {
-	if(tagPointer == NULL) return ERROR_NULL_POINTER;
+	if(tagPointer == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("input tag pointer was null!\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_NULL_POINTER;
+	}
 	tagPointer[0] = NULL;
 
 	mxClassID dtype = mxGetClassID(gputype);
@@ -164,7 +169,12 @@ int getGPUTypeTag(const mxArray *gputype, int64_t **tagPointer)
 	/* Handle gpu tags straight off */
 	if(dtype == mxINT64_CLASS) {
 		bool sanity = sanityCheckTag(gputype);
-		if(sanity == false) return ERROR_GET_GPUTAG_FAILED;
+		if(sanity == false) {
+			PRINT_FAULT_HEADER;
+			printf("Failure to access GPU tag: Sanity check failed.\n");
+			PRINT_FAULT_FOOTER;
+			return ERROR_GET_GPUTAG_FAILED;
+		}
 		tagPointer[0] = (int64_t *)mxGetData(gputype);
 		return SUCCESSFUL;
 	}
@@ -181,12 +191,19 @@ int getGPUTypeTag(const mxArray *gputype, int64_t **tagPointer)
 
 	/* We have done all that duty required, there is no dishonor in surrendering */
 	if(tag == NULL) {
-		printf("cudaCommon: fatal, getGPUTypeTag called with something not a gpu tag, or GPU_Type class, or ImogenArray class\n");
+		PRINT_FAULT_HEADER;
+		printf("getGPUTypeTag was called with something that is not a gpu tag, or GPU_Type class, or ImogenArray class\nArgument order wrong?\n");
+		PRINT_FAULT_FOOTER;
 		return ERROR_CRASH;
 	}
 
 	bool sanity = sanityCheckTag(tag);
-	if(sanity == false) return ERROR_DESERIALIZE_GPUTAG_FAILED;
+	if(sanity == false) {
+		PRINT_FAULT_HEADER;
+		printf("Failure to access GPU tag: Sanity check failed.\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_GET_GPUTAG_FAILED;
+	}
 	tagPointer[0] = (int64_t *)mxGetData(tag);
 
 	return SUCCESSFUL;
@@ -201,8 +218,12 @@ cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
 // SERDES routines
 int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
-	if(tag == NULL) return ERROR_NULL_POINTER;
-
+	if(tag == NULL) {
+			PRINT_FAULT_HEADER;
+			printf("input tag pointer was null!\n");
+			PRINT_FAULT_FOOTER;
+			return ERROR_NULL_POINTER;
+		}
 	int i;
 	mg->numel = 1;
 
@@ -420,7 +441,12 @@ void MGA_returnOneArray(mxArray *plhs[], MGArray *m)
 
 int MGA_delete(MGArray *victim)
 {
-	if(victim == NULL) return ERROR_NULL_POINTER;
+	if(victim == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("MGA_delete passed a null MGA to delete!\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_NULL_POINTER;
+	}
 	if(victim->numSlabs < 1) return SUCCESSFUL; // Ignore attempts to deallocate slab refs, this lets us pretend they're "normal"
 
 	int returnCode = SUCCESSFUL;
@@ -615,7 +641,12 @@ int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, 
 	if(returnCode != SUCCESSFUL) { return CHECK_IMOGEN_ERROR(returnCode); }
 
 	double *writeBuf= (double *)malloc(out->numel*sizeof(double));
-	if(writeBuf == NULL) return ERROR_NULL_POINTER;
+	if(writeBuf == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Failed to allocate write buffer memory!\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_NULL_POINTER;
+	}
 
 	/* FIXME: This is a temporary hack
    FIXME: The creation of these communicators should be done once,
@@ -1339,12 +1370,23 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 	int returnCode = SUCCESSFUL;
 	long numelOut = g->numel;
 
+	int amCreating = 0;
+
 	// Create output numeric array if passed NULL
 	// If e.g. returning to MATLAB, it will have already been allocated for us.
-	if(p[0] == NULL)
-		*p = (double *)malloc(numelOut * sizeof(double));
+	if(p[0] == NULL) {
+		amCreating = 1;
 
-	if(p[0] == NULL) return ERROR_NULL_POINTER;
+		*p = (double *)malloc(numelOut * sizeof(double));
+	}
+
+	if(p[0] == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Host data pointer is null!\n");
+		if(amCreating) printf("Attempted to allocate host memory here\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_NULL_POINTER;
+	}
 
 	int sub[6];
 	int htrim[6];
@@ -1593,12 +1635,18 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 {
 	if(E == cudaSuccess) return SUCCESSFUL;
 
-	printf("Caught CUDA error at %s:%i: error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
+	int myrank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	printf("========== FAULT FROM CUDA API (%s:%i), RANK %i\n", fname, lname, myrank);
+
+	printf("Caught CUDA error %s -> %s\n", fname, lname, errorName(E), cudaGetErrorString(E));
 	printf("Code's description of what it just did: %s\n", srcname);
 	printf("Rx'd the integer: %i\n", i);
 
 	if(a == NULL) {
-		printf("CUDA reported a problem after kernel launch.\nBut no MGArray passed to error checker... ?!?!?!?\nReturning crash condition.\n");
+		PRINT_FAULT_HEADER;
+		printf("CUDA reported a problem after kernel launch.\nBut no MGArray passed to error checker... ?!?!?!?\nReturning crash condition...\n");
+		PRINT_FAULT_FOOTER;
 		return ERROR_CRASH;
 	}
 
@@ -1613,6 +1661,9 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 	}
 
 	printf("Block and grid dims: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
+
+    PRINT_FAULT_FOOTER;
+
 	return ERROR_CUDA_BLEW_UP;
 }
 
@@ -1624,7 +1675,10 @@ int checkCudaError(char *where, char *fname, int lname)
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
+	printf("========== FAULT FROM CUDA API (%s:%i), RANK %i\n", fname, lname, myrank);
 	printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
+	PRINT_FAULT_FOOTER;
+
 	return ERROR_CUDA_BLEW_UP;
 }
 
