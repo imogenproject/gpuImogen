@@ -26,8 +26,8 @@ classdef SodShockTubeInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-	pShockNormal;    % Unitary 3-vector <Nx Ny Nz>. Points in this direction from the center
-			 % form the low-density region
+        pShockNormal;    % Unitary 3-vector <Nx Ny Nz>. Points in this direction from the center
+                         % form the low-density region
     end %PROTECTED
     
 %===================================================================================================
@@ -39,10 +39,10 @@ classdef SodShockTubeInitializer < Initializer
             obj.gamma            = 1.4;
             obj.runCode          = 'SodST';
             obj.info             = 'Sod shock tube trial.';
-            obj.mode.fluid		 = true;
-            obj.mode.magnet		 = false;
-            obj.mode.gravity	 = false;
-            obj.cfl				 = 0.4;
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = false;
+            obj.cfl              = 0.4;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -63,38 +63,38 @@ classdef SodShockTubeInitializer < Initializer
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
-	function normal(self, X, y, z)
-	    if nargin == 3 % x, y, z scalar numbers passed separately
-	        R = [X(1) y(1) z(1)];
-		if norm(R) < 1e-10; R = [1 0 0]; end % Do not attempt to normalize too-small R
-		R = R / norm(R);
-	    else % Pick coordinate axis directions based only on X if one element, otherwise its a vector
-		if numel(X) == 3;
-		    if norm(X) < 1e-10; X = [1 0 0]; end
-		    R = X / norm(X);
-		else
-			if isa(X, 'char')
-			    switch X
-				case 'X'; R = [1 0 0];
-				case 'Y'; R = [0 1 0];
-				case 'Z'; R = [0 0 1];
-				default; warning('Default at invalid input','Given %s is not {X, Y or Z}: defaulting to X aligned shock', X); R = [1 0 0];
-			    end
-			else
-			    switch X
-				case 1; R = [1 0 0];
-				case 2; R = [0 1 0];
-				case 3; R = [0 0 1];
-			 	default; warning('Default at invalid input','Given %g is not {1, 2, 3}: defaulting to X aligned shock', X); R = [1 0 0];
-			    end
-			end
-		end
+        function normal(self, X, y, z)
+            if nargin == 3 % x, y, z scalar numbers passed separately
+                R = [X(1) y(1) z(1)];
+                if norm(R) < 1e-10; R = [1 0 0]; end % Do not attempt to normalize too-small R
+                R = R / norm(R);
+            else % Pick coordinate axis directions based only on X if one element, otherwise its a vector
+                if numel(X) == 3;
+                    if norm(X) < 1e-10; X = [1 0 0]; end
+                    R = X / norm(X);
+                else
+                        if isa(X, 'char')
+                            switch X
+                                case 'X'; R = [1 0 0];
+                                case 'Y'; R = [0 1 0];
+                                case 'Z'; R = [0 0 1];
+                                default; warning('Default at invalid input','Given %s is not {X, Y or Z}: defaulting to X aligned shock', X); R = [1 0 0];
+                            end
+                        else
+                            switch X
+                                case 1; R = [1 0 0];
+                                case 2; R = [0 1 0];
+                                case 3; R = [0 0 1];
+                                 default; warning('Default at invalid input','Given %g is not {1, 2, 3}: defaulting to X aligned shock', X); R = [1 0 0];
+                            end
+                        end
+                end
 
-	    end
+            end
 
-	self.pShockNormal = R;
+        self.pShockNormal = R;
 
-	end
+        end
 
     end%PUBLIC
     
@@ -111,22 +111,22 @@ classdef SodShockTubeInitializer < Initializer
             selfGravity           = [];
             half                  = floor(obj.grid/2);
 
-	    GIS = GlobalIndexSemantics();
+            GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
 
-	    %--- Compute the conditions for the domains ---%
-	    [X Y Z] = GIS.ndgridSetXYZ(half + .5);
-	    NdotX = (obj.pShockNormal(1)*X + obj.pShockNormal(2)*Y + obj.pShockNormal(3)*Z) > 0;
+            %--- Compute the conditions for the domains ---%
+            [X Y Z] = GIS.ndgridSetXYZ(half + .5);
+            NdotX = (obj.pShockNormal(1)*X + obj.pShockNormal(2)*Y + obj.pShockNormal(3)*Z) > 0;
 
             %--- Set array values to high density condition ---%
             mass                  = ones(size(X));
             mom                   = zeros([3 size(X)]);
             mag                   = zeros([3 size(X)]);
-            ener                  = mass/(obj.gamma - 1);
+            ener                  = ones(size(X))/(obj.gamma - 1); % Pressure to 1
 
-	    %--- Set low density condition ---%
-	    mass(NdotX) = .125*mass(NdotX);
-	    ener(NdotX) = .100*ener(NdotX);
+            %--- Set low density condition ---%
+            mass(NdotX) = .125*mass(NdotX);
+            ener(NdotX) = .100*ener(NdotX);
 
             %--- Adjust Cell Spacing ---%
             %       Problem is normalized so that the length from one end to the other of the shock
