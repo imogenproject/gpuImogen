@@ -145,6 +145,8 @@ MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); //
 void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
 int     MGA_delete(MGArray *victim);
 
+void MGA_sledgehammerSequentialize(MGArray *q);
+
 /* MultiGPU Array I/O */
 int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
 int  MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo);

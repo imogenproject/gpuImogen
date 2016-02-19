@@ -496,6 +496,18 @@ dim3 makeDim3(unsigned int *b) {
 dim3 makeDim3(int *b) {
 	dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
 
+/* This function should only be used for debugging race conditions
+ * It loops over ALL devices used by MGArray q, and synchronizes them
+ * one by one. */
+void MGA_sledgehammerSequentialize(MGArray *q)
+{
+int i;
+for(i = 0; i < q->nGPUs; i++) {
+	cudaSetDevice(q->deviceID[i]);
+	cudaDeviceSynchronize();
+}
+}
+
 /* A node whose MGA partitions are of equal size may call this function
  * resulting in:
  *    in.devicePtr[partitionOnto][i] = REDUCE( { in->devicePtr[N][i] } ),
@@ -998,6 +1010,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				}
 			}
 
+//MGA_sledgehammerSequentialize(a);
 			// Transfer linear strips
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
@@ -1013,7 +1026,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				}
 
 			}
-
+//MGA_sledgehammerSequentialize(a);
 			// Dump the strips back to halo
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
@@ -1183,9 +1196,13 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 		gridsize.x  = ROUNDUPTO(a->dim[1], SYNCBLOCK)/SYNCBLOCK;
 		gridsize.y  = 1; gridsize.z = 1;
 		switch(right + 2*toHalo) {
+		/* left read */
 		case 0: cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		/* left write */
 		case 1: cudaMGA_haloXrw<1><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		/* left write */
 		case 2: cudaMGA_haloXrw<2><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
+		/* right write */
 		case 3: cudaMGA_haloXrw<3><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
 		default: returnCode = ERROR_CRASH;
 		}
