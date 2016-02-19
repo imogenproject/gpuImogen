@@ -13,6 +13,8 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "directionalMaxFinder.h"
+
 
 /* THIS FUNCTION:
    directionalMaxFinder has three different behaviors depending on how it is called.
