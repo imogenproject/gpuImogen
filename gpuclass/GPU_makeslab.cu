@@ -24,7 +24,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// Input and result
 	if((nlhs != 1) || (nrhs != 2)) { mexErrMsgTxt("Form: newtag = GPU_makeslab(original gputag, how many to have)."); }
 
-	CHECK_CUDA_ERROR("entering GPU_makeslab");
+	int worked = CHECK_CUDA_ERROR("entering GPU_makeslab");
+	if(worked != SUCCESSFUL) { DROP_MEX_ERROR("Aborting mission, CUDA api reported error entering GPU_makeslab"); }
 
 	MGArray m;
 
@@ -32,31 +33,40 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	int x = (int)*mxGetPr(prhs[1]);
 	int sub[6];
-		// Do the allocate-and-copy dance since we don't have a cudaRealloc that I know of
-		int i;
-		double *newblock;
+	// Do the allocate-and-copy dance since we don't have a cudaRealloc that I know of
+	int i;
+	double *newblock;
 
-		for(i = 0; i < m.nGPUs; i++) {
-			cudaSetDevice(m.deviceID[i]);
-			CHECK_CUDA_ERROR("setdevice");
+	for(i = 0; i < m.nGPUs; i++) {
+		cudaSetDevice(m.deviceID[i]);
+		worked = CHECK_CUDA_ERROR("setdevice");
+		if(worked != SUCCESSFUL) break;
 
-			calcPartitionExtent(&m, i, &sub[0]);
-			// number of bytes per slab
-			int64_t slabsize = sub[3]*sub[4]*sub[5] * sizeof(double);
-			// round up to make a pleasantly CUDA-aligned amount
-			int64_t slabpitch = slabsize / 256; slabpitch += (256*slabpitch < slabsize); slabpitch *= 256;
+		calcPartitionExtent(&m, i, &sub[0]);
+		// number of bytes per slab
+		int64_t slabsize = sub[3]*sub[4]*sub[5] * sizeof(double);
+		// round up to make a pleasantly CUDA-aligned amount
+		int64_t slabpitch = slabsize / 256; slabpitch += (256*slabpitch < slabsize); slabpitch *= 256;
 
-			cudaMalloc((void **)&newblock, slabpitch*x);
-		 	CHECK_CUDA_ERROR("malloc");
-			cudaMemcpy((void *)newblock, (void *)m.devicePtr[i], slabsize, cudaMemcpyDeviceToDevice);
-			CHECK_CUDA_ERROR("cudamemcpy");
-			cudaFree((void *)m.devicePtr[i]);
-			CHECK_CUDA_ERROR("free");
+		cudaMalloc((void **)&newblock, slabpitch*x);
+		worked = CHECK_CUDA_ERROR("malloc");
+		if(worked != SUCCESSFUL) break;
 
-			m.devicePtr[i] = newblock;
-			m.numSlabs = x;
-		}
-MGA_returnOneArray(plhs, &m);
+		cudaMemcpy((void *)newblock, (void *)m.devicePtr[i], slabsize, cudaMemcpyDeviceToDevice);
+		worked = CHECK_CUDA_ERROR("cudamemcpy");
+		if(worked != SUCCESSFUL) break;
+
+		cudaFree((void *)m.devicePtr[i]);
+		CHECK_CUDA_ERROR("free");
+		if(worked != SUCCESSFUL) break;
+
+		m.devicePtr[i] = newblock;
+		m.numSlabs = x;
+	}
+
+	if(worked != SUCCESSFUL) { DROP_MEX_ERROR("GPU_makeslab failed during creation."); }
+
+	MGA_returnOneArray(plhs, &m);
 
 	return;
 }
