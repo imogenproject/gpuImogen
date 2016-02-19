@@ -69,20 +69,32 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	CHECK_CUDA_ERROR("entering cudaStatics");
 
-	setBoundaryConditions(prhs[0], (int)*mxGetPr(prhs[2]));
+	setBoundaryConditions(NULL, prhs[0], (int)*mxGetPr(prhs[2]));
 }
 #endif
 
 /* FIXME: This is terrible.
  * FIXME: MGArray needs to provision carrying its own boundary condition metadata around somehow.
  */
-int setBoundaryConditions(const mxArray *matlabhandle, int direction)
+int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
 	MGArray phi, statics;
-	int worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
-	BAIL_ON_FAIL(worked)
+	int worked;
+	if(array == NULL) {
+		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
+		BAIL_ON_FAIL(worked)
+	} else {
+		worked = (array->matlabClassHandle == matlabhandle) ? SUCCESSFUL : ERROR_CRASH;
+		if(worked != SUCCESSFUL) {
+			PRINT_FAULT_HEADER;
+			printf("setBoundaryConditions permits both the MGArray and its Matlab handle to be passed because the MGA may have been internally modified without the handle having been, but the MGArray must name that Matlab handle as its originator.\n");
+			PRINT_FAULT_FOOTER;
+			BAIL_ON_FAIL(worked);
+		}
+		phi = array[0];
+	}
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, 0, "boundaryData");
@@ -392,44 +404,39 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 		int stridey = nx; int stridez = nx*ny; \
 		int yidx = threadIdx.y + blockIdx.x*blockDim.y; \
 		int zidx = threadIdx.z + blockIdx.y*blockDim.z; \
-		if(yidx >= ny) return; if(zidx >= nz) return;
+		if(yidx >= ny) return; if(zidx >= nz) return; \
+		phi += stridey*yidx + stridez*zidx;
 
-/* The mirror condition is such that we end with
- * [... A B C D  C  B  A] for scalar & transverse vector components and
- * [... A B C D -C -B -A] for normal vector components,
+/* We establish symmetry or antisymmetry such that we have 
+ * [... A B C D  C  B  A|-> BOUNDARY
+ * [... A B C D -C -B -A|-> BOUNDARY 
  * i.e. symmetry is about the 4th cell from the boundary */
 
-/* These are combined with vector/scalar type information to implement mirror BCs */
+
+// X direction kernels just use 3 threads in order to acheive slightly less terrible
+// memory access patterns
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-
-	phi += stridey*yidx + stridez*zidx;
 	phi[2-threadIdx.x] = phi[4+threadIdx.x];
 }
 
 __global__ void cukern_xminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-
-	phi += stridey*yidx + stridez*zidx;
 	phi[2-threadIdx.x] = -phi[4+threadIdx.x];
 }
 
 __global__ void cukern_xplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-
-	phi += stridey*yidx + stridez*zidx + nx - 7;
-	phi[4+threadIdx.x] = phi[2-threadIdx.x];
+	phi[nx-3+threadIdx.x] = phi[nx-5-threadIdx.x];
 }
 
 __global__ void cukern_xplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-
-	phi += stridey*yidx + stridez*zidx + nx - 7;
-	phi[4+threadIdx.x] = -phi[2-threadIdx.x];
+	phi[nx-3+threadIdx.x] = -phi[nx-5-threadIdx.x];
 }
 
 
@@ -437,22 +444,19 @@ __global__ void cukern_xplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 __global__ void cukern_extrapolateConstBdyXMinus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi += stridey*yidx + stridez*zidx;
 	phi[threadIdx.x] = phi[3];
 }
 
 __global__ void cukern_extrapolateConstBdyXPlus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi += stridey*yidx + stridez*zidx + nx - 4;
-	phi[1+threadIdx.x] = phi[0];
+	phi[nx-3+threadIdx.x] = phi[nx-4];
 }
 
 __global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz)
 {
 	__shared__ double f[3];
 	XSASKERN_PREAMBLE
-	phi += stridey*yidx + stridez*zidx;
 	f[threadIdx.x] = phi[threadIdx.x+3];
 	__syncthreads();
 	phi[threadIdx.x] = phi[3] + (3-threadIdx.x)*(f[0]-f[1]);
@@ -462,7 +466,7 @@ __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, in
 {
 	__shared__ double f[3];
 	XSASKERN_PREAMBLE
-	phi += stridey*yidx + stridez*zidx + nx-5;
+	phi += nx - 5;
 	f[threadIdx.x] = phi[threadIdx.x];
 	__syncthreads();
 	phi[threadIdx.x+2] = f[1] + (threadIdx.x+1)*(f[1]-f[0]);
@@ -472,56 +476,49 @@ __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, in
 /* Y DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
 /* assume a block size of [A 1 B] with grid dimensions [M N 1] s.t. AM >= nx, BN >=nz */
 #define YSASKERN_PREAMBLE \
+		int stridez = nx*ny; \
 		int xidx = threadIdx.x + blockIdx.x*blockDim.x; \
 		int zidx = threadIdx.z + blockIdx.y*blockDim.y; \
 		if(xidx >= nx) return; if(zidx >= nz) return;   \
-		phi += nx*ny*zidx;
+		phi += xidx + stridez*zidx; \
+		int q;
 
 __global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	int q;
-	for(q = 0; q < 3; q++) { phi[xidx+nx*q] = phi[xidx+nx*(6-q)]; }
+	for(q = 0; q < 3; q++) { phi[nx*q] = phi[nx*(6-q)]; }
 }
 
 __global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	int q;
-	for(q = 0; q < 3; q++) { phi[xidx+nx*q] = -phi[xidx+nx*(6-q)]; }
+	for(q = 0; q < 3; q++) { phi[nx*q] = -phi[nx*(6-q)]; }
 }
 
 __global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	phi += nx*(ny-7);
-	int q;
-	for(q = 0; q < 3; q++) { phi[xidx+nx*(6-q)] = phi[xidx+nx*q]; }
+	for(q = 0; q < 3; q++) { phi[nx*(ny-1-q)] = phi[nx*(ny-7+q)]; }
 }
 
 __global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	phi += nx*(ny-7);
-	int q;
-	for(q = 0; q < 3; q++) { phi[xidx+nx*(6-q)] = phi[xidx+nx*q]; }
+	for(q = 0; q < 3; q++) { phi[nx*(ny-1-q)] = -phi[nx*(ny-7+q)]; }
 }
 
 __global__ void cukern_extrapolateConstBdyYMinus(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	int q;
-	double f = phi[xidx + nx*3];
-	for(q = 0; q < 3; q++) { phi[xidx+nx*q] = f; }
+	double f = phi[3*nx];
+	for(q = 0; q < 3; q++) { phi[q*nx] = f; }
 }
 
 __global__ void cukern_extrapolateConstBdyYPlus(double *phi, int nx, int ny, int nz)
 {
 	YSASKERN_PREAMBLE
-	phi += nx*(ny-4);
-	int q;
-	double f = phi[xidx];
-	for(q = 1; q < 4; q++) { phi[xidx+nx*q] = f; }
+	double f = phi[(ny-4)*nx];
+	for(q = 0; q < 3; q++) { phi[(ny-3+q)*nx] = f; }
 }
 
 /* Z DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
@@ -530,105 +527,57 @@ __global__ void cukern_extrapolateConstBdyYPlus(double *phi, int nx, int ny, int
 		int xidx = threadIdx.x + blockIdx.x * blockDim.x; \
 		int yidx = threadIdx.y + blockIdx.y * blockDim.y; \
 		if(xidx >= nx) return; if(yidx >= ny) return; \
-		phi += xidx + nx*yidx;
+		phi += xidx + nx*yidx; \
+		int stride = nx*ny;
 
 __global__ void cukern_zminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	ZSASKERN_PREAMBLE
 
-	double p[3];
-	int stride = nx*ny;
-
-	p[0] = phi[4*stride];
-	p[1] = phi[5*stride];
-	p[2] = phi[6*stride];
-
-	phi[  0     ] = p[2];
-	phi[  stride] = p[1];
-	phi[2*stride] = p[0];
+	int q;
+	for(q = 0; q < 3; q++) // nvcc will unroll it
+		phi[q*stride] = phi[(6-q)*stride];
 }
 
 __global__ void cukern_zminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	ZSASKERN_PREAMBLE
-
-	double p[3];
-	int stride = nx*ny;
-
-	p[0] = phi[4*stride];
-	p[1] = phi[5*stride];
-	p[2] = phi[6*stride];
-
-	phi[  0     ] = -p[2];
-	phi[  stride] = -p[1];
-	phi[2*stride] = -p[0];
+	int q;
+	for(q = 0; q < 3; q++) 
+		phi[q*stride] = -phi[(6-q)*stride];
 }
 
 __global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	ZSASKERN_PREAMBLE
-
-	double p[3];
-	int stride = nx*ny;
-
-	phi += stride*(nz-7);
-
-	p[0] = phi[0];
-	p[1] = phi[stride];
-	p[2] = phi[2*stride];
-
-	phi[4*stride] = p[2];
-	phi[5*stride] = p[1];
-	phi[6*stride] = p[0];
+	int q;
+	for(q = 0; q < 3; q++)
+		phi[stride*(nz-1-q)] = phi[stride*(nz-7+q)];
 }
 
 __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	ZSASKERN_PREAMBLE
-
-	double p[3];
-	int stride = nx*ny;
-
-	phi += stride*(nz-7);
-
-	p[0] = phi[0];
-	p[1] = phi[stride];
-	p[2] = phi[2*stride];
-
-	phi[4*stride] = -p[2];
-	phi[5*stride] = -p[1];
-	phi[6*stride] = -p[0];
+	int q;
+	for(q = 0; q < 3; q++)
+		phi[stride*(nz-1-q)] = -phi[stride*(nz-7+q)];
 
 }
 
 __global__ void cukern_extrapolateConstBdyZMinus(double *phi, int nx, int ny, int nz)
 {
 	ZSASKERN_PREAMBLE
-
-	double p;
-	int stride = nx*ny;
-
-	p = phi[3*stride];
-
-	phi[  0     ] = p;
-	phi[  stride] = p;
-	phi[2*stride] = p;
+	int q;
+	for(q = 0; q < 3; q++)
+		phi[stride*q] = phi[stride*4];
 }
 
 __global__ void cukern_extrapolateConstBdyZPlus(double *phi, int nx, int ny, int nz)
 {
+
 	ZSASKERN_PREAMBLE
+	int q;
+	for(q = 0; q < 3; q++)
+		phi[stride*(nz-1-q)] = phi[stride*(nz-4)];
 
-	double p;
-	int stride = nx*ny;
-
-	phi += stride*(nz-4);
-
-	p = phi[0];
-
-	phi[  stride] = p;
-	phi[2*stride] = p;
-	phi[3*stride] = p;
 }
-
-
