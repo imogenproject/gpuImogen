@@ -40,21 +40,24 @@ run.info        = 'Einfeldt Strong Rarefaction test.';
 run.notes	= '';
 run.ppSave.dim3 = 100;
 
+fm = FlipMethod();
+  fm.iniMethod = 2; % hllc
+run.peripherals{end+1} = fm;
+
 if prettyPictures
-    run.useInSituAnalysis = 1;
-    run.stepsPerInSitu = 25;
-    run.inSituHandle = @RealtimePlotter;
-    instruct.plotmode = 1;
-
-    instruct.plotDifference = 0;
-    instruct.pause = 0;
-
-    run.inSituInstructions = instruct;
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
 end
 
 result.N = [];
 result.L1 = [];
 result.L2 = [];
+result.paths = {};
 
 %--- Run tests ---%
 for R = 1:doublings;
@@ -63,6 +66,8 @@ for R = 1:doublings;
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
     enforceConsistentView(dirout);
+
+    result.paths{end+1} = dirout;
 
     % Access final state
     S = SavefilePortal(dirout);

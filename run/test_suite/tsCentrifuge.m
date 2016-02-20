@@ -51,15 +51,13 @@ run.pureHydro = true;
 run.cfl = .40;
 
 if prettyPictures
-    run.useInSituAnalysis = 1;
-    run.stepsPerInSitu = 25;
-    run.inSituHandle = @RealtimePlotter;
-    instruct.plotmode = 4;
-
-    instruct.plotDifference = 1;
-    instruct.pause = 0;
-
-    run.inSituInstructions = instruct;
+    rp = RealtimePlotter();
+    rp.plotmode = 4;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
 end
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';

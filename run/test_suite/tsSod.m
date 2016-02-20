@@ -19,15 +19,13 @@ run.ppSave.dim2 = 100;
 run.bcMode.x = ENUM.BCMODE_CONST;
 
 if prettyPictures
-    run.useInSituAnalysis = 1;
-    run.stepsPerInSitu = 25;
-    run.inSituHandle = @RealtimePlotter;
-    instruct.plotmode = 1;
-
-    instruct.plotDifference = 0;
-    instruct.pause = 0;
-
-    run.inSituInstructions = instruct;
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
 end
 
 %--- Run tests ---%

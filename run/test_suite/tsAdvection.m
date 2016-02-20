@@ -47,16 +47,14 @@ run.forCriticalTimes(.95);
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
 
 if prettyPictures
-    run.useInSituAnalysis = 1;
-    run.stepsPerInSitu = 25;
-    run.inSituHandle = @RealtimePlotter;
-    instruct.plotmode = 1;
-    if grid(2) > 3; instruct.plotmode = 4; end
-
-    instruct.plotDifference = 0;
-    instruct.pause = 0;
-
-    run.inSituInstructions = instruct;
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    if grid(2) > 3; rp.plotmode = 4; end
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
 end
 
 result.firstGrid = grid;
