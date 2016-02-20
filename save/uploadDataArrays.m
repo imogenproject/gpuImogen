@@ -1,4 +1,15 @@
 function [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics)
+% Utility function uploads input data arrays on CPU to GPU
+
+    gm = GPUManager.getInstance();
+    iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
+
+    memtot = sum(iniGPUMem);
+    memneed = numel(FieldSource.mass) * 11 * 8;
+    if memneed / memtot > .9
+        run.save.logAllPrint('WARNING: Projected GPU memory utilization of %.1g\% exceeds 90% of total device memory.\n', 100*memneed/memtot);
+        run.save.logAllPrint('WARNING: Reduction in simulation size or increase in job size may be required.\n');
+    end
 
     DataHolder = GPU_Type(FieldSource.mass);
     DataHolder.createSlabs(5); % [rho E px py pz] slabs
@@ -24,5 +35,9 @@ function [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, sta
         end
      end
 
+    nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
+    asize = mass.gridSize();
+
+    run.save.logAllPrint('rank %i: %06.3fMB used by fluid state arrays of size [%i %i %i] partitioned on %i GPUs\n', mpi_myrank(), usedGPUMem, asize(1), asize(2), asize(3), int32(numel(gm.deviceList)) );
 
 end
