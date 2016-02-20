@@ -1,4 +1,4 @@
-classdef SaveManager < handle
+classdef SaveManager < LinkedListNode
 % The manager class responsible for handling saving/updating data actions. This is a singleton 
 % class to be accessed using the getInstance() method and not instantiated directly.
 
@@ -85,14 +85,18 @@ classdef SaveManager < handle
 %_______________________________________________________________________________________ preliminary
 % Handles preliminary initialization of the SaveManager after all of the initialization settings 
 % have been set. This function is meant to be called by the ImogenManager only.
-    function preliminary(obj)
-
+    function initialize(obj, IC, run, mass, ener, mom, mag)
         obj.firstSave = true;
     
         % Skip if saving is inactive.
         if ~obj.FSAVE 
             return;
         end
+
+	saver = ImogenEvent([], 1, [], @resultsHandler);
+	saver.active = 1;
+	run.attachEvent(saver);
+	
         
         %--- Analyze grid directions for auto-slices ---%
         [~, indexMax] = max(obj.parent.gridSize);
@@ -123,7 +127,8 @@ classdef SaveManager < handle
     end
 
 %_____________________________________________________________________________________ postliminary
-    function postliminary(obj) %#ok<MANU>
+    function finalize(obj, run, mass, ener, mom, mag)
+
     end
 
 %_________________________________________________________________________________________ logPrint
@@ -268,7 +273,9 @@ classdef SaveManager < handle
             
 %______________________________________________________________________________________ SaveManager
 % Creates a new SaveManager instance.
-    function obj = SaveManager() 
+    function obj = SaveManager()
+        obj = obj@LinkedListNode(); % Initialize the LL to blank
+
         obj.SLICE                   = cell(8,1);
         obj.SLICEINDEX              = ones(1,3);
         obj.ACTIVE                  = false(1,8);

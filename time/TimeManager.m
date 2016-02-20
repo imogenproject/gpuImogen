@@ -111,46 +111,9 @@ classdef TimeManager < handle
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
-                newTime   = obj.TIMEMAX;
             end
-            obj.time        = newTime;
             obj.timePercent = 100*newTime/obj.TIMEMAX;
             obj.appendHistory();
-
-            % Accumulate the average timestep thus far;
-            if (obj.iteration > 2) && mpi_amirank0()
-                ratio = obj.dTime / obj.dtAverage;
-
-%                if ratio > 20; fprintf('WARNING: Next time step at iteration %i is %g, %i times running mean\n', ...
-%                                 obj.iteration, obj.dTime, round(ratio)); end
-%                if ratio < .05; fprintf('WARNING: Next time step at iteration %i is %g, 1/%i of running mean\n', ...
-%                                 obj.iteration, obj.dTime,round(1/ratio)); end
-
-%if (ratio > 20) || (ratio < .05)
-%fprintf('Pounding the shit out of the momentum array for doing this\n');
-%vmax = 20*obj.parent.DGRID{1}/obj.dtAverage;
-%rho = mass.array;
-%p = sqrt(mom(1).array.^2+mom(2).array.^2+mom(3).array.^2);
-%v = p ./ rho;
-%
-%s = size(v);
-
-% Identify all cells that are being badcells and guillotine them, HARD
-%badcells = find(v > vmax);
-%badcells = unique([badcells; badcells+1; badcells-1; badcells+s(1); badcells-s(1)]);
-
-%  mass.array(badcells) = mass.array(badcells+5);
-%mom(1).array(badcells) = 0*mom(1).array(badcells+5);
-%mom(2).array(badcells) = 0*mom(2).array(badcells+5);
-%mom(3).array(badcells) = 0*mom(3).array(badcells+5);
-%ener.array(badcells) = 1.5*mass.array(badcells).^(5/3); %ener.array(badcells+5);
-%  ener.array(badcells) = 1*mass.array(badcells).^(5/3) + .5*(mom(1).array(badcells).^2 + mom(2).array(badcells).^2 + mom(3).array(badcells).^2)./mass.array(badcells);
-
-%end
-
-            end
-
-            obj.dtAverage = ( (obj.iteration-1)*obj.dtAverage + obj.dTime)/obj.iteration;
         end
 
 %___________________________________________________________________________________________________ updateUI
@@ -227,8 +190,9 @@ classdef TimeManager < handle
 %___________________________________________________________________________________________________ step
 % Increments the iteration variable by one for the next loop.
         function step(obj)
-            obj.updateUI();
             obj.iteration   = obj.iteration + 1;
+            obj.updateUI();
+            obj.time = obj.time + 2*obj.dTime;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
         end
                 

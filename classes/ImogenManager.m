@@ -28,7 +28,12 @@ classdef ImogenManager < handle
         fades;          %
 
         pureHydro;      % if true, stores no magnetic information and uses simpler flux kernels
+
+        cfdMethod;
         
+        peripheralListRoot;
+        eventListRoot;
+
         %--- Manager Classes ---%
         bc;             % Manages boundary conditions.                              BCManager
 
@@ -43,7 +48,7 @@ classdef ImogenManager < handle
         potentialField; % Manages a scalar potential                                PotentialFieldManager
         treadmill;      % Manages treadmill actions.                                TreadmillManager
 
-	frameTracking;  %							    FrameTracker class
+        frameTracking;  %                                                            FrameTracker class
 
         %--- Saving/output
         image;          % Manages image generation and saving.                      ImageManager
@@ -117,7 +122,7 @@ classdef ImogenManager < handle
 % Function to be called after initialization is complete but before the run has begun.
         function preliminary(obj)
             %--- Preliminary setup for children managers ---%
-            obj.save.preliminary();
+%            obj.save.preliminary(); moved this to peripheral initialization
             obj.image.preliminary();
             obj.fluid.preliminary();
             
@@ -128,6 +133,12 @@ classdef ImogenManager < handle
 % Run pre-simulation initialization actions that require already initialized initial conditions for
 % the primary array objects.
         function initialize(obj, IC, mass, mom, ener, mag)
+            p = obj.peripheralListRoot.Next;
+            while ~isempty(p)
+                p.initialize(IC, obj, mass, ener, mom, mag);
+                p = p.Next;
+            end
+
                 obj.selfGravity.initialize(IC.selfGravity, mass);
              obj.potentialField.initialize(IC.potentialField);
               obj.frameTracking.initialize(IC.ini.frameParameters, mass, ener, mom)            
@@ -137,7 +148,7 @@ classdef ImogenManager < handle
 %___________________________________________________________________________________________________ postliminary
 % Function to be called at the end of a run to deactivate and cleanup remaining resources before
 % ending the run entirely.
-        function postliminary(obj)
+        function finalize(obj, mass, ener, mom, mag)
             
             %--- Copy the log file to the results directory ---%
             try
@@ -155,7 +166,13 @@ classdef ImogenManager < handle
                 save(strcat(obj.paths.save, filesep, 'profile'),'proInfo');
                 
             end
-            obj.save.postliminary();
+
+	    %--- call finalize functions of all peripherals ---%
+	    p = obj.peripheralListRoot.Next;
+	    while ~isempty(p)
+		p.finalize(obj, mass, ener, mom, mag);
+		p = p.Next;
+	    end
         end
     
 %___________________________________________________________________________________________________ setGridSpacing
@@ -308,7 +325,45 @@ classdef ImogenManager < handle
             if ~isempty(value), obj.pWarnings = [obj.pWarnings, sprintf('\t\t%s', ...
                                                 ImogenRecord.valueToString(value))]; end
         end
-        
+       
+        % call-once
+        function attachPeripheral(obj, p)
+            if numel(p) == 1
+                if isa(p, 'cell')
+                    p = p{1};
+                end
+                p.insertAfter(obj.peripheralListRoot);
+            else
+                for n = 1:numel(p)
+                    p{n}.insertAfter(obj.peripheralListRoot);
+                end
+            end
+        end
+
+        % call-rarely
+        function attachEvent(obj, e)
+            e.insertAfter(obj.eventListRoot);
+        end
+
+        % call-often
+        function pollEventList(obj, mass, ener, mom, mag)
+            p = obj.eventListRoot.Next;
+            
+            while ~isempty(p)
+                triggered = 0;
+                if p.active;
+                    if obj.time.iteration >= p.iter; triggered = 1; p.active = 0; end
+                    if obj.time.time      >= p.time; triggered = 1; p.active = 0; end
+                end
+
+		% the callback may delete p
+		q = p.Next;
+                if triggered
+                    p.callbackHandle(p, obj, mass, ener, mom, mag);
+                end
+		p = q;
+            end
+        end
 
 %___________________________________________________________________________________________________ abortCheck
 % Determines if the state.itf file abort bit has been set, and if so adjusts the time manager so
@@ -338,6 +393,12 @@ classdef ImogenManager < handle
             obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;
             obj.magnet      = MagnetManager.getInstance();      obj.magnet.parent       = obj;
 
+            % Serve as roots for the event system lists
+            obj.peripheralListRoot = LinkedListNode();
+            obj.eventListRoot = LinkedListNode;
+        
+            obj.attachPeripheral(obj.save); % temporary?
+
             obj.frameTracking = FrameTracker();
 
             obj.paths       = Paths();
@@ -352,6 +413,8 @@ classdef ImogenManager < handle
             obj.MINDGRID    = ones(1,3);
             
             obj.pureHydro   = 0;
+
+            obj.cfdMethod = 2;
         end
         
     end%PRIVATE
