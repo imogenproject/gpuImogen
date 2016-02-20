@@ -5,9 +5,6 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
 %>> runFile    run file function name to execute            str
 %>> logFile    log file name for writing output information str
 
-% Uncomment to enter a spin loop and attach debuggers
-% Feed a list of ranks to spin only those ranks
-
     %-- Stand up the basics Imogen expects to be in place --%
     starterRun(gpuSet);
 
@@ -27,7 +24,7 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     catch ME
 	prettyprintException(ME);
         fprintf('FATAL: Runfile has thrown an exception back to loader.\nRANK %i ABORTING!\n', mpi_myrank());
-        shutDownEverything = 1;
+%        shutDownEverything = 1;
     end
 
     mpi_barrier();
