@@ -72,8 +72,8 @@ backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machPa
     
     frameT(end+1) = t;
 
-    rhoerr_L1(N) =      mpi_sum(norm(delta,1)  ) / mpi_sum(numel(delta)) ;
-    rhoerr_L2(N) = sqrt(mpi_sum(norm(delta,2)^2) / mpi_sum(numel(delta)));
+    rhoerr_L1(N) =      mpi_sum(norm(delta(:),1)  ) / mpi_sum(numel(delta)) ;
+    rhoerr_L2(N) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));
 end
 
 autopsy.T = frameT;
@@ -82,6 +82,8 @@ autopsy.wavenumber = IC.ini.pWavenumber;
 
 autopsy.rhoL1 = rhoerr_L1;
 autopsy.rhoL2 = rhoerr_L2;
+
+autopsy
 
 if mpi_amirank0()
     cd(directory);
