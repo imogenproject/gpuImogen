@@ -50,6 +50,7 @@ classdef Initializer < handle
         stepsPerInSitu;  % If > 0, Imogen will pass the sim state to the instance's FrameAnalyer() function
                         % one in this many frames
 	inSituInstructions;
+	peripherals;
 
         frameParameters; % .omega, rotateCenter, centerVelocity
     end %PUBLIC
