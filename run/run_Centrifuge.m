@@ -40,18 +40,19 @@ run.omega0          = w0; % Sets the w0 of w(r) = w0 (1-cos(2 pi r)) in the defa
 run.rho0            = 1; % Sets the density at r >= 1 & the BC for the centrifuge region
 run.P0              = 1;
 run.minMass         = 1e-5; % enforced minimum density
-run.frameRotateOmega= 0; % The rate at which the frame is rotating
+run.frameParameters.omega= 0; % The rate at which the frame is rotating
 run.eqnOfState      = run.EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
 
 run.pureHydro = true;
 run.cfl = .40;
 
-        run.useInSituAnalysis = 0;
-        run.stepsPerInSitu = 10;
-        run.inSituHandle = @RealtimePlotter;
-instruct.plotmode = 4;
-instruct.plotDifference = 1;
-        run.inSituInstructions = instruct;
+rp = RealtimePlotter();
+  rp.plotmode = 4;
+  rp.plotDifference = 1;
+  rp.insertPause = 0;
+  rp.iterationsPerCall = 10;
+  rp.firstCallIteration = 1;
+%run.peripherals{end+1} = rp;
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';
 run.notes       = '';

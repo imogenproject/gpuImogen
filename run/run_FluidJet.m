@@ -1,7 +1,7 @@
 %  Run a fluid jet test.
 
 %--- Initialize test ---%
-grid = [512 512 1];
+grid = [1024 512 1];
 run                 = JetInitializer(grid);
 run.iterMax         = 1000;
 run.injectorSize    = 15;
@@ -29,14 +29,13 @@ run.jetMach = 5;
 
 run.pureHydro = 1;
 
-run.useInSituAnalysis = 0;
-run.stepsPerInSitu = 20;
-        instruct.plotmode = 4;
-        instruct.plotDifference = 0;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
-run.inSituHandle = @RealtimePlotter;
-
+rp = RealtimePlotter();
+  rp.plotmode = 4;
+  rp.plotDifference = 0;
+  rp.insertPause = 0;
+  rp.iterationsPerCall = 20;
+  rp.firstcallIteration = 1;
+run.peripherals{end+1} = rp;
 
 %--- Run tests ---%
 if (true)

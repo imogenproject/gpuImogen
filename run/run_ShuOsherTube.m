@@ -1,4 +1,4 @@
-% Run Shu Osher Tube test (Shock wave propagating through entropy wave)
+u% Run Shu Osher Tube test (Shock wave propagating through entropy wave)
 
 %--- Initialize test ---%
 grid = [1024 2 1];
@@ -16,14 +16,13 @@ run.info        = 'Shu Osher Tube test.';
 
 run.ppSave.dim2 = 5;
 
-run.useInSituAnalysis = 0;
-run.stepsPerInSitu = 20;
-run.inSituHandle = @RealtimePlotter;
-        instruct.plotmode = 1;
-        instruct.plotDifference = 0;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
-
+rp = RealtimePlotter();
+  rp.plotmode = 1;
+  rp.plotDifference = 0;
+  rp.insertPause = 0;
+  rp.firstCallIteration = 1;
+  rp.iterationsPerCall = 20;
+%run.peripherals{end+1} = rp;
 
 %--- Run tests ---%
 if (true)

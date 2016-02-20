@@ -3,7 +3,7 @@
 % with our uniform background case
 
 %--- Initialize test ---%
-grid = [128 128 128];
+grid = [256 256 1];
 run         = SedovTaylorBlastWaveInitializer(grid);
 % There is a nominally easy way to calculate what this should be
 % but I don't have it on hand. Just put in a large number...
@@ -15,13 +15,22 @@ run.autoEndtime = 1;
 
 % One method of initializing the center of the blast: Deposit the energy equally
 % into cells whose radius is less than this
-run.depositRadiusCells(2.5);
+run.depositRadiusCells(1.1);
 
 run.ppSave.dim3 = 10;
 
 run.alias   = '';
 run.info    = 'Sedov-Taylor blast wave test.';
 run.notes   = 'Just a test...';
+
+rp = RealtimePlotter();
+  rp.plotmode = 4;
+  rp.plotDifference = 0;
+  rp.insertPause = 1;
+  rp.iterationsPerCall = 25;
+  rp.firstCallIteration = 1;
+run.peripherals{end+1} = rp;
+
 
 %--- Run tests ---%
 if (true)

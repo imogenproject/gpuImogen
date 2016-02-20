@@ -51,13 +51,13 @@ run.activeSlices.xy  = true;
 run.ppSave.dim2     = 100;
 %run.ppSave.dim3     = 20;
 
-run.useInSituAnalysis = 0;
-run.stepsPerInSitu = 20;
-run.inSituHandle = @RealtimePlotter;
-        instruct.plotmode = 4;
-        instruct.plotDifference = 0;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
+rp = realtimePlotter();
+  rp.plotMode = 4;
+  rp.plotDifference = 0;
+  rp.insertPause = 0;
+  rp.firstCallIteration = 1;
+  rp.iterationsPerCall = 20;
+run.peripherals{end+1} = rp;
 
 run.info            = 'Bow shock test.';
 run.notes           = '';
