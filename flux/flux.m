@@ -19,9 +19,9 @@ function flux(run, mass, mom, ener, mag, order)
     %-------------------------------------------------    
 
     if mass.gridSize(3) > 1
-        sweep = mod(run.time.iteration-1 + 3*(order > 0),6)+1;
+        sweep = mod(run.time.iteration + 3*(order > 0),6)+1;
     else
-        sweep = mod(run.time.iteration-1 + (order<0), 2)+1;
+        sweep = mod(run.time.iteration + (order<0), 2)+1;
     end
 
     % Any permutes that must be done before the sweep (not doing X first)
