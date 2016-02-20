@@ -28,6 +28,12 @@ else
     run.pureHydro = 0;
 end
 
+% Insert members of ini.peripherals{} using run.attachPeripheral().
+if isfield(ini, 'peripherals')
+    run.attachPeripheral(ini.peripherals);
+end
+
+
 %% .bcMode                      Edge condition modes
 try
     if isa(ini.bcMode, 'struct')
