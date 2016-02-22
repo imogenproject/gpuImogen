@@ -14,8 +14,8 @@ classdef GPU_Type < handle
 
     properties (SetAccess = private, GetAccess = private, Transient= true)
         allocated; % true if this GPU pointer was actually alloc'd and must be freed-on-quit
-		   % false if it's simply pointed at another GPU_Type
-	maxNumel;  % Indicates linear size of array that can be written
+                   % false if it's simply pointed at another GPU_Type
+        maxNumel;  % Indicates linear size of array that can be written
     end % Private
 
     properties (Dependent = true)
@@ -37,7 +37,7 @@ classdef GPU_Type < handle
         function obj = GPU_Type(arrin, docloned)
             obj.allocated = false;
             obj.clearArray();
-	    if nargin == 1; docloned = 0; end
+            if nargin == 1; docloned = 0; end
 
             if nargin > 0
                 obj.handleDatain(arrin, docloned);
@@ -141,20 +141,26 @@ classdef GPU_Type < handle
 
         function y = transpose(a); y = GPU_Type(cudaArrayRotateB(a,2)); end
         function y = Ztranspose(a); y = GPU_Type(cudaArrayRotateB(a,3)); end
+        function y = YZtranspose(a); y = GPU_Type(cudaArrayRotateB(a,4)); end
 
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
-            obj.GPU_MemPtr = int64([0 0 0 0 0 0 0 0]);
+            obj.GPU_MemPtr = int64(zeros([1 10]));
             obj.asize = [0 0 0];
             obj.numdims = 2;
         end
 
+        function makeBCHalos(self, halos)
+            bits = 1*halos(1,1) + 2*halos(2,1) + 4*halos(1,2) + 8*halos(2,2) + 16*halos(1,3) + 32*halos(2,3);
+            self.GPU_MemPtr(10) = int64(bits);
+        end
+
         % Convert this GPU_Type into a slab; This requires a reallocation & thus a new tag.
-	function createSlabs(obj, N)
-	    B = GPU_makeslab(obj.GPU_MemPtr, N);
-	    obj.GPU_MemPtr = B;
-	end
+        function createSlabs(obj, N)
+            B = GPU_makeslab(obj.GPU_MemPtr, N);
+            obj.GPU_MemPtr = B;
+        end
 
     end % generic methods
 

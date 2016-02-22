@@ -43,13 +43,13 @@ run.image.mass = true;
 %run.image.magY = true;
 %run.image.pGas = true;
 
-run.useInSituAnalysis = 1;
-run.stepsPerInSitu = 10;
-        instruct.plotmode = 1;
-        instruct.plotDifference = 1;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
-run.inSituHandle = @RealtimePlotter;
+rp = RealtimePlotter();
+  rp.plotmode = 1;
+  rp.plotDifference = 1;
+  rp.insertPause = 0;
+  rp.firstCallIteration = 1;
+  rp.iterationsPerCall = 10;
+run.peripherals{end+1} = rp;
 
 run.alias       = sprintf('RHD_ms%i_ang%i', run.sonicMach, run.theta);
 run.info        = sprintf('Radiating hydrodynamic shock test [Th=%g, Ms=%g] with grid [%g, %g, %g]', ...

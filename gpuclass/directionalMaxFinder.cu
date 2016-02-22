@@ -13,6 +13,8 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "directionalMaxFinder.h"
+
 
 /* THIS FUNCTION:
    directionalMaxFinder has three different behaviors depending on how it is called.
@@ -103,7 +105,7 @@ switch(nrhs) {
     dim3 blocksize, gridsize;
     blocksize.x = 256; blocksize.y = blocksize.z = 1;
 
-    gridsize.x = 32; // 8K threads out to keep it occupied
+    gridsize.x = 32; // 8K threads ought to keep the bugger busy
     gridsize.y = gridsize.z =1;
 
     // Allocate nGPUs * gridsize elements of pinned memory
@@ -126,7 +128,7 @@ switch(nrhs) {
     plhs[0] = mxCreateNumericArray (2, dims, mxDOUBLE_CLASS, mxREAL);
 
     // Since we get only 32*nGPUs elements back, not worth another kernel invocation
-    double nodeMax = 0;
+    double nodeMax = -1e37;
     int devCount = 0; // track which partition we're getting results from
 
     for(devCount = 0; devCount < a.nGPUs; devCount++) {
@@ -134,7 +136,7 @@ switch(nrhs) {
         CHECK_CUDA_ERROR("cudaSetDevice()");
         cudaDeviceSynchronize();
         CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
-        if(devCount == 0) nodeMax = blkA[0][0]; // Special first case: initialize nodeMax
+        if(nodeMax == -1e37) nodeMax = blkA[0][0]; // Special first case: initialize nodeMax
 
         for(i = 0; i < gridsize.x; i++)
           if(blkA[devCount][i] > nodeMax) nodeMax = blkA[devCount][i];
@@ -281,7 +283,7 @@ __shared__ double W[256];
 
 double Wmax = -1e37;
 W[tix] = -1e37;
-if(tix == 0) dout[blockIdx.x] = W[0]; // As a safety measure incase we return below
+if(tix == 0) dout[blockIdx.x] = Wmax; // As a safety measure incase we return below
 
 if(x >= n) return; // If we're fed a very small array, this will be easy
 
@@ -299,14 +301,14 @@ while(x > 16) {
 	if(W[tix+x] > W[tix]) W[tix] = W[tix+x];
         x=x/2;
 }
-// We have one halfwarp (16 threads) remaining, proceed synchronously
 
+__syncthreads();
+
+// We have one halfwarp (16 threads) remaining, proceed synchronously
 if(W[tix+16] > W[tix]) W[tix] = W[tix+16]; if(tix >= 8) return;
 if(W[tix+8] > W[tix]) W[tix] = W[tix+8]; if(tix >= 4) return;
 if(W[tix+4] > W[tix]) W[tix] = W[tix+4]; if(tix >= 2) return;
 if(W[tix+2] > W[tix]) W[tix] = W[tix+2]; if(tix) return;
-
-__syncthreads();
 
 dout[blockIdx.x] = (W[1] > W[0]) ? W[1] : W[0];
 
@@ -366,13 +368,14 @@ while(x > 16) {
         if(freeze[tix+x] > freeze[tix]) { freeze[tix] = freeze[tix+x]; maxdir[tix] = maxdir[tix+x]; }
         x=x/2;
 }
+
+__syncthreads();
+
 // We have one halfwarp (16 threads) remaining, proceed synchronously
 if(freeze[tix+16] > freeze[tix]) { freeze[tix] = freeze[tix+16]; maxdir[tix] = maxdir[tix+16]; } if(tix >= 8) return;
 if(freeze[tix+8] > freeze[tix])  { freeze[tix] = freeze[tix+8 ]; maxdir[tix] = maxdir[tix+8];  } if(tix >= 4) return;
 if(freeze[tix+4] > freeze[tix])  { freeze[tix] = freeze[tix+4 ]; maxdir[tix] = maxdir[tix+4];  } if(tix >= 2) return;
 if(freeze[tix+2] > freeze[tix])  { freeze[tix] = freeze[tix+2 ]; maxdir[tix] = maxdir[tix+2];  } if(tix) return;
-
-__syncthreads();
 
 out[blockIdx.x] = (freeze[1] > freeze[0]) ? freeze[1] : freeze[0];
 dirOut[blockIdx.x] = (freeze[1] > freeze[0]) ? maxdir[1] : maxdir[0];

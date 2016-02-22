@@ -50,9 +50,9 @@ classdef Initializer < handle
         stepsPerInSitu;  % If > 0, Imogen will pass the sim state to the instance's FrameAnalyer() function
                         % one in this many frames
 	inSituInstructions;
+	peripherals;
 
-        frameRotateOmega; % Scalar: Rotation rate of the frame [0 = disabled]
-        frameRotateCenter; % [X Y]: Point in the xy plane about which the rotation occurs
+        frameParameters; % .omega, rotateCenter, centerVelocity
     end %PUBLIC
 
 %===================================================================================================
@@ -116,8 +116,9 @@ classdef Initializer < handle
             obj.gpuDeviceNumber            = 0;
             obj.pureHydro = 0;
 
-            obj.frameRotateOmega = 0;
-            obj.frameRotateCenter = [0 0];
+	    obj.frameParameters.omega = 0;
+            obj.frameParameters.rotateCenter = [0 0];
+            obj.frameParameters.velocity = [0 0 0];
 
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
@@ -242,8 +243,6 @@ classdef Initializer < handle
 		if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [mass, mom, ener, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
                 obj.minMass = max(mpi_allgather(obj.minMass));
-
-                if mpi_amirank0(); fprintf('Finished.\n'); end
             end
 
 % This is an ugly hack; slice determination is a FAIL since parallelization.

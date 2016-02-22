@@ -1,8 +1,11 @@
-function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings)
+function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings, prettyPictures)
 
 if nargin < 6
-    disp('Number of grid resolution doublings not given: defaulted to 3');
+    if mpi_amirank0(); disp('Number of grid resolution doublings not given: defaulted to 3'); end 
     doublings = 3;
+end
+if nargin < 7
+    prettyPictures = 0;
 end
 
 run         = AdvectionInitializer(grid);
@@ -43,6 +46,17 @@ run.wavenumber = N0;
 run.forCriticalTimes(.95);
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
 
+if prettyPictures
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    if grid(2) > 3; rp.plotmode = 4; end
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
+end
+
 result.firstGrid = grid;
 result.doublings = doublings;
 result.paths = {};
@@ -53,7 +67,8 @@ for D = 1:doublings;
     % Run simulation at present resolution & store results path
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    pause(35); % Aciss' file system sucks
+
+    enforceConsistentView(outpath); 
     A = AdvectionAnalysis(outpath, 1);
     result.paths{end+1} = outpath;
 

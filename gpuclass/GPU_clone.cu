@@ -21,10 +21,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if((nlhs != 1) || (nrhs != 1)) { mexErrMsgTxt("Form: result_tag = GPU_clone(input tag)"); }
 
-  CHECK_CUDA_ERROR("entering GPU_clone");
+  if(CHECK_CUDA_ERROR("entering GPU_clone") != SUCCESSFUL) return;
   
   MGArray orig;
-  int worked = MGA_accessMatlabArrays(prhs, 0, 0, &orig);
+  int returnCode = MGA_accessMatlabArrays(prhs, 0, 0, &orig);
+
+  if(returnCode != SUCCESSFUL) {
+	  CHECK_IMOGEN_ERROR(returnCode);
+	  return;
+  }
 
   MGArray *nu = MGA_createReturnedArrays(plhs, 1, &orig);
 
@@ -37,6 +42,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     cudaSetDevice(orig.deviceID[j]);
     cudaMemcpy((void *)nu->devicePtr[j], (void*)orig.devicePtr[j], dan*sizeof(double), cudaMemcpyDeviceToDevice);
+    returnCode = CHECK_CUDA_ERROR("GPU_clone: memcpy");
+    if(returnCode != SUCCESSFUL) break;
   }
 
   return;

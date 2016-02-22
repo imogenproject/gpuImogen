@@ -9,10 +9,12 @@
 
 // CUDA
 #include "cuda.h"
+
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-#include "cudaCommon.h" // This defines the getGPUSourcePointers and makeGPUDestinationArrays utility functions
+#include "cudaCommon.h"
+#include "cudaFluidStep.h"
 
 // Only uncomment this if you plan to debug this file.
 //#define DEBUGMODE
@@ -20,22 +22,6 @@
 #include "mpi.h"
 #include "parallel_halo_arrays.h"
 //#include "mpi_common.h"
-
-#ifdef DEBUGMODE
-    #include "debug_inserts.h"
-#endif
-
-#define RK_PREDICT 0
-#define RK_CORRECT 1
-
-#define STEPTYPE_XINJIN 1
-#define STEPTYPE_HLL 2
-#define STEPTYPE_HLLC 3
-
-#define FLUX_X 1
-#define FLUX_Y 2
-#define FLUX_Z 3
-
 
 /* THIS FUNCTION
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -68,7 +54,7 @@ and considerably speeds up the process.
  * It is observed to to save some 10% on execution time if used
  */
 
-/*__device__ double slopeLimiter_Osher(double A, double B)
+/*__device__ double slopeLimiter_Osher_asm(double A, double B)
 {
 double retval;
 asm(    ".reg .f64 s;\n\t"      // hold sum
@@ -101,7 +87,7 @@ template <unsigned int PCswitch>
 __global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny);
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny);
 
 template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda);
@@ -115,8 +101,10 @@ template <unsigned int PCswitch>
 __global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
 
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
-__global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel);
-__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
+__global__ void cukern_PressureSolverHydro(double *state, double *gasPressure, int devArrayNumel);
+__global__ void cukern_PressureFreezeSolverHydro(double *state, double *gasPressure, double *Cfreeze, int nx, int ny, int devArrayNumel);
+
+// FIXME: this needs to be rewritten like the above...
 __global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel);
 
 #define BLOCKLEN 28
@@ -150,22 +138,22 @@ __constant__ __device__ double fluidQtys[8];
 #define MHD_CS_B      fluidQtys[6]
 #define FLUID_GOVERGM1 fluidQtys[7]
 
-
-
 __constant__ __device__ int    arrayParams[4];
 #define DEV_NX arrayParams[0]
 #define DEV_NY arrayParams[1]
 #define DEV_NZ arrayParams[2]
 #define DEV_SLABSIZE arrayParams[3]
 
+#ifdef STANDALONE_MEX_FUNCTION
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
 	#ifdef DEBUGMODE
 		wanted_nlhs = 1;
 	#endif
-	
+
 	// Input and result
-	if ((nrhs!=14) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, fluid gamma)\n");
+	if ((nrhs!=14) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, [fluid gamma run.fluid.MINMASS method direction])\n");
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
@@ -175,10 +163,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray fluid[5], mag[3], PC[2];
 	int worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
 
-	//cudaStream_t *GPUStreamList = getGPUTypeStreams(prhs[0]);
-
-	// The sanity checker tended to barf on the 6 [allzeros] that represent "no array" before.
+	// The sanity checker tended to barf on the 9 [allzeros] that represent "no array" before.
 	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 5, 7, &mag[0]);
+	// NOTE: These are not used for Riemann-based algorithms but are/were needed by the xin-jin code
 	worked = MGA_accessMatlabArrays(prhs, 8, 9, &PC[0]);
 
 	double lambda     = *mxGetPr(prhs[10]);
@@ -186,11 +173,121 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *thermo = mxGetPr(prhs[12]);
 	double gamma = thermo[0];
 	double rhomin= thermo[1];
+	int method   = (int)thermo[2];
+	int stepdir  = (int)thermo[3];
 
-	int steptype = (int)thermo[2];
-	unsigned int stepdirect= (unsigned int)thermo[3];
+	FluidStepParams stepParameters;
+	stepParameters.lambda      = lambda;
+	stepParameters.onlyHydro   = 1;
+	stepParameters.thermoGamma = gamma;
+	stepParameters.minimumRho  = rhomin;
+	stepParameters.stepMethod  = method;
+	stepParameters.stepDirection = stepdir;
 
-	/* To be uploads to fluidQtys[] constant memory array */
+	#ifdef DEBUGMODE
+	performFluidUpdate_1D(&fluid[0], FluidStepParams params, mxArray **dbOutput);
+	#else
+	performFluidUpdate_1D(&fluid[0], stepParameters);
+	#endif
+}
+
+#endif
+// STANDALONE_MEX_FUNCTION
+
+#ifdef DEBUGMODE
+	#warning "WARNING: COMPILING cudaFluidStep() WITH DEBUG ARRAY DUMP ENABLED. cudaFluidStep will require an output argument to dump to!"
+
+// If defined, the code runs the Euler prediction step and copies wStepValues back to the Matlab fluid data arrays
+// If not defined, it runs the RK2 predictor/corrector step
+	#define DBG_FIRSTORDER
+
+// If not debugging the 1st order step, flips on debugging of the 2nd order step
+	#ifndef DBG_FIRSTORDER
+		#define DBG_SECONDORDER
+	#else
+		#warning "WARNING: Compiling cudaFluidStep to take 1st order time steps [upwind step is output]"
+	#endif
+
+#define DBG_NUMARRAYS 6
+
+	#ifdef DBG_FIRSTORDER
+		#define DBGSAVE(n, x) if(thisThreadDelivers) { Qout[((n)+6)*DEV_SLABSIZE] = (x); }
+	#else
+		#define DBGSAVE(n, x) if(thisThreadDelivers) {  Qin[((n)+6)*DEV_SLABSIZE] = (x); }
+	#endif
+
+#endif
+// DEBUGMODE
+
+/* Soley for the purpose of making examining malfunctioning fluid step kernels easier:
+ * This allows up to x fluid-array-sized arrays to be returned, with data captured by
+ * the output-generating threads of the kernel
+ *
+ * Thus intermediate variables can easily be examined, in whole, at full resolution
+ */
+void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray **plhs)
+{
+  CHECK_CUDA_ERROR("entering returnDebugArray");
+
+  MGArray m = *ref;
+
+  int nd = 3;
+  if(m.dim[2] == 1) {
+    nd = 2;
+    if(m.dim[1] == 1) {
+      nd = 1;
+    }
+  }
+  nd = 4;
+  mwSize odims[4];
+  odims[0] = m.dim[0];
+  odims[1] = m.dim[1];
+  odims[2] = m.dim[2];
+  odims[3] = x;
+
+  // Create output numeric array
+  plhs[0] = mxCreateNumericArray(nd, odims, mxDOUBLE_CLASS, mxREAL);
+
+  double *result = mxGetPr(plhs[0]);
+
+  // Create a sacrificial MGA
+  MGArray scratch = ref[0];
+  // dbg arrays is otherwise identical so overwrite the new one's pointers
+  int j, k;
+  for(j = 0; j < scratch.nGPUs; j++) scratch.devicePtr[j] = dbgArrays[j];
+
+  for(k = 0; k < x; k++) {
+	  // download this array
+	  MGA_downloadArrayToCPU(&scratch, &result, 0);
+	  // make a hop to the right and do it again
+	  result += scratch.numel;
+	  for(j = 0; j < scratch.nGPUs; j++) { scratch.devicePtr[j] += scratch.slabPitch[j] / 8; }
+
+  }
+  return;
+}
+
+#ifdef DEBUGMODE
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, mxArray **dbOutput)
+#else
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params)
+#endif
+{
+	CHECK_CUDA_ERROR("entering cudaFluidStep");
+
+	int hydroOnly = params.onlyHydro;
+
+	double lambda     = params.lambda;
+
+	double gamma = params.thermoGamma;
+	double rhomin= params.minimumRho;
+
+	int stepdirect = params.stepDirection;
+
+	int returnCode = SUCCESSFUL;
+
+	/* Precalculate thermodynamic values which we'll dump to __constant__ mem
+	 */
 	double gamHost[8];
 	gamHost[0] = gamma;
 	gamHost[1] = gamma-1.0;
@@ -207,16 +304,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
 
+	if(fluid->dim[0] < 3) return SUCCESSFUL;
+
+	// And here...
+	// We...
+	// Go!
 	dim3 arraySize = makeDim3(&fluid[0].dim[0]);
 	dim3 blocksize = makeDim3(BLOCKLENP4, YBLOCKS, 1);
 	dim3 gridsize;
 
+	// Temporary storage for RK method, to be allocated per-GPU
 	double *wStepValues[fluid->nGPUs];
 
 	int i, j, sub[6];
 
+	// Host array parameters, to be uploaded to const memory per-GPU
 	int haParams[4];
-	double *hostptrs[PTRS_PER_KERN];
+	double *hostptrs[PTRS_PER_KERN]; // fixme: Fix the xin/jin kernel and get rid of this crap
 	for(i = 0; i < fluid->nGPUs; i++) {
 		cudaSetDevice(fluid->deviceID[i]);
 
@@ -229,47 +333,45 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		haParams[3] = fluid->slabPitch[i] / sizeof(double);
 
 		// Copy [rho, px, py, pz, E, bx, by, bz, P] array pointers to inputPointers
-		/* FIXME: This sucks but the HLL kernel depends on it and I
-		 * FIXME: seriously don't have time to rewrite it presently */
-
+		/* FIXME: The xin/jin kernel depends on this I think. */
 		for(j = 0; j < 5; j++)  hostptrs[j+0] = fluid[j].devicePtr[i];
 
 		hostptrs[2           ] = fluid[1+stepdirect].devicePtr[i];
 		hostptrs[1+stepdirect] = fluid[2           ].devicePtr[i];
-
-		for(j = 0; j < 3; j++) hostptrs[j+5] =   mag[j].devicePtr[i];
-		for(j = 0; j < 2; j++) hostptrs[j+8] =    PC[j].devicePtr[i];
 
 		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
 
 		cudaMemcpyToSymbol(inputPointers, hostptrs, PTRS_PER_KERN*sizeof(double *), 0, cudaMemcpyHostToDevice);
 	}
+	returnCode = CHECK_CUDA_ERROR("Parameter upload");
+	if(returnCode != SUCCESSFUL) return returnCode;
 
 	if(hydroOnly == 1) {
 		// Switches between various prediction steps
-		switch(steptype) {
-		case STEPTYPE_XINJIN: {
+		switch(params.stepMethod) {
+		case METHOD_XINJIN: {
 			// Allocate memory for the half timestep's output
 			int numarrays = 6 ;
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
-				CHECK_CUDA_ERROR("cudaSetDevice()");
 				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
-				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
-
-			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+//			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the parallel topology
 
 			cukern_XinJinHydro_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y, (int)fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
+			if(returnCode != SUCCESSFUL) return returnCode;
 
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
-#ifdef DEBUGMODE
+
 			printf("WARNING: Operating at first order for debug purposes!\n");
 			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].numel*sizeof(double), cudaMemcpyDeviceToDevice);
-			//returnDebugArray(fluid, 6, wStepValues, plhs);
+#ifdef DEBUGMODE
+			returnDebugArray(fluid, 6, wStepValues, dbOutput);
 #endif
 #else // runs at 2nd order
 
@@ -277,16 +379,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 			cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 
-			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[0], hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
-			cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+			cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[0], wStepValues[0] + (5*fluid->slabPitch[i])/8, hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
+			if(returnCode != SUCCESSFUL) return returnCode;
+
+			//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the topology structure
 			CHECK_CUDA_ERROR("In cudaFluidStep: second hd c_f sync");
 			cukern_XinJinHydro_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+			returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step corrector step");
+			if(returnCode != SUCCESSFUL) return returnCode;
 #endif
 		} break;
-		case STEPTYPE_HLL:
-		case STEPTYPE_HLLC: {
+		case METHOD_HLL:
+		case METHOD_HLLC: {
 			int numarrays;
 			#ifdef DEBUGMODE
 			numarrays = 6 + DBG_NUMARRAYS;
@@ -298,8 +403,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
-				CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->slabPitch[i]); // [rho px py pz E P]_.5dt
+				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 			// Launch zee kernels
@@ -312,37 +418,49 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				gridsize.y = sub[5];
 
 				// Fire off the fluid update step
-				if(steptype == STEPTYPE_HLL)
-					cukern_HLL_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[i], .5*lambda, sub[3], sub[4], fluid->partNumel[i]);
-				else switch(stepdirect) {
+				if(params.stepMethod == METHOD_HLL) {
+					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3], fluid->partNumel[i]);
+					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+					switch(stepdirect) {
+					case 1: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
+					case 2: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
+					case 3: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
+					}
+				} else switch(stepdirect) {
 				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				case 3: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				}
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
+				if(returnCode != SUCCESSFUL) return returnCode;
 
-				#ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
-					#ifdef DEBUGMODE
-					printf("WARNING: Operating at first order for debug purposes!\n");
-					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
-					returnDebugArray(fluid, 6, wStepValues, plhs);
-					#endif
-				#else // runs at 2nd order
+#ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
+				printf("WARNING: Operating at first order for debug purposes!\n");
+				cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
+#ifdef DEBUGMODE
+				returnDebugArray(fluid, 6, wStepValues, dbOutput);
+#endif
+#else // runs at 2nd order
 
-
-				if(steptype == STEPTYPE_HLL) {
-					cukern_PressureSolverHydro<<<256, 32>>>(wStepValues[i], fluid->partNumel[i]);
+				if(params.stepMethod == METHOD_HLL) {
+					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3], fluid->partNumel[i]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-					cukern_HLL_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[i], lambda, sub[3], sub[4], fluid->partNumel[i]);
+					switch(stepdirect) {
+					case 1: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
+					case 2: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
+					case 3: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
+					}
+
 				} else switch(stepdirect) {
 				case 1: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				case 3: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				}
-				CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
-					#ifdef DBG_SECONDORDER
-                                        returnDebugArray(fluid, 6, wStepValues, plhs);
-					#endif
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+				if(returnCode != SUCCESSFUL) return returnCode;
+#ifdef DBG_SECONDORDER
+				returnDebugArray(fluid, 6, wStepValues, dbOutput);
+#endif
 
 				#endif
 			}
@@ -351,32 +469,38 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 				cudaSetDevice(fluid->deviceID[i]);
 				CHECK_CUDA_ERROR("cudaSetDevice();");
 				cudaFree(wStepValues[i]);
-				CHECK_CUDA_ERROR("cudaFree()");
+				returnCode = CHECK_CUDA_ERROR("cudaFree()");
+				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 		} break;
 		}
-		if(fluid->partitionDir == PARTITION_X) MGA_exchangeLocalHalos(fluid, 5);
-		CHECK_CUDA_ERROR("after exchange halos");
+		if(fluid->partitionDir == PARTITION_X) returnCode = MGA_exchangeLocalHalos(fluid, 5);
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
-		// We never got this unscrewed so it's disabled even though the 1st order AUSM code is below
-		//		cukern_AUSM_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues, lambda, arraySize.x, arraySize.y);
 	} else {
-		cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+//		int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+		//worked = MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+		//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the parallel topo
 		CHECK_CUDA_ERROR("In cudaFluidStep: first mhd c_f sync");
 
 		cukern_XinJinMHD_step<RK_PREDICT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.25*lambda, arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd predict step");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd predict step");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 		dim3 cfblk;  cfblk.x = 64; cfblk.y = 4; cfblk.z = 1;
 		dim3 cfgrid; cfgrid.x = arraySize.y / 4; cfgrid.y = arraySize.z; cfgrid.z = 1;
 		cfgrid.x += 1*(4*cfgrid.x < arraySize.y);
 		cukern_PressureFreezeSolverMHD<<<cfgrid, cfblk>>>(wStepValues[0], hostptrs[9], arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
-		cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverMHD");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+		//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]);
 		CHECK_CUDA_ERROR("In cudaFluidStep: second mhd c_f sync");
 		cukern_XinJinMHD_step<RK_CORRECT><<<gridsize, blocksize>>>(wStepValues[0], hostptrs[9], 0.5*lambda, arraySize.x, arraySize.y, fluid->numel);
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 	}
+
+	return SUCCESSFUL;
 
 }
 
@@ -494,8 +618,7 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 
 }
 
-// These tell the HLL and HLLC solvers how to dereference their shmem block
-// 16 threads, 8 circshifted shmem arrays
+// These tell the HLL and HLLC solvers how to dereference their shmem blocks in convenient shorthand
 #define BOS0 (0*BLOCKLENP4)
 #define BOS1 (1*BLOCKLENP4)
 #define BOS2 (2*BLOCKLENP4)
@@ -507,10 +630,11 @@ __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, i
 #define BOS8 (8*BLOCKLENP4)
 #define BOS9 (9*BLOCKLENP4)
 
-#define N_SHMEM_BLOCKS 5
+// for first-order HLLC kernel
+#define N_SHMEM_BLOCKS_FO 5
 
 template <unsigned int fluxDirection>
-__global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
+__global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 {
 	// Create center, look-left and look-right indexes
 	int IC = threadIdx.x;
@@ -520,12 +644,13 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 	IR -= BLOCKLENP4*(IR > (BLOCKLENP4-1));
 
 	// Advance by the Y index
-	IC += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
-	IL += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
-	IR += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IC += N_SHMEM_BLOCKS_FO*BLOCKLENP4*threadIdx.y;
+	IL += N_SHMEM_BLOCKS_FO*BLOCKLENP4*threadIdx.y;
+	IR += N_SHMEM_BLOCKS_FO*BLOCKLENP4*threadIdx.y;
 
 	/* Declare shared variable array */
-	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
+	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS_FO*BLOCKLENP4];
+	double *shptr = &shblk[IC];
 
 	/* Declare tons of doubles and hope optimizer can sort this out */
 	double A, B, C, D, E, F, G, H;
@@ -577,11 +702,11 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		D *= F;
 		E *= F;
 
-		shblk[IC+BOS0] = A; /* Upload rho  to shmem */
-		shblk[IC+BOS1] = FLUID_GM1*B; /* pressure */
-		shblk[IC+BOS2] = C; /* vx */
-		shblk[IC+BOS3] = D; /* vy */
-		shblk[IC+BOS4] = E; /* vz */
+		shptr[BOS0] = A; /* Upload rho  to shmem */
+		shptr[BOS1] = FLUID_GM1*B; /* pressure */
+		shptr[BOS2] = C; /* vx */
+		shptr[BOS3] = D; /* vy */
+		shptr[BOS4] = E; /* vz */
 
 		__syncthreads();
 
@@ -592,13 +717,13 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 		C = C*C+D*D+E*E; /* velocity jump, squared */
 
-		A = shblk[IC+BOS0]; /* rho_le */
+		A = shptr[BOS0]; /* rho_le */
 		B = shblk[IR+BOS0]; /* rho_re */
 		F = sqrt(B/A); /* = batten et al's R */
 
 		A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
 
-		C = shblk[IC+BOS1]/shblk[IC+BOS0]; /* Pl/rhol = csq_l / gamma */
+		C = shptr[BOS1]/shptr[BOS0]; /* Pl/rhol = csq_l / gamma */
 		D = shblk[IR+BOS1]/B; /* Pr/rhor = csq_r / gamma */
 
 		E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
@@ -608,7 +733,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		C = sqrt(FLUID_GAMMA * C); // left c_s
 		D = sqrt(FLUID_GAMMA * D); // right c_s
 
-		A = shblk[IC+BOS2]; /* vx_le */
+		A = shptr[BOS2]; /* vx_le */
 		B = shblk[IR+BOS2]; /* vx_re */
 
 		F = (A + F*B)/(1.0+F); /* vx_tilde */
@@ -630,7 +755,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
 		__syncthreads(); // I don't think this is necessary...
 
-		A = shblk[IC+BOS0]*(C-A); // rho*(S-v) left
+		A = shptr[BOS0]*(C-A); // rho*(S-v) left
 		B = shblk[IR+BOS0]*(D-B); // rho*(S-v) right
 
 		/* Batten et al, Eqn 34 for S_M:
@@ -638,7 +763,7 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
 			 -------------------------------------------
 		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
-		E = (B*shblk[IR+BOS2] - shblk[IR+BOS1] - A*shblk[IC+BOS2] + shblk[IC+BOS1]) / (B-A);
+		E = (B*shblk[IR+BOS2] - shblk[IR+BOS1] - A*shptr[BOS2] + shptr[BOS1]) / (B-A);
 		__syncthreads();
 		#ifdef DBG_FIRSTORDER
 			DBGSAVE(1, E);
@@ -658,12 +783,12 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 		switch(fluxmode) {
 			case 0:
-				A = shblk[IC+BOS0]; // rho
-				B = shblk[IC+BOS2]; // vx
-				C = shblk[IC+BOS3]; // vy
-				D = shblk[IC+BOS4]; // vz
+				A = shptr[BOS0]; // rho
+				B = shptr[BOS2]; // vx
+				C = shptr[BOS3]; // vy
+				D = shptr[BOS4]; // vz
 				E = .5*(B*B+C*C+D*D)*A; // .5 v^2
-				F = shblk[IC+BOS1]; // P
+				F = shptr[BOS1]; // P
 
 				A *= B; // rho vx           = RHO FLUX
 				C *= A; // rho vx vy        = PY FLUX
@@ -673,19 +798,19 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 				break;
 			case 2: 
 /* Case 3 differs from case 2 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
-				A = shblk[IC+BOS0]; // rho
-				B = shblk[IC+BOS2]; // vx
+				A = shptr[BOS0]; // rho
+				B = shptr[BOS2]; // vx
 				D = A*(C-B)/(C-E);  // rho*beta
-				F = shblk[IC+BOS3]; // vy
-				H = shblk[IC+BOS4]; // vz
+				F = shptr[BOS3]; // vy
+				H = shptr[BOS4]; // vz
 				G = .5*(B*B+F*F+H*H); // .5v^2
 				A = D*E; // RHO FLUX
 				F *= A; // PY FLUX
 				H *= A; // PZ FLUX
 
 				C *= (E-B); // S(Sstar-vx)
-				B = shblk[IC+BOS1] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
-				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS1]/shblk[IC+BOS0] + G + C);
+				B = shptr[BOS1] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shptr[BOS1]/shptr[BOS0] + G + C);
 				break;
 			case 3:
 				A = shblk[IR+BOS0]; // rho
@@ -724,49 +849,49 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 		switch(fluxmode) {
 			case 0:
 			case 1:
-				shblk[IC+BOS0] = A;
-				shblk[IC+BOS1] = B;
-				shblk[IC+BOS2] = G;
-				shblk[IC+BOS3] = C;
-				shblk[IC+BOS4] = D;
+				shptr[BOS0] = A;
+				shptr[BOS1] = B;
+				shptr[BOS2] = G;
+				shptr[BOS3] = C;
+				shptr[BOS4] = D;
 			break;
 			case 2:
 			case 3:
-				shblk[IC+BOS0] = A;
-				shblk[IC+BOS1] = G;
-				shblk[IC+BOS2] = B;
-				shblk[IC+BOS3] = F;
-				shblk[IC+BOS4] = H;
+				shptr[BOS0] = A;
+				shptr[BOS1] = G;
+				shptr[BOS2] = B;
+				shptr[BOS3] = F;
+				shptr[BOS4] = H;
 			break;
 		}
 
 		__syncthreads();
 		// All fluxes are now uploaded to shmem:
-		// shblk[IC+BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
+		// shptr[BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
 
 #ifdef DBG_FIRSTORDER
-	DBGSAVE(4, shblk[IC+BOS2]); // px flux
-	DBGSAVE(5, shblk[IC+BOS1]); // E flux
+	DBGSAVE(4, shptr[BOS2]); // px flux
+	DBGSAVE(5, shptr[BOS1]); // E flux
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              = Qin[0           ] - lambda * (shblk[IC+BOS0]-shblk[IL+BOS0]);
-			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * (shblk[IC+BOS1]-shblk[IL+BOS1]);
+			Qout[0]              = Qin[0           ] - lambda * (shptr[BOS0]-shblk[IL+BOS0]);
+			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * (shptr[BOS1]-shblk[IL+BOS1]);
 			switch(fluxDirection) {
 			case FLUX_X:
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			case FLUX_Y:
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			case FLUX_Z:
-				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]);
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]-shblk[IL+BOS4]);
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * (shptr[BOS2]-shblk[IL+BOS2]);
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * (shptr[BOS3]-shblk[IL+BOS3]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (shptr[BOS4]-shblk[IL+BOS4]);
 				break;
 			}
 		}
@@ -777,8 +902,8 @@ __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda)
 
 }
 
-#undef N_SHMEM_BLOCKS
-#define N_SHMEM_BLOCKS 10
+// Second-order HLLC uses 10 blocks
+#define N_SHMEM_BLOCKS_SO 10
 
 template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
@@ -791,12 +916,13 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 	IR -= BLOCKLENP4*(IR > (BLOCKLENP4-1));
 
 	// Advance by the Y index
-	IC += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
-	IL += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
-	IR += N_SHMEM_BLOCKS*BLOCKLENP4*threadIdx.y;
+	IC += N_SHMEM_BLOCKS_SO*BLOCKLENP4*threadIdx.y;
+	IL += N_SHMEM_BLOCKS_SO*BLOCKLENP4*threadIdx.y;
+	IR += N_SHMEM_BLOCKS_SO*BLOCKLENP4*threadIdx.y;
 
 	/* Declare shared variable array */
-	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
+	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS_SO*BLOCKLENP4];
+	double *shptr = &shblk[IC];
 
 	/* Declare tons of doubles and hope optimizer can sort this out */
 	double A, B, C, D, E, F, G, H;
@@ -846,70 +972,70 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		D *= F;
 		E *= F;
 
-		shblk[IC+BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
-		shblk[IC+BOS2] = B;
-		shblk[IC+BOS4] = C;
-		shblk[IC+BOS6] = D;
-		shblk[IC+BOS8] = E;
+		shptr[BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
+		shptr[BOS2] = B;
+		shptr[BOS4] = C;
+		shptr[BOS6] = D;
+		shptr[BOS8] = E;
 
 		__syncthreads();
 		/* Perform monotonic reconstruction */
 
 		F = A - shblk[IL+BOS0];           // take backwards derivative
-		shblk[IC+BOS1] = F;               // upload
+		shptr[BOS1] = F;               // upload
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS1]); // Compute monotonic slope
 		__syncthreads();
-		shblk[IC+BOS0] = A-F;             // apply left/right corrections
-		shblk[IC+BOS1] = A+F;
+		shptr[BOS0] = A-F;             // apply left/right corrections
+		shptr[BOS1] = A+F;
 
 		F = B - shblk[IL+BOS2]; 
-		shblk[IC+BOS3] = F;
+		shptr[BOS3] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS3]);
 		__syncthreads();
-		shblk[IC+BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
-		shblk[IC+BOS3] = FLUID_GM1*(B+F);
+		shptr[BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
+		shptr[BOS3] = FLUID_GM1*(B+F);
 
 		F = C - shblk[IL+BOS4];
-		shblk[IC+BOS5] = F;
+		shptr[BOS5] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS5]);
 		__syncthreads();
-		shblk[IC+BOS4] = C-F;
-		shblk[IC+BOS5] = C+F;
+		shptr[BOS4] = C-F;
+		shptr[BOS5] = C+F;
 
 		F = D - shblk[IL+BOS6]; 
-		shblk[IC+BOS7] = F;
+		shptr[BOS7] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS7]);
 		__syncthreads();
-		shblk[IC+BOS6] = D-F;
-		shblk[IC+BOS7] = D+F;
+		shptr[BOS6] = D-F;
+		shptr[BOS7] = D+F;
 
 		F = E - shblk[IL+BOS8];
-		shblk[IC+BOS9] = F;
+		shptr[BOS9] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS9]);
 		__syncthreads();
-		shblk[IC+BOS8] = E-F;
-		shblk[IC+BOS9] = E+F;
+		shptr[BOS8] = E-F;
+		shptr[BOS9] = E+F;
 		__syncthreads();
 
 		/* CALCULATE WAVESPEED ESTIMATE */
-		C = shblk[IC+BOS5]-shblk[IR+BOS4]; /* Calculate Vleft - Vright */
-                D = shblk[IC+BOS7]-shblk[IR+BOS6];
-                E = shblk[IC+BOS9]-shblk[IR+BOS8];
+		C = shptr[BOS5]-shblk[IR+BOS4]; /* Calculate Vleft - Vright */
+                D = shptr[BOS7]-shblk[IR+BOS6];
+                E = shptr[BOS9]-shblk[IR+BOS8];
 
                 C = C*C+D*D+E*E; /* velocity jump, squared */
 
-                A = shblk[IC+BOS1]; /* rho_le */
+                A = shptr[BOS1]; /* rho_le */
                 B = shblk[IR+BOS0]; /* rho_re */
                 F = sqrt(B/A); /* = batten et al's R */
 
                 A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
 
-                C = shblk[IC+BOS3]/shblk[IC+BOS1]; /* Pl/rhol = csq_l / gamma */
+                C = shptr[BOS3]/shptr[BOS1]; /* Pl/rhol = csq_l / gamma */
                 D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
 
                 E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
@@ -919,7 +1045,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		C = sqrt(FLUID_GAMMA * C); // left c_s
 		D = sqrt(FLUID_GAMMA * D); // right c_s
 
-		A = shblk[IC+BOS5]; /* vx_le */
+		A = shptr[BOS5]; /* vx_le */
 		B = shblk[IR+BOS4]; /* vx_re */
 
 		F = (A + F*B)/(1.0+F); /* vx_tilde */
@@ -942,14 +1068,14 @@ DBGSAVE(2, D);
 		/* Now we have lambda_min in C and lambda_max in D; A, B and F are free. */
 		__syncthreads(); // I don't think this is necessary...
 
-		A = shblk[IC+BOS1]*(C-A); // rho_le*(Sleft - vx_le)
+		A = shptr[BOS1]*(C-A); // rho_le*(Sleft - vx_le)
 		B = shblk[IR+BOS0]*(D-B); // rho_re*(Sright- vx_re)
 		/* Batten et al, Eqn 34 for S_M:
 		Speed of HLLC contact
 		 S_M =   rho_r Vr(Sr-Vr) - Pr - rho_l Vl(Sl-Vl) + Pl
 			 -------------------------------------------
 		                 rho_r(Sr-vr) - rho_l(Sl-vl)          */
-		E = (B*shblk[IR+BOS4] - shblk[IR+BOS2] - A*shblk[IC+BOS5] + shblk[IC+BOS3]) / (B-A);
+		E = (B*shblk[IR+BOS4] - shblk[IR+BOS2] - A*shptr[BOS5] + shptr[BOS3]) / (B-A);
 		__syncthreads();
 #ifdef DBG_SECONDODER
 DBGSAVE(1, E);
@@ -965,12 +1091,12 @@ DBGSAVE(1, E);
 
 		switch(fluxmode) {
 			case 0:
-				A = shblk[IC+BOS1]; // rho
-				B = shblk[IC+BOS5]; // vx
-				C = shblk[IC+BOS7]; // vy
-				D = shblk[IC+BOS9]; // vz
+				A = shptr[BOS1]; // rho
+				B = shptr[BOS5]; // vx
+				C = shptr[BOS7]; // vy
+				D = shptr[BOS9]; // vz
 				E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2 = KE
-				F = shblk[IC+BOS3]; // P
+				F = shptr[BOS3]; // P
 
 				A *= B; // rho vx           = RHO FLUX
 				C *= A; // rho vx vy        = PY FLUX
@@ -980,19 +1106,19 @@ DBGSAVE(1, E);
 				break;
 			case 2: 
 /* Case two differs from case 1 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
-				A = shblk[IC+BOS1]; // rho
-				B = shblk[IC+BOS5]; // vx
+				A = shptr[BOS1]; // rho
+				B = shptr[BOS5]; // vx
 				D = A*(C-B)/(C-E);  // rho*beta
-				F = shblk[IC+BOS7]; // vy
-				H = shblk[IC+BOS9]; // vz
+				F = shptr[BOS7]; // vy
+				H = shptr[BOS9]; // vz
 				G = .5*(B*B+F*F+H*H); // .5v^2
 				A = D*E; // RHO FLUX
 				F *= A; // PY FLUX
 				H *= A; // PZ FLUX
 
 				C *= (E-B); // S(Sstar-vx)
-				B = shblk[IC+BOS3] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
-				G = D*E*(FLUID_GOVERGM1 * shblk[IC+BOS3]/shblk[IC+BOS1] + G + C);
+				B = shptr[BOS3] + D*(C+E*B); // PX FLUX = P + rho beta (S(Sstar-vx) + Sstar*vx)
+				G = D*E*(FLUID_GOVERGM1 * shptr[BOS3]/shptr[BOS1] + G + C);
 				break;
 			case 3:
 				A = shblk[IR+BOS0]; // rho
@@ -1010,19 +1136,19 @@ DBGSAVE(1, E);
 				G = C*E*(FLUID_GOVERGM1 * shblk[IR+BOS2]/shblk[IR+BOS0] + G + D);
 				break;
 			case 1:
-                                A = shblk[IR+BOS0]; // rho
-                                B = shblk[IR+BOS4]; // vx
-                                C = shblk[IR+BOS6]; // vy
-                                D = shblk[IR+BOS8]; // vz
-                                E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2
-                                F = shblk[IR+BOS2]; // P
-                                
-                                A *= B; // rho vx           = RHO FLUX
-                                C *= A; // rho vx vy        = PY FLUX
-                                D *= A; // rho vx vz        = PZ FLUX
-                                G = A*B+F; // rho vx vx + P = PX FLUX
-                                B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
-			break;
+				A = shblk[IR+BOS0]; // rho
+				B = shblk[IR+BOS4]; // vx
+				C = shblk[IR+BOS6]; // vy
+				D = shblk[IR+BOS8]; // vz
+				E = .5*(B*B+C*C+D*D)*A; // .5 rho v^2
+				F = shblk[IR+BOS2]; // P
+
+				A *= B; // rho vx           = RHO FLUX
+				C *= A; // rho vx vy        = PY FLUX
+				D *= A; // rho vx vz        = PZ FLUX
+				G = A*B+F; // rho vx vx + P = PX FLUX
+				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				break;
 
 		}
 
@@ -1030,46 +1156,46 @@ DBGSAVE(1, E);
 		switch(fluxmode) {
 			case 0:
 			case 1:
-				shblk[IC+BOS7] = A;
-				shblk[IC+BOS5] = B;
-				shblk[IC+BOS6] = G;
-				shblk[IC+BOS8] = C;
-				shblk[IC+BOS9] = D;
+				shptr[BOS7] = A;
+				shptr[BOS5] = B;
+				shptr[BOS6] = G;
+				shptr[BOS8] = C;
+				shptr[BOS9] = D;
 			break;
 			case 2:
 			case 3:
-				shblk[IC+BOS7] = A;
-				shblk[IC+BOS5] = G;
-				shblk[IC+BOS6] = B;
-				shblk[IC+BOS8] = F;
-				shblk[IC+BOS9] = H;
+				shptr[BOS7] = A;
+				shptr[BOS5] = G;
+				shptr[BOS6] = B;
+				shptr[BOS8] = F;
+				shptr[BOS9] = H;
 			break;
 		}
 
 #ifdef DBG_SECONDORDER
-//DBGSAVE(3, shblk[IC+BOS7]); // rho
-//DBGSAVE(4, shblk[IC+BOS6]); // px
-//DBGSAVE(5, shblk[IC+BOS5]); // E
+//DBGSAVE(3, shptr[BOS7]); // rho
+//DBGSAVE(4, shptr[BOS6]); // px
+//DBGSAVE(5, shptr[BOS5]); // E
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              -= lambda * (shblk[IC+BOS7]-shblk[IL+BOS7]);
-			Qout[DEV_SLABSIZE]   -= lambda * (shblk[IC+BOS5]-shblk[IL+BOS5]);
+			Qout[0]              -= lambda * (shptr[BOS7]-shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * (shptr[BOS5]-shblk[IL+BOS5]);
 			switch(fluxDirection) {
 			case FLUX_X:
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			case FLUX_Y:
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			case FLUX_Z:
-				Qout[4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS6]-shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS8]-shblk[IL+BOS8]);
-				Qout[2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS9]-shblk[IL+BOS9]);
+				Qout[4*DEV_SLABSIZE] -= lambda * (shptr[BOS6]-shblk[IL+BOS6]);
+				Qout[3*DEV_SLABSIZE] -= lambda * (shptr[BOS8]-shblk[IL+BOS8]);
+				Qout[2*DEV_SLABSIZE] -= lambda * (shptr[BOS9]-shblk[IL+BOS9]);
 				break;
 			}
 		}
@@ -1082,14 +1208,18 @@ DBGSAVE(1, E);
 
 }
 
-#undef N_SHMEM_BLOCKS
 #define N_SHMEM_BLOCKS 10
 
 #define HLL_LEFT 0
 #define HLL_HLL  1
 #define HLL_RIGHT 2
+
+#define HLLTEMPLATE_XDIR 0
+#define HLLTEMPLATE_YDIR 2
+#define HLLTEMPLATE_ZDIR 4
+
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, int devArrayNumel)
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny)
 {
 	// Create center, rotate-left and rotate-right indexes
 	int IC = threadIdx.x;
@@ -1112,7 +1242,6 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 	double Fa, Fb; /* temp vars */
 
 	/* My x index: thread + blocksize block, wrapped circularly */
-	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
@@ -1126,18 +1255,30 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 
 	for(; j < ny; j += blockDim.y) {
 
-		if(PCswitch == RK_PREDICT) {
+		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Ale = Are = inputPointers[0][x0]; /* load rho */
-			Bre = inputPointers[2][x0]; /* load px */
-			Cle = Cre = inputPointers[8][x0]; /* load pressure */
+			Ale = Are = Qin[0*DEV_SLABSIZE + x0]; /* load rho */
+
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR: Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+			case HLLTEMPLATE_YDIR: Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+			case HLLTEMPLATE_ZDIR: Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			}
+
+			// We calculated the gas pressure into temp array # 6 before calling
+			Cle = Cre = Qstore[5*DEV_SLABSIZE + x0]; /* load gas pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 			Bre = Ble;
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
-			Ale = Qstore[x0 + 0*devArrayNumel]; /* load rho */
-			Bre = Qstore[x0 + 2*devArrayNumel]; /* load px */
-			Cle = Qstore[x0 + 5*devArrayNumel]; /* load pressure */
+			Ale = Qstore[x0 + 0*DEV_SLABSIZE]; /* load rho */
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR: Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+			case HLLTEMPLATE_YDIR: Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+			case HLLTEMPLATE_ZDIR: Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			}
+
+			Cle = Qstore[x0 + 5*DEV_SLABSIZE]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
 
 			shblk[IC + BOS0] = Ale;
@@ -1241,25 +1382,51 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		/* Flux density and momentum... for prediction we explicitly did not use MUSCL and
                    therefore Ale = Acentered. */
 		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
-				Qstore[x0                  ] = Ale + lambda * shblk[IC + BOS2];
-				Qstore[x0 + 2*devArrayNumel] = Fa  + lambda * shblk[IC + BOS4];
+			if((PCswitch & 1) == RK_PREDICT) {
+				                       Qstore[x0 + 0*DEV_SLABSIZE] = Ale + lambda * shblk[IC + BOS2];
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR: Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_YDIR: Qstore[x0 + 3*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_ZDIR: Qstore[x0 + 4*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
+				}
 			} else {
-				inputPointers[0][x0] += lambda * shblk[IC + BOS2];
-				inputPointers[2][x0] += lambda * shblk[IC + BOS4];
+				                       Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR: Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_YDIR: Qin[x0 + 3*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				case HLLTEMPLATE_ZDIR: Qin[x0 + 4*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
+				}
 			}
 		}
 
 		__syncthreads();
 		// 55 registers
-		if(PCswitch == RK_PREDICT) {
+		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			Fa =  inputPointers[3][x0]; /* load py */
-			Utilde = inputPointers[4][x0]; /* load pz */
+			switch(PCswitch & 6) {
+			case HLLTEMPLATE_XDIR:
+				Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
+				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case HLLTEMPLATE_YDIR:
+				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case HLLTEMPLATE_ZDIR:
+				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qin[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
+			}
 		} else {
 			/* If making correction, perform 1st order MUSCL reconstruction */
-			Fa = Qstore[x0 + 3*devArrayNumel]; /* load py */
-			Utilde = Qstore[x0 + 4*devArrayNumel]; /* load pz */
+			switch(PCswitch & 6) {
+						case HLLTEMPLATE_XDIR:
+							Fa     = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
+							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+						case HLLTEMPLATE_YDIR:
+							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+						case HLLTEMPLATE_ZDIR:
+							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+							Utilde = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
+			}
 
 			shblk[IC + BOS0] = Fa;
 			shblk[IC + BOS2] = Utilde;
@@ -1292,8 +1459,7 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		shblk[IC + BOS1] = Utilde;
 
 		__syncthreads();
-		if(PCswitch == RK_PREDICT) {
-
+		if((PCswitch & 1) == RK_PREDICT) {
 			Fb = shblk[IR + BOS0];
 			Atilde = shblk[IR + BOS1];
 		} else {
@@ -1301,14 +1467,9 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 			Utilde = Atilde; Atilde = shblk[IR + BOS1];
 		}
 
-		// 55 registers
-
 		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
 		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
-		// 57 registers
 
-		// FATAL: This code section causes register utilization to jump from 57 to 63.
-		// FUCK THAT NOISE, this must be stopped ;-(
 		switch(HLL_FluxMode) {
 		case HLL_LEFT:  shblk[IC + BOS2] = Fa * Ble; /* py flux */
 		shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
@@ -1324,28 +1485,47 @@ __global__ void cukern_HLL_step(double *Qstore, double lambda, int nx, int ny, i
 		break;
 
 		}
-		// 63 registers
+
 		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
 
 		if(thisThreadDelivers) {
-			if(PCswitch == RK_PREDICT) {
-				Qstore[x0 +   devArrayNumel] = inputPointers[1][x0] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				Qstore[x0 + 3*devArrayNumel] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				Qstore[x0 + 4*devArrayNumel] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+			if((PCswitch & 1) == RK_PREDICT) {
+				Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR:
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_YDIR:
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_ZDIR:
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				}
 			} else {
-				inputPointers[1][x0] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				inputPointers[3][x0] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-				inputPointers[4][x0] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]);
+				Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				switch(PCswitch & 6) {
+				case HLLTEMPLATE_XDIR:
+					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_YDIR:
+					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				case HLLTEMPLATE_ZDIR:
+					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
+					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
+				}
 			}
 		}
 
 		x0 += blockDim.y*nx;
 		__syncthreads();
-
-
 	}
 
 }
+
+
+
 
 #undef DBGSAVE
 #define DBGSAVE(n, x) if(thisThreadDelivers) { Qstore[((n)+6)*(1024*64)] = (x); }
@@ -1728,10 +1908,13 @@ __global__ void cukern_AUSM_firstorder_uniform(double *P, double *Qout, double l
 	}
 }
 
-
 /* Read Qstore and calculate pressure in it */
 /* invoke with nx threads and nb blocks, whatever's best for the arch */
-__global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
+/* Note, state and gasPressure are not necessarily separate allocations
+ * they will, in fact, usually be the first 5 slabs of the fluid state & the sixth, respectively
+ * However all reads/writes are safely nonoverlapping
+ */
+__global__ void cukern_PressureSolverHydro(double *state, double *gasPressure, int devArrayNumel)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -1741,16 +1924,16 @@ __global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
 	int DAN = devArrayNumel;
 
 	while(x < DAN) {
-		rho = Qstore[x      ];
-		E   = Qstore[x + DAN];
-		z   = Qstore[x+2*DAN];
+		rho = state[x      ];
+		E   = state[x + DAN];
+		z   = state[x+2*DAN];
 		momsq = z*z;
-		z   = Qstore[x+3*DAN];
+		z   = state[x+3*DAN];
 		momsq += z*z;
-		z   = Qstore[x+4*DAN];
+		z   = state[x+4*DAN];
 		momsq += z*z;
 		P = FLUID_GM1 * (E - .5*momsq/rho);
-		Qstore[x + 5*DAN] = P;
+		gasPressure[x] = P;
 		x += hx;
 	}
 
@@ -1758,11 +1941,12 @@ __global__ void cukern_PressureSolverHydro(double *Qstore, int devArrayNumel)
 
 
 /* Invoke with [64 x N] threads and [ny/N nz 1] blocks */
-__global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze, int nx, int ny, int devArrayNumel)
+__global__ void cukern_PressureFreezeSolverHydro(double *state, double *gasPressure, double *Cfreeze, int nx, int ny, int devArrayNumel)
 {
 	__shared__ double Cfshared[64*FREEZE_NY];
 
-	Qstore += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+	state += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
+	gasPressure += threadIdx.x + nx*(threadIdx.y + blockIdx.x*FREEZE_NY + ny*blockIdx.y);
 
 	int x = threadIdx.x;
 	int i = threadIdx.x + 64*threadIdx.y;
@@ -1773,20 +1957,22 @@ __global__ void cukern_PressureFreezeSolverHydro(double *Qstore, double *Cfreeze
 	cmax = 0.0;
 
 	for(; x < nx; x += 64) {
-		invrho = 1.0/Qstore[0]; // load inverse of density
-		psq = Qstore[3*devArrayNumel]; // accumulate p^2 and end with px
-		px =  Qstore[4*devArrayNumel];
+		invrho = 1.0/state[0]; // load inverse of density
+		psq = state[3*devArrayNumel]; // accumulate p^2 and end with px
+		px =  state[4*devArrayNumel];
 		psq = psq*psq + px*px;
-		px = Qstore[2*devArrayNumel];
+		px = state[2*devArrayNumel];
 		psq += px*px;
 
 		// Store pressure
-		Qstore[5*devArrayNumel] = P = (Qstore[devArrayNumel] - .5*psq*invrho)*FLUID_GM1;
+		*gasPressure = P = (state[devArrayNumel] - .5*psq*invrho)*FLUID_GM1;
 
 		locCf = fabs(px)*invrho + sqrt(FLUID_GAMMA*P*invrho);
 
 		cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
-		Qstore += 64;
+
+		state += 64;
+		gasPressure += 64;
 	}
 
 	Cfshared[i] = cmax;
@@ -1913,4 +2099,5 @@ __global__ void cukern_PressureFreezeSolverMHD(double *Qstore, double *Cfreeze, 
 
 	Cfreeze[x] = cmax;
 }
+
 

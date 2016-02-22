@@ -17,13 +17,13 @@ run.notes       = 'Simple axis aligned shock tube test';
 
 run.ppSave.dim3 = 100;
 
-run.useInSituAnalysis = 0;
-run.stepsPerInSitu = 20;
-run.inSituHandle = @RealtimePlotter;
-        instruct.plotmode = 1;
-        instruct.plotDifference = 0;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
+rp = RealtimePlotter();
+  rp.plotmode = 1;
+  rp.plotDifference = 0;
+  rp.insertPause = 0;
+  rp.firstCallIteration = 1;
+  rp.iterationsPerCall = 10;
+run.peripherals{end+1} = rp;
 
 run.saveFormat = ENUM.FORMAT_MAT;
 

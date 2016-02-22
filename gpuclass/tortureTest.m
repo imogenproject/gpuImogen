@@ -1,4 +1,7 @@
-function tortureTest(multidev, dorad)
+function tortureTest(multidev, dorad, nTests)
+% tortureTest([device list], 'y'/'n' to radiative cooling test)
+% > device list: Set of integers naming GPUs to use, as enumerated by GPU_ctrl('info')
+% > dorad: If == 'y' tests cudaFreeRadiation
 
 if nargin < 1
     multidev = [0];
@@ -10,8 +13,18 @@ if numel(unique(multidev)) ~= numel(multidev)
     error('Multiple devices: Device IDs must be unique.');
 end
 
+if nargin < 2
+    dorad = 'y';
+    disp('>>> WARNING: Radiation test defaulting to WILL HAPPEN');
+end
+
+if nargin < 3
+    nTests = 5;
+    disp('>>> WARNING: Number of tests not indicated, defaulting to 5 ea');
+end
+
 disp('#########################');
-disp('Standing up test instance');
+disp('Setting up test environment');
 disp('#########################');
 
 addpath('../mpi');
@@ -20,26 +33,25 @@ disp('Started MPI');
 GPU_ctrl('peers',1);
 disp('Turned on peer memory access');
 
+if numel(multidev) > 1
+    disp('	>>> Using the following devices for multidevice testing <<<');
+    disp(multidev);
+end
+
 disp('#########################');
-disp('Stand up successful. Begin testing!');
+disp('Running basic funtionality tests');
 disp('#########################');
 
-disp('	>>> Using the following devices for multidevice testing <<<');
-disp(multidev);
 
 % Check that the basic stuff works first
 x = GPUManager.getInstance();
 
 basicunits = basicTest(multidev);
-
-disp('#########################');
-
 if basicunits > 0;
-    error('Fatal: Unit tests of basic functionality indicate failure. Aborting further tests.');
+    error('Fatal problem: Unit tests of basic functionality failed. Aborting further tests.');
 end
 
-disp('Horray, we got this far! That means basic upload/download is working (or at least not');
-disp('manifestly defective). Proceeding to fuzz the following routines which have unit tests:');
+disp('#########################');
 
 % Kernels used by Imogen:
 % TIME_MANAGER	cudaSoundspeed directionalMaxFinder
@@ -53,16 +65,13 @@ disp('manifestly defective). Proceeding to fuzz the following routines which hav
 % 50% coverage by unit tests (accreting star broken)
 
 if numel(multidev) < 2;
-    functest = [1 0 0 0];
-    disp('>>> WARNING: Only one device indicated. Will not perform multi-device fuzzing tests.');
+    functests = [1 0 0 0];
+    disp('>>> WARNING: Only one device indicated for use. Multi-device fuzzing tests will not be done');
 else
     functests = [1 1 1 1];
 end
 
 names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
-if nargin < 2; 
-    dorad = input('Test cudaFreeRadiation? This will take longer than the rest combined (y/n): ', 's');
-end
 
 if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
@@ -71,9 +80,9 @@ disp('NOTE: setup & data upload times dwarf execution times here; No speedup wil
 disp('#########################');
 
 randSeed = 5418;
+% Note these do not DEFINE convenient roundish sizes, actual sizes are randomly chosen up to these
 res2d = [2048 2048 1];
 res3d = [192 192 192];
-nTests = 25;
 
 % Test single-device operation
 if functests(1)
@@ -121,6 +130,7 @@ else
     disp('	UNIT TESTS PASSED!');
     if any(functests == 0);
         disp('	>>>       SOME UNIT TESTS WERE NOT RUN        <<<');
+        if numel(multidev) == 1; disp('	>>>     MULTI-GPU UNIT TESTS WERE NOT RUN     <<<'); end
         disp('	>>> DO NOT COMMIT CODE UNTIL _ALL_ TESTS PASS <<<');
     end
     if dorad ~= 'y'

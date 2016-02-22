@@ -1,4 +1,4 @@
-function resultsHandler(run, mass, mom, ener, mag)
+function resultsHandler(saveEvent, run, mass, ener, mom, mag)
 %   Prepare and manage the storage of intermediate and then final results as a trial is run.
 %
 %>< run     Imogen Run manager object.                                          ImogenManager
@@ -7,18 +7,23 @@ function resultsHandler(run, mass, mom, ener, mag)
 %>< ener    Ener density object.                                                FluidArray
 %>< mag     Magnetic field density objects.                                     MagnetArray(3)
 
-
+% FIXME: This is terrible. Have events per save slice type, that simply mark themselves to be called again
+% FIXME: when the correct iteration/time is passed...
     %-----------------------------------------------------------------------------------------------
     % Directory/File preparation and creation
     %----------------------------------------
     run.save.updateDataSaves();
+
+    % Re-enable the save trigger
+    if ~isempty(saveEvent)
+        saveEvent.iter = saveEvent.iter + 1;
+        saveEvent.active = 1;
+    end
     
     if ~run.save.FSAVE; return; end
     
     iteration = run.time.iteration;
-    saveState = uint8(0);
-    saveState = bitset(saveState, 1, iteration == 0); % Beginning of a run
-    saveState = bitset(saveState, 2, run.save.done); % End of run
+    saveState = 1*(iteration == 0) +2*(run.save.done == true);
 
     %-----------------------------------------------------------------------------------------------
     % Save Data to File
@@ -40,11 +45,11 @@ function resultsHandler(run, mass, mom, ener, mag)
 
         run.save.firstSave = false; % Update for later saves.
 
-            sl.gamma  = run.GAMMA;
-            sl.time   = run.time.toStruct();
-            sl.about  = run.about;
-            sl.ver    = run.version;
-            sl.iter   = iteration;
+        sl.gamma  = run.GAMMA;
+        sl.time   = run.time.toStruct();
+        sl.about  = run.about;
+        sl.ver    = run.version;
+        sl.iter   = iteration;
             
         if run.treadmill.ACTIVE,    sl.tread = run.treadmill.toStruct(); end
 
@@ -114,6 +119,7 @@ function resultsHandler(run, mass, mom, ener, mag)
                     end
                 catch MERR %#ok<NASGU>
                     fprintf('In resultsHandler:115, unable to save frame. Skipping\n');
+                    fprintf('Target filename: %s\n', fileName);
                     fprintf('If just started resuming, this is normal for .nc because of trying to overwrite existing data files.');
                     MERR.identifier
                     MERR.message
@@ -230,7 +236,6 @@ function resultsHandler(run, mass, mom, ener, mag)
             run.save.logPrint(['Results files saved to directory: ' run.paths.save '\n']);
         end
     end
-%    labBarrier(); % Block all labs until lab 1 has finished saving
 
     % Save images
     run.image.imageSaveHandler(mass, mom, ener, mag);

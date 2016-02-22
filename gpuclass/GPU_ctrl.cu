@@ -45,7 +45,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	int nDevices;
 	cudaGetDeviceCount(&nDevices);
-	CHECK_CUDA_ERROR("GPU_ctrl(): initialization\n");
+	int returnCode = CHECK_CUDA_ERROR("GPU_ctrl(): cudaGetDeviceCount doesn't even work.\n");
+	if(returnCode != SUCCESSFUL) return;
 
 	mexLock(); // It would be Bad if this disappeared on us at any point.
 

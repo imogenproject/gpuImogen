@@ -25,7 +25,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   MGArray m;
   
-  MGA_accessMatlabArrays(prhs, 0, 0, &m);
+  int worked = MGA_accessMatlabArrays(prhs, 0, 0, &m);
+  if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+	  mexErrMsgTxt("GPU_download was not able to access GPU array.\n");
+	  return;
+  }
 
   int nd = 3;
   if(m.dim[2] == 1) {
@@ -44,7 +48,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double *result = mxGetPr(plhs[0]);
 
-  int itworked = MGA_downloadArrayToCPU(&m, &result, 0);
+  worked = MGA_downloadArrayToCPU(&m, &result, 0);
+  if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+	  mexErrMsgTxt("GPU_download accessed but couldn't download GPU arra.");
+	  return;
+  }
 
   return;
 }

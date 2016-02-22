@@ -216,7 +216,7 @@ classdef AdvectionInitializer < Initializer
                 obj.pureHydro = 1;
             end
             
-            fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed);
+            if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end
         end
     end%PROTECTED
     

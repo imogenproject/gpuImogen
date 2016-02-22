@@ -7,11 +7,11 @@ function prettyprintException(ME, nmax, extendedString)
 if nargin < 2; nmax = numel(ME.stack); end
 if nmax <= 0; nmax = numel(ME.stack); end
 
-fprintf('\n================================================================================\nRANK %i (host %s) HAS ENCOUNTERED AN EXCEPTION\nIDENTIFIER: %s\nMESSAGE   : %s\n',mpi_myrank(), getenv('HOSTNAME'), ME.identifier, ME.message);
+fprintf('\n========== IMOGEN HAS ENCOUNTERED AN ERROR IN THE INTERPRETER ==================\nRANK %i (HOSTNAME %s) HAS ENCOUNTERED AN EXCEPTION\nIDENTIFIER: %s\nMESSAGE   : %s\n',mpi_myrank(), getenv('HOSTNAME'), ME.identifier, ME.message);
 if nargin >= 3;
-    fprintf('USER MSG  : %s\n',extendedString);
+    fprintf('USER MESG : %s\n',extendedString);
 end
-fprintf('=========================== STACK BACKTRACE FOLLOWS ============================\n');
+fprintf('========== MATLAB STACK BACKTRACE FOLLOWS: =====================================\n');
 
 for n = 1:nmax;
     fprintf('%i: %s:%s at %i\n', n-1, ME.stack(n).file, ME.stack(n).name, ME.stack(n).line);

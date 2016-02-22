@@ -14,35 +14,35 @@ if doquad; maxplot = 4; end
 % Plot the advection test results
 plotno = prepNextPlot(maxplot, plotno);
 plotAdvecOutput(FTR.advection.Xalign_mach0);
-title('X advection, n = [1 0 0], stationary bg');
+title('X advection, n = [1 0 0], stationary bg,','fontsize',14);
 
 plotno = prepNextPlot(maxplot, plotno);
 plotAdvecOutput(FTR.advection.Xalign_mach0p5);
-title('X advection, n = [1 0 0], moving bg');
+title('X advection, n = [1 0 0], moving bg','fontsize',14);
 
 plotno = prepNextPlot(maxplot, plotno);
 plotAdvecOutput(FTR.advection.XY);
-title('Cross-grid advection, n = [4 5 0]');
+title('Cross-grid advection, n = [4 5 0]','fontsize',14);
 
 % Plot the Einfeldt rarefaction test results
 plotno = prepNextPlot(maxplot, plotno);
 plotEinfeldt(FTR.einfeldt);
-title('Einfeldt test results');
+title('Einfeldt test results','fontsize',14);
 
 % Plot the Sod tube results
 plotno = prepNextPlot(maxplot, plotno);
 plotSod(FTR.sod.X)
-title('Sod tube convergence results');
+title('Sod tube convergence results','fontsize',14);
 
 % Plot centrifuge test results
 plotno = prepNextPlot(maxplot, plotno);
 plotCentrifuge(FTR.centrifuge);
-title('Centrifuge equilibrium maintainence results');
+title('Centrifuge equilibrium maintainence results','fontsize',14);
 
 % Plot Sedov-Taylor metric results 
 plotno = prepNextPlot(maxplot, plotno);
 plotSedov(FTR.sedov3d);
-title('3D Sedov-Taylor density errors');
+title('3D Sedov-Taylor density errors','fontsize',14);
 
 end
 
@@ -62,10 +62,10 @@ plot(-log2(q.relativeH), log2(q.err1),'r-x'); % one norm
 plot(-log2(q.relativeH), log2(q.err2),'g-x'); % 2 norm
 plot(-log2(q.relativeH), .5*(log2(q.err1(1)) + log2(q.err2(1))) + 2*log2(q.relativeH),'k-'); % reference slope of -2
 
-xlabel('-log_2(h * 32)');
-ylabel('log_2(metric norms)');
+xlabel('-log_2(h * 32)','fontsize',14);
+ylabel('log_2(norm(\rho - \rho_{exact})','fontsize',14);
 
-legend(['1-norm, avg slope ' q.L1_Order], ['2-norm, avg slope ' q.L2_Order], 'Reference 2nd order slope');
+legend(['1-norm, avg slope ' num2str(q.L1_Order)], ['2-norm, avg slope ' num2str(q.L2_Order)], 'Reference 2nd order slope');
 
 end
 
@@ -75,8 +75,8 @@ plot(log2(q.N), log2(q.L1),'r-x');
 plot(log2(q.N), log2(q.L2),'g-x');
 plot(log2(q.N), .5*(log2(q.L1(1)) + log2(q.L2(1))) - log2(q.N/q.N(1)),'k-');
 
-xlabel('Log_2(1/h)');
-ylabel('log_2(metric norms)');
+xlabel('Log_2(1/h)','fontsize',14);
+ylabel('log_2(norm(\rho - \rho_{exact})','fontsize',14);
 
 legend('1-Norm','2-Norm','reference -2 slope');
 
@@ -88,8 +88,8 @@ plot(log2(q.res), log2(q.L1),'r-x');
 plot(log2(q.res), log2(q.L2),'g-x');
 plot(log2(q.res), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.res/q.res(1)),'k-');
 
-xlabel('log_2(1/h)');
-ylabel('log_2(metric norms');
+xlabel('log_2(1/h)','fontsize',14);
+ylabel('log_2(norm(\rho - \rho_{exact}))','fontsize',14);
 
 legend('1-Norm','2-Norm','slope of -1');
 
@@ -123,20 +123,24 @@ if N > 1;
   leg{2*N}='2-norm, highest resolution';
 end
 
-%legend(leg, 'Location','EastOutside')
+legend(leg, 'Location','EastOutside')
 
 % Plot the t=end metrics to show convergence of final solution
 plot(1:N,log2(q.L1(:,end)),'r-x');
 plot(1:N,log2(q.L2(:,end)),'b-o');
+
+legend('L_1 norm','L_2 norm');
+xlabel('log_2(n/32)','fontsize',14);
+ylabel('log_2(norm(\rho - \rho_{ini}))','fontsize',14);
 
 end
 
 function plotSedov(q)
 
 plot(q.times, q.rhoL1,'-x');
-plot(q.times, q.rhoL2,'-x');
+plot(q.times, q.rhoL2,'-o');
 
-xlabel('Simulation time (end = r \rightarrow 0.45)')
-ylabel('Density error norm');
+xlabel('Simulation time (end = r \rightarrow 0.45)','fontsize',14)
+ylabel('Norm(\rho - \rho_{exact})','fontsize',14);
 
 end

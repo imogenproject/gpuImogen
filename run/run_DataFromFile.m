@@ -1,8 +1,5 @@
 % Run a test from loaded data.
 
-%-- Initialize Imogen directory ---%
-starterRun();
-
 %--- Initialize test ---%
 
 % TODO: Need an initializer for this type.

@@ -43,7 +43,7 @@ classdef FluidArray < ImogenArray
 %            obj.finalizeStatics(); % Put normal and static boundary conditions together and cast to GPU
 
 %            obj.array = GPU_Type(squeeze(array));
-            obj.indexGriddim = obj.gridSize;
+%            obj.indexGriddim = obj.gridSize;
 
             if strcmpi(id, ENUM.MASS)
                 obj.threshold   = run.fluid.MASS_THRESHOLD;

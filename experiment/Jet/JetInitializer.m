@@ -109,10 +109,9 @@ classdef JetInitializer < Initializer
             obj.dGrid = [1 1 1]/obj.grid(2);
 
             GIS = GlobalIndexSemantics();
- 
-            mass    = obj.backMass * ones(GIS.pLocalRez);
-            mom     = zeros([3 GIS.pLocalRez]);
-            mag     = zeros([3 GIS.pLocalRez]);
+            GIS.setup(obj.grid);
+
+	    [mass mom mag ener] = GIS.basicFluidXYZ();
             
             %--- Magnetic background ---%
             for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pLocalRez); end

@@ -1,11 +1,14 @@
-function result = tsEinfeldt(N0, gamma, M, doublings)
+function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures)
 % result = tsEinfeldt(N0, doublings, M) runs a sequence of Einfeldt tests with
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
 
 if nargin < 4;
-    disp('Number of doublings not given; Defaultd to 3.');
+    disp('Number of doublings not given; Defaulted to 3.');
     doublings = 3;
+end
+if nargin < 5
+    prettyPictures = 0;
 end
 
 %--- Initialize test ---%
@@ -37,9 +40,24 @@ run.info        = 'Einfeldt Strong Rarefaction test.';
 run.notes	= '';
 run.ppSave.dim3 = 100;
 
+fm = FlipMethod();
+  fm.iniMethod = 2; % hllc
+run.peripherals{end+1} = fm;
+
+if prettyPictures
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
+end
+
 result.N = [];
 result.L1 = [];
 result.L2 = [];
+result.paths = {};
 
 %--- Run tests ---%
 for R = 1:doublings;
@@ -47,6 +65,9 @@ for R = 1:doublings;
     run.grid = [N0*2^R 2 1];
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
+    enforceConsistentView(dirout);
+
+    result.paths{end+1} = dirout;
 
     % Access final state
     S = SavefilePortal(dirout);

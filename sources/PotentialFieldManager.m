@@ -29,20 +29,18 @@ classdef PotentialFieldManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
-
         function initialize(self, initialConds)
-
             run = ImogenManager.getInstance();
             if isempty(initialConds.field)
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
                 self.field = 0;
-                if mpi_amirank0(); run.save.logPrint('Static potential field is OFF\n'); end
+                if mpi_amirank0(); run.save.logPrint('Static potential field in use.\n'); end
             else
                 self.ACTIVE = true;
                 self.currentCoefficient = initialConds.constant;
                 self.field = GPU_Type(initialConds.field * self.currentCoefficient);
-                if mpi_amirank0(); run.save.logPrint('Static potential field is ON\n'); end
+                if mpi_amirank0(); run.save.logPrint('Static potential field not used\n'); end
             end
         end
 

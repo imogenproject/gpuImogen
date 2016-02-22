@@ -22,17 +22,6 @@
 //                      = [g*(g-1)*(E-T) + (1-.5*g*(g-1))B^2] / rho
 #define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
 
-// Generic error catcher routines
-#define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
-checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
-#define CHECK_CUDA_ERROR(astring) checkCudaError(astring, __FILE__, __LINE__)
-void dropMexError(char *excuse, char *infile, int atline);
-#define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
-
-#define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but parallel multi-GPU operation WILL NOT WORK"); }
-
-#define FATAL_NOT_IMPLEMENTED mexErrMsgTxt("Fatal: Encountered required but completely non-implemented code branch.");
-
 typedef struct {
         double *fluidIn[5];
         double *fluidOut[5];
@@ -52,7 +41,8 @@ typedef struct {
 #define PARTITION_Z 3
 
 // Never ever don't use these
-#define GPU_TAG_LENGTH 8
+        // NOTE: If this length is changed you MUST change
+#define GPU_TAG_LENGTH 10
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
@@ -61,6 +51,16 @@ typedef struct {
 #define GPU_TAG_PARTDIR 5
 #define GPU_TAG_NGPUS 6
 #define GPU_TAG_EXTERIORHALO 7
+#define GPU_TAG_DIMPERMUTATION 8
+#define GPU_TAG_CIRCULARBITS 9
+
+        // These mask the bits in the MGArray.circularBoundaryBits field
+#define MGA_BOUNDARY_XMINUS 1
+#define MGA_BOUNDARY_XPLUS 2
+#define MGA_BOUNDARY_YMINUS 4
+#define MGA_BOUNDARY_YPLUS 8
+#define MGA_BOUNDARY_ZMINUS 16
+#define MGA_BOUNDARY_ZPLUS 32
 
 // Templates seem to dislike MPI_Op? Switches definitely do.
 typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
@@ -74,23 +74,57 @@ typedef struct {
     int dim[3];
     int64_t numel; // = nx ny nz of the global array, not # allocated
     int numSlabs; // = dim[4] if positive, which zero-indexed slab # if <= 0
-    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition] rounded up to nearest 256
+    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition]*sizeof(double) (BYTES ALLOCATED PER SLAB), rounded up to nearest 256
 
     int haloSize;
     int partitionDir;
 
-    // For mpi-serial runs, GIS will NOT supply halo cells at the edge of the array and
-    // GIS must add them: addExteriorHalo is true
-
-    // For mpi-parallel runs with >1 nodes in partition direct, GIS adds the parallel halo
-    // so we do NOT need to.
+    /* MGArrays don't concern themselves with the cluster-wide partitioning scheme. While we always
+     * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
+     * at the exterior interfaces:
+     *
+     * When there is only 1 node in our partitioning direction, GIS will NOT supply halo cells and it is
+     * necessary that we do. When there is more than 1, the higher-level partitioning will supply
+     * halo cells at the outside boundaries so we should not add them.
+     * Ergo, this value is TRUE iff there is exactly one rank in the partition direction.
+     */
     int addExteriorHalo;
+
+    int permtag;
+    int currentPermutation[3];
 
     int nGPUs;
     int deviceID[MAX_GPUS_USED];
     double *devicePtr[MAX_GPUS_USED];
     int partNumel[MAX_GPUS_USED];
+
+    // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
+    int circularBoundaryBits;
+
+    // Continuing my long tradition of bad boundary condition handling,
+    // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
+    const mxArray *matlabClassHandle;
     } MGArray; 
+/* An in-place overwrite of an MGArray is a nontrivial thing. The following explains how to do it successfully:
+ *
+ * foo(MGArray *phi) {
+ * MGArray tmp = *phi; MGArray *B;
+ *   setNewParameters(&tmp);
+ *   B = MGA_allocArrays(1, &tmp);
+ *   doThingsToB(B);
+ *
+ *   phi[0] = B[0];
+ *
+ *   // Matters for slabs: MGA_allocArrays clobbers the original numSlabs param
+ *   phi->numSlabs = tmp.numSlabs;
+ *   // And reset original pointers
+ *   phi->devicePtr[*] = tmp.devicePtr[*]; //
+ *   cudaMemcpy(phi->devicePtr[*], B->devicePtr[*], ...);
+ *
+ *   MGA_delete(B);
+ * }
+ *
+ */
 
 int64_t *getGPUTypeTag (const mxArray *gputype); // matlab -> c
 cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
@@ -98,7 +132,10 @@ bool     sanityCheckTag(const mxArray *tag);     // sanity
 
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
 
-void     deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
+void MGA_permtagToNums(int permtag, int *p);
+int MGA_numsToPermtag(int *nums);
+
+int      deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
 void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 
 /* MultiGPU Array allocation stuff */
@@ -106,7 +143,9 @@ int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, M
 MGArray *MGA_allocArrays(int N, MGArray *skeleton);
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
 void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
-void     MGA_delete(MGArray *victim);
+int     MGA_delete(MGArray *victim);
+
+void MGA_sledgehammerSequentialize(MGArray *q);
 
 /* MultiGPU Array I/O */
 int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
@@ -116,11 +155,12 @@ int  MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
 int  MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 
 /* MultiGPU "extensions" for mpi reduce type stuff */
+// Perform reduce along 'dir' direction only
 int  MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute);
 int  MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute);
 
 int  MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
-int  MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);\
+int  MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
 
 // Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
 void pullMGAPointers( MGArray *m, int N, int i, double **dst);
@@ -128,21 +168,42 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 int  MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
 
 /* Functions for managing halos of MGA partitioned data */
-void MGA_exchangeLocalHalos(MGArray *a, int n);
-int  MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h);
-int  MGA_wholeFaceHaloNumel(MGArray *a, int direction, int h);
+int MGA_exchangeLocalHalos(MGArray *a, int n);
+int MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h);
+int MGA_wholeFaceHaloNumel(MGArray *a, int direction, int h);
 
-void MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear);
-void MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehalo, int h, double **linear);
+int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int right, int toHalo, int h, double **linear);
+int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehalo, int h, double **linear);
 
-__global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
-__global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int nyR, int nz, int h);
+// Error catchers, handlers, etc
+int checkCudaError(char *where, char *fname, int lname);
+int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname);
+int checkImogenError(int errtype, char *infile, const char *infunc, int atline);
 
-template<int lr_rw>
-__global__ void cudaMGA_haloXrw(double *phi, double *linear, int nx, int ny, int nz, int h);
+#define PRINT_FAULT_HEADER printf("========== FAULT IN COMPILED CODE: function %s (%s:%i)\n", __func__, __FILE__, __LINE__)
+#define PRINT_FAULT_FOOTER printf("========== COMPILED CODE STACK TRACE SHOULD FOLLOW: ============================\n")
 
-template<int lr_rw>
-__global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int nz, int h);
+#define CHECK_IMOGEN_ERROR(errtype) checkImogenError(errtype, __FILE__, __func__, __LINE__)
+#define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
+checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
+#define CHECK_CUDA_ERROR(astring) CHECK_IMOGEN_ERROR(checkCudaError(astring, __FILE__, __LINE__))
+#define BAIL_ON_FAIL(errtype) if( CHECK_IMOGEN_ERROR(errtype) != SUCCESSFUL) { return errtype; }
+
+void dropMexError(char *excuse, char *infile, int atline);
+#define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
+
+#define SUCCESSFUL 0
+#define ERROR_INVALID_ARGS -100
+#define ERROR_CRASH -101
+#define ERROR_NULL_POINTER -102
+#define ERROR_GET_GPUTAG_FAILED -103
+#define ERROR_DESERIALIZE_GPUTAG_FAILED -104
+
+#define ERROR_CUDA_BLEW_UP -1000
+
+#define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but multi-GPU operation WILL NOT WORK"); }
+
+#define FATAL_NOT_IMPLEMENTED mexErrMsgTxt("Fatal: Encountered required but completely non-implemented code branch.");
 
 typedef struct {
     int ndims;
@@ -177,8 +238,6 @@ void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double
 
 void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim);
 
-void checkCudaError(char *where, char *fname, int lname);
-void checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname);
 const char *errorName(cudaError_t E);
 
 void printdim3(char *name, dim3 dim);

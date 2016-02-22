@@ -52,7 +52,7 @@ function starterRun(gpuSet)
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    haloSize = 3; dimensionDistribute = 2;
+    haloSize = 3; dimensionDistribute = 1;
     gm.init(gpuSet, haloSize, dimensionDistribute);
 
     if ~gm.isInitd;

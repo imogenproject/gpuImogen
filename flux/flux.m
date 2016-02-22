@@ -9,57 +9,88 @@ function flux(run, mass, mom, ener, mag, order)
 %>< mag         magnetic field                                                          MagnetArray(3)
 %>> order       direction of flux sweep (1 forward/-1 backward)                         int     +/-1
 
+    isOneDimensional = (numel(find(mass.gridSize > 3)) == 1);
+    if isOneDimensional
+	relaxingFluid(run, mass, mom, ener, mag, 1);
+        return;
+    end
     %-----------------------------------------------------------------------------------------------
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
 
-    p = [1 3 2; 2 1 3; 1 2 3; 2 3 1; 3 1 2; 3 2 1];
+    if mass.gridSize(3) > 1
+        sweep = mod(run.time.iteration + 3*(order > 0),6)+1;
+    else
+        sweep = mod(run.time.iteration + (order<0), 2)+1;
+    end
 
-    directVec = p(mod(run.time.iteration-1,6)+1,:)';
-    magneticIndices = [3 2; 3 1; 2 1];
-    magneticIndices = magneticIndices(directVec,:);
+    % Any permutes that must be done before the sweep (not doing X first)
+    preperm = [0 2 0 2 3 3];
+
+    % The sequences of permutation & fluxing during the sweep
+    fluxcall = [1 2 1 2 3 3 ;3 1 2 3 1 2; 2 3 3 1 2 1];
+    permcall = [3 2 2 3 3 2; 2 3 3 5 2 6; 6 3 5 0 2 0];
+
+    % Any cases which require a second permute to restore indexes
+    postperm = [3 0 2 0 0 0];
+
+   % p = [1 3 2; 2 1 3; 1 2 3; 2 3 1; 3 1 2; 3 2 1];
+   % magneticIndices = [3 2; 3 1; 2 1];
+   % magneticIndices = magneticIndices(directVec,:);
+
+    g0 = mass.gridSize;
 
     %===============================================================================================
     if (order > 0) %                             FORWARD FLUXING
     %===============================================================================================
+        xchgIndices(run.pureHydro, mass, mom, ener, mag, preperm(sweep));
         for n = [1 2 3]
-            if (mass.gridSize(directVec(n)) < 3), continue; end
-
-            if run.fluid.ACTIVE
-                xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
-                relaxingFluid(run, mass, mom, ener, mag, directVec(n));
-                xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
-                xchgFluidHalos(mass, mom, ener, directVec(n));
-            end
-
-            if run.magnet.ACTIVE
-                magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[1 2]));
-            end
-
+            % Skip identity operations
+             if g0(fluxcall(n,sweep)) > 3
+                relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
+                xchgFluidHalos(mass, mom, ener, fluxcall(n, sweep));
+	    end
+            xchgIndices(run.pureHydro, mass, mom, ener, mag, permcall(n, sweep));
+% FIXME: magnetFlux has no idea these arrays may be permuted
+% FIXME: who cares, mhd in imogen is dead anyway
+%            if run.magnet.ACTIVE
+%                magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[1 2]));
+%            end
         end
+
+%	xchgIndices(run.pureHydro, mass, mom, ener, mag, postperm(sweep));
+
     %===============================================================================================        
     else %                                       BACKWARD FLUXING
     %===============================================================================================
-        for n = [3 2 1]
-            if (mass.gridSize(directVec(n)) < 3), continue; end
-
-            if run.magnet.ACTIVE
-                magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[2 1]));
+    xchgIndices(run.pureHydro, mass, mom, ener, mag, preperm(sweep));
+%        for n = [1 2 3];
+% FIXME: magnetFlux has no idea these arrays may be permuted
+% FIXME: who cares, mhd in imogen is dead anyway
+%            if run.magnet.ACTIVE
+%                magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[2 1]));
+%            end
+        for n = [1 2 3]
+            % Skip identity operations
+            if g0(fluxcall(n,sweep)) > 3;
+                relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
+                xchgFluidHalos(mass, mom, ener, fluxcall(n, sweep));
             end
-
-            if run.fluid.ACTIVE
-                xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
-                relaxingFluid(run, mass, mom, ener, mag, directVec(n));
-                xchgIndices(run.pureHydro, mass, mom, ener, mag, directVec(n));
-
-                xchgFluidHalos(mass, mom, ener, directVec(n));
-            end
+            xchgIndices(run.pureHydro, mass, mom, ener, mag, permcall(n, sweep));
+% FIXME: magnetFlux has no idea these arrays may be permuted
+% FIXME: who cares, mhd in imogen is dead anyway
+%            if run.magnet.ACTIVE
+%                magnetFlux(run, mass, mom, mag, directVec(n), magneticIndices(n,[1 2]));
+%            end
         end
+
+ %       xchgIndices(run.pureHydro, mass, mom, ener, mag, postperm(sweep));
     end
 
 end
 
 function xchgIndices(isFluidOnly, mass, mom, ener, mag, toex)
+if toex == 0; return; end
 
 s = { mass, ener, mom(1), mom(2), mom(3) };
 
@@ -83,7 +114,7 @@ s = { mass, ener, mom(1), mom(2), mom(3) };
 GIS = GlobalIndexSemantics();
 
 for j = 1:5;
-  cudaHaloExchange(s{j}, [1 2 3], dir, GIS.topology, s{j}.bcHaloShare);
+  cudaHaloExchange(s{j}, dir, GIS.topology, s{j}.bcHaloShare);
 end
 
 end

@@ -9,130 +9,262 @@
 
 // CUDA
 #include "cuda.h"
+#include "device_functions.h"
+
+
 #include "cuda_runtime.h"
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "cudaArrayRotateB.h"
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);
-__global__ void cukern_ArrayExchangeY(double *src, double *dst,   int nx, int ny, int nz);
-__global__ void cukern_ArrayExchangeZ(double *src, double *dst,   int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeXY(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeXZ(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayExchangeYZ(double *src,  double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayRotateRight(double *src, double *dst, int nx, int ny, int nz);
+__global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny, int nz);
 
 #define BDIM 16
 
-__global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz);
-
-__global__ void cukern_dumbblit(double *src, double *dst, int nx, int ny, int nz)
-{
-	//int myx = threadIdx.x + BDIM*blockIdx.x;
-	//int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
-	//int myaddr = myx + nx*myy;
-
-	//if((myx < nx) && (myy < ny)) dst[myaddr] = src[myaddr];
-	return;
-
-}
-
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-
-	dim3 blocksize; blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-	dim3 gridsize;
 	int makeNew = 0;
 
-        if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotateB(GPU array, dir to transpose with X)"); }
+	if(nrhs != 2) { mexErrMsgTxt("Input args must be cudaArrayRotateB(GPU array, dir to transpose with X)"); }
 	switch(nlhs) {
-		case 0: makeNew = 0; break;
-		case 1: makeNew = 1; break;
-		default: mexErrMsgTxt("cudaArrayRotate must return zero (in-place transpose) or one (new array) arguments."); break;
+	case 0: makeNew = 0; break;
+	case 1: makeNew = 1; break;
+	default: mexErrMsgTxt("cudaArrayRotate must return zero (in-place transpose) or one (new array) arguments."); break;
 	}
-	CHECK_CUDA_ERROR("entering cudaArrayRotateB");
+
+	if(CHECK_CUDA_ERROR("entering cudaArrayRotateB") != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting due to errors at entry.\n"); }
 
 	MGArray src;
-	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &src);
-
-	/* This function will make the partition direction track the transposition of indices
-	 * Such that if partitioning direction is X and a Y transpose is done, partition is in Y.
-	 * The full matrix
-	 * transpose =  XY | XZ | YZ |
-	 *            +----+----+----+
-	 * Part.    X | Y  | Z  | X  |
-	 * initial  Y | X  | Y  | Z  | <- Output array will have partition in this direction
-	 * direct   Z | Z  | X  | Y  |
-	 */
-
-	MGArray trans = src;
-
+	int returnCode = CHECK_IMOGEN_ERROR(MGA_accessMatlabArrays(prhs, 0, 0, &src));
+	if(returnCode != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Unable to access array.\n"); }
 	int indExchange = (int)*mxGetPr(prhs[1]);
+
+	MGArray *novelty;
+	returnCode = CHECK_IMOGEN_ERROR(flipArrayIndices(&src, (makeNew ? &novelty : NULL), 1, indExchange));
+	if(returnCode != SUCCESSFUL)
+		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Index transposition failed.\n"); }
+
+	if(makeNew) { // return new tags
+		MGA_returnOneArray(plhs, novelty);
+	} else { // overwrite original tag
+		serializeMGArrayToTag(&src, (int64_t *)mxGetData(prhs[0]));
+	}
+
+}
+#endif
+
+/* phi: MGArray pointer to nArrays input MGArrays
+ * psi: MGArray *.
+ *   IF NOT NULL: allocates nArrays arrays & returns completely new MGArrays
+ *   IF NULL:     overwrites phi[*], reusing original data *ers
+ * nArrays: Positive integer
+ * exchangeCode:
+ * 	- 2: Exchange X and Y
+ * 	- 3: Exchange X and Z
+ * 	- 4: Exchange Y and Z
+ * 	- 5: Permute indices left (XYZ -> YZX)
+ * 	- 6: Permute indices right(XYZ -> ZXY)
+ * 	- other than (2, 3, 4, 5, 6): Return ERROR_INVALID_ARGS
+ * 	- If((exchangeCode != 2) and phi[j].dim[3] == 1)) for any j, returns ERROR_NULL_OPERATION upon encountering
+ */
+int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode)
+{
+	int returnCode = SUCCESSFUL;
+
+	MGArray trans = *phi;
+
 	int i, sub[6];
+	int is3d = (phi->dim[2] > 3);
 
-	indExchange -= 1;
-	int is3d = (src.dim[2] > 1);
-	int newPartDirect;
-
-	if(indExchange == 1) { newPartDirect = PARTITION_Y; } else { newPartDirect = PARTITION_Z; }
-
-	gridsize.x = src.dim[0] / BDIM; if(gridsize.x*BDIM < src.dim[0]) gridsize.x++;
-	gridsize.y = src.dim[indExchange] / BDIM; if(gridsize.y*BDIM < src.dim[indExchange]) gridsize.y++;
-
-	blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-
-	// Transpose X and Y sizes
-	trans.dim[0] = src.dim[indExchange];
-	trans.dim[indExchange] = src.dim[0];
-	// Flip the partition direction if appropriate
-	if(trans.partitionDir == PARTITION_X) {
-		trans.partitionDir = newPartDirect;
-	} else if(trans.partitionDir == newPartDirect) {
-		trans.partitionDir = PARTITION_X;
+	MGArray *psi = NULL;
+	if(newArrays != NULL) {
+		newArrays[0] = (MGArray *)malloc(nArrays * sizeof(MGArray));
+		psi = newArrays[0];
 	}
 
-	// Recalculate the partition sizes
-	for(i = 0; i < trans.nGPUs; i++) {
-		calcPartitionExtent(&trans, i, sub);
-		trans.partNumel[i] = sub[3]*sub[4]*sub[5];
+	// These choices assure that the 3D rotation semantics reduce properly for 2D
+	if(is3d == 0) {
+		if(exchangeCode == 3) return SUCCESSFUL;
+		if(exchangeCode == 4) return SUCCESSFUL;
+
+		if(exchangeCode == 5) exchangeCode = 2; // Index rotate becomes XY transpose
+		if(exchangeCode == 6) exchangeCode = 2;
 	}
 
+	int j;
+	for(j = 0; j < nArrays; j++) {
+		// Transpose XY or XZ
+		switch(exchangeCode) {
+		case 2: /* Transform XYZ -> YXZ */
+			trans.dim[0] = phi->dim[1];
+			trans.dim[1] = phi->dim[0];
 
-	MGArray *nuClone;
+			trans.currentPermutation[0] = phi->currentPermutation[1];
+			trans.currentPermutation[1] = phi->currentPermutation[0];
 
-	if(makeNew) {
-		// allocate storage and return the newly transposed array
-		nuClone = MGA_createReturnedArrays(plhs, 1, &trans);
-	} else {
-		// just allocate storage; Overwrite original tag
-		nuClone = MGA_allocArrays(1, &trans);
-		serializeMGArrayToTag(&trans, (int64_t *)mxGetData(prhs[0]));
-	}
+			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
+			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
+			break;
+		case 3: /* Transform XYZ to ZYX */
+			trans.dim[0] = phi->dim[2];
+			trans.dim[2] = phi->dim[0];
 
-	for(i = 0; i < trans.nGPUs; i++) {
-		cudaSetDevice(trans.deviceID[i]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
-		calcPartitionExtent(&src, i, sub);
+			trans.currentPermutation[0] = phi->currentPermutation[2];
+			trans.currentPermutation[2] = phi->currentPermutation[0];
 
-		if(indExchange == 2) {
-			cukern_ArrayExchangeZ<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
-		} else {
-			if(is3d) {
-				cukern_ArrayExchangeY<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
-			} else {
-				cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(src.devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4]);
-			}
+			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
+			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
+			break;
+		case 4: /* Transform XYZ to XZY */
+			trans.dim[1] = phi->dim[2];
+			trans.dim[2] = phi->dim[1];
+
+			trans.currentPermutation[1] = phi->currentPermutation[2];
+			trans.currentPermutation[2] = phi->currentPermutation[1];
+
+			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
+			break;
+		case 5: /* Rotate left, XYZ to YZX */
+			for(i = 0; i < 3; i++) trans.dim[i] = phi->dim[(i+1)%3];
+
+			for(i = 0; i < 3; i++) trans.currentPermutation[i] = phi->currentPermutation[(i+1)%3];
+
+			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
+			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
+			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
+			break;
+		case 6: /* Rotate right, XYZ to ZXY */
+			for(i = 0; i < 3; i++) trans.dim[i] = phi->dim[(i+2)%3];
+
+			for(i = 0; i < 3; i++) trans.currentPermutation[i] = phi->currentPermutation[(i+2)%3];
+
+			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
+			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
+			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
+			break;
+		default:
+			PRINT_FAULT_HEADER;
+			printf("Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
+			PRINT_FAULT_FOOTER;
+			fflush(stdout);
+			return ERROR_INVALID_ARGS;
 		}
-		CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &src, i, "array transposition");
-	}
 
-	// If performing transpose in place, move transposed data back to original array.
-	if(makeNew == 0) {
+		trans.permtag = MGA_numsToPermtag(&trans.currentPermutation[0]);
+
+		// Recalculate the partition sizes
+		// FIXME: This... remains the same, n'est ce pas?
 		for(i = 0; i < trans.nGPUs; i++) {
-			cudaMemcpy(trans.devicePtr[i], nuClone->devicePtr[i], trans.partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
-			CHECK_CUDA_ERROR("cudaMemcpy");
+			calcPartitionExtent(&trans, i, sub);
+			trans.partNumel[i] = sub[3]*sub[4]*sub[5];
 		}
-		MGA_delete(nuClone);
+
+		MGArray *nuClone = MGA_allocArrays(1, &trans);
+
+		dim3 blocksize, gridsize;
+
+		for(i = 0; i < trans.nGPUs; i++) {
+			cudaSetDevice(trans.deviceID[i]);
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaSetDevice()"));
+			if(returnCode != SUCCESSFUL) break;
+
+			calcPartitionExtent(phi, i, sub);
+
+			switch(exchangeCode) {
+			case 2: // Flip XY
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[1], BDIM) / BDIM;
+				gridsize.z = 1;
+
+				if(is3d) {
+					cukern_ArrayExchangeXY<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
+				} else {
+					cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4]);
+				}
+				break;
+			case 3: // Flip XZ
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+				gridsize.z = 1;
+
+				cukern_ArrayExchangeXZ<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+				break;
+
+			case 4: // Flip YZ
+				blocksize.x = 32;
+				blocksize.y = blocksize.z = 4;
+
+				gridsize.x = ROUNDUPTO(sub[3], blocksize.x) / blocksize.x;
+				gridsize.y = ROUNDUPTO(sub[4], blocksize.y) / blocksize.y;
+				gridsize.z = 1;
+
+				cukern_ArrayExchangeYZ<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3],sub[4],sub[5]);
+
+				break;
+			case 5: // Rotate left
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM)/BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[1], BDIM)/BDIM;
+				gridsize.z = 1;
+
+				cukern_ArrayRotateLeft<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+
+				break;
+			case 6: // Rotate right
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM)/BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[2], BDIM)/BDIM;
+				gridsize.z = 1;
+
+				cukern_ArrayRotateRight<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+
+				break;
+			}
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, phi, i, "array transposition call"));
+			if(returnCode != SUCCESSFUL) break;
+		}
+
+		if(returnCode != SUCCESSFUL) break;
+
+		if(psi == NULL) { // Overwrite original data:
+			MGArray tmp = phi[0];
+			phi[0] = *nuClone; // Nuke original MGArray
+
+			phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
+
+			for(i = 0; i < trans.nGPUs; i++) {
+				phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers
+				cudaSetDevice(tmp.deviceID[i]); // And overwrite original data
+				cudaMemcpyAsync(phi->devicePtr[i], nuClone->devicePtr[i], phi->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+				returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaMemcpyAsync()"));
+				if(returnCode != SUCCESSFUL) break;
+			}
+			if(returnCode == SUCCESSFUL) returnCode = MGA_delete(nuClone); // Before deleting new pointer
+			free(nuClone);
+		} else { // Otherwise, simply write the new MGArray to the output pointer.
+			psi[0] = *nuClone;
+		}
+
+		phi++;
+		if(psi != NULL) psi++;
 	}
 
-	CHECK_CUDA_ERROR("Departing cudaArrayRotateB");
-
+	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
+	return returnCode;
 }
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
@@ -159,10 +291,10 @@ __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny
 
 }
 
-__global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, int nz)
+__global__ void cukern_ArrayExchangeXY(double *src, double *dst, int nx, int ny, int nz)
 {
 
-	__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM+1];
 
 	int myx = threadIdx.x + BDIM*blockIdx.x;
 	int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
@@ -190,9 +322,9 @@ __global__ void cukern_ArrayExchangeY(double *src, double *dst, int nx, int ny, 
 
 }
 
-__global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, int nz)
+__global__ void cukern_ArrayExchangeXZ(double*src, double *dst, int nx, int ny, int nz)
 {
-	__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM+1];
 
 	int myx = threadIdx.x + BDIM*blockIdx.x;
 	int myz = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);
@@ -221,3 +353,89 @@ __global__ void cukern_ArrayExchangeZ(double*src, double *dst, int nx, int ny, i
 
 }
 
+/* Assume we have threads that span X and input Y; step in input Z */
+__global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int ny, int nz)
+{
+	int myx = threadIdx.x + blockDim.x*blockIdx.x;
+	if(myx >= nx) return;
+
+	int inputY = threadIdx.y + blockDim.y*blockIdx.y;
+	if(inputY >= ny) return;
+
+	int inputZ;
+	int outputY, outputZ;
+
+	/* Because the natively aligned index doesn't change, no need to stream through shmem to maintain global r/w coalescence */
+	for(inputZ = threadIdx.z; inputZ < nz; inputZ += blockDim.z) {
+		outputY = inputZ;
+		outputZ = inputY;
+
+		dst[myx + outputY*nx + outputZ*nx*nz] =
+				src[myx + inputY*nx + inputZ *nx*ny];
+
+	}
+
+}
+
+
+/* This kernel takes an input array src[i + nx(j+ny k)] and writes dst[k + nz(i + nx j)]
+ * such that for input indices ordered [123] output indices are ordered [312]
+ *
+ * Strategy: blocks span I-K space and walk in J.
+ */
+__global__ void cukern_ArrayRotateRight(double *src, double *dst,  int nx, int ny, int nz)
+{
+	int i, j, k;
+	i = threadIdx.x + blockDim.x*blockIdx.x;
+	k = threadIdx.y + blockDim.y*blockIdx.y;
+	bool doread = (i < nx) && (k < nz);
+	src += (i + nx*ny*k);
+
+	i = threadIdx.y + blockDim.x*blockIdx.x;
+	k = threadIdx.x + blockDim.y*blockIdx.y;
+	bool dowrite = (i < nx) && (k < nz);
+	dst += (k + nz*i);
+
+	__shared__ double tile[BDIM][BDIM+1];
+
+	for(j = 0; j < ny; j++) {
+		if(doread)
+			tile[threadIdx.y][threadIdx.x] = src[nx*j];
+		__syncthreads();
+		if(dowrite)
+			dst[nz*nx*j] = tile[threadIdx.x][threadIdx.y];
+		__syncthreads();
+	}
+	
+}
+
+/* This kernel takes input array src[i + nx(j + ny k)] and writes dst[j + ny(k + nz i)]
+ * such that input indices ordered [123] give output indices ordered [231]
+ *
+ * Strategy: Blocks span I-J space and walk K
+ */
+__global__ void cukern_ArrayRotateLeft(double *src, double *dst,  int nx, int ny, int nz)
+{
+
+	int i,j,k;
+	i = threadIdx.x + blockDim.x*blockIdx.x;
+	j = threadIdx.y + blockDim.y*blockIdx.y;
+	bool doread = (i < nx) && (j < ny);
+	src += (i + nx*j);
+
+	i = threadIdx.y + blockDim.x*blockIdx.x;
+	j = threadIdx.x + blockDim.y*blockIdx.y;
+	bool dowrite = (i < nx) && (j < ny);
+	dst += (j + ny*nz*i);
+
+	__shared__ double tile[BDIM][BDIM+1];
+
+	for(k = 0; k < nz; k++) {
+		if(doread)
+			tile[threadIdx.x][threadIdx.y] = src[nx*ny*k];
+		__syncthreads();
+		if(dowrite)
+			dst[ny*k] = tile[threadIdx.y][threadIdx.x];
+		__syncthreads();
+	}
+}

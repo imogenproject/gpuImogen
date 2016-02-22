@@ -17,13 +17,13 @@ run.activeSlices.xy = true;
 run.info            = 'Kelvin-Helmholtz instability test.';
 run.notes           = '';
 
-run.useInSituAnalysis = 0;
-run.stepsPerInSitu = 20;
-run.inSituHandle = @RealtimePlotter;
-        instruct.plotmode = 4;
-        instruct.plotDifference = 0;
-        instruct.pause = 0;
-run.inSituInstructions = instruct;
+rp = RealtimePlotter();
+  rp.plotmode = 4;
+  rp.plotDifference = 0;
+  rp.insertPause = 0;
+  rp.iterationsPerCall = 20;
+  rp.firstCallIteration = 1;
+%run.peripherals{end+1} = rp;
 
 %--- Run tests ---%
 if (true)

@@ -15,17 +15,28 @@
 #include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  // wrapper for cudaFree().
-  if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt("GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");
+	// wrapper for cudaFree().
+	if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt("GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");
 
-  CHECK_CUDA_ERROR("Entering GPU_free()");
-  MGArray t[nrhs];
+	int returnCode = CHECK_CUDA_ERROR("Entering GPU_free()");
+	if(returnCode != SUCCESSFUL)
+		return;
 
-  int worked = MGA_accessMatlabArrays(prhs, 0, nrhs-1, &t[0]);
+	MGArray t[nrhs];
 
-  int i;
-  for(i = 0; i < nrhs; i++)
-	  MGA_delete(t+i);
+	returnCode = MGA_accessMatlabArrays(prhs, 0, nrhs-1, &t[0]);
+	if(returnCode != SUCCESSFUL) {
+		CHECK_IMOGEN_ERROR(returnCode);
+		return;
+	}
 
-return;
+	int i;
+	for(i = 0; i < nrhs; i++) {
+		returnCode = MGA_delete(t+i);
+		if(returnCode != SUCCESSFUL) break;
+	}
+
+	if(returnCode != SUCCESSFUL) CHECK_IMOGEN_ERROR(returnCode);
+
+	return;
 }

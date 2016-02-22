@@ -21,10 +21,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // Input and result
   if((nlhs != 0) || (nrhs != 2)) { mexErrMsgTxt("Form: GPU_copy(to tag, from tag)"); }
 
-  CHECK_CUDA_ERROR("entering GPU_copy");
+  int returnCode = CHECK_CUDA_ERROR("entering GPU_copy");
+  if(returnCode != SUCCESSFUL) return;
   
   MGArray orig[2];
-  int worked = MGA_accessMatlabArrays(prhs, 0, 1, &orig[0]);
+  returnCode = MGA_accessMatlabArrays(prhs, 0, 1, &orig[0]);
+  if(returnCode != SUCCESSFUL) {
+	  CHECK_IMOGEN_ERROR(returnCode);
+	  return;
+  }
 
   int j;
   int sub[6];
@@ -36,8 +41,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     cudaSetDevice(orig[0].deviceID[j]);
     CHECK_CUDA_ERROR("setdevice");
     cudaMemcpyPeerAsync((void *)orig[0].devicePtr[j], orig[0].deviceID[j], (void*)orig[1].devicePtr[j], orig[1].deviceID[j], dan*sizeof(double));
-    CHECK_CUDA_ERROR("cudamemcpy");
+    returnCode = CHECK_CUDA_ERROR("cudamemcpy");
+    if(returnCode != SUCCESSFUL) break;
   }
 
+  CHECK_IMOGEN_ERROR(returnCode);
   return;
 }

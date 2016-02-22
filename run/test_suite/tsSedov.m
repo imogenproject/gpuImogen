@@ -1,4 +1,8 @@
-function result = tsSedov(iniResolution, multiples)
+function result = tsSedov(iniResolution, multiples, prettyPictures)
+
+if nargin < 3
+    prettyPictures = 0;
+end
 
 grid = iniResolution;
 
@@ -22,6 +26,22 @@ result.rhoL2 = [];
 
 ydim = [];
 
+fm = FlipMethod();
+  fm.iniMethod = 2; % hllc
+  fm.toMethod = 1; % hll
+  fm.atstep = 20;
+run.peripherals{end+1} = fm;
+
+if prettyPictures
+    rp = RealtimePlotter();
+    rp.plotmode = 4;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
+end
+
 %--- Run tests ---%
 for N = 1:numel(multiples)
     grid = iniResolution*multiples(N);
@@ -32,7 +52,10 @@ for N = 1:numel(multiples)
     run.iterMax = 100 * max(grid); % Safely make sure that saving is set by time, not iteration
     icfile      = run.saveInitialCondsToFile();
     outdir      = imogen(icfile);
-    pause(35);
+
+    if N > 1; run.autoEndtime = 0; end % Only run this once to avoid simulation length changing underneath us
+
+    enforceConsistentView(outdir);
     status      = analyzeSedovTaylor(outdir, 1);
 
     result.paths{end+1} = outdir;

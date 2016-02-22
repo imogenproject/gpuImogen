@@ -2,6 +2,8 @@ function s = GPU_tag2struct(t)
 % Accept a GPU int64[] tag and convert it to a human-readable struct.
 % cudaCommon.h enumarates what the indices refer to
 
+baselen = 10;
+
 partdir = '';
 switch(double(t(6)) );
 	case 1; partdir = 'X';
@@ -9,17 +11,29 @@ switch(double(t(6)) );
 	case 3; partdir = 'Z';
 end
 
-b = (numel(t) - 8)/2;
+memlay = '';
+switch(double(t(9)));
+    case 1; memlay = 'XYZ';
+    case 2; memlay = 'XZY';
+    case 3; memlay = 'YXZ';
+    case 4; memlay = 'YZX';
+    case 5; memlay = 'ZXY';
+    case 6; memlay = 'ZYX';
+end
 
-x = reshape(t(9:end), [2 b]);
+b = (numel(t) - baselen)/2;
+
+x = reshape(t((baselen+1):end), [2 b]);
 
 s = struct('arrayDimensions', double(t(1:3)'), ...
            'numel', prod(double(t(1:3))), ...
            'haloSize', double(t(5)), ...
            'exteriorHalos', double(t(8)), ...
            'partitionDirection', partdir, ...
+           'memoryLayout', memlay, ...
            'numGPUs', double(t(7)), ...
            'slabInfo', double(t(4)), ...
+           'halobits', double(t(10)), ...
            'pointers', x);
 
 end

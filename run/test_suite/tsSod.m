@@ -1,18 +1,32 @@
-function result = tsSod(N, direct, doublings)
+function result = tsSod(N, direct, doublings, prettyPictures)
+
+if nargin < 4
+    prettyPictures = 0;
+end
 
 %--- Initialize test ---%
-run             = SodShockTubeInitializer([N 4 1]);
+run         = SodShockTubeInitializer([N 2 1]);
 run.normal(direct);
 run.iterMax     = 50000;
 run.timeMax     = 0.25;
 
 run.alias       = '';
-run.info        = 'Sod shock tube test.';
+run.info    = 'Sod shock tube test.';
 run.notes       = 'Simple axis aligned shock tube test';
 
 run.ppSave.dim2 = 100;
 
 run.bcMode.x = ENUM.BCMODE_CONST;
+
+if prettyPictures
+    rp = RealtimePlotter();
+    rp.plotmode = 1;
+    rp.plotDifference = 0;
+    rp.insertPause = 0;
+    rp.firstCallIteration = 1;
+    rp.iterationsPerCall = 25;
+    run.peripherals{end+1} = rp;
+end
 
 %--- Run tests ---%
 
@@ -26,6 +40,7 @@ for p = 1:doublings;
     run.grid(direct) = N*2^(p-1);
     icfile           = run.saveInitialCondsToFile();
     outpath          = imogen(icfile);
+    enforceConsistentView(outpath);
 
     % Load last frame
     S = SavefilePortal(outpath);
