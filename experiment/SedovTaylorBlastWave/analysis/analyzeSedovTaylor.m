@@ -5,6 +5,8 @@ S.setFrametype(7);
 
 if nargin < 2; runParallel = 0; end
 S.setParallelMode(runParallel);
+% initialize to be safe
+mpi_init();
 
 result.path = directory;
 result.time  = []; 
@@ -13,7 +15,7 @@ result.rhoL2 = [];
 
 f = S.nextFrame();
 
-rez = f.parallel.globalDims
+rez = f.parallel.globalDims;
 
 GIS = GlobalIndexSemantics();
 GIS.setup(rez);
@@ -41,8 +43,6 @@ for N = 1:S.numFrames()
     [rho vradial P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);
-size(f.mass)
-size(truerho)    
 
     delta = f.mass - truerho;
 
