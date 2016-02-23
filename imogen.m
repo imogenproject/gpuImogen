@@ -114,14 +114,4 @@ end
 
     run.finalize(mass, ener, mom, mag);
 
-    % Delete GPU arrays to make Matlab happy
-    % Note though, this should be auto-handled
-    % Though I think mexlocking the master file to keep it from losing its context
-    % solved the actual problem...
-%    mass.cleanup(); ener.cleanup();
-%    for i = 1:3; mom(i).cleanup(); end
-%    if run.pureHydro == 0;
-%        for i = 1:3; mag(i).array = 1; end;
-%    end
-
 end
