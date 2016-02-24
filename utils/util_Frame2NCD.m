@@ -8,7 +8,12 @@ d3_fixed = {'nx','ny','nz'};
 th = frame.time.history;
 if isempty(frame.time.history); th = 0; end
 
+%printct=0;
 % open ncd handle
+% NOTE: Lots of commented fprintf statements in here because
+% this function is the output point for a LOT of data, and I have
+% found it to be enough to make some FSes barf on occasion
+%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 ncid = netcdf.create(nfile, '64BIT_OFFSET');
 
 % FIXME: check for r/w failure here
@@ -22,6 +27,7 @@ dthist = netcdf.defDim(ncid, 'dthist', numel(th));
 tinfo  = netcdf.defDim(ncid, 'tinfo', 5);
 tstart = netcdf.defDim(ncid, 'tstart', length(frame.time.started));
 
+%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Define parallel substructure dimensions
 geomnx = netcdf.defDim(ncid, 'geomnx', size(frame.parallel.geometry,1));
 geomny = netcdf.defDim(ncid, 'geomny', size(frame.parallel.geometry,2));
@@ -37,6 +43,7 @@ dgridny = netcdf.defDim(ncid, 'dgridny', size(frame.dGrid{2},2));
 dgridnz = netcdf.defDim(ncid, 'dgridnz', size(frame.dGrid{3},3));
 simdim  = netcdf.defDim(ncid, 'simdim', length(frame.dim)); % good lord...
 
+%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % define grid dimensions
 nx = netcdf.defDim(ncid, 'nx', size(frame.mass,1));
 ny = netcdf.defDim(ncid, 'ny', size(frame.mass,2));
@@ -72,6 +79,7 @@ momY = netcdf.defVar(ncid, 'momY', 'double', [nx ny nz]);
 momZ = netcdf.defVar(ncid, 'momZ', 'double', [nx ny nz]);
 ener = netcdf.defVar(ncid, 'ener', 'double', [nx ny nz]);
 
+%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 magstatus = netcdf.defVar(ncid, 'magstatus', 'double', scaldim);
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     % Defines a placeholder that marks magnetic arrays as absent
@@ -83,33 +91,43 @@ end
 
 netcdf.endDef(ncid);
 
+%fprintf('ENDED DEFINE MODE CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 %nc_put_var_TYPE(ncid, varid, &data);
 % Serialize time substructure
 netcdf.putVar(ncid, timeinfo_hist, th);
 netcdf.putVar(ncid, timeinfo_scals, [frame.time.time;frame.time.iterMax;frame.time.timeMax;frame.time.wallMax;frame.time.iteration]);
 netcdf.putVar(ncid, timeinfo_tstart, frame.time.started);
 
+%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Serialize geometry info
 netcdf.putVar(ncid, parallel_geom, frame.parallel.geometry);
 netcdf.putVar(ncid, parallel_gdims, frame.parallel.globalDims);
 netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
 
+%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Serialize parameters and other small stuff
 netcdf.putVar(ncid, gammavar, frame.gamma);
 netcdf.putVar(ncid, aboutvar, frame.about);
 netcdf.putVar(ncid, versionvar, frame.ver);
 
+%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Write dGrid information
 netcdf.putVar(ncid, dgrid_x, frame.dGrid{1});
 netcdf.putVar(ncid, dgrid_y, frame.dGrid{2});
 netcdf.putVar(ncid, dgrid_z, frame.dGrid{3});
 netcdf.putVar(ncid, dimvar, frame.dim); % ugh good grief aagain
 
+%fprintf('WRITEMASS CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, mass, frame.mass);
+%fprintf('MOMX CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momX, frame.momX);
+%fprintf('MOMY CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momY, frame.momY);
+%fprintf('MOMZ CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momZ, frame.momZ);
+%fprintf('ENER CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, ener, frame.ener);
+%fprintf('DONEOUTPUT CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     netcdf.putVar(ncid, magstatus, 0);
@@ -120,101 +138,9 @@ else
     netcdf.putVar(ncid, magZ, frame.magZ);
 end
 
+%fprintf('ABOUT TO CLOSE CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.close(ncid);
-
-return;
-
-% Old file-handle-leaking code
-% DO NOT USE
-% Holy Christ it's unbelievable that the high-level interface doesn't have a 'close'
-
-% Serialize time substructure
-nccreate(nfile,'timeinfo_hist','Dimensions',{'dthist',numel(th)});
-ncwrite(nfile,'timeinfo_hist',th);
-
-nccreate(nfile,'timeinfo_scals','Dimensions',{'tinfo',5});
-ncwrite(nfile,'timeinfo_scals',[frame.time.time;frame.time.iterMax;frame.time.timeMax;frame.time.wallMax;frame.time.iteration]);
-
-nccreate(nfile,'timeinfo_tstart','Datatype','char','Dimensions',{'tstart',length(frame.time.started)});
-ncwrite(nfile,'timeinfo_tstart',frame.time.started);
-
-% Serialize parallel substructure
-dgeo = {'geomnx', size(frame.parallel.geometry,1), 'geomny', size(frame.parallel.geometry,2), 'geomnz', size(frame.parallel.geometry,3)};
-
-nccreate(nfile,'parallel_geom','Dimensions',dgeo );
-ncwrite(nfile,'parallel_geom',frame.parallel.geometry);
-
-nccreate(nfile,'parallel_gdims','Dimensions',{'3elem',3});
-ncwrite(nfile,'parallel_gdims',frame.parallel.globalDims);
-
-nccreate(nfile,'parallel_offset','Dimensions',{'3elem'});
-ncwrite(nfile,'parallel_offset',frame.parallel.myOffset);
-
-% Serialize small stuff
-
-nccreate(nfile,'gamma');
-ncwrite(nfile,'gamma',frame.gamma);
-
-nccreate(nfile,'about','Datatype','char','Dimensions',{'aboutstr',length(frame.about)});
-ncwrite(nfile,'about',frame.about);
-
-nccreate(nfile,'version','Datatype','char','Dimensions',{'versionstr', length(frame.ver)});
-ncwrite(nfile,'version',frame.ver);
-
-% Note: copy frame.time.iteration above back to frame.iter upon load
-
-dgs = {'dgridx',size(frame.dGrid{1},1),'dgridy',size(frame.dGrid{1},2),'dgridz',size(frame.dGrid{1},3)};
-dgs0 = {'dgridx','dgridy','dgridz'};
-
-nccreate(nfile,'dgrid_x','Dimensions',dgs);
-ncwrite(nfile,'dgrid_x',frame.dGrid{1});
-
-nccreate(nfile,'dgrid_y','Dimensions',dgs0);
-ncwrite(nfile,'dgrid_y',frame.dGrid{2});
-
-nccreate(nfile,'dgrid_z','Dimensions',dgs0);
-ncwrite(nfile,'dgrid_z',frame.dGrid{3});
-
-nccreate(nfile,'dim','Datatype','char','Dimensions',{'dimsx',3});
-ncwrite(nfile,'dim',frame.dim);
-
-% The main event: Serialize the data arrays.
-
-simdim = d3(frame.mass);
-
-nccreate(nfile,'mass','Dimensions',simdim);
-ncwrite(nfile,'mass', frame.mass);
-
-nccreate(nfile,'momX','Dimensions',d3_fixed);
-ncwrite(nfile,'momX', frame.momX);
-
-nccreate(nfile,'momY','Dimensions',d3_fixed);
-ncwrite(nfile,'momY', frame.momY);
-
-nccreate(nfile,'momZ','Dimensions',d3_fixed);
-ncwrite(nfile,'momZ', frame.momZ);
-
-nccreate(nfile,'ener','Dimensions',d3_fixed);
-ncwrite(nfile,'ener', frame.ener);
-
-if isempty(frame.magX)
-    nccreate(nfile,'magstatus');
-    ncwrite(nfile,'magstatus',0);
-else
-    nccreate(nfile,'magstatus');
-    ncwrite(nfile,'magstatus',1);
-
-    nccreate(nfile,'magX','Dimensions',d3_fixed);
-    ncwrite(nfile,'magX', frame.magX);
-
-    nccreate(nfile,'magY','Dimensions',d3_fixed);
-    ncwrite(nfile,'magY', frame.magY);
-
-    nccreate(nfile,'magZ','Dimensions',d3_fixed);
-    ncwrite(nfile,'magZ', frame.magZ);
-end
-
-
+%fprintf('CLOSED FILE, util_Frame2NCD RETURNING CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 
 end
 
