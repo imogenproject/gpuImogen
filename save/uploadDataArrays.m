@@ -7,8 +7,8 @@ function [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, sta
     memtot = sum(iniGPUMem);
     memneed = numel(FieldSource.mass) * 11 * 8;
     if memneed / memtot > .9
-        run.save.logAllPrint('WARNING: Projected GPU memory utilization of %.1g\% exceeds 90% of total device memory.\n', 100*memneed/memtot);
-        run.save.logAllPrint('WARNING: Reduction in simulation size or increase in job size may be required.\n');
+        run.save.logAllPrint('WARNING: Projected GPU memory utilization of %.1f%c exceeds 9/10 of total device memory.\n', 100*memneed/memtot, 37);
+        run.save.logAllPrint('WARNING: Reduction in simulation size or increase in #of GPUs/nodes may be required.\n');
     end
 
     DataHolder = GPU_Type(FieldSource.mass);

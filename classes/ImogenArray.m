@@ -124,13 +124,16 @@ classdef ImogenArray < handle
             end
             
             %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end % Enforce static values.
-            
+            obj.applyBoundaryConditions(1);
+            obj.applyBoundaryConditions(2);
+            obj.applyBoundaryConditions(3);
         end
         
         function set.array(obj,value)
             obj.pArray.array = value;
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end % Enforce static values.
+            obj.applyBoundaryConditions(1);
+            obj.applyBoundaryConditions(2);
+            obj.applyBoundaryConditions(3);
         end
         
         %___________________________________________________________________________________________________ GS: gridSize
@@ -193,7 +196,7 @@ classdef ImogenArray < handle
                 result = obj.pArray;
             end
             
-            if numel(obj.boundaryData.compIndex) > 0; obj.applyBoundaryConditions(); end
+            obj.applyBoundaryConditions();
         end
         
         %___________________________________________________________________________________________________ transparentEdge

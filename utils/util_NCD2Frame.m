@@ -1,9 +1,13 @@
 function frame = util_NCD2Frame(nfile)
-% Serializes an Imogen saveframe 'frame' into NetCDF 4 format file 'nfile'
+% Deserializes an Imogen NC4 file into a saveframe
+
+ncid = netcdf.open(nfile,'NC_NOWRITE');
 
 % Deserialize time substructure
-frame.time.history = ncread(nfile,'timeinfo_hist');
-  ts = ncread(nfile,'timeinfo_scals'); % time substruct scalars
+v = netcdf.inqVarID(ncid, 'timeinfo_hist');
+frame.time.history = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'timeinfo_scals');
+ts = netcdf.getVar(ncid, v);
   frame.time.time = ts(1);
   frame.time.iterMax = ts(2);
   frame.time.timeMax = ts(3);
@@ -11,45 +15,67 @@ frame.time.history = ncread(nfile,'timeinfo_hist');
   frame.time.iteration = ts(5);
   frame.iter = frame.time.iteration;
 
-frame.time.started = ncread(nfile,'timeinfo_tstart')';
+v = netcdf.inqVarID(ncid, 'timeinfo_tstart');
+frame.time.started = netcdf.getVar(ncid, v);
 
 % Deserialize parallel substructure
-
-frame.parallel.geometry   = ncread(nfile, 'parallel_geom');
-frame.parallel.globalDims = ncread(nfile, 'parallel_gdims')';
-frame.parallel.myOffset   = ncread(nfile, 'parallel_offset')';
+v = netcdf.inqVarID(ncid, 'parallel_geom');
+frame.parallel.geometry = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'parallel_gdims');
+frame.parallel.globalDims = netcdf.getVar(ncid, v)';
+v = netcdf.inqVarID(ncid, 'parallel_offset');
+frame.parallel.myOffset = netcdf.getVar(ncid, v)';
 
 % Deserialize small stuff
-
-frame.gamma   = ncread(nfile, 'gamma');
-frame.about   = ncread(nfile, 'about')';
-frame.version = ncread(nfile, 'version')';
+v = netcdf.inqVarID(ncid, 'gamma');
+frame.gamma = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'about');
+frame.about = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'version');
+frame.ver = netcdf.getVar(ncid, v);
 
 % Note: copy frame.time.iteration above back to frame.iter upon load
+v = netcdf.inqVarID(ncid, 'dgrid_x');
+frame.dGrid{1} = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'dgrid_y');
+frame.dGrid{2} = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'dgrid_z');
+frame.dGrid{3} = netcdf.getVar(ncid, v);
 
-frame.dGrid{1} = ncread(nfile, 'dgrid_x');
-frame.dGrid{2} = ncread(nfile, 'dgrid_y');
-frame.dGrid{3} = ncread(nfile, 'dgrid_z');
-
-frame.dim = ncread(nfile, 'dim');
+v = netcdf.inqVarID(ncid, 'dim');
+frame.dim = netcdf.getVar(ncid, v);
 
 % The main event: Deserialize the data arrays.
+v = netcdf.inqVarID(ncid, 'mass');
+frame.mass = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'momX');
+frame.momX = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'momY');
+frame.momY = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'momZ');
+frame.momZ = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'ener');
+frame.ener = netcdf.getVar(ncid, v);
 
-frame.mass = ncread(nfile,'mass');
-frame.momX = ncread(nfile,'momX');
-frame.momY = ncread(nfile,'momY');
-frame.momZ = ncread(nfile,'momZ');
-frame.ener = ncread(nfile,'ener');
-
-magstat = ncread(nfile,'magstatus');
+try
+    v = netcdf.inqVarID(ncid, 'magstatus');
+    magstat = ncread(nfile,'magstatus');
+catch NOTTHERE
+    magstat = 0;
+end
 
 if magstat == 0
     frame.magX = 0; frame.magY = 0; frame.magZ = 0;
 else
-    frame.magX = ncread(nfile,'magX');
-    frame.magY = ncread(nfile,'magY');
-    frame.magZ = ncread(nfile,'magZ');
+    v = netcdf.inqVarID(ncid, 'magX');
+    frame.magX = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'magY');
+    frame.magY = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'magZ');
+    frame.magY = netcdf.getVar(ncid, v);
 end
+
+netcdf.close(ncid);
 
 end
 

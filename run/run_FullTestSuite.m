@@ -5,8 +5,8 @@
 TestResults.name = 'Imogen Master Test Suite';
 
 %--- Override: Run ALL the tests! ---%
-doALLTheTests = 0;
-realtimePictures = 1;
+doALLTheTests = 1;
+realtimePictures = 0;
 
 %--- Individual selects ---%
 % Advection/transport tests
@@ -23,7 +23,7 @@ doEinfeldtTests       = 0;
 doCentrifugeTests     = 0;
 
 % 3D tests
-doSedovTests          = 1;
+doSedovTests          = 0;
 
 % As regards the choices of arbitrary inputs like Machs...
 % If it works for $RANDOM_NUMBER_WITH_NO_PARTICULAR_SIGNIFICANCE
@@ -36,12 +36,12 @@ if mpi_amirank0();
 end
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 6;
+advectionDoublings  = 5;
 einfeldtDoublings   = 7;
 sodDoublings        = 7;
-centrifugeDoublings = 6;
-sedov2D_scales      = [1 2 4 8 16 32];
-sedov3D_scales      = [1 2 3 4 8];
+centrifugeDoublings = 5;
+sedov2D_scales      = [1 2 4 8 16 32 64];
+sedov3D_scales      = [1 2 4 8 12];
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
@@ -97,7 +97,7 @@ end
 if doEinfeldtTests || doALLTheTests
     if mpi_amirank0(); disp('Testing convergence of Einfeldt tube'); end
     try
-        x = tsEinfeldt(baseResolution, 1.4, 1.9, einfeldtDoublings, realtimePictures);
+        x = tsEinfeldt(baseResolution, 1.4, 5.5, einfeldtDoublings, realtimePictures);
     catch ME
         fprintf('Einfeldt tube test has failed.\n');
         prettyprintException(ME);
@@ -149,28 +149,32 @@ end
 
 %%% 3D tests
 if doSedovTests || doALLTheTests
+    if ~isempty(sedov2D_scales)
     if mpi_amirank0(); disp('Testing 2D Sedov-Taylor explosion'); end
-    try
-        x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures);
-    catch ME
-        disp('2D Sedov-Taylor test has failed.');
-        prettyprintException(ME);
-        x = 'FAILED';
-    end
-    TestResult.sedov2d = x;
+        try
+            x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures);
+        catch ME
+            disp('2D Sedov-Taylor test has failed.');
+            prettyprintException(ME);
+            x = 'FAILED';
+        end
+        TestResult.sedov2d = x;
     if mpi_amirank0(); disp('Results for 2D (cylindrical) Sedov-Taylor explosion:'); disp(x); end
-
-    if mpi_amirank0(); disp('Testing 3D Sedov-Taylor explosion'); end
-    try
-        x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures);
-    catch ME
-        disp('3D Sedov-Taylor test has failed.');
-        prettyprintException(ME);
-        x = 'FAILED';
     end
 
-    TestResult.sedov3d = x;
-    if mpi_amirank0(); disp('Results for 3D (spherical) Sedov-Taylor explosion:'); disp(x); end
+    if ~isempty(sedov3D_scales)
+        if mpi_amirank0(); disp('Testing 3D Sedov-Taylor explosion'); end
+        try
+            x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures);
+        catch ME
+            disp('3D Sedov-Taylor test has failed.');
+            prettyprintException(ME);
+            x = 'FAILED';
+        end
+        TestResult.sedov3d = x;
+        if mpi_amirank0(); disp('Results for 3D (spherical) Sedov-Taylor explosion:'); disp(x); end
+    end
+
 end
 
 %%%%%
@@ -191,7 +195,7 @@ end
 % USE CENTRIFUGE TEST
 
 if mpi_amirank0()
-    save('~/FullTestSuiteResults_SERIAL_1GPU.mat','TestResult');
+    save('~/FullTestSuiteResults_SERIAL_2GPUs.mat','TestResult');
 end
 
 

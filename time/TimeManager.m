@@ -113,7 +113,6 @@ classdef TimeManager < handle
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
             end
             obj.timePercent = 100*newTime/obj.TIMEMAX;
-            obj.appendHistory();
         end
 
 %___________________________________________________________________________________________________ updateUI
@@ -194,6 +193,8 @@ classdef TimeManager < handle
             obj.updateUI();
             obj.time = obj.time + 2*obj.dTime;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
+            obj.appendHistory();
+
         end
                 
 %___________________________________________________________________________________________________ toStruct
@@ -201,7 +202,7 @@ classdef TimeManager < handle
 % # result        The structure resulting from conversion of the TimeManager object.                        Struct
         function result = toStruct(obj)
             result.time       = obj.time;
-            result.history    = obj.history(1:obj.iteration);
+            result.history    = obj.history(1:(obj.iteration+1));
             result.iterMax    = obj.ITERMAX;
             result.timeMax    = obj.TIMEMAX;
             result.wallMax    = obj.WALLMAX;

@@ -65,7 +65,12 @@ function outdirectory = imogen(srcData, resumeinfo)
         FieldSource = IC;
     end
 
-    [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
+    try
+        [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
+    catch oops
+        run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\n');
+        rethrow oops;
+    end
 
     mpi_barrier();
     run.save.logPrint('---------- Preparing physics subsystems\n');
@@ -113,15 +118,5 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
 end
 
     run.finalize(mass, ener, mom, mag);
-
-    % Delete GPU arrays to make Matlab happy
-    % Note though, this should be auto-handled
-    % Though I think mexlocking the master file to keep it from losing its context
-    % solved the actual problem...
-%    mass.cleanup(); ener.cleanup();
-%    for i = 1:3; mom(i).cleanup(); end
-%    if run.pureHydro == 0;
-%        for i = 1:3; mag(i).array = 1; end;
-%    end
 
 end
