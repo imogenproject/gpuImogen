@@ -65,7 +65,12 @@ function outdirectory = imogen(srcData, resumeinfo)
         FieldSource = IC;
     end
 
-    [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
+    try
+        [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
+    catch oops
+        run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\n');
+        rethrow oops;
+    end
 
     mpi_barrier();
     run.save.logPrint('---------- Preparing physics subsystems\n');
