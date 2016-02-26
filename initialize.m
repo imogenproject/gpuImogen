@@ -11,11 +11,11 @@ function run = initialize(ini)
    
     %--- Clear all manager singletons from possible previous runs ---%
     clear('ImogenManager','SaveManager','TimeManager','ImageManager','GravityManager', ...
-            'FluidManager', 'MagnetManager', 'ParallelManager', 'BCManager', 'TreadmillManager');
+            'FluidManager', 'MagnetManager', 'ParallelManager', 'BCManager');
     
     fclose all; % Prevent any lingering saves from disrupting run.
 
-    run             = ImogenManager.getInstance();
+    run             = ImogenManager();
     run.gridSize    = ini.grid;
     [run.version, run.detailedVersion]                        = versionInfo();
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
@@ -344,17 +344,6 @@ try
         run.image.parallelUniformColors = ini.image.parallelUniformColors; end
 
 catch MERR, loc_initializationError('image',MERR);
-end
-
-%% .treadmill                   Grid treadmill action
-
-try
-    if ini.treadmill > 0
-        run.treadmill.ACTIVE = true;
-        run.treadmill.DIRECTION = ini.treadmill;
-        run.appendInfo('Treadmill', sprintf('Active along %g',run.treadmill.DIRECTION));
-    end
-catch MERR, loc_initializationError('treadmill',MERR);
 end
 
 %% .fades                       Fade objects

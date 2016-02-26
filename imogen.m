@@ -36,7 +36,6 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     outdirectory = run.paths.save;
     run.save.saveIniSettings(ini);
-    run.preliminary();
 
     mpi_barrier();
     run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
@@ -118,5 +117,7 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
 end
 
     run.finalize(mass, ener, mom, mag);
+
+disp('ASDASDASD')
 
 end

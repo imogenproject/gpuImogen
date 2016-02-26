@@ -1,7 +1,5 @@
 classdef ImageManager < handle
-    % The manager class responsible for handling image related actions (primarily saving). This is a
-    % singleton class to be accessed using the getInstance() method and not instantiated directly.
-    
+    % The manager class responsible for handling image related actions (primarily saving).
     
     %===================================================================================================
     properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
@@ -50,10 +48,16 @@ classdef ImageManager < handle
     
     %===================================================================================================
     methods (Access = public) %														P U B L I C  [M]
+        %___________________________________________________________________________________________________ ImageManager
+        % Creates a new ImageManager instance.
+        function obj = ImageManager()
+            obj.frame = 0;
+            for i=1:length(obj.FIELDS),     obj.(obj.FIELDS{i}) = false;    end
+        end
         
-        %___________________________________________________________________________________________________ preliminary
+        %___________________________________________________________________________________________________ initialize
         % Preliminary actions setting up image saves for the run. Determines which image slices to save.
-        function preliminary(obj)
+        function initialize(obj)
             obj.pActive = obj.parent.save.ACTIVE(4:6);
             if ~any(obj.pActive)
                 [minval, mindex] = min(obj.parent.gridSize); %#ok<ASGLU>
@@ -194,12 +198,6 @@ classdef ImageManager < handle
                 datestr(clock,'HH:MM mm-dd-yyyy'));
         end
         
-        %___________________________________________________________________________________________________ ImageManager
-        % Creates a new ImageManager instance.
-        function obj = ImageManager()
-            obj.frame = 0;
-            for i=1:length(obj.FIELDS),     obj.(obj.FIELDS{i}) = false;    end
-        end
         
     end%PROTECTED
     
@@ -217,18 +215,6 @@ classdef ImageManager < handle
                 result(I(k),J(k)) = newMin;
             end      
         end        
-        
-        
-        %___________________________________________________________________________________________________ getInstance
-        % Accesses the singleton instance of the ImageManager class, or creates one if none have
-        % been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance)
-                instance = ImageManager();
-            end
-            singleObj = instance;
-        end
         
     end%STATIC
 end

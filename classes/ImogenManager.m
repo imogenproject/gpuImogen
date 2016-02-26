@@ -46,8 +46,6 @@ classdef ImogenManager < handle
         %--- Source/Sink or nonideal behavior control
         selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
         potentialField; % Manages a scalar potential                                PotentialFieldManager
-        treadmill;      % Manages treadmill actions.                                TreadmillManager
-
         frameTracking;  %                                                            FrameTracker class
 
         %--- Saving/output
@@ -118,15 +116,44 @@ classdef ImogenManager < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-%___________________________________________________________________________________________________ preliminary
-% Function to be called after initialization is complete but before the run has begun.
-        function preliminary(obj)
-            %--- Preliminary setup for children managers ---%
-%            obj.save.preliminary(); moved this to peripheral initialization
-            obj.image.preliminary();
-            obj.fluid.preliminary();
+        %___________________________________________________________________________________________________ ImogenManager
+        function obj = ImogenManager()
+        % Creates a new ImogenManager object and initializes default values.
+
+            % Serve as roots for the event queuing system lists
+            obj.peripheralListRoot = LinkedListNode();
+            obj.eventListRoot = LinkedListNode;
             
-            %--- Start code profiling if requested by ini ---%
+            
+            obj.bc          = BCManager();                  obj.bc.parent           = obj;
+            obj.time        = TimeManager();                obj.time.parent         = obj;
+            obj.save        = SaveManager();                obj.save.parent         = obj;
+            obj.image       = ImageManager();               obj.image.parent        = obj;
+
+            obj.potentialField = PotentialFieldManager();   obj.potentialField.parent = obj;
+            obj.selfGravity = GravityManager();             obj.selfGravity.parent  = obj;
+
+            obj.fluid       = FluidManager();               obj.fluid.parent        = obj;
+            obj.magnet      = MagnetManager();              obj.magnet.parent       = obj;
+
+            obj.attachPeripheral(obj.save); % temporary?
+
+            obj.frameTracking = FrameTracker();
+
+            obj.paths       = Paths();
+            obj.info        = cell(30,2);
+            obj.infoIndex   = 1;
+            obj.DEBUG       = false;
+            obj.PROFILE     = false;
+            obj.pAbortTime  = rem(now,1);
+            obj.pAbortFile  = '/state.itf';
+            obj.matlab      = ver('matlab');
+            obj.DGRID       = num2cell(ones(1,3));
+            obj.MINDGRID    = ones(1,3);
+            
+            obj.pureHydro   = 0;
+
+            obj.cfdMethod = 2;
         end
         
 %___________________________________________________________________________________________________ initialize
@@ -139,6 +166,8 @@ classdef ImogenManager < handle
                 p = p.Next;
             end
 
+                      obj.image.initialize();
+                      obj.fluid.initialize();
                 obj.selfGravity.initialize(IC.selfGravity, mass);
              obj.potentialField.initialize(IC.potentialField);
               obj.frameTracking.initialize(IC.ini.frameParameters, mass, ener, mom)            
@@ -378,61 +407,12 @@ classdef ImogenManager < handle
 %===================================================================================================
     methods (Access = private) %                                                  P R I V A T E  [M]
         
-%___________________________________________________________________________________________________ ImogenManager
-% Creates a new ImogenManager object and initializes default values.
-        function obj = ImogenManager()
-            obj.bc          = BCManager.getInstance();          obj.bc.parent           = obj;
-            obj.time        = TimeManager.getInstance();        obj.time.parent         = obj;
-            obj.save        = SaveManager.getInstance();        obj.save.parent         = obj;
-            obj.image       = ImageManager.getInstance();       obj.image.parent        = obj;
-
-            obj.potentialField = PotentialFieldManager.getInstance(); obj.potentialField.parent = obj;
-            obj.selfGravity = GravityManager.getInstance(); obj.selfGravity.parent  = obj;
-            obj.treadmill   = TreadmillManager.getInstance();   obj.treadmill.parent    = obj;
-
-            obj.fluid       = FluidManager.getInstance();       obj.fluid.parent        = obj;
-            obj.magnet      = MagnetManager.getInstance();      obj.magnet.parent       = obj;
-
-            % Serve as roots for the event system lists
-            obj.peripheralListRoot = LinkedListNode();
-            obj.eventListRoot = LinkedListNode;
-        
-            obj.attachPeripheral(obj.save); % temporary?
-
-            obj.frameTracking = FrameTracker();
-
-            obj.paths       = Paths();
-            obj.info        = cell(30,2);
-            obj.infoIndex   = 1;
-            obj.DEBUG       = false;
-            obj.PROFILE     = false;
-            obj.pAbortTime  = rem(now,1);
-            obj.pAbortFile  = '/state.itf';
-            obj.matlab      = ver('matlab');
-            obj.DGRID       = num2cell(ones(1,3));
-            obj.MINDGRID    = ones(1,3);
-            
-            obj.pureHydro   = 0;
-
-            obj.cfdMethod = 2;
-        end
         
     end%PRIVATE
     
 %===================================================================================================    
     methods (Static = true) %                                                      S T A T I C   [M]
-        
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the ImogenManager class, or creates one if none have
-% been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance) 
-                instance = ImogenManager(); 
-            end
-            singleObj = instance;
-        end
-      
+
     end%STATIC
     
     

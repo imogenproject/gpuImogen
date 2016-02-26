@@ -1,7 +1,5 @@
 classdef GravityManager < handle
-% This is the management class for the potential solver. This is a singleton class to be accessed 
-% using the getInstance() method and not instantiated directly. Currently the gravitational code is
-% setup for a gravitational constant, G, of one.
+% This is the management class for the self-gravity solver
 %===================================================================================================
     properties (Constant = true, Transient = true) %                         C O N S T A N T     [P]
     end%CONSTANT
@@ -45,6 +43,19 @@ classdef GravityManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
+%___________________________________________________________________________________________________ GravityManager
+% Creates a new GravityManager instance and intializes it with default settings.
+        function obj = GravityManager() 
+            obj.setSolver( ENUM.GRAV_SOLVER_EMPTY );
+            obj.ACTIVE      = false;
+            obj.solverInit  = @grav_ini_nonGravitational;
+
+            obj.tolerance   = 1e-10;
+            obj.iterMax     = 100;
+            obj.constant    = 1;
+
+            obj.bconditionSource = ENUM.GRAV_BCSOURCE_FULL;
+        end
         
 %___________________________________________________________________________________________________ createSparseMatrix
 % Builds a Laplacian and a preconditioner for linear solver methods. First creates the 6th order
@@ -139,7 +150,7 @@ function createSparseMatrix(obj, grid, dgrid)
             end
 
             if mpi_amirank0()
-                run = ImogenManager.getInstance();
+                run = obj.parent;
                 run.save.logPrint(sprintf('Total of %i CompactObjects present on grid.\n', numel(obj.compactObjects)));
             end
         end
@@ -153,35 +164,11 @@ function createSparseMatrix(obj, grid, dgrid)
 %===================================================================================================    
     methods (Access = private) %                                                P R I V A T E    [M]
         
-%___________________________________________________________________________________________________ GravityManager
-% Creates a new GravityManager instance and intializes it with default settings.
-        function obj = GravityManager() 
-            obj.setSolver( ENUM.GRAV_SOLVER_EMPTY );
-            obj.ACTIVE      = false;
-            obj.solverInit  = @grav_ini_nonGravitational;
-
-            obj.tolerance   = 1e-10;
-            obj.iterMax     = 100;
-            obj.constant    = 1;
-
-            obj.bconditionSource = ENUM.GRAV_BCSOURCE_FULL;
-        end
         
     end%PROTECTED
         
 %===================================================================================================    
     methods (Static = true) %                                                      S T A T I C    [M]
-        
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the GravityManager class, or creates one if none have
-% been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance) 
-                instance = GravityManager();
-            end
-            singleObj = instance;
-        end
         
     end%STATIC
     

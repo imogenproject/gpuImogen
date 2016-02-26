@@ -1,6 +1,5 @@
 classdef MagnetManager < handle
-% Manages magnetic field routines and related settings. This is a singleton class to be accessed 
-% using the getInstance() method and not instantiated directly.
+% Manages magnetic field routines and related settings.
 	
 %===================================================================================================
 	properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
@@ -29,6 +28,11 @@ classdef MagnetManager < handle
 	
 %===================================================================================================
     methods (Access = public) %														P U B L I C  [M]
+% Creates a new MagnetManager instance.
+		function obj = MagnetManager() 
+			obj.ACTIVE = false;
+		end
+		
 		
 	end%PUBLIC
 	
@@ -36,26 +40,10 @@ classdef MagnetManager < handle
 	methods (Access = private) %												P R I V A T E    [M]
 		
 %___________________________________________________________________________________________________ MagnetManager
-% Creates a new MagnetManager instance.
-		function obj = MagnetManager() 
-			obj.ACTIVE = false;
-		end
-		
 	end%PROTECTED
 		
 %===================================================================================================	
 	methods (Static = true) %													  S T A T I C    [M]
-		
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the MagnetManager class, or creates one if none have
-% been initialized yet.
-		function singleObj = getInstance(create)
-			persistent instance;
-			if isempty(instance) || ~isvalid(instance) 
-				instance = MagnetManager(); 
-			end
-			singleObj = instance;
-		end
 		
 	end%STATIC
 	

@@ -1,6 +1,5 @@
 classdef PotentialFieldManager < handle
-% This is the management class for the potential solver. This is a singleton class to be accessed 
-% using the getInstance() method and not instantiated directly. Currently the gravitational code is
+% This is the management class for the potential solver. Currently the gravitational code is
 % setup for a gravitational constant, G, of one.
 
     
@@ -29,8 +28,14 @@ classdef PotentialFieldManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
+%___________________________________________________________________________________________________ GravityManager
+% Creates a new GravityManager instance and intializes it with default settings.
+        function self = PotentialFieldManager() 
+            self.ACTIVE = false;
+        end
+
         function initialize(self, initialConds)
-            run = ImogenManager.getInstance();
+            run = self.parent;
             if isempty(initialConds.field)
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
@@ -50,27 +55,10 @@ classdef PotentialFieldManager < handle
 %===================================================================================================    
     methods (Access = private) %                                                P R I V A T E    [M]
         
-%___________________________________________________________________________________________________ GravityManager
-% Creates a new GravityManager instance and intializes it with default settings.
-        function self = PotentialFieldManager() 
-            self.ACTIVE = false;
-        end
-
     end%PROTECTED
         
 %===================================================================================================    
     methods (Static = true) %                                                      S T A T I C    [M]
-        
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the GravityManager class, or creates one if none have
-% been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance) 
-                instance = PotentialFieldManager();
-            end
-            singleObj = instance;
-        end
         
     end%STATIC
     

@@ -1,7 +1,5 @@
 classdef FluidManager < handle
-% Manager class for fluid fluxing operations and settings. This is a singleton class to be accessed 
-% using the getInstance() method and not instantiated directly.
-    
+% Manager class for fluid fluxing operations and settings. 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
     end%CONSTANT
@@ -36,9 +34,17 @@ classdef FluidManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+%___________________________________________________________________________________________________ FluidManager
+% Creates a new FluidManager instance.
+        function obj = FluidManager() 
+            obj.ACTIVE                   = true;
+            obj.MASS_THRESHOLD           = 0;
+            obj.viscosity                = ArtificialViscosity();
+            obj.radiation                = Radiation();
+        end
 
-%___________________________________________________________________________________________________ preliminary
-        function preliminary(obj)
+%___________________________________________________________________________________________________ initialize
+        function initialize(obj)
             obj.viscosity.preliminary();
             obj.radiation.preliminary();
         end
@@ -86,30 +92,11 @@ classdef FluidManager < handle
             end
         end
     
-%___________________________________________________________________________________________________ FluidManager
-% Creates a new FluidManager instance.
-        function obj = FluidManager() 
-            obj.ACTIVE                   = true;
-            obj.MASS_THRESHOLD           = 0;
-            obj.viscosity                = ArtificialViscosity();
-            obj.radiation                = Radiation();
-        end
         
     end%PROTECTED
         
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
-        
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the FluidManager class, or creates one if none have
-% been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance) 
-                instance = FluidManager(); 
-            end
-            singleObj = instance;
-        end
         
     end%STATIC
     

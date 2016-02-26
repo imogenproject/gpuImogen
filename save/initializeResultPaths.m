@@ -9,7 +9,7 @@ function initializeResultPaths(run, IC)
         run.paths.deserialize(IC.originalPathStruct); 
 	setupDirectories = 0;
     else
-        run.paths.initialize();
+        run.paths.initialize(run);
 	setupDirectories = 1;
     end
    

@@ -1,7 +1,5 @@
 classdef TimeManager < handle
-% The manager class responsible for handling time related variables and operations. This is a 
-% singleton class to be accessed using the getInstance() method and not instantiated directly.
-
+% The manager class responsible for handling time related variables and operations.
 %===================================================================================================
     properties (Constant = true, Transient = true) %                 C O N S T A N T         [P]
     end%CONSTANT
@@ -45,6 +43,24 @@ classdef TimeManager < handle
         
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+
+%___________________________________________________________________________________________________ TimeManager
+% Creates a new TimeManager instance.
+        function obj = TimeManager() 
+            obj.startTime   = clock;
+            obj.time        = 0;
+            obj.dTime       = 0;
+            obj.iteration   = 0;
+            obj.ITERMAX     = 1000;
+            obj.TIMEMAX     = 5000;
+            obj.WALLMAX     = 1e5;
+            obj.history     = zeros(obj.ITERMAX,1);
+            obj.updateMode  = ENUM.TIMEUPDATE_PER_ITERATION;
+            obj.iterPercent = 0;
+            obj.timePercent = 0;
+            obj.wallPercent = 0;
+            obj.dtAverage   = 0;
+        end
     
 	function recordWallclock(obj)
             obj.firstWallclockValue = clock;
@@ -234,23 +250,6 @@ classdef TimeManager < handle
 %===================================================================================================
         methods (Access = private) %                                            P R I V A T E    [M]
                 
-%___________________________________________________________________________________________________ TimeManager
-% Creates a new TimeManager instance.
-        function obj = TimeManager() 
-            obj.startTime   = clock;
-            obj.time        = 0;
-            obj.dTime       = 0;
-            obj.iteration   = 0;
-            obj.ITERMAX     = 1000;
-            obj.TIMEMAX     = 5000;
-            obj.WALLMAX     = 1e5;
-            obj.history     = zeros(obj.ITERMAX,1);
-            obj.updateMode  = ENUM.TIMEUPDATE_PER_ITERATION;
-            obj.iterPercent = 0;
-            obj.timePercent = 0;
-            obj.wallPercent = 0;
-            obj.dtAverage   = 0;
-        end
                 
 %___________________________________________________________________________________________________ appendHistory
 % Appends a new dTime value to the history.
@@ -269,16 +268,6 @@ classdef TimeManager < handle
         methods (Static = true) %                                                 S T A T I C    [M]
                 
 %___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the TimeManager class, or creates one if none have
-% been initialized yet.
-                function singleObj = getInstance()
-                        persistent instance;
-                        if isempty(instance) || ~isvalid(instance) 
-                                instance = TimeManager();
-                        end
-                        singleObj = instance;
-                end
-          
         end%STATIC
         
 end%CLASS
