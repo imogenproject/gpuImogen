@@ -92,6 +92,10 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             selfGravity     = [];
             obj.dGrid       = 1./obj.grid;
 
+            if obj.grid(3) == 1
+                obj.bcMode.z = 'circ';
+            end
+
             [mass mom mag ener] = GIS.basicFluidXYZ();
 
             mass            = mass * obj.backgroundDensity;
