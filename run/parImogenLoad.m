@@ -6,31 +6,37 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
 %>> logFile    log file name for writing output information str
 
     %-- Stand up the basics Imogen expects to be in place --%
-    starterRun(gpuSet);
-
-    runFile = strrep(runFile,'.m','');
-    assignin('base','logFile',logFile);
-    assignin('base','alias',alias);
-    
+    failed = starterRun(gpuSet);
     shutDownEverything = 0;
-    if nargin < 5;
-        if mpi_myrank() == 0;
-            fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
+
+    if failed == 0;
+        runFile = strrep(runFile,'.m','');
+        assignin('base','logFile',logFile);
+        assignin('base','alias',alias);
+    
+        if nargin < 5;
+            if mpi_myrank() == 0;
+                fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
+                shutDownEverything = 1;
+        end
+
+        try
+            eval(runFile);
+        catch ME
+            prettyprintException(ME);
+            fprintf('FATAL: Runfile has thrown an exception back to loader.\nRANK %i ABORTING!\n', mpi_myrank());
+            % shutDownEverything = 1;
+        end
+    else
         shutDownEverything = 1;
     end
 
-    try
-        eval(runFile);
-    catch ME
-	prettyprintException(ME);
-        fprintf('FATAL: Runfile has thrown an exception back to loader.\nRANK %i ABORTING!\n', mpi_myrank());
-%        shutDownEverything = 1;
-    end
-
-    mpi_barrier();
+    mpi_barrier(); % If testing n > 1 procs on one node, don't let anyone reset GPUs before we're done.
     if shutDownEverything
-        clear GPUManager GlobalIndexSemantics
         GPU_ctrl('reset');
         mpi_finalize();
+        clear all;
     end
+
+
 end

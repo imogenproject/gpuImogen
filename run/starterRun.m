@@ -1,4 +1,4 @@
-function starterRun(gpuSet)
+function failed = starterRun(gpuSet)
 % This routine does the initialization to include the imogen program paths and stand up the MPI
 % and GPU routines necessary for new runs.
 
@@ -55,11 +55,27 @@ function starterRun(gpuSet)
     haloSize = 3; dimensionDistribute = 1;
     gm.init(gpuSet, haloSize, dimensionDistribute);
 
-    if ~gm.isInitd;
-        GPU_ctrl('peers',1);
-    end    
-
     mpi_barrier();
+    if mpi_amirank0(); disp('Testing device usability in indicated configuration...'); end
 
+    testData = rand([32 32 32]);
+    worked = 0;
+    try
+        testGPU = GPU_Type(testData);
+    catch awcrap
+        prettyprintException(awcrap, 0, 'Exception generated attempting to simply upload data to GPUs\nAborting job.\n');
+        worked = mpi_myrank() + 1;
+    end
+    
+    worked = mpi_max(worked);
+    if worked > 0;
+        failed = 1;
+    else
+        if ~gm.isInitd;
+            GPU_ctrl('peers',1);
+        end
+        failed = 0;
+    end
 
+    return;
 end

@@ -68,7 +68,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
     catch oops
         run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\n');
-        rethrow oops;
+        rethrow(oops);
     end
 
     mpi_barrier();
@@ -117,7 +117,5 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
 end
 
     run.finalize(mass, ener, mom, mag);
-
-disp('ASDASDASD')
 
 end

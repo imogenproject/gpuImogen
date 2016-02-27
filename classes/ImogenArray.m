@@ -56,32 +56,6 @@ classdef ImogenArray < handle
     %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-        %___________________________________________________________________________________________________ ImogenArray
-        % Creates a new ImogenArray object according to the specified inputs.
-        %>> id          Identification information for the new object.                      cell/str
-        %>< run         Run manager object.                                                 ImogenManager
-        %>> statics     Static arrays and values structure.                                 struct
-        function obj = ImogenArray(component, id, run, statics)
-            if (nargin == 0 || isempty(id)); return; end
-            if ~isa(id,'cell');    id = {id}; end
-            obj.pArray = GPU_Type();
-            obj.pCompatibility  = str2double(run.matlab.Version);
-            obj.pShiftEnabled   = true(1,3);
-            obj.component       = component;
-            obj.id              = id;
-            obj.bcInfinity      = run.bc.infinity;
-            obj.pRunManager     = run;
-            obj.pFadesValue     = 0.995;
-            
-            obj.boundaryData.rawStatics = statics; % Store this for when we have an array
-            % to precompute stuff with.
-            obj.boundaryData.compIndex = []; % Used to mark whether we're using statics
-            obj.pBCUninitialized = true;
-            
-            run.bc.attachBoundaryConditions(obj);
-            
-%            obj.indexPermute = [1 2 3];
-        end
         
         %___________________________________________________________________________________________________ GS: fades
         % Accesses the fades attached to the ImogenArray object.
@@ -124,16 +98,16 @@ classdef ImogenArray < handle
             end
             
             %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
-            obj.applyBoundaryConditions(1);
-            obj.applyBoundaryConditions(2);
-            obj.applyBoundaryConditions(3);
+            for d = 1:3;
+               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+            end
         end
         
         function set.array(obj,value)
             obj.pArray.array = value;
-            obj.applyBoundaryConditions(1);
-            obj.applyBoundaryConditions(2);
-            obj.applyBoundaryConditions(3);
+            for d = 1:3; % Do not try to force BCs in a nonfluxable direction
+               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+            end
         end
         
         %___________________________________________________________________________________________________ GS: gridSize
@@ -167,6 +141,32 @@ classdef ImogenArray < handle
     
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+        %___________________________________________________________________________________________________ ImogenArray
+        % Creates a new ImogenArray object according to the specified inputs.
+        %>> id          Identification information for the new object.                      cell/str
+        %>< run         Run manager object.                                                 ImogenManager
+        %>> statics     Static arrays and values structure.                                 struct
+        function obj = ImogenArray(component, id, run, statics)
+            if (nargin == 0 || isempty(id)); return; end
+            if ~isa(id,'cell');    id = {id}; end
+            obj.pArray = GPU_Type();
+            obj.pCompatibility  = str2double(run.matlab.Version);
+            obj.pShiftEnabled   = true(1,3);
+            obj.component       = component;
+            obj.id              = id;
+            obj.bcInfinity      = run.bc.infinity;
+            obj.pRunManager     = run;
+            obj.pFadesValue     = 0.995;
+            
+            obj.boundaryData.rawStatics = statics; % Store this for when we have an array
+            % to precompute stuff with.
+            obj.boundaryData.compIndex = []; % Used to mark whether we're using statics
+            obj.pBCUninitialized = true;
+            
+            run.bc.attachBoundaryConditions(obj);
+            
+%            obj.indexPermute = [1 2 3];
+        end
         
         %___________________________________________________________________________________________________ cleanup
         % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
