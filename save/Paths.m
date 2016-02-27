@@ -64,8 +64,8 @@ classdef Paths < handle
     methods (Access = public) %														P U B L I C  [M]
 
 %___________________________________________________________________________________________________ initialize
-        function initialize(obj)
-            timeManager             = TimeManager.getInstance();
+        function initialize(obj, run)
+            timeManager             = run.time;
             startTime               = mpi_scatter(timeManager.startTime,0);
             
             obj.containerFolder     = datestr(startTime,'mmmyy');

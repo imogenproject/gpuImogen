@@ -175,7 +175,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 		mxArray *bcstr; char *bs;
 
 		int d; for(d = 0; d < 2; d++) {
-			bcstr = mxGetCell(bcModes, 2*(memoryDirection-1) + d);
+			bcstr = mxGetCell(bcModes, 2*(direction-1) + d);
 			bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
 			mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
 

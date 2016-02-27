@@ -37,7 +37,7 @@ mpi_sum: mpi_allreduce.c mpi_common.o
 mpi_prod: mpi_allreduce.c mpi_common.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) -DMPIOPERATION=MPI_PROD mpi_allreduce.c mpi_common.o -o mpi_prod
 
-mpi_all mpi_any mpi_amirank0 mpi_allgather mpi_barrier mpi_basicinfo mpi_dimreduce mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_reduce mpi_scatter: mpi_common.o
+mpi_all mpi_any mpi_amirank0 mpi_allgather mpi_barrier mpi_basicinfo mpi_dimreduce mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_reduce mpi_scatter mpi_errortest mpi_abort: mpi_common.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $@.c mpi_common.o -o $@
 
 clean:

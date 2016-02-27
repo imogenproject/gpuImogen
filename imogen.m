@@ -22,6 +22,8 @@ function outdirectory = imogen(srcData, resumeinfo)
     ini     = IC.ini;
     statics = IC.statics;
 
+    collectiveFailure = 0;
+
     %--- Parse initial parameters from ini input ---%
     %       The initialize function parses the ini structure input and populates all of the manager
     %       classes with the values. From these values the initializeResultsPaths function 
@@ -36,7 +38,6 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     outdirectory = run.paths.save;
     run.save.saveIniSettings(ini);
-    run.preliminary();
 
     mpi_barrier();
     run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
@@ -69,10 +70,12 @@ function outdirectory = imogen(srcData, resumeinfo)
         [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
     catch oops
         run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\n');
-        rethrow oops;
+        collectiveFailure = 1;
     end
-
+ 
     mpi_barrier();
+    collectiveFailure = mpi_max(collectiveFailure); if collectiveFailure; error('Data upload unsuccessful!'); end
+
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
     writeSimInitializer(run, IC);
@@ -87,7 +90,14 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     if ~RESTARTING
         run.save.logPrint('New simulation: Doing initial save... ');
-        resultsHandler([], run, mass, ener, mom, mag);
+        try
+            resultsHandler([], run, mass, ener, mom, mag);
+        catch booboo
+            run.save.logAllPrint('    FATAL: First resultsHandler() call failed! Data likely unaccessible. Aborting run.\n');
+            collectiveFailure = 1;
+        end
+        mpi_errortest(collectiveFailure); % generate error() if failure; loader will abort
+
         run.save.logPrint('Succeeded.\n');
     else
         run.save.logPrint('Simulation resuming after iteration %i\n',run.time.iteration);

@@ -1,8 +1,5 @@
 classdef SaveManager < LinkedListNode
-% The manager class responsible for handling saving/updating data actions. This is a singleton 
-% class to be accessed using the getInstance() method and not instantiated directly.
-
-
+% The manager class responsible for handling saving/updating data actions.
 %===================================================================================================
     properties (Constant = true, Transient = true) %                     C O N S T A N T         [P]
         SLICEFIELDS = {'x', 'y', 'z', 'xy', 'xz', 'yz', 'xyz', 'cust'};   % Fields for slices.
@@ -81,6 +78,25 @@ classdef SaveManager < LinkedListNode
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+%______________________________________________________________________________________ SaveManager
+% Creates a new SaveManager instance: Presumably only called by the ImogenManager constructor
+    function obj = SaveManager()
+        obj = obj@LinkedListNode(); % Initialize the LL to blank
+
+        obj.SLICE                   = cell(8,1);
+        obj.SLICEINDEX              = ones(1,3);
+        obj.ACTIVE                  = false(1,8);
+                    obj.previousUpdateTimes     = zeros(1,5);
+        obj.previousUpdateWallTimes = zeros(1,5);
+                    obj.saveData                = true;
+                    obj.save1DData              = true;
+                    obj.save2DData              = true;
+                    obj.save3DData              = true;
+                    obj.saveCustomData          = false;
+                    obj.done                    = false;
+
+        obj.format = ENUM.FORMAT_NC;
+    end
 
 %_______________________________________________________________________________________ preliminary
 % Handles preliminary initialization of the SaveManager after all of the initialization settings 
@@ -271,25 +287,6 @@ classdef SaveManager < LinkedListNode
                         || obj.saveCustomData || obj.done) && obj.FSAVE;
             end
             
-%______________________________________________________________________________________ SaveManager
-% Creates a new SaveManager instance.
-    function obj = SaveManager()
-        obj = obj@LinkedListNode(); % Initialize the LL to blank
-
-        obj.SLICE                   = cell(8,1);
-        obj.SLICEINDEX              = ones(1,3);
-        obj.ACTIVE                  = false(1,8);
-                    obj.previousUpdateTimes     = zeros(1,5);
-        obj.previousUpdateWallTimes = zeros(1,5);
-                    obj.saveData                = true;
-                    obj.save1DData              = true;
-                    obj.save2DData              = true;
-                    obj.save3DData              = true;
-                    obj.saveCustomData          = false;
-                    obj.done                    = false;
-
-        obj.format = ENUM.FORMAT_NC;
-    end
 
 %______________________________________________________________________________ updateWallDataSaves
     function updateWallDataSaves(obj, time)
@@ -357,16 +354,6 @@ classdef SaveManager < LinkedListNode
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
             
-%______________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the SaveManager class, or creates one if it doesn't exist.
-            function singleObj = getInstance()
-                    persistent instance;
-                    if isempty(instance) || ~isvalid(instance) 
-                            instance = SaveManager();
-                    end
-                    singleObj = instance;
-            end
-      
     end%STATIC
     
 

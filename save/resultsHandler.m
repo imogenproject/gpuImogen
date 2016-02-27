@@ -51,9 +51,6 @@ function resultsHandler(saveEvent, run, mass, ener, mom, mag)
         sl.ver    = run.version;
         sl.iter   = iteration;
             
-        if run.treadmill.ACTIVE,    sl.tread = run.treadmill.toStruct(); end
-
-           
         for i=1:size(run.save.SLICE,1) % For each slice type
             switch (i)
                 case {1 2 3};    % 1D Slices

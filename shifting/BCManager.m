@@ -1,8 +1,5 @@
 classdef BCManager < handle
-% This is the class responsible for managing artificial boundary conditions for Imogen runs. This is
-% a  singleton class to be accessed using the getInstance() method and not instantiated directly.
-
-
+% This is the class responsible for managing artificial boundary conditions for Imogen runs.
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
     end%CONSTANTS
@@ -25,6 +22,11 @@ classdef BCManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+%___________________________________________________________________________________________________ BCManager
+% Creates a new BCManager instance.
+        function obj = BCManager();
+
+        end
       
 %___________________________________________________________________________________________________ attachBoundaryConditions
 % Reads the boundary conditions data object (either a structure or array) from the initialization
@@ -154,25 +156,11 @@ classdef BCManager < handle
 
         end
         
-%___________________________________________________________________________________________________ BCManager
-% Creates a new BCManager instance.
-        function obj = BCManager(); end
         
     end%PROTECTED
         
 %===================================================================================================    
     methods (Static = true) %                                                      S T A T I C   [M]
         
-%___________________________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the BCManager class, or creates one if none have
-% been initialized yet.
-        function singleObj = getInstance()
-            persistent instance;
-            if isempty(instance) || ~isvalid(instance) 
-                instance = BCManager(); 
-            end
-            singleObj = instance;
-        end
-      
     end%STATIC
 end%CLASS
