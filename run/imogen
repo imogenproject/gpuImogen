@@ -77,7 +77,7 @@ if [ ${1} = "parallel" ]; then
   fi
 
   hostFile=${6}
-  if [ -z "$hostFile"]; then
+  if [ -z "$hostFile" ]; then
     echo ">>> WARNING: Parallel run not given hostfile. Defaulting to 'localhost'"
     echo "localhost" > fakeHostfile
     hostFile="fakeHostfile"
