@@ -29,18 +29,20 @@ disp('#########################');
 
 addpath('../mpi');
 mpi_init();
-disp('Started MPI');
+if mpi_amirank0(); disp('Started MPI'); end
 GPU_ctrl('peers',1);
-disp('Turned on peer memory access');
+if mpi_amirank0(); disp('Turned on peer memory access'); end
+
+isparallel = mpi_basicinfo(); isparallel = (isparallel(1) > 1);
 
 if numel(multidev) > 1
     disp('	>>> Using the following devices for multidevice testing <<<');
     disp(multidev);
 end
 
-disp('#########################');
-disp('Running basic funtionality tests');
-disp('#########################');
+if mpi_amirank0(); disp('#########################');
+                   disp('Running basic funtionality tests');
+                   disp('#########################'); end
 
 
 % Check that the basic stuff works first
@@ -48,10 +50,14 @@ x = GPUManager.getInstance();
 
 basicunits = basicTest(multidev);
 if basicunits > 0;
-    error('Fatal problem: Unit tests of basic functionality failed. Aborting further tests.');
+    if isparallel
+        disp('Rank %i got fatal problems in basic tests: Rank will not run further tests.\n');
+    else
+        error('Fatal problem: Unit tests of basic functionality failed. Aborting further tests.');
+    end
 end
 
-disp('#########################');
+if mpi_amirank0(); disp('#########################'); end
 
 % Kernels used by Imogen:
 % TIME_MANAGER	cudaSoundspeed directionalMaxFinder
@@ -71,13 +77,16 @@ else
     functests = [1 1 1 1];
 end
 
+% parallel compat: jump through the mpi_barrier()s but do nothing
+if basicunits > 0; functests = [0 0 0 0]; end
+
 names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
 
 if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
 for N = 1:numel(names); disp(['	' names{N}]); end
-disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
-disp('#########################');
+if mpi_amirank0(); disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
+                   disp('#########################'); end
 
 randSeed = 5418;
 % Note these do not DEFINE convenient roundish sizes, actual sizes are randomly chosen up to these
@@ -85,36 +94,66 @@ res2d = [2048 2048 1];
 res3d = [192 192 192];
 
 % Test single-device operation
+printit = (isparallel*[1 1 1 1] | functests) * mpi_amirank0();
+
+if printit(1); disp('==================== Testing on one GPU'); end
 if functests(1)
-    disp('==================== Testing on one GPU');
     x.init([0], 3, 1); rng(randSeed);
     onedev = unitTest(nTests, res2d, nTests, res3d, names);
 else; onedev = 0; end
 
+mpi_barrier();
+
 % Test two partitions on different devices
+if printit(2); disp('==================== Testing two GPUs, X partitioning'); end
 if functests(2)
-    disp('==================== Testing two GPUs, X partitioning');
     x.init(multidev, 3, 1); rng(randSeed);
     devx = unitTest(nTests, res2d, nTests, res3d, names);
 else; devx = 0; end
 
+mpi_barrier();
+
+if printit(3); disp('==================== Testing two GPUs, Y partitioning'); end
 if functests(3)
-    disp('==================== Testing two GPUs, Y partitioning');
     x.init(multidev, 3, 2); rng(randSeed);
     devy = unitTest(nTests, res2d, nTests, res3d, names);
 else; devy = 0; end
 
+mpi_barrier();
+
+if printit(4); disp('==================== Testing two GPUs, Z partitioning'); end
 if functests(4)
-    disp('==================== Testing two GPUs, Z partitioning');
     x.init(multidev, 3, 3); rng(randSeed);
     devz = unitTest(nTests, res2d, nTests, res3d, names);
 else; devz = 0; end
 
-disp('#########################');
-disp('RESULTS:')
+mpi_barrier();
+if mpi_amirank0(); disp('#########################'); disp('RESULTS:'); end
 
 tests = [onedev devx devy devz];
-if any(tests > 0);
+
+if isparallel
+    ambad  = mpi_max(max(tests)); % did ANYONE fail?
+    amgood = mpi_min(min(tests)); % did anyone succeed?
+
+    if ambad == 0
+        if mpi_amirank0(); disp('  >>> PARALLEL RESULT SUMMARY: ALL NODES PASSED <<<'); end
+    end
+
+    if (ambad > 0) && (amgood == 0) % Different good/bad results on different nodes!!!
+        if mpi_amirank0(); disp('  >>> PARALLEL PROBLEMS: SOME NODES PASSED AND OTHERS FAILED <<<'); end
+    end
+
+    if amgood > 0; % everyone failed:
+        tests = mpi_max(tests);
+        if mpi_amirank0(); fprintf('  >>> PARALLEL RESULT: ALL RANKS FAILED. RECOMMEND RERUN IN SERIAL <<<\n  >>> DISPLAYING UNIT TEST OUTPUT FOR max(tests)'); end
+    end
+    
+end
+
+if mpi_amirank0();
+
+if any(tests > 0)
     disp('	UNIT TESTS FAILED!');
     disp('	ABSOLUTELY DO NOT COMMIT THIS CODE REVISION!');
     if onedev > 0; disp('	SINGLE DEVICE OPERATION: FAILED'); end
@@ -139,5 +178,6 @@ else
     end
 end
 
+end
 
 end
