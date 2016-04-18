@@ -40,6 +40,7 @@ classdef ImogenManager < handle
         %--- Core operations: Timestep control, conservative CFD/MHD
         time;           % Manages temporal actions.                                 TimeManager
         fluid;          % Manages fluid routines.                                   FluidManager
+        radiation;      % Manage radiation behaviors                                Radiation
         magnet;         % Manages magnetic routines.                                MagnetManager
         parallel;       % Parallel behavior/semantic manager                        ParallelSemantics
 
@@ -132,8 +133,9 @@ classdef ImogenManager < handle
 
             obj.potentialField = PotentialFieldManager();   obj.potentialField.parent = obj;
             obj.selfGravity = GravityManager();             obj.selfGravity.parent  = obj;
-
-            obj.fluid       = FluidManager();               obj.fluid.parent        = obj;
+            % uploadDataArrays() builds & assigns an array of these now
+            %obj.fluid      = FluidManager();               obj.fluid.parent        = obj;
+            obj.radiation   = Radiation();
             obj.magnet      = MagnetManager();              obj.magnet.parent       = obj;
 
             obj.attachPeripheral(obj.save); % temporary?
@@ -155,29 +157,39 @@ classdef ImogenManager < handle
 
             obj.cfdMethod = 2;
         end
+
+        function setNumFluids(obj, N)
+        % FIXME check if anything exists before blindly nuking it
+            obj.fluid = FluidManager.empty(N, 0);
+        end
         
 %___________________________________________________________________________________________________ initialize
 % Run pre-simulation initialization actions that require already initialized initial conditions for
 % the primary array objects.
-        function initialize(obj, IC, mass, mom, ener, mag)
+        function initialize(obj, IC, mag)
             p = obj.peripheralListRoot.Next;
+
+            f = obj.fluid; % fetch the fluid manager
+      
             while ~isempty(p)
-                p.initialize(IC, obj, mass, ener, mom, mag);
+                p.initialize(IC, obj, obj.fluid, mag);
                 p = p.Next;
             end
 
+% FIXME: All these should take just 'f' as their fluid state arg
+% FIXME: All these should be peripherals subsumed under the above loop, not bespoke "special" things Imogen does.
                       obj.image.initialize();
-                      obj.fluid.initialize();
-                obj.selfGravity.initialize(IC.selfGravity, mass);
+                      obj.fluid.initialize(); % FIXME why does this work fur the radiation call didn't?
+                  obj.radiation.initialize(obj, f(1).mass, f(1).mom, f(1).ener, mag);
+                obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
              obj.potentialField.initialize(IC.potentialField);
-              obj.frameTracking.initialize(IC.ini.frameParameters, mass, ener, mom)            
-            obj.fluid.radiation.initialize(obj, mass, mom, ener, mag);
+              obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);
         end
         
 %___________________________________________________________________________________________________ postliminary
 % Function to be called at the end of a run to deactivate and cleanup remaining resources before
 % ending the run entirely.
-        function finalize(obj, mass, ener, mom, mag)
+        function finalize(obj, fluids, mag)
             
             %--- Copy the log file to the results directory ---%
             try
@@ -196,12 +208,12 @@ classdef ImogenManager < handle
                 
             end
 
-	    %--- call finalize functions of all peripherals ---%
-	    p = obj.peripheralListRoot.Next;
-	    while ~isempty(p)
-		p.finalize(obj, mass, ener, mom, mag);
-		p = p.Next;
-	    end
+            %--- call finalize functions of all peripherals ---%
+            p = obj.peripheralListRoot.Next;
+            while ~isempty(p)
+                p.finalize(obj, fluids, mag);
+                p = p.Next;
+            end
         end
     
 %___________________________________________________________________________________________________ setGridSpacing
@@ -322,21 +334,6 @@ classdef ImogenManager < handle
             obj.infoIndex = obj.infoIndex + 1;
         end
         
-%___________________________________________________________________________________________________ initializeMode
-% Parses a mode structure to set values for the code.
-% * modeStruct        the structure containing boolean mode fields                        struct
-        function initializeMode(obj, modeStruct)
-            if ( isempty(modeStruct) || ~isstruct(modeStruct) ); return; end
-            
-            modes = {'fluid','magnet'};
-            for i=1:length(modes)
-                if isfield(modeStruct, modes{i})
-                    obj.(modes{i}).ACTIVE = modeStruct.(modes{i});
-                end
-            end
-            
-        end
-        
 %___________________________________________________________________________________________________ appendWarning
 % Appends a warning string (with value if necessary) to the warning string.
 % * warning        the warning string                                                        str
@@ -375,7 +372,7 @@ classdef ImogenManager < handle
         end
 
         % call-often
-        function pollEventList(obj, mass, ener, mom, mag)
+        function pollEventList(obj, fluids, mag)
             p = obj.eventListRoot.Next;
             
             while ~isempty(p)
@@ -385,12 +382,12 @@ classdef ImogenManager < handle
                     if obj.time.time      >= p.time; triggered = 1; p.active = 0; end
                 end
 
-		% the callback may delete p
-		q = p.Next;
+                % the callback may delete p
+                q = p.Next;
                 if triggered
-                    p.callbackHandle(p, obj, mass, ener, mom, mag);
+                    p.callbackHandle(p, obj, fluids, mag);
                 end
-		p = q;
+                p = q;
             end
         end
 

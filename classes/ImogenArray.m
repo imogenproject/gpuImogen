@@ -12,7 +12,6 @@ classdef ImogenArray < handle
         id;             % Identifier specifying the object data type.               cell(1,?)
         bcModes;        % Boundary condition types for each direction.              cell(2,3)
         bcHaloShare;    % Whether to take part in the halo exchange                 double 2x3
-        bcInfinity;     % Number of cells to infinity for edges.                    int
         edgeStore;      % Stored edge values for shifting.                          Edges
         
         boundaryData;   % Store boundary condition data during runtime              struct
@@ -24,19 +23,13 @@ classdef ImogenArray < handle
         
         edgeshifts;     % Handles to shifting functions for each grid direction.    handle(2,3)
         isZero;         % Specifies that the array is statically zero.              logical
-        
-%        indexGriddim;
-%        indexPermute;
     end %PROPERTIES
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         pArray;         % Storage of the 3D array data.                             double(Nx,Ny,Nz)
         pShiftEnabled;  % Specifies if shifting is active for each dimension.       logical(3)
-        pCompatibility; % Matlab version compability identifier.                    str
-        pRunManager;    % Access to the ImogenManager singleton for the run.        ImogenManager
-        pFades;         % Fade objects for array processing.                        cell(?)
-        pFadesValue;    % Values to use for each of the fade objects.               double
+        pManager;  % Access to the FluidManager associated with this state vector FluidManager
         
         pBCUninitialized; % Specifies if obj has been initialized.                    bool
     end %PROPERTIES
@@ -55,12 +48,6 @@ classdef ImogenArray < handle
     
     %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
-        
-        
-        %___________________________________________________________________________________________________ GS: fades
-        % Accesses the fades attached to the ImogenArray object.
-        function result = get.fades(obj),   result = obj.pFades;        end
-        
         %___________________________________________________________________________________________________ GS: array
         % Main property accessor to the data array for the ImogenArray object.
         function result = get.array(obj)
@@ -76,7 +63,6 @@ classdef ImogenArray < handle
         end
 	function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
 
-        
         function initialArray(obj, array)
             obj.pArray.array = array;
             if obj.pBCUninitialized;
@@ -86,7 +72,7 @@ classdef ImogenArray < handle
 		% This reads the Matlab class's bcHaloShare and sets the bits in the MGArray structure
 		obj.pArray.makeBCHalos(obj.bcHaloShare);
 
-		% Make sure we have a globally coherent view before beginning
+		% Make sure we have a globally coherent view before going any further
                 cudaHaloExchange(obj, 1, GIS.topology, obj.bcHaloShare); 
                 cudaHaloExchange(obj, 2, GIS.topology, obj.bcHaloShare); 
                 cudaHaloExchange(obj, 3, GIS.topology, obj.bcHaloShare); 
@@ -97,9 +83,10 @@ classdef ImogenArray < handle
                 warning('Warning: obj.initialArray() called when array already initialized.');
             end
             
-            %            if ~isempty(obj.pFadesValue),       obj.applyFades();       end % Fade array.
             for d = 1:3;
-               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+               if obj.gridSize(d) > 3;
+                   obj.applyBoundaryConditions(d);
+               end
             end
         end
         
@@ -118,8 +105,8 @@ classdef ImogenArray < handle
         end
         
         function set.gridSize(obj,value)
-            warning('ImogenArray:GridSize',['The gridSize property is read-only and is ' ...
-                'currently %s and cannot be set to %s.'], mat2str(size(obj.pArray)), value);
+            warning('ImogenArray:GridSize',['The gridSize property is read-only property which is intrinsic' ...
+                'to the stored array. It is %s and cannot be set to %s. It is an intrins'], mat2str(size(obj.pArray)), value);
         end
         
         %___________________________________________________________________________________________________ GS: idString
@@ -146,26 +133,21 @@ classdef ImogenArray < handle
         %>> id          Identification information for the new object.                      cell/str
         %>< run         Run manager object.                                                 ImogenManager
         %>> statics     Static arrays and values structure.                                 struct
-        function obj = ImogenArray(component, id, run, statics)
+        function obj = ImogenArray(component, id, manager, statics)
             if (nargin == 0 || isempty(id)); return; end
             if ~isa(id,'cell');    id = {id}; end
             obj.pArray = GPU_Type();
-            obj.pCompatibility  = str2double(run.matlab.Version);
             obj.pShiftEnabled   = true(1,3);
             obj.component       = component;
             obj.id              = id;
-            obj.bcInfinity      = run.bc.infinity;
-            obj.pRunManager     = run;
-            obj.pFadesValue     = 0.995;
+            obj.pManager   = manager;
             
+            manager.attachBoundaryConditions(obj);
+
             obj.boundaryData.rawStatics = statics; % Store this for when we have an array
             % to precompute stuff with.
             obj.boundaryData.compIndex = []; % Used to mark whether we're using statics
             obj.pBCUninitialized = true;
-            
-            run.bc.attachBoundaryConditions(obj);
-            
-%            obj.indexPermute = [1 2 3];
         end
         
         %___________________________________________________________________________________________________ cleanup
@@ -214,44 +196,11 @@ classdef ImogenArray < handle
             result = result.string;
         end
         
-        %___________________________________________________________________________________________________ calculate5PtDerivative
-        % Calculates and returns the spatial derivative of the array.
-        % result = calculate5PtDerivative(obj,X,dGrid)
-        % X            Spatial direction in which to calculate the derivative.
-        % dGrid        Grid spacing in the X direction.
-        % result    Derivative of the potential array in the X direction.
-        function result = calculate5PtDerivative(obj,X,dGrid)
-            result = (    8*obj.shift(X,1) - obj.shift(X,2)...
-                - 8*obj.shift(X,-1) + obj.shift(X,-2) ) ./ (12*dGrid);
-        end
-        
-        %___________________________________________________________________________________________________ calculate2PtDerivative
-        % Calculates and returns the spatial derivative of the array.
-        % result = obj.calculate2PtDerivative(X,dGrid)
-        % X            Spatial direction in which to calculate the derivative.
-        % dGrid        Grid spacing in the X direction.
-        % result    Derivative of the potential array in the X direction.
-        function result = calculate2PtDerivative(obj,X,dGrid)
-            result = ( obj.shift(X,1) - obj.pArray ) ./ dGrid;
-        end
-        
         %___________________________________________________________________________________________________ arrayIndexExchange
         % Flips the array and all associated subarrays such that direction i and the x (stride-of-1) direction
         % exchange places. Updates the array, all subarrays, and the static indices.
         function arrayIndexExchange(obj, toex, type)
-%            if numel(obj.indexGriddim) < 3; obj.indexGriddim = obj.gridSize; end
-%
-%	    l = [];
-%            switch toex;
-%                case 1; return;
-%		case 2; l = [2 1 3];
-%		case 3; l = [3 2 1];
-%		case 4; l = [1 3 2];
-%            end
-%            
-%            obj.indexGriddim = obj.indexGriddim(l);
-%            obj.indexPermute = obj.indexPermute(l);
-            if type == 1;
+            if type == 1; % Does not flip subarrays, they can just be overwritten
                 cudaArrayRotateB(obj.gputag, toex); obj.pArray.flushTag();
             end
         end
@@ -285,9 +234,6 @@ classdef ImogenArray < handle
             
             obj.boundaryData.staticsData = GPU_Type([compIndex compValue compCoeff]);
             obj.boundaryData.bcModes = obj.bcModes;
-            %            obj.boundaryData.compIndex = GPU_Type(obj.boundaryData.compIndex);
-            %            obj.boundaryData.compValue = GPU_Type(obj.boundaryData.compValue);
-            %            obj.boundaryData.compCoeff = GPU_Type(obj.boundaryData.compCoeff);
             
             obj.pBCUninitialized = false;
         end
@@ -296,37 +242,7 @@ classdef ImogenArray < handle
     
     %===================================================================================================
     methods (Access = protected) %                                          P R O T E C T E D    [M]
-        
-        %___________________________________________________________________________________________________ applyFades
-        % Applies any fades in attached to the ImogenArray to the data array. This method is called during
-        % array assignment (set.array).
-        function applyFades(obj)
-            for i=1:length(obj.pFades)
-                obj.pArray = obj.pFades{i}.fadeArray(obj.pArray, obj.pFadesValue);
-            end
-        end
-        
-        %___________________________________________________________________________________________________ readFades
-        % Reads the fades stored in the ImogenManager object and applies the appropriate ones to this
-        % ImogenManager object. Note, fades cannot be applied to the FluxArray subclass because they result
-        % in unstable fluxing. So FluxArrays abort this property.
-        %>< run     Run manager object.                                                     ImogenManager
-        function readFades(obj, run)
-            if isa(obj,'FluxArray'); return; end
-            index = 1;
-            obj.pFadesValue = 0;
-            %--- Find fade objects for this object ---%
-            for i=1:length(run.fades)
-                if any(strcmp(obj.id{1}, run.fades{i}.activeList))
-                    obj.pFades{index} = run.fades{i};
-                    index = index + 1;
-                end
-            end
-            
-        end
-        
-        
-        %___________________________________________________________________________________________________ initializeShiftingStates
+        %______________________________________________________________________ initializeShiftingStates
         % Determines which grid dimensions have extent, i.e. are greater than 1 cell, and activates shifting
         % on only those dimensions to speed up the execution of 1D & 2D simulations.
         function initializeShiftingStates(obj)
@@ -341,7 +257,7 @@ classdef ImogenArray < handle
     %===================================================================================================
     methods (Static = true) %                                                       S T A T I C  [M]
         
-        %___________________________________________________________________________________________________ zeroIt
+        %________________________________________________________________________________________ zeroIt
         % Sets all values below the 1e-12 tolerance to zero on the input array.
         % inArray   Input array to be zeroed.                                                   double
         function result = zeroIt(inArray)
