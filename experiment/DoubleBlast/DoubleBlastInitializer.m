@@ -54,7 +54,7 @@ classdef DoubleBlastInitializer < Initializer
             obj.pRight           = 100;
             obj.pMid             = .01;
             
-            obj.operateOnInput(input, [1024, 4, 4]);      
+            obj.operateOnInput(input, [1024, 1, 1]);      
 
         end
         
@@ -68,7 +68,7 @@ classdef DoubleBlastInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics               = []; % No statics used in this problem
@@ -94,8 +94,10 @@ classdef DoubleBlastInitializer < Initializer
 
             % Compute energy density array
             ener = P/(obj.gamma - 1) ...
-            + 0.5*squeeze(sum(mom.*mom,1))./mass...
-            + 0.5*squeeze(sum(mag.*mag,1));
+            + 0.5*squish(sum(mom.*mom,1))./mass...
+            + 0.5*squish(sum(mag.*mag,1));
+
+            fluids = obj.stateToFluid(mass, mom, ener);
     end
         
 end%PROTECTED

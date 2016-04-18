@@ -55,7 +55,7 @@ classdef EinfeldtInitializer < Initializer
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             
-            obj.operateOnInput(input, [1024, 4, 4]);
+            obj.operateOnInput(input, [1024, 1, 1]);
 
             obj.rhol               = 1;
             obj.ml                 = -2;
@@ -79,7 +79,7 @@ classdef EinfeldtInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics               = []; % No statics used in this problem
@@ -108,6 +108,8 @@ classdef EinfeldtInitializer < Initializer
             mom(1,right)          = obj.mr;         %X momentum of right half
             mom(2,right)          = obj.nr;         %Y momentum of right half
             ener(right)           = obj.er;        %Total energy of right half
+
+            fluids = obj.stateToFluid(mass, mom, ener);
     end
         
 end%PROTECTED
