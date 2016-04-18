@@ -45,7 +45,7 @@ classdef KarmanStreetInitializer < Initializer
             obj.mach = .5; %this is a test number
  
             obj.pureHydro        = true;
-            obj.operateOnInput(input);
+            obj.operateOnInput(input, [512 256 1]);
 
         end
         
@@ -59,7 +59,7 @@ classdef KarmanStreetInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics = StaticsInitializer();
@@ -67,9 +67,6 @@ classdef KarmanStreetInitializer < Initializer
             selfGravity = [];
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
-
-           % GIS.makeDimNotCircular(1);
-           % GIS.makeDimNotCircular(2);
 
             [X Y] = GIS.ndgridSetXY();
             obj.dGrid = [1 1 1] / obj.grid(1);
@@ -86,9 +83,9 @@ classdef KarmanStreetInitializer < Initializer
             ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2) < radius^2;
 
             % Temporarily create syntactically clearer variables for statics
-            momx = squeeze(mom(1,:,:,:));
-            momy = squeeze(mom(2,:,:,:));
-            momz = squeeze(mom(3,:,:,:));
+            momx = squish(mom(1,:,:,:));
+            momy = squish(mom(2,:,:,:));
+            momz = squish(mom(3,:,:,:));
            
             % Set the momentum inside the obstruction to zero 
             momx(ball) = 0;
@@ -96,8 +93,8 @@ classdef KarmanStreetInitializer < Initializer
             
             % Calculate energy density array
             ener = ener/(obj.gamma - 1) ...             % internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
+            + 0.5*squish(sum(mom.*mom,1))./mass ...    % kinetic
+            + 0.5*squish(sum(mag.*mag,1));             % magnetic
           
             % Make the obstruction static
             statics.indexSet{1} = indexSet_fromLogical(ball); % ball
@@ -112,6 +109,8 @@ classdef KarmanStreetInitializer < Initializer
                 if GIS.pLocalRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
+
+            fluids = obj.stateToFluid(mass, mom, ener);
 
         end
     end%PROTECTED       

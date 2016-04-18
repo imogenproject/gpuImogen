@@ -59,7 +59,7 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.bcMode.z = 'mirror';
             
             obj.massRatio        = 8;
-            obj.operateOnInput(input);
+            obj.operateOnInput(input, [512 512 1]);
 
         end
         
@@ -73,7 +73,7 @@ classdef KelvinHelmholtzInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluid, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics             = [];
@@ -108,13 +108,15 @@ classdef KelvinHelmholtzInitializer < Initializer
             % Give the grid a random velocity component in both X and Y of a size 'randamp', then multiply by the mass array to give momentum.
             mom(1,:,:,:)        = mom(1,:,:,:) + obj.randAmp*(2*rand(size(mom(1,:,:,:)))-1);
             mom(2,:,:,:)        = mom(2,:,:,:) + obj.randAmp*(2*rand(size(mom(2,:,:,:)))-1);
-            mom(1,:,:,:)        = squeeze(mom(1,:,:,:)).*mass;
-            mom(2,:,:,:)        = squeeze(mom(2,:,:,:)).*mass;
+            mom(1,:,:,:)        = squish(mom(1,:,:,:)).*mass;
+            mom(2,:,:,:)        = squish(mom(2,:,:,:)).*mass;
 
             % Calculate energy density array
             ener = (maxFinderND(mass).^obj.gamma)/(obj.gamma - 1) ...             % internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...                             % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));                                      % magnetic
+            + 0.5*squish(sum(mom.*mom,1))./mass ...                             % kinetic
+            + 0.5*squish(sum(mag.*mag,1));                                      % magnetic
+
+            fluid = obj.stateToFluid(mass, mom, ener);
             end
         end%PROTECTED       
 %===================================================================================================    
