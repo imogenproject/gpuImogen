@@ -98,7 +98,7 @@ classdef JetInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             potentialField = [];
             selfGravity = [];
@@ -117,7 +117,7 @@ classdef JetInitializer < Initializer
             for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pLocalRez); end
             
             %--- Total energy ---%
-            magSquared    = squeeze( sum(mag .* mag, 1) );
+            magSquared    = squish( sum(mag .* mag, 1) );
             ener          = (mass.^obj.gamma)/(obj.gamma - 1) + 0.5*magSquared;
             
             %--- Static values for the jet ---%
@@ -164,6 +164,8 @@ classdef JetInitializer < Initializer
 
             if obj.mode.magnet;     obj.runCode = [obj.runCode 'Mag'];  end
             if obj.mode.gravity;    obj.runCode = [obj.runCode 'Grav']; end
+
+            fluids = obj.stateToFluid(mass, mom, ener);
         end
         
 %___________________________________________________________________________________________________ toInfo
