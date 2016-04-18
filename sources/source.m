@@ -1,4 +1,4 @@
-function source(run, mass, mom, ener, mag, tFraction)
+function source(run, fluids, mag, tFraction)
 % This function sources the non-conservative terms in the MHD equations like gravitational potential
 % and radiation terms. Effectively it provides the means to add terms that cannot be brought within 
 % the del operator, which is the foundation of the spatial fluxing routines.
@@ -8,6 +8,11 @@ function source(run, mass, mom, ener, mag, tFraction)
 %>< mom			momentum density                                                FluidArray(3)
 %>< ener        energy density                                                  FluidArray
 %>< mag         magnetic field density                                          FluidArray(3)
+
+%HACK HACK HACK
+mass = fluids(1).mass;
+ener = fluids(1).ener;
+mom = fluids(1).mom;
 
 GIS = GlobalIndexSemantics();
 
@@ -71,8 +76,9 @@ dTime = 2 * tFraction * run.time.dTime;
     % they commute with things which act purely on internal energy (e.g. radiation)
     %--- Radiation Sourcing ---%
     %       If radiation is active, subtract from internal energy
-    if strcmp(run.fluid.radiation.type, ENUM.RADIATION_NONE) == false
-        run.fluid.radiation.solve(run, mass, mom, ener, mag, dTime);
+% HACK HACK HACK does doesn't support multifluid
+    if strcmp(run.radiation.type, ENUM.RADIATION_NONE) == false
+        run.radiation.solve(run, mass, mom, ener, mag, dTime);
     end
 
     if run.selfGravity.ACTIVE | run.potentialField.ACTIVE
@@ -81,7 +87,7 @@ dTime = 2 * tFraction * run.time.dTime;
         S = {mom(1), mom(2), mom(3), ener};
         for j = 1:4; for dir = 1:3
 %            iscirc = double([strcmp(S{j}.bcModes{1,dir},ENUM.BCMODE_CIRCULAR) strcmp(S{j}.bcModes{2,dir}, ENUM.BCMODE_CIRCULAR)]);
-            cudaHaloExchange(S{j}.gputag, [1 2 3], dir, GIS.topology, GIS.edgeInterior(:,dir));
+            cudaHaloExchange(S{j}.gputag, dir, GIS.topology, GIS.edgeInterior(:,dir));
         end; end
     end
 
