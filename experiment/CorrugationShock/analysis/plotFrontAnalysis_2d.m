@@ -2,8 +2,8 @@ function plotFrontAnalysis_2d(front, timeVals, linearFrames, fixfsize)
 % Generates a nice plot using the front tracking information outputted by the growth analyzer.
 
 
-amp   = squeeze(log(abs(front.FFT)));
-phase = squeeze(angle(front.FFT));
+amp   = squish(log(abs(front.FFT)));
+phase = squish(angle(front.FFT));
 
 wavenum = (1:size(amp,1))-1;
 wavevec = wavenum * 2*pi/(.01*size(amp,1));

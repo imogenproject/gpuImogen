@@ -3,7 +3,7 @@ function animateMode(x, ky, kz, mode)
 [xv yv] = ndgrid(x, 1:.1:6.28);
 
 for t = 1:size(mode,4);
-   dat = squeeze(mode(ky, kz, :, t));
+   dat = squish(mode(ky, kz, :, t));
    
    dat = dat*ones([1 size(yv,2)]);
    
@@ -16,3 +16,4 @@ end
 
 
 end
+

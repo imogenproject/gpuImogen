@@ -10,17 +10,17 @@ zran = size(dq,2);
 for u = 1:yran; for v = 1:zran
     if strcmp(preorpost,'post')
         
-        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squeeze(log(abs(dq(u,v,2:15,linearFrames))))));
-        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squeeze(angle(dq(u,v,2:15,linearFrames))),1,2 )));
+        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,2:15,linearFrames))))));
+        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,2:15,linearFrames))),1,2 )));
 
-        [kximfit confidenceKxIm] = monovariateFit(x, mean(squeeze(log(abs(dq(u,v,:,linearFrames)))),2));
-        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squeeze(angle(dq(u,v,:,linearFrames))),pi,1),2));
+        [kximfit confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
+        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
     else
-        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squeeze(log(abs(dq(u,v,(end-10):(end-1),linearFrames))))));
-        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squeeze(angle(dq(u,v,(end-10):(end-1),linearFrames))),1,2 )));
+        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,(end-10):(end-1),linearFrames))))));
+        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,(end-10):(end-1),linearFrames))),1,2 )));
 
-        [kximfit confidenceKxIm] = monovariateFit(x, mean(squeeze(log(abs(dq(u,v,:,linearFrames)))),2));
-        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squeeze(angle(dq(u,v,:,linearFrames))),pi,1),2));
+        [kximfit confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
+        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
     end
     omega(u,v) = wrefit(1) + 1i*wimfit(1);
     omegaRes(u,v) = confidenceRe.normr + 1i*confidenceIm.normr;

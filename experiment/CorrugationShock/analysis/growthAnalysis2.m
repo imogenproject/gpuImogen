@@ -85,7 +85,7 @@ for ITER = 1:numel(range)
     % We define that position as being when density is exactly halfway between analytic equilibrium pre & post values
     % This is used to calculate growth rates & omega.
     % It can remain meaningful into the nonlinear regime as long as the shock's position is still functional in Y and Z.
-    ANALYSIS.front.X(:,:,ITER) = squeeze(trackFront2(dataframe.mass, ANALYSIS.gridXvals));
+    ANALYSIS.front.X(:,:,ITER) = squish(trackFront2(dataframe.mass, ANALYSIS.gridXvals));
     if ITER == 1
         ANALYSIS.gridXvals = ANALYSIS.gridXvals - ANALYSIS.front.X(1,1,1); % place initial shock X at 0.
         ANALYSIS.front.X(1,1,1) = 0; % Reset to be consistent
@@ -98,54 +98,54 @@ for ITER = 1:numel(range)
     selectZ = 1:ANALYSIS.nModes(2);
 
     for xi = 1:numel(xpre)
-        dq = fft2(squeeze(shiftdim(dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.rho(xpre(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.rho(xpre(xi)) );
         ANALYSIS.pre.drho(:,:,xi,ITER)= dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.momX(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.mom(1,xpre(xi))/ANALYSIS.equil.rho(xpre(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.momX(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.mom(1,xpre(xi))/ANALYSIS.equil.rho(xpre(xi)) );
         ANALYSIS.pre.dvx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.momY(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.mom(2,xpre(xi))/ANALYSIS.equil.rho(xpre(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.momY(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) - ANALYSIS.equil.mom(2,xpre(xi))/ANALYSIS.equil.rho(xpre(xi)) );
         ANALYSIS.pre.dvy(:,:,xi,ITER) = dq(selectY, selectZ);
 
         if size(dataframe.mass,3) > 1 
-        dq = fft2(squeeze(shiftdim(dataframe.momZ(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) );
+        dq = fft2(squish(shiftdim(dataframe.momZ(xpre(xi),:,:)./dataframe.mass(xpre(xi),:,:),1)) );
         ANALYSIS.pre.dvz(:,:,xi,ITER) = dq(selectY, selectZ);
         end
 
-        dq = fft2(squeeze(shiftdim(dataframe.magX(xpre(xi),:,:),1)) - ANALYSIS.equil.B(1,xpre(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.magX(xpre(xi),:,:),1)) - ANALYSIS.equil.B(1,xpre(xi)) );
         ANALYSIS.pre.dbx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.magY(xpre(xi),:,:),1)) - ANALYSIS.equil.B(2,xpre(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.magY(xpre(xi),:,:),1)) - ANALYSIS.equil.B(2,xpre(xi)) );
         ANALYSIS.pre.dby(:,:,xi,ITER) = dq(selectY, selectZ);
 
         if size(dataframe.mass,3) > 1
-        dq = fft2(squeeze(shiftdim(dataframe.magZ(xpre(xi),:,:),1)));
+        dq = fft2(squish(shiftdim(dataframe.magZ(xpre(xi),:,:),1)));
         ANALYSIS.pre.dbz(:,:,xi,ITER) = dq(selectY, selectZ);
         end
     end
     for xi = 1:numel(xpost)
-        dq = fft2(squeeze(shiftdim(dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.rho(xpost(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.rho(xpost(xi)) );
         ANALYSIS.post.drho(:,:,xi,ITER) = dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.momX(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.mom(1,xpost(xi))/ANALYSIS.equil.rho(xpost(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.momX(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.mom(1,xpost(xi))/ANALYSIS.equil.rho(xpost(xi)) );
         ANALYSIS.post.dvx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.momY(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.mom(2,xpost(xi))/ANALYSIS.equil.rho(xpost(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.momY(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) - ANALYSIS.equil.mom(2,xpost(xi))/ANALYSIS.equil.rho(xpost(xi)) );
         ANALYSIS.post.dvy(:,:,xi,ITER) = dq(selectY, selectZ);
 
         if size(dataframe.mass,3) > 1
-        dq = fft2(squeeze(shiftdim(dataframe.momZ(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) );
+        dq = fft2(squish(shiftdim(dataframe.momZ(xpost(xi),:,:)./dataframe.mass(xpost(xi),:,:),1)) );
         ANALYSIS.post.dvz(:,:,xi,ITER) = dq(selectY, selectZ);
         end
 
-        dq = fft2(squeeze(shiftdim(dataframe.magX(xpost(xi),:,:),1)) - ANALYSIS.equil.B(1,xpost(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.magX(xpost(xi),:,:),1)) - ANALYSIS.equil.B(1,xpost(xi)) );
         ANALYSIS.post.dbx(:,:,xi,ITER) = dq(selectY, selectZ);
 
-        dq = fft2(squeeze(shiftdim(dataframe.magY(xpost(xi),:,:),1)) - ANALYSIS.equil.B(2,xpost(xi)) );
+        dq = fft2(squish(shiftdim(dataframe.magY(xpost(xi),:,:),1)) - ANALYSIS.equil.B(2,xpost(xi)) );
         ANALYSIS.post.dby(:,:,xi,ITER) = dq(selectY, selectZ);
 
         if size(dataframe.mass,3) > 1
-        dq = fft2(squeeze(shiftdim(dataframe.magZ(xpost(xi),:,:),1) ));
+        dq = fft2(squish(shiftdim(dataframe.magZ(xpost(xi),:,:),1) ));
         ANALYSIS.post.dbz(:,:,xi,ITER) = dq(selectY, selectZ);
         end
     end

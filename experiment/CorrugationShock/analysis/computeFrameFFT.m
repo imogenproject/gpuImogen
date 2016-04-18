@@ -9,7 +9,7 @@ fourierSet = frame.mass(xset, yset, zset);
 result = zeros(size(fourierSet));
 
 for n = 1:size(result,1)
-	result(n,:,:) = fft2(squeeze(fourierSet(n,:,:)));
+	result(n,:,:) = fft2(squish(fourierSet(n,:,:)));
 end
 
 end

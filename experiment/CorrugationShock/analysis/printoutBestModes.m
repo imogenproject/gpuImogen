@@ -1,9 +1,9 @@
 function printoutBestModes(grorate, phaserate, groR, phaseR, velX)
 
-grorate   = squeeze(grorate);
-phaserate = squeeze(phaserate);
-groR      = squeeze(groR);
-phaseR    = squeeze(phaseR);
+grorate   = squish(grorate);
+phaserate = squish(phaserate);
+groR      = squish(groR);
+phaseR    = squish(phaseR);
 
 dim0 = size(groR);
 
