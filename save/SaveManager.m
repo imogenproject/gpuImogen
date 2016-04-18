@@ -101,7 +101,7 @@ classdef SaveManager < LinkedListNode
 %_______________________________________________________________________________________ preliminary
 % Handles preliminary initialization of the SaveManager after all of the initialization settings 
 % have been set. This function is meant to be called by the ImogenManager only.
-    function initialize(obj, IC, run, mass, ener, mom, mag)
+    function initialize(obj, IC, run, fluids, mag)
         obj.firstSave = true;
     
         % Skip if saving is inactive.
@@ -109,6 +109,8 @@ classdef SaveManager < LinkedListNode
             return;
         end
 
+% FIXME: This should determine *when* resultsHandler should be called
+% and mark THAT iteration/time, not waste time on every iteration...
 	saver = ImogenEvent([], 1, [], @resultsHandler);
 	saver.active = 1;
 	run.attachEvent(saver);
@@ -143,8 +145,8 @@ classdef SaveManager < LinkedListNode
     end
 
 %_____________________________________________________________________________________ postliminary
-    function finalize(obj, run, mass, ener, mom, mag)
-
+    function finalize(obj, run, fluids, mag)
+	run.save.logPrint('SaveManager finalize called.\n');
     end
 
 %_________________________________________________________________________________________ logPrint
@@ -273,7 +275,7 @@ classdef SaveManager < LinkedListNode
             end
 
             if isa(gpuarray,'GPU_Type'); gpuarray = gpuarray.array; end
-            result = squeeze( gpuarray(i{:}) );
+            result = squish( gpuarray(i{:}) );
         end
             
     end%PUBLIC

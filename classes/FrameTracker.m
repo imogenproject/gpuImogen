@@ -49,7 +49,7 @@ classdef FrameTracker < handle
             % Called by initialize.m:355
 	end
 
-	function initialize(self, frameParameters, mass, ener, mom)
+	function initialize(self, run, frameParameters, mass, ener, mom)
         % called by ImogenManager.initialize()
         % The alter routines assume these values are what we are at, so we pretend they are zero and it resets them for us.
 	    self.omega = frameParameters.omega;
@@ -59,7 +59,7 @@ classdef FrameTracker < handle
             if self.omega ~= 0
                 j = self.omega;
                 self.omega = 0;
-                source_alterFrameRotation(self, mass, ener, mom, j);
+                source_alterFrameRotation(self, run, mass, ener, mom, j);
             end
 
             if self.centerVelocity ~= 0
