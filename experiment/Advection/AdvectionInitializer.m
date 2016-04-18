@@ -3,6 +3,7 @@ classdef AdvectionInitializer < Initializer
     
     %===================================================================================================
     properties (Constant = true, Transient = true) %                                            C O N S T A N T         [P]
+        multifluidCompatible = 1;
     end%CONSTANT
     
     %===================================================================================================
@@ -33,6 +34,8 @@ classdef AdvectionInitializer < Initializer
         pBeLinear; % If true, uses infinitesmal wave eigenvectors; If false, uses exact characteristics
         pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the exact translational velocity
         % to keep the wave exactly stationary
+
+        pTwoFluidMode;
     end %PROTECTED
     
     properties (Dependent = true)
@@ -75,7 +78,7 @@ classdef AdvectionInitializer < Initializer
             obj.bcMode.y          = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z          = ENUM.BCMODE_CIRCULAR;
             
-            obj.operateOnInput(input);
+            obj.operateOnInput(input, [512 1 1]);
         end
         
         function set.amplitude(self, A)
@@ -126,6 +129,16 @@ classdef AdvectionInitializer < Initializer
             if self.pDensity  < 0; error('Density cannot be negative!'); end;
             if self.pPressure < 0; error('Pressure cannot be negative!'); end;
         end
+
+        function setTwoFluidMode(self, tf)
+            if tf;
+                self.pTwoFluidMode = 1;
+                fprintf('WARNING: ACTIVATING MULTIPHASE FLUID SIMULATION\n');
+                fprintf('WARNING: THIS IS HIGHLY EXPERIMENTAL.\n');
+            else
+                self.pTwoFluidMode = 0;
+            end
+        end
         
     end%GET/SET
     
@@ -140,12 +153,14 @@ classdef AdvectionInitializer < Initializer
         % If called with true, regardless of use of linear wavevector, will ignore backgroundMach and put the wave in an exactly stationary frame
             if tf; self.pUseStationaryFrame = 1; else; self.pUseStationaryFrame = 0; end
         end
+
+
     end%PUBLIC
     
     %===================================================================================================
     methods (Access = protected) %                                                              P R O T E C T E D    [M]
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-            statics  = StaticsInitializer();
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+            statics  = StaticsInitializer();                           
             potentialField = [];
             selfGravity = [];
             
@@ -156,6 +171,8 @@ classdef AdvectionInitializer < Initializer
             
             [xGrid yGrid zGrid] = GIS.ndgridSetXYZ([1 1 1], obj.dGrid);
             
+            fluids = struct('mass',[],'momX',[],'momY',[],'momZ',[],'ener',[]);
+
             % Store equilibrium parameters
             [mass mom mag ener] = GIS.basicFluidXYZ();
             mass     = mass * obj.pDensity;
@@ -193,7 +210,7 @@ classdef AdvectionInitializer < Initializer
                 if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else
                                   FW.sonicExact(amp, K); end
 
-                omega = 2*pi*sqrt(5/3); % FIXME HACK!
+                omega = 2*pi*sqrt(obj.gamma); % FIXME do not assume this is normalized
             elseif strcmp(obj.waveType, 'fast ma')
                 [waveEigenvector omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
                 waveEigenvector(8) = c_s^2 * waveEigenvector(1);
@@ -216,6 +233,21 @@ classdef AdvectionInitializer < Initializer
                 obj.pureHydro = 1;
             end
             
+            if obj.pTwoFluidMode
+                fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
+                fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
+                fluids(1).ener = ener;
+
+                fluids(2).mass = mass; fluids(2).momX = -squish(mom(1,:,:,:));
+                fluids(2).momY = -squish(mom(2,:,:,:)); fluids(2).momZ = -squish(mom(3,:,:,:));
+                fluids(2).ener = ener;
+                fprintf('WARNING: Experimental two-fluid mode: Generating 2nd fluid with reversed momentum!\n');
+            else
+                fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
+                fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
+                fluids(1).ener = ener;
+            end
+
             if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end
         end
     end%PROTECTED
