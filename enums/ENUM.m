@@ -20,14 +20,14 @@ classdef ENUM
         PRESSURE_MAGNETIC        = 'magnetic'
         
         %--- Boundary Condition Modes  ---%
-	% These are implemented and work as advertised
+        % These are implemented and work as advertised
         BCMODE_CIRCULAR     = 'circ';       % Circular/periodic BC at edge
         BCMODE_CONST        = 'const';      % Constant-value extrapolation; Appropriate for supersonic in/outflow
-        BCMODE_LINEAR       = 'linear';     % Linear extrapolation; Dangerous, prone to backflow mistake.
-        BCMODE_MIRROR       = 'mirror';     % Mirrors across boundaries.
-	BCMODE_STATIC       = 'bcstatic';
+        BCMODE_LINEAR       = 'linear';     % Linear extrapolation; Dangerous, prone to backflow instability
+        BCMODE_MIRROR       = 'mirror';     % Mirror BC (scalars, vector parallel = symmetry, vector perp = antisymmetry)
+        BCMODE_STATIC       = 'bcstatic';   % Read values at t=0 and reset to this value at every step
 
-	% These not so much
+        % These not so much
         BCMODE_FADE         = 'fade';       % Fade arrays out to ICs at edges.
         BCMODE_FLIP         = 'flip';       % Flips vector boundaries along shifting direction.
         BCMODE_TRANSPARENT  = 'trans';      % Transparent boundary condition type.
@@ -60,12 +60,12 @@ classdef ENUM
         ARTIFICIAL_VISCOSITY_NEUMANN_RICHTMYER  = 'neumann_richtmyer';
         ARTIFICIAL_VISCOSITY_CARAMANA_SHASHKOV_WHALEN = 'caramana_shashkov_whalen';
 
-	CUATOMIC_SETMIN  = 1;
-	CUATOMIC_SETMAX  = 2;
-	CUATOMIC_FIXNAN  = 3;
+        CUATOMIC_SETMIN  = 1;
+        CUATOMIC_SETMAX  = 2;
+        CUATOMIC_FIXNAN  = 3;
 
-	FORMAT_MAT  = 1;
-	FORMAT_NC   = 2;
+        FORMAT_MAT  = 1;
+        FORMAT_NC   = 2;
     end
 
 end
