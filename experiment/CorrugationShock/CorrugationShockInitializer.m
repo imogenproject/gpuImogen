@@ -74,7 +74,6 @@ classdef CorrugationShockInitializer < Initializer
             obj.bcMode.x         = ENUM.BCMODE_FADE;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
-            obj.bcInfinity       = 20;
             obj.activeSlices.xy  = true;
             obj.activeSlices.xyz = true;
             obj.ppSave.dim2      = 5;
@@ -99,7 +98,7 @@ classdef CorrugationShockInitializer < Initializer
             obj.numericalICfile  = 'null';
             obj.endMass = 0;
             
-            obj.operateOnInput(input, [300, 6, 6]);
+            obj.operateOnInput(input, [512 1 1]);
         end
 
 %___________________________________________________________________________________________________ dataFile
@@ -203,7 +202,7 @@ classdef CorrugationShockInitializer < Initializer
             for i=1:3
                 mom(i,preX,  :, :) = obj.velocity(i,1);
                 mom(i,postX, :, :) = obj.velocity(i,2);
-                mom(i,:,:,:)       = mass .* squeeze(mom(i,:,:,:));
+                mom(i,:,:,:)       = mass .* squish(mom(i,:,:,:));
                 
                 % It is assumed that the equations used to solve for the magnetic field already
                 % include the transformation B = B/sqrt(4*pi) as verified by no 4*pi factors
@@ -271,7 +270,7 @@ classdef CorrugationShockInitializer < Initializer
 
                         perturb = zeros(10, obj.grid(2), obj.grid(3));
                         for xp = 1:size(perturb,1)
-                            perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
+                            perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squish(amp(1,:,:).*exp(1i*phase(1,:,:)))));
                         end
 
 
@@ -298,10 +297,10 @@ classdef CorrugationShockInitializer < Initializer
                 % By not perturbing energy density we assert that this is an entropy wave
 %seedIndices
 %size(perturb)
-                mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb; % Add seed to mass.
+                mass(seedIndices,:,:) = squish( mass(seedIndices,:,:) ) + perturb; % Add seed to mass.
 %                for i = 1:3; 
                     % Maintain zero velocity perturbation
-%                    mom(i,seedIndices,:,:) = squeeze(mom(i,seedIndices,:,:)) + perturb * obj.velocity(i,1);
+%                    mom(i,seedIndices,:,:) = squish(mom(i,seedIndices,:,:)) + perturb * obj.velocity(i,1);
 %                end
 
             end
