@@ -105,7 +105,7 @@ classdef Edges < handle
                                                      = gather(obj.(field).(Edges.DIMENSION{i}));
                         end
 
-                        obj.(field).(Edges.DIMENSION{i}) = squeeze(obj.(field).(Edges.DIMENSION{i}));
+                        obj.(field).(Edges.DIMENSION{i}) = squish(obj.(field).(Edges.DIMENSION{i}));
 
                     case ENUM.BCMODE_FADE
                         WIDTH=16;
@@ -170,7 +170,7 @@ classdef Edges < handle
                     newEdge = gather(newEdge);        
                 end 
                 
-                newEdge     = squeeze(newEdge); 
+                newEdge     = squish(newEdge); 
                 oldEdge     = obj.(Edges.FIELDS{upper}).(Edges.DIMENSION{dim});
 
                 delta       = min(abs(newEdge - oldEdge),obj.TOLERANCE);
