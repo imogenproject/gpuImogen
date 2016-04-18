@@ -53,7 +53,6 @@ classdef BonnerEbertInitializer < Initializer
             obj.bcMode.x            = 'fade';
             obj.bcMode.y            = 'fade';
             obj.bcMode.z            = 'fade';
-            obj.bcInfinity          = 5;
 
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
@@ -137,8 +136,8 @@ classdef BonnerEbertInitializer < Initializer
             obj.minMass     = obj.rho0 * obj.pBgDensityCoeff;
             
             ener            = ener + ... % internal already computed by initializer
-                                + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...   % kinetic energy
-                                + 0.5*squeeze(sum(mag .* mag, 1));              % magnetic energy                    
+                                + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...   % kinetic energy
+                                + 0.5*squish(sum(mag .* mag, 1));              % magnetic energy                    
                         
             statics = [];
             potentialField = [];

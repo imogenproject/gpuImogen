@@ -67,7 +67,6 @@ classdef CentrifugeInitializer < Initializer
             obj.iterMax             = 300;
             obj.bcMode.x            = ENUM.BCMODE_CONST;
             obj.bcMode.y            = ENUM.BCMODE_CONST;
-            obj.bcInfinity          = 5;
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             
@@ -153,7 +152,7 @@ fmin = 0;
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
@@ -204,9 +203,12 @@ fmin = 0;
             mag     = zeros([3 mygrid]);
 
             ener    = ener + ...
-                        + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
-                        + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
+                        + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
+                        + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
+
+            fluids = obj.stateToFluid(mass, mom, ener);
+
             statics = [];%StaticsInitializer(obj.grid);
             selfGravity = [];
             potentialField = [];%PotentialFieldInitializer();

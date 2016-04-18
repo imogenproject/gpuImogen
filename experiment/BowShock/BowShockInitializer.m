@@ -145,7 +145,7 @@ classdef BowShockInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
         %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             % Returns the initial conditions for a bow shock simulation
             % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
             GIS = GlobalIndexSemantics();
@@ -213,7 +213,7 @@ classdef BowShockInitializer < Initializer
             ener(postshockX,:,:) = obj.pPreshockP * blast.Pgas(2) /(obj.gamma-1);
             ener(preshockX,:,:)  = obj.pPreshockP / (obj.gamma-1);
             ener = interpScalarRadialToGrid(ballRadii, ballFlow.press / (obj.gamma-1), [0 1.5*obj.pBallXRadius], X,Y,Z,ener);
-            ener = ener + .5*squeeze(sum(mom.^2,1))./mass;
+            ener = ener + .5*squish(sum(mom.^2,1))./mass;
             
             obj.dGrid = obj.pBallXRadius / obj.ballCells(1);
             % Set up statics if we're locking the obstacle in place
@@ -243,6 +243,8 @@ classdef BowShockInitializer < Initializer
             end
             
             if (obj.magX == 0) && (obj.magY == 0); obj.pureHydro = 1; end
+
+            fluids = obj.stateToFluid(mass, mom, ener);
             
         end
         
