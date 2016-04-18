@@ -68,65 +68,54 @@ classdef TimeManager < handle
 
 %___________________________________________________________________________________________________ update
 % Calculate the correct timestep for the upcoming flux iteration (both the forward and backward 
-% steps) of the main loop according to the Courant-Freidrichs-Levy condition for a magnetic fluid.
-%
+% steps) of the main loop according to the Courant-Freidrichs-Lewy condition
+        function update(obj, fluids, mag)
 %>< run             Imogen run manager                                         ImogenManager
-%>< mass            mass density array                                         FluidArray
-%>< mom             momentum density array                                     FluidArray(3)
-%>< ener            energy density array                                       FluidArray        
-%>< mag             magnetic field array                                       MagnetArray(3)
-        function update(obj, mass, mom, ener, mag, fluxDirection)
+%>< fluids          FluidManager array
+%>< mag             magnetic field arrays                                      MagnetArray(3)
         
             %--- Initialization ---%
-            
-            % Skips calculating the timestep if this is the second portion of the step and the 
-            % timestep update mode is one per iteration and not every step.
-%            if (fluxDirection > 1 && obj.updateMode ~= ENUM.TIMEUPDATE_PER_STEP)
-%                return; 
-%            end
-
             cmax        = 1e-2; % Min threshold to prevent excessively large timesteps.
             gridIndex   = 0;    % Defaults max velocity direction to invalid error value.
 
-            %--- Find max velocity ---%
-            %           Find the maximum fluid velocity in the grid and its vector direction.
-            if obj.parent.pureHydro == 1
-                soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), obj.parent.GAMMA);
-            else
-                soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), ...
-                             mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, obj.parent.GAMMA);
-            end
+	    tau = 0;
 
-            [cmax gridIndex] = directionalMaxFinder(mass, soundSpeed, mom(1), mom(2), mom(3));
-            GPU_free(soundSpeed);
-            % Communicate the maximum cfl-determining limit to our comrades in arms
-            % FIXME: Make this use mpi_reduce (and implement an interface to it in /mpi)
-            % WARNING: Well it seems that nowhere is idx actually /used/, so I'm dropping
-            % WARNING: it until a use pops up.
-%            cmaxB       = mpi_max(cmax);
-%if mpi_amirank0(); disp(cmaxB); end
-            cmax       = mpi_allgather(cmax);
-%if mpi_amirank0(); disp(cmax'); end
-            gridIndex  = mpi_allgather(gridIndex);
-            [cmax idx] = max(cmax);
-            gridIndex  = gridIndex(idx);
+            for f = 1:numel(fluids)
+% FIXME: Check at start-time if ALL fluids have no-cfl-check set, that would be BAD
+                if fluids(f).checkCFL == 0; continue; end
 
-            %--- Check for errors ---%
-            % If the gridIndex isn't valid then a CFL error is the cause, which means that the 
-            % propagation over the last step was too large and has corrupted the run.
-            if ~isreal(cmax)
-%(gridIndex < 1)
-                fireCFLError(run, cmax); 
-                gridIndex = 1; 
-            end
+                mass = fluids(f).mass;
+                ener = fluids(f).ener;
+                mom  = fluids(f).mom;
+
+                %--- Find max velocity ---%
+                %           Find the maximum fluid velocity in the grid and its vector direction.
+                if obj.parent.pureHydro == 1
+                    soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), obj.parent.GAMMA);
+                else
+                    soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), ...
+                                 mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, obj.parent.GAMMA);
+                end
+
+                [cmax gridIndex] = directionalMaxFinder(mass, soundSpeed, mom(1), mom(2), mom(3));
+                GPU_free(soundSpeed);
+
+                if ~isreal(cmax)
+                    error('Forcing simulation crash: My timestep limit is nonphysical!');
+		end
+
+                dtMin = mpi_min(obj.parent.MINDGRID(gridIndex) / cmax);
+		if f == 1; tau = dtMin; else; tau = min(tau, dtMin); end
+	    end
  
             %--- Calculate new timestep ---%
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
             %           accounting for maximum simulation time.
-            obj.dTime = obj.CFL*obj.parent.MINDGRID(gridIndex)/cmax;
+            obj.dTime = obj.CFL*tau;
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
+		newTime = obj.TIMEMAX;
             end
             obj.timePercent = 100*newTime/obj.TIMEMAX;
         end
@@ -218,7 +207,7 @@ classdef TimeManager < handle
 % # result        The structure resulting from conversion of the TimeManager object.                        Struct
         function result = toStruct(obj)
             result.time       = obj.time;
-            result.history    = obj.history(1:(obj.iteration+1));
+            result.history    = obj.history(1:obj.iteration);
             result.iterMax    = obj.ITERMAX;
             result.timeMax    = obj.TIMEMAX;
             result.wallMax    = obj.WALLMAX;
