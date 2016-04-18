@@ -48,8 +48,6 @@ classdef GravityTestInitializer < Initializer
             obj.bcMode.y            = 'fade';
             obj.bcMode.z            = 'fade';
 
-            obj.bcInfinity          = 4;
-
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             
