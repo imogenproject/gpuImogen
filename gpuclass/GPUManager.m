@@ -9,16 +9,18 @@ classdef GPUManager < handle
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         deviceList; % Integers enumerating which GPUs this instance will use e.g. [0 2]
-	useHalo;    % If > 0, boundaries between shared segments will have a useHalo-wide halo
+	    useHalo;    % If > 0, boundaries between shared segments will have a useHalo-wide halo
         partitionDir;
         isInitd;
         cudaStreamsPtr;
-	nprocs;
+	    nprocs;
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         GIS;
+        stackDeviceList, stackUseHalo, stackPartitionDir, stackCudaStreamsPtr, stackNprocs;
+        numStack;
     end %PROTECTED
 
 %===================================================================================================
@@ -28,7 +30,7 @@ classdef GPUManager < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function g = GPUManager()
-	    g.deviceList = 0;
+	        g.deviceList = 0;
             g.useHalo = 0;
             g.partitionDir = 1;
             g.isInitd = 0;
@@ -37,16 +39,17 @@ classdef GPUManager < handle
             g.GIS = GlobalIndexSemantics();
             
             g.init([0], 3, 1);
+            g.numStack = 0;
         end
 
         function init(obj, devlist, halo, partitionDirection)
-	    obj.deviceList = devlist;
+	        obj.deviceList = devlist;
 % This was added when I thought it was needed, now it isn't.
 %            obj.cudaStreamsPtr = GPU_ctrl('createStreams',devlist);
-	    obj.useHalo = halo;
+	        obj.useHalo = halo;
             obj.partitionDir = partitionDirection;
             obj.isInitd = 1;
-	    obj.nprocs = obj.GIS.topology.nproc;
+	        obj.nprocs = obj.GIS.topology.nproc;
         end
 
         function describe(obj)
@@ -55,6 +58,29 @@ classdef GPUManager < handle
                 fprintf('%i ', int32(obj.deviceList(N)));
             end
             fprintf('.\nHalo size is %i, partitioning occurs in the %i direction.\n', int32(obj.useHalo), int32(obj.partitionDir));
+        end
+        
+        function pushParameters(self)
+            % Puts current manager params on top of a stack,
+            % permitting modification w/o risking loss of history.
+            N = self.numStack + 1;
+            self.numStack = N;
+            self.stackDeviceList{N} = self.deviceList;
+            self.stackUseHalo{N} = self.useHalo;
+            self.stackPartitionDir{N} = self.partitionDir;
+            self.stackCudaStreamsPtr{N} = self.cudaStreamsPtr;
+            self.stackNprocs{N} = self.nprocs;
+        end
+        
+        function popParameters(self)
+            N = self.numStack;
+            if N == 0; error('Cannot use popParameters before first pushParameters.'); end
+            self.numStack = N-1;
+            self.deviceList = self.stackDeviceList{N};
+            self.useHalo = self.stackUseHalo{N};
+            self.partitionDir = self.stackPartitionDir{N};
+            self.cudaStreamsPtr = self.stackCudaStreamsPtr{N};
+            self.nprocs = self.stackNprocs{N};
         end
 
     end%PUBLIC
