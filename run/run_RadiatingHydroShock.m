@@ -1,10 +1,10 @@
 %   Run 3D Corrugation instability shock test.
 
 %--- Initialize test ---%
+grid = [128 1 1];
 run         = RadiatingShockInitializer(grid);
-grid = [512 2 1];
 
-run.iterMax     = 2000;
+run.iterMax     = 20000;
 run.theta       = 0;
 run.sonicMach   = 4;
 
@@ -17,7 +17,7 @@ run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical fre-free Bremsstrahlung 
-run.radTheta = .1;
+run.radTheta = .5;
 
 % With the whole X length of the grid taken as 1, these set the length of the equilibrium
 % preshock & cold gas layers; Default values are .25 and .1 respectively
@@ -43,9 +43,12 @@ run.image.mass = true;
 %run.image.magY = true;
 %run.image.pGas = true;
 
+run.fractionPreshock = 0.2;
+run.fractionCold = 0.2;
+
 rp = RealtimePlotter();
-  rp.plotmode = 1;
-  rp.plotDifference = 1;
+  rp.plotmode = 8;
+  rp.plotDifference = 0;
   rp.insertPause = 0;
   rp.firstCallIteration = 1;
   rp.iterationsPerCall = 10;
