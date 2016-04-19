@@ -2,13 +2,11 @@ function outdirectory = imogen(srcData, resumeinfo)
 % This is the main entry point for the Imogen MHD code. It contains the primary evolution loop and 
 % the hooks for writing the results to disk.
 %
-%>> IC.massDen     Mass density array (cell-centered).                         double  [nx ny nz]
-%>> IC.momDen      Momentum density array (cell-centered).                     double  [3 nx ny nz]
-%>> IC.enerDen     Energy density array (cell-centered).                       double  [nx ny nz]
-%>> IC.magnet      Magnetic field strength array (face-centered).              double  [3 nx ny nz]
-%>> IC.ini         Listing of properties and settings for the run.             struct
-%>> IC.statics     Static arrays with lookup to static values.                 struct
-%<< outdirectory   Path to directory containing results                        string
+%> srcData         Either filename from Initializer.saveInitialCondsToFile
+%                  or structure from Initializer.saveInitialCondsToStructure
+%> resumeinfo      If present, structure as in run/special_Resume.m
+%< outdirectory    Path to directory containing output data
+
     if isstruct(srcData) == 0
         load(srcData);
         if mpi_amirank0(); fprintf('---------- Imogen starting from file'); end
@@ -67,9 +65,11 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
 
     try
-        [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics);
+        [run.fluid mag] = uploadDataArrays(FieldSource, run, statics);
+%       run.fluid.attachFluid(DataHolder, mass, ener, mom); % attach the fluid to a fluid manager
     catch oops
-        run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\n');
+        run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\nAdditional execption will be printed by loader.\n');
+        prettyprintException(oops);
         collectiveFailure = 1;
     end
  
@@ -79,19 +79,17 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
     writeSimInitializer(run, IC);
-
     %--- Pre-loop actions ---%
-    run.initialize(IC, mass, mom, ener, mag);
+    run.initialize(IC, mag);
 
     clear('IC', 'ini', 'statics');    
-
     mpi_barrier();
     run.save.logPrint('---------- Entering simulation loop\n');
 
     if ~RESTARTING
         run.save.logPrint('New simulation: Doing initial save... ');
         try
-            resultsHandler([], run, mass, ener, mom, mag);
+            resultsHandler([], run, run.fluid, mag);
         catch booboo
             run.save.logAllPrint('    FATAL: First resultsHandler() call failed! Data likely unaccessible. Aborting run.\n');
             collectiveFailure = 1;
@@ -106,17 +104,18 @@ function outdirectory = imogen(srcData, resumeinfo)
     direction           = [1 -1];
     run.time.recordWallclock();
 
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
-        run.time.update(mass, mom, ener, mag, 1);
-
-        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
-%        flux(run, mass, mom, ener, mag, 1);
-        source(run, mass, mom, ener, mag, 1.0);
-        fluidstep(mass, ener, mom(1), mom(2), mom(3), mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
+        run.time.update(run.fluid, mag);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
+%        flux(run, run.fluid, mag, 1);
+        source(run, run.fluid, mag, 1.0);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
+%        flux(run, run.fluid, mag, -1);
 
         run.time.step();
-        run.pollEventList(mass, ener, mom, mag);
+        run.pollEventList(run.fluid, mag);
     end
     %%%=== END MAIN LOOP ========================================================================%%%
 
@@ -127,6 +126,6 @@ if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
   save(starpath,'stardata');
 end
 
-    run.finalize(mass, ener, mom, mag);
+    run.finalize(run.fluid, mag);
 
 end

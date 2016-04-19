@@ -21,6 +21,8 @@ function run = initialize(ini)
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
 
+run.setNumFluids(ini.numFluids);
+
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
     run.pureHydro = 1;
@@ -50,25 +52,7 @@ try
 catch MERR, loc_initializationError('bcMode',MERR);
 end
 
-%% .bcInfinity                  # of cells for infinity of transparent edge condition
-
-try
-    run.bc.infinity = ini.bcInfinity;    
-    run.appendInfo('Infinity Distance', run.bc.infinity);
-catch MERR, loc_initializationError('infinity',MERR);
-end
-
-%% .fluxLimiter                 # type of flux limiter to use globally or in each dimension.
-
-try
-    run.fluid.setFluxLimiters(ini.fluxLimiter);
-    run.magnet.limiter = run.fluid.limiter;
-    run.appendInfo('Flux Limiters', run.fluid.limiter);
-catch MERR, loc_initializationError('infinity',MERR);
-end
-
 %% .cfl                         CFL prefactor 
-
 try
     run.time.CFL = ini.cfl;
     run.appendInfo('CFL Prefactor', run.time.CFL);
@@ -76,7 +60,6 @@ catch MERR, loc_initializationError('cfl',MERR);
 end
 
 %% .timeUpdateMode              How frequently the timestep should be updated.
-
 try
     run.time.updateMode = ini.timeUpdateMode;
     run.appendInfo('Time Update Mode', run.time.updateMode);
@@ -85,19 +68,20 @@ end
 
 %% .thresholdMass               Threshold value below which gravity will not act
 
-try
-    run.fluid.MASS_THRESHOLD = ini.thresholdMass;
-    run.appendInfo('Mass Threshold', run.fluid.MASS_THRESHOLD);
-catch MERR, loc_initializationError('thresholdmass',MERR);
-end
+%HACK HACK HACK disabled for multifluid
+%try
+%    run.fluid.MASS_THRESHOLD = ini.thresholdMass;
+%    run.appendInfo('Mass Threshold', run.fluid.MASS_THRESHOLD);
+%catch MERR, loc_initializationError('thresholdmass',MERR);
+%end
 
 %% .minMass                     Minimum allowed mass density value
 
-try 
-    run.fluid.MINMASS = ini.minMass;
-    run.appendInfo('Minimum mass density', run.fluid.MINMASS);
-catch MERR, loc_initializationError('minmass',MERR);
-end
+%try 
+%    run.fluid.MINMASS = ini.minMass;
+%    run.appendInfo('Minimum mass density', run.fluid.MINMASS);
+%catch MERR, loc_initializationError('minmass',MERR);
+%end
 
 %% .profile                     Enable the profiler to record execution information
 
@@ -166,13 +150,6 @@ try
     run.iniInfo = ini.iniInfo;     
 catch MERR, loc_initializationError('iniinfo',MERR);
 end 
-
-%% .mode                        Activate code mode types (e.g. fluid, magnet, etc...)
-
-try
-    run.initializeMode(ini.mode);
-catch MERR, loc_initializationError('mode',MERR);
-end    
 
 %% .dGrid                       Grid cell dimensions
 
@@ -352,26 +329,33 @@ try
 catch MERR, loc_initializationError('fades',MERR);
 end
 
-%% .viscosity                   Artificial viscosity settings
-try
-    run.fluid.viscosity.type                      = ini.viscosity.type;
-    run.fluid.viscosity.linearViscousStrength     = ini.viscosity.linear;
-    run.fluid.viscosity.quadraticViscousStrength  = ini.viscosity.quadratic;
-catch MERR, loc_initializationError('viscosity', MERR);
+% fixme: this is overwritten up the state uploader...
+if 0;
+    for F = 1:ini.numFluids; % HACK HACK HACK
+        
+        run.fluid(F) = FluidManager();
+        
+        %% .viscosity                   Artificial viscosity settings
+        try
+            run.fluid(F).viscosity.type                      = ini.viscosity.type;
+            run.fluid(F).viscosity.linearViscousStrength     = ini.viscosity.linear;
+            run.fluid(F).viscosity.quadraticViscousStrength  = ini.viscosity.quadratic;
+        catch MERR, loc_initializationError('viscosity', MERR);
+        end
+    end        
 end
-
-%% .radiation                   Radiation settings
-try
-   run.fluid.radiation.type                      = ini.radiation.type;
-   run.fluid.radiation.exponent                  = ini.radiation.exponent;
-   run.fluid.radiation.initialMaximum            = ini.radiation.initialMaximum;
-   run.fluid.radiation.coolLength                = ini.radiation.coolLength;
-   run.fluid.radiation.strengthMethod            = ini.radiation.strengthMethod;
-   run.fluid.radiation.setStrength               = ini.radiation.setStrength;
-    
-catch MERR, loc_initializationError('radiation', MERR);
-end
-
+% .radiation                   Radiation settings
+        try
+            run.radiation.type                 = ini.radiation.type;
+            run.radiation.exponent             = ini.radiation.exponent;
+            run.radiation.initialMaximum       = ini.radiation.initialMaximum;
+            run.radiation.coolLength           = ini.radiation.coolLength;
+            run.radiation.strengthMethod       = ini.radiation.strengthMethod;
+            run.radiation.setStrength          = ini.radiation.setStrength;
+            
+        catch MERR, loc_initializationError('radiation', MERR);
+        end
+        
 
 end
 
