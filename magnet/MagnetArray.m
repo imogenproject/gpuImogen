@@ -9,12 +9,7 @@ classdef MagnetArray < ImogenArray
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        staticFluxes;   % Specifies static fluxing.                             logical
-        fluxes;         % Fluxes for the magnetic field.                        FluxArray(3)
-        stores;         % Half step storage.                                    StorageArray(2)
-        velGrids;       % Grid-aligned velocity.                                InitializedArray(2)
-        wMags;          % Auxiliary flux.                                       InitializedArray(2)
-        cellMag;        % Cell-centered magnetic field.                         InitializedArray
+        cellMag;        % Cell-centered magnetic field.                         ImogenArray
     end%PUBLIC
 
 %===================================================================================================
@@ -42,61 +37,24 @@ classdef MagnetArray < ImogenArray
         end
 
 %___________________________________________________________________________________________________ MagnetArray
-        function obj = MagnetArray(component, id, array, run, statics)
-            obj         = obj@ImogenArray(component, id, run, statics);
+        function obj = MagnetArray(component, id, array, manager, statics)
+            obj         = obj@ImogenArray(component, id, manager, statics);
 
-            obj.initializeArrays(component, id, run, statics);
+            obj.initializeArrays(component, id, manager, statics);
 
-            if numel(array) > 0; obj.initialArray(squeeze(array)); end
-
-%            obj.initializeShiftingStates();
-%            obj.initializeBoundingEdges();
-
-%            obj.finalizeStatics(); % puts boundary and "internal" statics together and casts to GPU
+            if numel(array) > 0; obj.initialArray(squish(array)); end
         end
 
         function initialArray(obj, array)
-
             initialArray@ImogenArray(obj, array);
-            
-            obj.stores(1).initialArray(array);
-            obj.stores(1).cleanup();
-            obj.stores(2).initialArray(array);
-            obj.stores(2).cleanup();
 
             obj.cellMag.initialArray(array); % Make the cell centered array build its statics
             obj.updateCellCentered();
-
         end
 
-%___________________________________________________________________________________________________ flux
-        function result = flux(obj, index)
-            result = obj.fluxes(MagnetArray.REVERSE_INDEX(obj.component,index));
-        end
-        
-%___________________________________________________________________________________________________ wMag
-        function result = wMag(obj, index)
-            result = obj.wMags(MagnetArray.REVERSE_INDEX(obj.component,index));
-        end
-
-%___________________________________________________________________________________________________ store
-        function result = store(obj, index)
-            result = obj.stores(MagnetArray.REVERSE_INDEX(obj.component,index));
-        end
-
-%___________________________________________________________________________________________________ velGrid
-        function result = velGrid(obj, index)
-            result = obj.velGrids(MagnetArray.REVERSE_INDEX(obj.component,index));
-        end
-        
 %___________________________________________________________________________________________________ cleanup
         function cleanup(obj)
-            for i=1:2
-                obj.fluxes(i).cleanup();
-                obj.stores(i).cleanup();
-%                obj.wMags(i).cleanup();
-                obj.velGrids(i).cleanup();
-            end
+            obj.cellMag.cleanup();
         end        
         
     end%PUBLIC
@@ -106,21 +64,8 @@ classdef MagnetArray < ImogenArray
         
 %___________________________________________________________________________________________________ initializeArrays
 % Initializes all the secondary array objects owned by the MagnetArray object.
-        function initializeArrays(obj, component, id, run, statics)
-            obj.fluxes   	= FluxArray.empty(2,0);
-            obj.stores  	= StorageArray.empty(2,0);
-%            obj.wMags    	= InitializedArray.empty(2,0);
-           obj.velGrids 	= InitializedArray.empty(2,0);
-            for i=1:2
-                comp = MagnetArray.INDEX(component,i);
-                compID = ['mc_' num2str(comp)];
-                obj.fluxes(i)	= FluxArray(component, {id, FluxArray.FLUX, compID}, run, statics);
-                obj.stores(i) 	= StorageArray(component, {id, StorageArray.STORE, compID}, run, statics);
-%                obj.wMags(i)    = InitializedArray(component, {id, 'wMag', compID}, run, statics);
-                obj.velGrids(i) = InitializedArray(component, {id, 'velGrid', compID}, run, statics);
-            end
-            
-            obj.cellMag = InitializedArray(component, id, run, statics);
+        function initializeArrays(obj, component, id, manager, statics)
+            obj.cellMag = ImogenArray(component, id, manager, statics);
         end
         
     end%PROTECTED
