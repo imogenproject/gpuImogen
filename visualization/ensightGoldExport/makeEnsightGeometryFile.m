@@ -79,9 +79,9 @@ else
     if numel(domsize) == 2; domsize(3) = 1; end
     fwrite(GEOM, domsize, 'int');
 
-    ivec = cumsum(squeeze(frameref.dGrid{1}(:,1,1))) - frameref.dGrid{1}(1,1,1);
-    jvec = cumsum(squeeze(frameref.dGrid{2}(1,:,1))) - frameref.dGrid{2}(1,1,1);
-    kvec = cumsum(squeeze(frameref.dGrid{3}(1,1,:))) - frameref.dGrid{3}(1,1,1);
+    ivec = cumsum(squish(frameref.dGrid{1}(:,1,1))) - frameref.dGrid{1}(1,1,1);
+    jvec = cumsum(squish(frameref.dGrid{2}(1,:,1))) - frameref.dGrid{2}(1,1,1);
+    kvec = cumsum(squish(frameref.dGrid{3}(1,1,:))) - frameref.dGrid{3}(1,1,1);
 
     if numel(ivec) ~= size(frameref.mass,1)
         ivec = (1:size(frameref.mass, 1))*frameref.dGrid{1}(1);

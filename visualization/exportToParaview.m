@@ -78,7 +78,7 @@ function exportToParaview(arrays, dGrid, filename, tags)
 		else
 			vec = zeros(1,3*ncells);
 			for j=1:3
-				vec(j:3:end) = reshape(squeeze(arrays{i}(j,:)),[1, ncells]);
+				vec(j:3:end) = reshape(squish(arrays{i}(j,:)),[1, ncells]);
 			end
 			vStr  = mat2str(vec,4);
 			vStr  = vStr(2:(end-1));

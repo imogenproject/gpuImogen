@@ -24,7 +24,7 @@ if (numel(frame.dGrid{1}) > 1) || (numel(frame.dGrid{2} > 1)) || (numel(frame.dG
     
     fwrite(fid, sprintf('\nY_COORDINATES %i float\n', Ny+pvsc));
     if numel(frame.dGrid{2}) > 1
-       q = cumsum(squeeze(frame.dGrid{2}(1,:,1))); q = q - q(1);
+       q = cumsum(squish(frame.dGrid{2}(1,:,1))); q = q - q(1);
     else
         q = (0:(Ny-1))*frame.dGrid{2};
     end
@@ -32,7 +32,7 @@ if (numel(frame.dGrid{1}) > 1) || (numel(frame.dGrid{2} > 1)) || (numel(frame.dG
     
     fwrite(fid, sprintf('\nZ_COORDINATES %i float\n', Nz+pvsc));
     if numel(frame.dGrid{3}) > 1
-        q = cumsum(squeeze(frame.dGrid{3}(1,1,:))); q = q - q(1);
+        q = cumsum(squish(frame.dGrid{3}(1,1,:))); q = q - q(1);
     else
         q = (0:(Nz-1))*frame.dGrid{3};
     end
