@@ -82,7 +82,7 @@ for ct = (nQuantLevels-1):-1:1
             selz   = delz:2:oldgrid(3);
 
             xps(1:xbound,1:ybound,1:zbound)       = xps(1:xbound,1:ybound,1:zbound) + ...
-                   mass{ct+1}(selx,sely,selz) .* squeeze(pos{ct+1}(eta,selx,sely,selz));
+                   mass{ct+1}(selx,sely,selz) .* squish(pos{ct+1}(eta,selx,sely,selz));
         end; end; end
 
     pos{ct}(eta,:,:,:) = xps ./ mass{ct};
