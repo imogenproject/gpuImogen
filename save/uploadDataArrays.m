@@ -1,39 +1,58 @@
-function [mass ener mom mag DataHolder] = uploadDataArrays(FieldSource, run, statics)
+function [fluid mag] = uploadDataArrays(FieldSource, run, statics)
 % Utility function uploads input data arrays on CPU to GPU
 
     gm = GPUManager.getInstance();
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
     memtot = sum(iniGPUMem);
-    memneed = numel(FieldSource.mass) * 11 * 8;
+    memneed = numel(FieldSource.fluids(1).mass) * 11 * 8 * numel(FieldSource.fluids);
     if memneed / memtot > .9
         run.save.logAllPrint('WARNING: Projected GPU memory utilization of %.1f%c exceeds 9/10 of total device memory.\n', 100*memneed/memtot, 37);
         run.save.logAllPrint('WARNING: Reduction in simulation size or increase in #of GPUs/nodes may be required.\n');
     end
 
-    DataHolder = GPU_Type(FieldSource.mass);
-    DataHolder.createSlabs(5); % [rho E px py pz] slabs
-
-    a = GPU_getslab(DataHolder, 0);
-
-    mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, run, statics);
-
-    a = GPU_setslab(DataHolder, 1, FieldSource.ener);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, run, statics);
-
-    mom  = FluidArray.empty(3,0);
+    % Handle magnetic field
     mag  = MagnetArray.empty(3,0);
-    fieldnames = {'momX','momY','momZ','magX','magY','magZ'};
-
+    fieldnames={'magX','magY','magZ'};
     for i = 1:3;
-        a = GPU_setslab(DataHolder, 1+i, getfield(FieldSource, fieldnames{i}) );
-        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, run, statics);
         if run.pureHydro == 0
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i+3}), run, statics);
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i}), run.magnet, statics);
         else
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run, statics);
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run.magnet, statics);
         end
-     end
+    end
+
+    fluid = FluidManager.empty(numel(FieldSource.fluids), 0);
+
+    % Handle each fluid
+    for F = 1:numel(FieldSource.fluids)
+        fluid(F) = FluidManager();
+        % HACK HACK HACK this should be in some other init place
+        fluid(F).MASS_THRESHOLD = FieldSource.ini.thresholdMass;
+        fluid(F).MINMASS        = FieldSource.ini.minMass;
+        fluid(F).parent         = run;
+
+        FluidData = FieldSource.fluids(F);
+
+        DataHolder = GPU_Type(FluidData.mass);
+        DataHolder.createSlabs(5);
+
+        a = GPU_getslab(DataHolder, 0);
+        mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, fluid(F), statics);
+
+        a = GPU_setslab(DataHolder, 1, FluidData.ener);
+        ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, fluid(F), statics);
+
+        mom  = FluidArray.empty(3,0);
+        fieldnames = {'momX','momY','momZ'};
+
+        for i = 1:3;
+            a = GPU_setslab(DataHolder, 1+i, getfield(FluidData, fieldnames{i}) );
+            mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, fluid(F), statics);
+        end
+
+        fluid(F).attachFluid(DataHolder, mass, ener, mom);       
+    end
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
