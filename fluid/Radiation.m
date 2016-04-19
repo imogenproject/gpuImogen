@@ -39,8 +39,9 @@ classdef Radiation < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-%___________________________________________________________________________________________________ preliminary
-        function preliminary(obj)
+        function initialize(obj, run, mass, mom, ener, mag)
+%___________________________________________________________________________________________________ 
+% Initialize the radiation solver parameters.
             switch (obj.type)
                 %-----------------------------------------------------------------------------------
                 case ENUM.RADIATION_NONE
@@ -53,11 +54,7 @@ classdef Radiation < handle
                     obj.type  = ENUM.RADIATION_NONE;
                     obj.solve = @obj.noRadiationSolver;
             end
-        end
 
-%___________________________________________________________________________________________________ 
-% Initialize the radiation solver parameters.
-        function initialize(obj, run, mass, mom, ener, mag)
             if strcmp(obj.type, ENUM.RADIATION_NONE)
                 obj.strength = 0;
                 return
@@ -101,7 +98,7 @@ fprintf('Radiation strength: %f\n', obj.strength);
 %___________________________________________________________________________________________________ opticallyThinSolver
 % Solver for free radiation.
         function result = opticallyThinSolver(obj, run, mass, mom, ener, mag, dTime)
-            cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.GAMMA obj.exponent obj.strength * dTime 1.1 run.pureHydro]);
+            cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.GAMMA obj.exponent obj.strength * dTime 1.05 run.pureHydro]);
         end
         
     end%PUBLIC

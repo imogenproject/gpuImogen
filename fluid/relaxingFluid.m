@@ -18,27 +18,29 @@ v          = [mass, mom(L(1)), mom(L(2)), mom(L(3)), ener];
    
 % Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatically
 % compressed fluid
-cs0 = sqrt(run.GAMMA*(run.fluid.MINMASS^(run.GAMMA-1)) );
+% FIXME HACK HACK HACK this refers to only the first fluid
+cs0 = sqrt(run.GAMMA*(run.fluid(1).MINMASS^(run.GAMMA-1)) );
+
+GIS = GlobalIndexSemantics();
 
 % freezeAndPtot enforces a minimum pressure
 [pressa freezea] = freezeAndPtot(mass, ener, mom(L(1)), mom(L(2)), mom(L(3)), ...
-    mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, run.GAMMA, run.pureHydro, cs0);
-
-GIS = GlobalIndexSemantics();
+    mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, run.GAMMA, run.pureHydro, cs0, GIS.topology);
 
 % Advanced fluid quantities through a 2nd order upwind timestep
 % third [] parameter: 1 = HLL, 2 = HLLC, 3 = Xin/Jin
 % 4th   []          : flux direction
 % If debug, dbgoutput = cudaFluidStep(...)
+% FIXME HACK HACK HACK this refers to only the first fluid because we don't know which we are doing.
 cudaFluidStep(mass, ener, mom(1), mom(2), mom(3), mag(L(1)).cellMag, mag(L(2)).cellMag, ...
-    mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid.MINMASS 2 X], GIS.topology);
+    mag(L(3)).cellMag, pressa, freezea, fluxFactor, run.pureHydro, [run.GAMMA run.fluid(1).MINMASS run.cfdMethod X], GIS.topology);
 
 
 GPU_free(pressa);
 GPU_free(freezea);
 
 % Must call applyStatics because the cudaFluidTVD call overwrites the array directly.
-for t = 1:5; v(t).applyBoundaryConditions(1); v(t).cleanup(); end % Delete upwind storage arrays
+for t = 1:5; v(t).applyBoundaryConditions(X); v(t).cleanup(); end % Delete upwind storage arrays
 
 end
 

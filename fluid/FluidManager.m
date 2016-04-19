@@ -1,5 +1,8 @@
 classdef FluidManager < handle
-% Manager class for fluid fluxing operations and settings. 
+% A FluidManager is a container for the grid state of a single fluid
+% A simulation can have *multiple* fluids if running a multiphase flow simulation
+% This canister holds the density, momentum, pressure functions for a given fluid
+% 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
     end%CONSTANT
@@ -8,24 +11,25 @@ classdef FluidManager < handle
     properties (SetAccess = public, GetAccess = public, Transient = true) %         P U B L I C  [P]
         MINMASS;                  % Minimum allowed mass value.                         double
         MASS_THRESHOLD;           % Threshold above which gravity solver functions.     double
-        ACTIVE;                   % Specifies the fluid fluxing solver state.           logical 
-        freezeSpd;                % Freeze speed array.                                 FluxArray
-        freezeSpdTVD;             % Freeze speed array for 2nd order fluxing.           FluxArray
         thresholds;               % Threshold values for gravitational fluxing.         struct
         viscosity;                % Artificial viscosity object.                        ArtificialViscosity
-        radiation;                % Radiation object.                                   Radiation
         limiter;                  % Flux limiters to use for each flux direction.       cell(3)
-    end%PUBLIC
     
+        checkCFL;
+        isDust; 
+    end%PUBLIC
+   
+    properties (SetAccess = public, GetAccess = public)
+        DataHolder; % A GPU_Type that holds the handle on the actual memory allocation
+        mass, ener, mom; % Actual fluid state data                             ImogenArrays
+    end
+ 
 %===================================================================================================
     properties (SetAccess = public, GetAccess = private) %                        P R I V A T E  [P]
-        parent;            % Parent manager                                         ImogenManager
+        parent;               % Parent manager                                      ImogenManager
+
+        fluidName;            % String describing which fluid this is               String
     end %PRIVATE
-    
-    
-    
-    
-    
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
@@ -37,61 +41,40 @@ classdef FluidManager < handle
 %___________________________________________________________________________________________________ FluidManager
 % Creates a new FluidManager instance.
         function obj = FluidManager() 
-            obj.ACTIVE                   = true;
-            obj.MASS_THRESHOLD           = 0;
-            obj.viscosity                = ArtificialViscosity();
-            obj.radiation                = Radiation();
+            obj.viscosity    = ArtificialViscosity();
+            obj.fluidName    = 'some_gas';
+% FIXME: Make this programmable
+            obj.checkCFL     = 1;
+% FIXME: make this programmable
+            obj.isDust       = 0;
         end
+
+        function attachBoundaryConditions(obj, element)
+            obj.parent.bc.attachBoundaryConditions(element);
+        end
+
+        function attachFluid(obj, holder, mass, ener, mom)
+            obj.DataHolder = holder;
+
+            obj.mass = mass;
+            obj.ener = ener;
+            obj.mom = mom;
+        end
+
 
 %___________________________________________________________________________________________________ initialize
         function initialize(obj)
-            obj.viscosity.preliminary();
-            obj.radiation.preliminary();
-        end
-        
-%___________________________________________________________________________________________________ createFreezeArray
-% Initializes the freeze speed arrays for relaxed fluxing of the fluid variables.
-        function createFreezeArray(obj)
-            obj.freezeSpd     = FluxArray.empty(3,0);
-            obj.freezeSpdTVD = FluxArray.empty(3,0);
-            for i=1:3
-                obj.freezeSpd(i)    = FluxArray(ENUM.VECTOR(i), FluxArray.FREEZE, ...
-                                                obj.parent);
-                obj.freezeSpdTVD(i) = FluxArray(ENUM.VECTOR(i), FluxArray.FREEZE, ...
-                                                obj.parent);
+            for i = 1:numel(obj)
+                obj(i).viscosity.preliminary();
             end
         end
         
-%___________________________________________________________________________________________________ setFluxLimiters
-% Initializes the flux limiters array based on the enumerated input.
-        function setFluxLimiters(obj, limiters)
-            obj.limiter = cell(1,3);
-            fields      = {'x', 'y', 'z'};
-            for i=1:3
-                if isfield(limiters, fields{i});
-                    obj.limiter{i} = obj.parseFluxLimiterEnum(limiters.(fields{i}));
-                else
-                    obj.limiter{i} = @vanleerLimiter;
-                end
-            end
-        end
         
     end%PUBLIC
     
 %===================================================================================================    
     methods (Access = private) %                                                P R I V A T E    [M]
         
-%___________________________________________________________________________________________________ parseFluxLimiterEnum
-        function result = parseFluxLimiterEnum(obj, limiterEnum)
-            switch limiterEnum
-                case FluxLimiterEnum.VAN_LEER,      result = @vanleerLimiter;
-                case FluxLimiterEnum.SUPERBEE,      result = @superbeeLimiter;
-                case FluxLimiterEnum.MINMOD,        result = @minmodLimiter;
-                otherwise
-                    error(['Imogen:UnknownType: Unknown flux limiter type: ', limiterEnum]);
-            end
-        end
-    
         
     end%PROTECTED
         
