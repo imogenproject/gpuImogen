@@ -52,8 +52,6 @@ classdef RayleighTaylorInitializer < Initializer
             obj.bcMode.y            = 'mirror';
             obj.bcMode.z            = 'circ';
 
-            obj.bcInfinity          = 4;
-
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             obj.gravConstant        = 1;
@@ -85,7 +83,7 @@ classdef RayleighTaylorInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             potentialField = PotentialFieldInitializer();
             selfGravity = [];
@@ -113,7 +111,7 @@ classdef RayleighTaylorInitializer < Initializer
                 Pnode              = Y(1,1,1)*obj.rhoBottom*obj.gravConstant;
             else
                 Pnode              = obj.gravConstant*(Y0*obj.rhoBottom+(Y(1,1,1)-Y0)*obj.rhoTop);
-                  end
+            end
 
             obj.minMass = .0001*obj.rhoBottom;
 
@@ -133,11 +131,14 @@ classdef RayleighTaylorInitializer < Initializer
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5)) .* (1+cos(2*pi*obj.Kz*Z/.5))/ 8;
                 end
             else
-                w = (rand([GIS.pLocalRez(1) GIS.pLocalRez(3)])*-1) * obj.pertAmplitude;
+                w = (rand([GIS.pLocalRez(1) GIS.pLocalRez(3)])*-0.5) * obj.pertAmplitude;
+
                 for y = 1:GIS.pLocalRez(2); mom(2,:,y,:) = w; end
             end
-            mom(2,:,:,:) = squeeze(mom(2,:,:,:)).*mass;
+            mom(2,:,:,:) = squish(mom(2,:,:,:)).*mass;
 
+            % Don't perturb +y limit
+	    if GIS.edgeInterior(2,2) == 0; mom(2,:,(end-2):end,:) = 0; end
         
             % If doing magnetic R-T, turn on magnetic flux & set magnetic field & add magnetic energy
             if (obj.Bx ~= 0.0) || (obj.Bz ~= 0.0)
@@ -148,8 +149,10 @@ classdef RayleighTaylorInitializer < Initializer
 
             % Calculate Energy Density
             ener = ener/(obj.gamma - 1) ...
-            + 0.5*squeeze(sum(mom.*mom,1))./mass...        
-            + 0.5*squeeze(sum(mag.*mag,1));
+            + 0.5*squish(sum(mom.*mom,1))./mass...        
+            + 0.5*squish(sum(mag.*mag,1));
+
+            fluids = obj.stateToFluid(mass, mom, ener);
         end
     end%PROTECTED
         
