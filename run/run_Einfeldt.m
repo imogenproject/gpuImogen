@@ -1,7 +1,7 @@
 % Run Einfeldt Strong Rarefaction test.
 
 %--- Initialize test ---%
-grid = [1024 2 1];
+grid = [1024 1 1];
 run             = EinfeldtInitializer(grid);
 run.timeMax     = 0.1;
 run.iterMax     = round(5*run.timeMax*grid(1)); % This will give steps max ~ 1.2x required
@@ -46,16 +46,16 @@ run.ppSave.dim2 = 50;
 % Instructs the simulation to start with HLLC, then hop to HLL after 20 steps
 fm = FlipMethod();
   fm.iniMethod = 2; % hllc
-  fm.toMethod = 1; % hll
-  fm.atstep = 20;
+  fm.toMethod = 2; % hllc. hll = 1
+  fm.atstep = -1;
 run.peripherals{end+1} = fm;
 rp = RealtimePlotter();
   rp.plotmode = 1;
   rp.plotDifference = 0;
-  rp.insertPause = 1;
+  rp.insertPause = 0;
 
-  rp.iterationsPerCall = 5;
-  rp.firstCallIteration = 25;
+  rp.iterationsPerCall = 25;
+  rp.firstCallIteration = 1;
 run.peripherals{end+1} = rp;
 
 
