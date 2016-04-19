@@ -34,8 +34,12 @@ rp = RealtimePlotter();
   rp.plotDifference = 0;
   rp.insertPause = 0;
   rp.iterationsPerCall = 20;
-  rp.firstcallIteration = 1;
-run.peripherals{end+1} = rp;
+  rp.firstCallIteration = 1;
+%run.peripherals{end+1} = rp;
+
+fm = FlipMethod();
+fm.iniMethod = 3; % xin/jin
+run.peripherals{end+1} = fm;
 
 %--- Run tests ---%
 if (true)
