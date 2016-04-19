@@ -1,7 +1,7 @@
 % Run Sod shock tube test.
 
 %--- Initialize test ---%
-grid = [1024 2 1];
+grid = [1024 1 1];
 run             = SodShockTubeInitializer(grid);
 run.normal([1 0 0]);
 

@@ -1,7 +1,7 @@
-u% Run Shu Osher Tube test (Shock wave propagating through entropy wave)
+% Run Shu Osher Tube test (Shock wave propagating through entropy wave)
 
 %--- Initialize test ---%
-grid = [1024 2 1];
+grid = [1024 1 1];
 run             = ShuOsherTubeInitializer(grid);
 run.timeMax     = 0.178;
 run.iterMax     = round(10*run.timeMax*grid(1)); % This will give steps max ~ 1.2x required
