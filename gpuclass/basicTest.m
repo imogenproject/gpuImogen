@@ -4,7 +4,7 @@ function result = basicTest(multidevice, REZ)
 
 x = GPUManager.getInstance();
 
-if nargin == 1; REZ = [449 875]; end
+if nargin == 1; REZ = [187 330 84]; end
 
 disp('==================== TESTING FUNDAMENTAL UPLOAD/DOWNLOAD/COPY FUNCTIONALITY');
 % SINGLE DEVICE UPLOAD/DOWNLOAD
