@@ -1,6 +1,6 @@
 % Run 2D Double Blast Wave test.
 
-grid = [1024 2 1];
+grid = [1024 1 1];
 %--- Initialize test ---%
 run             = DoubleBlastInitializer(grid);
 run.timeMax     = 0.038;
