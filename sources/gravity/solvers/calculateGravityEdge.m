@@ -64,23 +64,23 @@ end
 phiSet = bcfinder(rhos, poss, bvectorSet, coarseningConstant, dGrid{1});
 
 if mirrorZ == false;
-    lowerYZ = squeeze(phiSet{1});
-    upperYZ = squeeze(phiSet{2});
+    lowerYZ = squish(phiSet{1});
+    upperYZ = squish(phiSet{2});
 
-    lowerXZ = squeeze(phiSet{3});
-    upperXZ = squeeze(phiSet{4});
+    lowerXZ = squish(phiSet{3});
+    upperXZ = squish(phiSet{4});
 
-    lowerXY = squeeze(phiSet{5});
-    upperXY = squeeze(phiSet{6});
+    lowerXY = squish(phiSet{5});
+    upperXY = squish(phiSet{6});
 else
-    lowerYZ = squeeze(phiSet{1}+phiSet{7}(1,:,end:-1:1) );
-    upperYZ = squeeze(phiSet{2}+phiSet{8}(1,:,end:-1:1) );
+    lowerYZ = squish(phiSet{1}+phiSet{7}(1,:,end:-1:1) );
+    upperYZ = squish(phiSet{2}+phiSet{8}(1,:,end:-1:1) );
 
-    lowerXZ = squeeze(phiSet{3}+phiSet{9}(:,1,end:-1:1) );
-    upperXZ = squeeze(phiSet{4}+phiSet{10}(:,1,end:-1:1) );
+    lowerXZ = squish(phiSet{3}+phiSet{9}(:,1,end:-1:1) );
+    upperXZ = squish(phiSet{4}+phiSet{10}(:,1,end:-1:1) );
 
-    lowerXY = squeeze(phiSet{5}+phiSet{11});
-    upperXY = squeeze(phiSet{6}+phiSet{12});
+    lowerXY = squish(phiSet{5}+phiSet{11});
+    upperXY = squish(phiSet{6}+phiSet{12});
 end
 
 lowerXZ(1,:) = 0; lowerXZ(N(1),:) = 0;
@@ -113,19 +113,19 @@ preFactors = [2, 1, 1, 1, 1, 0, 0, 0, 0];
 %tic;
 for i=1:9
     bcVals = circshift(lowerYZ,shifts(i,:)); 
-    massGrav(1,:,:) = squeeze(massGrav(1,:,:)) + preFactors(i) * bcVals(2:Nm(2),2:Nm(3));
+    massGrav(1,:,:) = squish(massGrav(1,:,:)) + preFactors(i) * bcVals(2:Nm(2),2:Nm(3));
     bcVals = circshift(upperYZ,shifts(i,:)); 
-    massGrav(Nmm(1),:,:) = squeeze(massGrav(Nmm(1),:,:)) + preFactors(i) * bcVals(2:Nm(2),2:Nm(3));
+    massGrav(Nmm(1),:,:) = squish(massGrav(Nmm(1),:,:)) + preFactors(i) * bcVals(2:Nm(2),2:Nm(3));
     
     bcVals = circshift(lowerXZ,shifts(i,:)); 
-    massGrav(:,1,:) = squeeze(massGrav(:,1,:)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(3));
+    massGrav(:,1,:) = squish(massGrav(:,1,:)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(3));
     bcVals = circshift(upperXZ,shifts(i,:)); 
-    massGrav(:,Nmm(2),:) = squeeze(massGrav(:,Nmm(2),:)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(3));
+    massGrav(:,Nmm(2),:) = squish(massGrav(:,Nmm(2),:)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(3));
     
     bcVals = circshift(lowerXY,shifts(i,:)); 
-    massGrav(:,:,1) = squeeze(massGrav(:,:,1)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(2));
+    massGrav(:,:,1) = squish(massGrav(:,:,1)) + preFactors(i) * bcVals(2:Nm(1),2:Nm(2));
     bcVals = circshift(upperXY,shifts(i,:)); 
-    massGrav(:,:,Nmm(3)) = squeeze(massGrav(:,:,Nmm(3))) + preFactors(i) * bcVals(2:Nm(1),2:Nm(2));
+    massGrav(:,:,Nmm(3)) = squish(massGrav(:,:,Nmm(3))) + preFactors(i) * bcVals(2:Nm(1),2:Nm(2));
 end
 
 rhsForce = .5*mass.array + (circ_shift(mass.array,1,1) + circ_shift(mass.array,1,-1) ...
