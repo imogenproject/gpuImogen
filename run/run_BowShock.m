@@ -51,8 +51,8 @@ run.activeSlices.xy  = true;
 run.ppSave.dim2     = 100;
 %run.ppSave.dim3     = 20;
 
-rp = realtimePlotter();
-  rp.plotMode = 4;
+rp = RealtimePlotter();
+  rp.plotmode = 4;
   rp.plotDifference = 0;
   rp.insertPause = 0;
   rp.firstCallIteration = 1;
