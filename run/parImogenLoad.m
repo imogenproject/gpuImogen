@@ -52,10 +52,12 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     end
 
     mpi_barrier(); % If testing n > 1 procs on one node, don't let anyone reset GPUs before we're done.
+
     if shutDownEverything
-        GPU_ctrl('reset');
-        mpi_finalize();
-        clear all;
+        clear all;         % Trashcan all leftover arrays, can now safely...
+        GPU_ctrl('reset'); % Trashcan CUDA context and
+        mpi_finalize();    % Trashcan MPI runtime
+	quit
     end
 
 
