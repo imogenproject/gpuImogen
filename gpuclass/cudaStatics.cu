@@ -99,7 +99,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, 0, "boundaryData");
 	if(boundaryData == NULL) {
-		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not a FluidArray/MagnetArray/InitializedArray?\n");
+		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
 		return ERROR_INVALID_ARGS;
 	}
 
@@ -135,9 +135,9 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 	}
 
 	/* Every call results in applying specials */
-	if(statics.numel > 0) {
+	if(staticsNumel > 0) {
 		PAR_WARN(phi);
-		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, statics.numel, statics.dim[0]);
+		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
 		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
 		if(worked != SUCCESSFUL) return worked;
 	}

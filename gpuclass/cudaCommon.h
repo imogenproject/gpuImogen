@@ -1,3 +1,5 @@
+#ifndef CUDACOMMONH_
+
 #include "parallel_halo_arrays.h"
 
 // These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
@@ -62,13 +64,8 @@ typedef struct {
 #define MGA_BOUNDARY_ZMINUS 16
 #define MGA_BOUNDARY_ZPLUS 32
 
-// Templates seem to dislike MPI_Op? Switches definitely do.
-typedef enum { OP_SUM, OP_PROD, OP_MAX, OP_MIN } MGAReductionOperator;
+enum MGAReductionOperator { MGA_OP_SUM, MGA_OP_PROD, MGA_OP_MAX, MGA_OP_MIN };
 
-// If the haloSize parameter is set to this,
-// then each gpu has a *.dims[] size array
-// This occurs if e.g. a reduction occurs along the partition direction
-#define PARTITION_CLONED -1
 
 typedef struct {
     int dim[3];
@@ -93,10 +90,10 @@ typedef struct {
     int permtag;
     int currentPermutation[3];
 
-    int nGPUs;
-    int deviceID[MAX_GPUS_USED];
-    double *devicePtr[MAX_GPUS_USED];
-    int partNumel[MAX_GPUS_USED];
+    int nGPUs; // Number of devices this MGA lives on: [1, ..., MAX_GPUS_USED].
+    int deviceID[MAX_GPUS_USED]; // for indexes [0, ..., MAX_GPUS_USED-1], appropriate value for cudaSetDevice() etc
+    double *devicePtr[MAX_GPUS_USED]; // for indices [0, ..., MAX_GPUS_USED-1], device data pointers allocated on the matching device.
+    int partNumel[MAX_GPUS_USED]; // Number of elements allocated per devicePtr (i.e. includes halo).
 
     // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
     int circularBoundaryBits;
@@ -104,7 +101,9 @@ typedef struct {
     // Continuing my long tradition of bad boundary condition handling,
     // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
     const mxArray *matlabClassHandle;
-    } MGArray; 
+    int mlClassHandleIndex;
+    } MGArray;
+
 /* An in-place overwrite of an MGArray is a nontrivial thing. The following explains how to do it successfully:
  *
  * foo(MGArray *phi) {
@@ -126,7 +125,8 @@ typedef struct {
  *
  */
 
-int64_t *getGPUTypeTag (const mxArray *gputype); // matlab -> c
+int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer); // matlab -> c
+int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex);
 cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
 bool     sanityCheckTag(const mxArray *tag);     // sanity
 
@@ -139,13 +139,29 @@ int      deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
 void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 
 /* MultiGPU Array allocation stuff */
-int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // autoloop ML packed arrays -> MGArrays
+int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // Extracts a series of Matlab handles into MGArrays
+int      MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArray *mg);
 MGArray *MGA_allocArrays(int N, MGArray *skeleton);
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
 void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
 int     MGA_delete(MGArray *victim);
 
 void MGA_sledgehammerSequentialize(MGArray *q);
+
+/* MultiGPU reduction calculators */
+
+int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator operate, int dir, int partition);
+int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute);
+
+int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute);
+int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, pParallelTopology topology);
+
+int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate);
+int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, pParallelTopology topology);
+
+// Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
+void pullMGAPointers( MGArray *m, int N, int i, double **dst);
+pParallelTopology topoStructureToC(const mxArray *prhs);
 
 /* MultiGPU Array I/O */
 int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
@@ -154,18 +170,8 @@ int  MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo);
 int  MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
 int  MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 
-/* MultiGPU "extensions" for mpi reduce type stuff */
-// Perform reduce along 'dir' direction only
-int  MGA_localPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute);
-int  MGA_localElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute);
-
-int  MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
-int  MGA_globalElementwiseReduce(MGArray *in, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo);
-
-// Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
-void pullMGAPointers( MGArray *m, int N, int i, double **dst);
-
-int  MGA_reduceClonedArray(MGArray *a, MPI_Op operate, int redistribute);
+MGAReductionOperator MGAReductionOperator_mpi2mga(MPI_Op mo);
+MPI_Op MGAReductionOperator_mga2mpi(MGAReductionOperator op);
 
 /* Functions for managing halos of MGA partitioned data */
 int MGA_exchangeLocalHalos(MGArray *a, int n);
@@ -365,4 +371,4 @@ int globAddr = FD_MEMSTEP * addrY + OTHER_MEMSTEP * addrX;\
 \
 int tileAddr = threadIdx.y + TILEDIM_Y * threadIdx.x + 1;\
 
-
+#endif

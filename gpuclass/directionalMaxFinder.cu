@@ -7,6 +7,8 @@
 #endif
 #include "mex.h"
 
+#include "mpi.h"
+
 // CUDA
 #include "cuda.h"
 #include "cuda_runtime.h"
@@ -98,57 +100,23 @@ switch(nrhs) {
   free(out);
 
   } break;
-  case 1: {
+  case 1: { // NOTE: This function has been 80% uncrapped by the new MGA_*ReduceScalar function
     MGArray a;
     MGA_accessMatlabArrays(prhs, 0, 0, &a);
 
-    dim3 blocksize, gridsize;
-    blocksize.x = 256; blocksize.y = blocksize.z = 1;
-
-    gridsize.x = 32; // 8K threads ought to keep the bugger busy
-    gridsize.y = gridsize.z =1;
-
-    // Allocate nGPUs * gridsize elements of pinned memory
-    // Results will be conveniently waiting on the CPU for us when we're done
-    double *blkA[a.nGPUs];
-
-    int i;
-    for(i = 0; i < a.nGPUs; i++) {
-      cudaSetDevice(a.deviceID[i]);
-      CHECK_CUDA_ERROR("calling cudaSetDevice()");
-      cudaMallocHost(&blkA[i], gridsize.x * sizeof(double));
-      CHECK_CUDA_ERROR("cudaMallocHost");
-      cukern_GlobalMax<<<gridsize, blocksize>>>(a.devicePtr[i], a.partNumel[i], blkA[i]);
-      CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, &a, i, "directionalMaxFinder(phi)");
-    }
+    // FIXME: This lacks the proper topology to pass to the global reducer so we "fake" it here
+    double maxval;
+    int returnCode = MGA_globalReduceScalar(&a, &maxval, MGA_OP_MAX, NULL);
 
     mwSize dims[2];
     dims[0] = 1;
     dims[1] = 1;
     plhs[0] = mxCreateNumericArray (2, dims, mxDOUBLE_CLASS, mxREAL);
 
-    // Since we get only 32*nGPUs elements back, not worth another kernel invocation
-    double nodeMax = -1e37;
-    int devCount = 0; // track which partition we're getting results from
-
-    for(devCount = 0; devCount < a.nGPUs; devCount++) {
-        cudaSetDevice(a.deviceID[devCount]);
-        CHECK_CUDA_ERROR("cudaSetDevice()");
-        cudaDeviceSynchronize();
-        CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
-        if(nodeMax == -1e37) nodeMax = blkA[0][0]; // Special first case: initialize nodeMax
-
-        for(i = 0; i < gridsize.x; i++)
-          if(blkA[devCount][i] > nodeMax) nodeMax = blkA[devCount][i];
-        cudaFreeHost(blkA[devCount]);
-        CHECK_CUDA_ERROR("cudaFreeHost");
-    }
-
-
     // Now apply result to all nodes
     double *globalMax = mxGetPr(plhs[0]);
 
-    MPI_Allreduce((void *)&nodeMax, (void *)globalMax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce((void *)&maxval, (void *)globalMax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   } break;
   case 5: {
     // Get input arrays: [rho, c_s, px, py, pz]

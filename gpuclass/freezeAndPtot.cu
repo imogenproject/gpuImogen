@@ -27,18 +27,19 @@
 #define BLOCKDIM 64
 #define MAXPOW   5
 
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	// At least 2 arguments expected
 	// Input and result
-	if(nrhs!=11)
-		mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, direct=1, csmin)");
+	if(nrhs!=12)
+		mexErrMsgTxt("Wrong number of arguments. Call using [ptot freeze] = FreezeAndPtot(mass, ener, momx, momy, momz, bz, by, bz, gamma, direct=1, csmin, topology)");
 
 	if(nlhs == 0) mexErrMsgTxt("0 LHS argument: Must return at least Ptotal");
 	if(nlhs > 2)  mexErrMsgTxt(">2 LHS arguments: Can only return [Ptot c_freeze]");
 
 	CHECK_CUDA_ERROR("entering freezeAndPtot");
+
+	pParallelTopology topology = topoStructureToC(prhs[11]);
 
 	int ispurehydro = (int)*mxGetPr(prhs[9]);
 
@@ -61,14 +62,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray *cfOut;
 
 	clone = fluid[0];
-	clone.dim[0] = 1;
+	if(fluid->partitionDir == PARTITION_X) {
+		clone.dim[0] = fluid->nGPUs;
+	} else {
+		clone.dim[0] = 1;
+	}
 	clone.dim[1] = arraySize.y;
 	clone.dim[2] = arraySize.z;
-	// If partitioned in the X direction it must be cloned rather than split
-	if((clone.nGPUs > 1) && (clone.partitionDir == PARTITION_X)) clone.haloSize = PARTITION_CLONED;
+
+	clone.haloSize = 0;
 
 	POut = MGA_createReturnedArrays(plhs, 1, fluid);
-	cfOut= MGA_createReturnedArrays(plhs+1, 1, &clone);
+	MGArray *cfLocal;
+	cfLocal= MGA_allocArrays(1, &clone);
 
 	double hostgf[6];
 	double gam = *mxGetPr(prhs[8]);
@@ -101,7 +107,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					fluid[2].devicePtr[i],
 					fluid[3].devicePtr[i],
 					fluid[4].devicePtr[i],
-					cfOut->devicePtr[i], POut->devicePtr[i], sub[3]); 
+					cfLocal->devicePtr[i], POut->devicePtr[i], sub[3]);
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Freeze speed hydro");
 		}
 	} else {
@@ -117,16 +123,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 					fluid[5].devicePtr[i],
 					fluid[6].devicePtr[i],
 					fluid[7].devicePtr[i],
-					cfOut->devicePtr[i], POut->devicePtr[i], sub[3]);
+					cfLocal->devicePtr[i], POut->devicePtr[i], sub[3]);
 			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "freeze speed MHD");
 		}
 
 	}
 
-	if((fluid->nGPUs > 1) && (fluid->partitionDir == PARTITION_X)) {
-		MGA_reduceClonedArray(cfOut, MPI_MAX, 1);
-	}
+
+	cfOut = NULL;
+
+	MGA_globalReduceDimension(cfLocal, &cfOut, MGA_OP_MAX, 1, 0, 1, topology);
+
+	MGA_delete(cfLocal);
+
+	MGA_returnOneArray(plhs+1, cfOut);
+
 	free(POut);
+	free(cfLocal);
 	free(cfOut);
 
 }

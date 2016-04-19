@@ -10,7 +10,6 @@
 
 #include "flux.h"
 
-
 int setFluidBoundaries(MGArray *x, int nArrays, int dir);
 
 int performFluidUpdate_3D(MGArray *fluid, pParallelTopology parallelTopo, int order, int stepNumber, double *lambda, double gamma, double stepMethod)
@@ -49,7 +48,7 @@ if(flag_1D) {
 	stepParameters.lambda = lambda[0];
 	stepParameters.stepDirection = nowDir;
 
-	returnCode = performFluidUpdate_1D(fluid, stepParameters);
+	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = setFluidBoundaries(fluid, 5, nowDir);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -67,7 +66,7 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
-			returnCode = performFluidUpdate_1D(fluid, stepParameters);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundaries(fluid, 5, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -92,7 +91,7 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
-			returnCode = performFluidUpdate_1D(fluid, stepParameters);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundaries(fluid, 5, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
