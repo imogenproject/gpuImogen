@@ -290,8 +290,10 @@ classdef CorrugationAnalyzer < Analyzer
             %--- Get the x-compression term ---%
             velocity = data.mom(1).dataClone();
             velocity.array =  velocity.array ./ data.mass.array;
-            compress = velocity.calculate2PtDerivative(1,data.run.dGrid{1});
-            compress = min(compress, 0);
+% FIXME: Removed the calculate2PtDerivative from ImogenArray class
+% But the B field is dead so this is unlikely to be run again anyway
+            %compress = velocity.calculate2PtDerivative(1,data.run.dGrid{1});
+            %compress = min(compress, 0);
 
             %--- Calculate growth parameter ---%
             %       The growth parameter is calculated according to the Stone & Edeleman '93 paper.
@@ -311,7 +313,7 @@ classdef CorrugationAnalyzer < Analyzer
             %--- Initialization ---%
             grid            = size(inputData.mass);
             freq            = zeros(1,grid(2));
-            shockSlice      = squeeze(inputData.mass(ceil(grid(1)/2),:,:));
+            shockSlice      = squish(inputData.mass(ceil(grid(1)/2),:,:));
             
             %--- Y-directed FFTs ---%
             for j=1:grid(2)

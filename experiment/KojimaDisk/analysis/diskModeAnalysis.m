@@ -16,7 +16,7 @@ for N = 1:numel(frameset)
   fprintf('Azimuthal FFT... ');
   mft = fft(diskUnwrap(cframe.mass),[],2); % Take the azimuthal FFT
 
-  modes(:,:,:,N) = squeeze(mft(:,1:24,:));
+  modes(:,:,:,N) = squish(mft(:,1:24,:));
 
 save('modeAnalysis.mat','modes');
 

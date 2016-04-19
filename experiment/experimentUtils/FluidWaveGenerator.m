@@ -70,17 +70,17 @@ classdef FluidWaveGenerator < handle
 
         function vx = waveVx(self)
             if numel(self.waveVel) == 0; vx = 0; return; end
-            vx = squeeze(self.waveVel(1,:,:,:));
+            vx = squish(self.waveVel(1,:,:,:));
         end 
 
         function vy = waveVy(self)
             if numel(self.waveVel) == 0; vy = 0; return; end
-            vy = squeeze(self.waveVel(2,:,:,:));
+            vy = squish(self.waveVel(2,:,:,:));
         end 
 
         function vz = waveVz(self)
             if numel(self.waveVel) == 0; vz = 0; return; end
-            vz = squeeze(self.waveVel(3,:,:,:));
+            vz = squish(self.waveVel(3,:,:,:));
         end
 
         
@@ -88,13 +88,13 @@ classdef FluidWaveGenerator < handle
         % mom = waveMomentum() is a utility that computes the conserved momentum variable that
         % Imogen runs on from the wave density/velocity functions
             mom = zeros(size(self.waveVel));
-            mom(1,:,:,:) = self.waveRho.*squeeze(self.waveVel(1,:,:,:));
-            mom(2,:,:,:) = self.waveRho.*squeeze(self.waveVel(2,:,:,:));
-            mom(3,:,:,:) = self.waveRho.*squeeze(self.waveVel(3,:,:,:));
+            mom(1,:,:,:) = self.waveRho.*squish(self.waveVel(1,:,:,:));
+            mom(2,:,:,:) = self.waveRho.*squish(self.waveVel(2,:,:,:));
+            mom(3,:,:,:) = self.waveRho.*squish(self.waveVel(3,:,:,:));
         end
         
         function Etot = waveTotalEnergy(self)
-            Etot = .5*squeeze(sum(self.waveVel.^2, 1)) .* self.waveRho + self.wavePressure / (self.pGamma-1);
+            Etot = .5*squish(sum(self.waveVel.^2, 1)) .* self.waveRho + self.wavePressure / (self.pGamma-1);
         end
 % I'm prototyping, we'll check for sanity once this turkey takes off
         % Evaluate sonic waves propagating in the direction of k

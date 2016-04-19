@@ -91,8 +91,8 @@ classdef OrszagTangVortexInitializer < Initializer
             mag(2,:,:)      =   mag0*sin( 4*pi*x/(grid(1)-1) );
 
             ener        = 5/(12*pi)/(obj.gamma - 1) ...                % internal
-                            + 0.5*squeeze(sum(mom.*mom,1)) ./ mass ...  % kinetic
-                            + 0.5*squeeze(sum(mag.*mag));               % magnetic
+                            + 0.5*squish(sum(mom.*mom,1)) ./ mass ...  % kinetic
+                            + 0.5*squish(sum(mag.*mag));               % magnetic
         end
         
     end%PROTECTED

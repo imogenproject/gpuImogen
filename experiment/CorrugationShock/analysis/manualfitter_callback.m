@@ -214,17 +214,17 @@ end % function
 
 function linedat = getWline(dq, ky, kz, prepost)
 if prepost == 1
-    linedat = squeeze(dq(ky, kz, 2:20,:));
+    linedat = squish(dq(ky, kz, 2:20,:));
 else
-    linedat = squeeze(dq(ky, kz, (end-15):(end-1),:));
+    linedat = squish(dq(ky, kz, (end-15):(end-1),:));
 end
 end
 
 function linedat = getKxline(dq, ky, kz, prepost, tframes)
 if prepost == 1
-    linedat = squeeze(dq(ky, kz, :, tframes)).';
+    linedat = squish(dq(ky, kz, :, tframes)).';
 else
-    linedat = squeeze(dq(ky, kz, :, tframes)).';
+    linedat = squish(dq(ky, kz, :, tframes)).';
 end
 
 end

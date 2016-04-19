@@ -87,7 +87,7 @@ disp('There should be help here... I''ll write some once the code is not evolvin
         t0 = input('Input preferred time normalization factor: ');
         tau = obj.frameT / t0;
 
-        xfrontmean = mean(squeeze(obj.frontX),2);
+        xfrontmean = mean(squish(obj.frontX),2);
         
         dfluc = xfrontmean - mean(xfrontmean);
         % Track the locations of zeros

@@ -62,7 +62,7 @@ classdef MagneticShockTubeInitializer < Initializer
             obj.yField          = true;
             obj.zField          = false;
             
-            obj.operateOnInput(input, [1024 3 3]);
+            obj.operateOnInput(input, [512 1 1]);
         end
                
         
@@ -111,8 +111,8 @@ classdef MagneticShockTubeInitializer < Initializer
             %--- Calculate energy ---%
             %       This problem assumes the LHS of the shock has a pressure of 1 and the RHS has
             %       a pressure of 20. Internal energies are calculated based on these values.
-            ener             = 0.5*squeeze(sum(mom.*mom,1))./mass ...   % kinetic energy
-                             + 0.5*squeeze(sum(mag.*mag,1));            % magnetic energy
+            ener             = 0.5*squish(sum(mom.*mom,1))./mass ...   % kinetic energy
+                             + 0.5*squish(sum(mag.*mag,1));            % magnetic energy
             ener(indeces{:}) = ener(indeces{:}) + 1/(obj.gamma - 1)*ones(size(ener(indeces{:})));
             indeces{i}       = 1:(indeces{i}(1)-1);
             ener(indeces{:}) = ener(indeces{:}) + 20/(obj.gamma - 1)*ones(size(ener(indeces{:})));

@@ -20,16 +20,16 @@ dy = 20/(20+resy);
 xvals = (1+minrad):cframe.parallel.globalDims(1)/2;
 
   subplot(2,2,1,'position',[(.25-.5*f0) (.5+dy) f0 yfrac]);
-    imagesc(squeeze(abs(mft(xvals,1,:)))' ); title('Mode 0 amplitude.','fontsize',16);
+    imagesc(squish(abs(mft(xvals,1,:)))' ); title('Mode 0 amplitude.','fontsize',16);
     axis off; colorbar('EastOutside');
   subplot(2,2,2,'position',[(.75-.5*f0) (.5+dy) f0 yfrac]);
-    imagesc(squeeze(abs(mft(xvals,2,:)))' ); title('Mode 1 amplitude.','fontsize',16);
+    imagesc(squish(abs(mft(xvals,2,:)))' ); title('Mode 1 amplitude.','fontsize',16);
     axis off; colorbar('EastOutside')
   subplot(2,2,3,'position',[(.25-.5*f0) (dy) f0 yfrac]);
-    imagesc(squeeze(abs(mft(xvals,3,:)))' ); title('Mode 2 amplitude.','fontsize',16);
+    imagesc(squish(abs(mft(xvals,3,:)))' ); title('Mode 2 amplitude.','fontsize',16);
     axis off; colorbar('EastOutside');
   subplot(2,2,4,'position',[(.75-.5*f0) (dy) f0 yfrac]);
-    imagesc(squeeze(abs(mft(xvals,4,:)))' ); title('Mode 3 amplitude.','fontsize',16);
+    imagesc(squish(abs(mft(xvals,4,:)))' ); title('Mode 3 amplitude.','fontsize',16);
     axis off; colorbar('EastOutside');
 
 end
