@@ -1,26 +1,29 @@
-function flux(run, mass, mom, ener, mag, order)
-% This function manages the fluxing routines for the split code by managing the appropriate fluxing 
-% order to try and average out any biasing caused by the Strang splitting.
+function flux(run, fluid, mag, order)
+% This function manages the fluxing routines for the dimension-split convection code.
+% By running through all possible splitting sequences it attempts to avoid the potential
+% bias of any one Strang splitting.
 %
 %>< run         run manager object                                                      ImogenManager
-%>< mass        mass density                                                            FluidArray
-%>< mom         momentum density                                                        FluidArray(3)
-%>< ener        energy density                                                          FluidArray
+%>< fluid       Array of fluid dynamic states                                           FluidManager(N)
 %>< mag         magnetic field                                                          MagnetArray(3)
 %>> order       direction of flux sweep (1 forward/-1 backward)                         int     +/-1
 
-    isOneDimensional = (numel(find(mass.gridSize > 3)) == 1);
+    dims = fluid(1).mass.gridSize;
+
+    isOneDimensional = (numel(find(dims > 2)) == 1);
     if isOneDimensional
-	relaxingFluid(run, mass, mom, ener, mag, 1);
+        for gas = 1:size(fluid)
+	    relaxingFluid(run, fluid(gas).mass, fluid(gas).mom, fluid(gas).ener, mag, 1);
+        end
         return;
     end
     %-----------------------------------------------------------------------------------------------
     % Set flux direction and magnetic index components
     %-------------------------------------------------    
 
-    if mass.gridSize(3) > 1
+    if dims(3) > 2 % three dimensional: We require 3 cells to be fluxable
         sweep = mod(run.time.iteration + 3*(order > 0),6)+1;
-    else
+    else           % two dimensional
         sweep = mod(run.time.iteration + (order<0), 2)+1;
     end
 
@@ -38,7 +41,12 @@ function flux(run, mass, mom, ener, mag, order)
    % magneticIndices = [3 2; 3 1; 2 1];
    % magneticIndices = magneticIndices(directVec,:);
 
-    g0 = mass.gridSize;
+
+% FI1ME: The subcalls should be rewritten to accept vectors of fluids...
+for gas = 1:size(fluid)
+    mass = fluid(gas).mass;
+    mom  = fluid(gas).mom; 
+    ener = fluid(gas).ener;
 
     %===============================================================================================
     if (order > 0) %                             FORWARD FLUXING
@@ -46,7 +54,7 @@ function flux(run, mass, mom, ener, mag, order)
         xchgIndices(run.pureHydro, mass, mom, ener, mag, preperm(sweep));
         for n = [1 2 3]
             % Skip identity operations
-             if g0(fluxcall(n,sweep)) > 3
+             if dims(fluxcall(n,sweep)) > 2
                 relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
                 xchgFluidHalos(mass, mom, ener, fluxcall(n, sweep));
 	    end
@@ -72,7 +80,7 @@ function flux(run, mass, mom, ener, mag, order)
 %            end
         for n = [1 2 3]
             % Skip identity operations
-            if g0(fluxcall(n,sweep)) > 3;
+            if dims(fluxcall(n,sweep)) > 2;
                 relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
                 xchgFluidHalos(mass, mom, ener, fluxcall(n, sweep));
             end
@@ -86,6 +94,7 @@ function flux(run, mass, mom, ener, mag, order)
 
  %       xchgIndices(run.pureHydro, mass, mom, ener, mag, postperm(sweep));
     end
+end
 
 end
 
@@ -96,7 +105,6 @@ s = { mass, ener, mom(1), mom(2), mom(3) };
 
 for i = 1:5
     s{i}.arrayIndexExchange(toex, 1);
-    s{i}.store.arrayIndexExchange(toex, 0);
 end
 
 if isFluidOnly == 0
