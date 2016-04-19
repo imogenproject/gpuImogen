@@ -4,7 +4,7 @@ function [context topo] = fakeParallelStart()
 % program.
 context.rank = 0;
 context.size = 1;
-context.comm = 0;
+context.comm = 3;
 context.request = 0;
 context.error = 0;
 
