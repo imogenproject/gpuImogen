@@ -135,37 +135,37 @@ classdef StaticsInitializer < handle
         function setFluid_allConstantBC(obj, mass, ener, mom, facenumber)
             obj.setConstantBC(ENUM.MASS, ENUM.SCALAR,   obj.CELLVAR, mass, facenumber);
             obj.setConstantBC(ENUM.ENER, ENUM.SCALAR,   obj.CELLVAR, ener, facenumber);
-            obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(1), obj.CELLVAR, squeeze(mom(1,:,:,:)), facenumber);
-            obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(2), obj.CELLVAR, squeeze(mom(2,:,:,:)), facenumber);
+            obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(1), obj.CELLVAR, squish(mom(1,:,:,:)), facenumber);
+            obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(2), obj.CELLVAR, squish(mom(2,:,:,:)), facenumber);
             if size(mom,4) > 1
-                obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(3), ENUM.CELLVAR, squeeze(mom(3,:,:,:)), facenumber);
+                obj.setConstantBC(ENUM.MOM, ENUM.VECTOR(3), ENUM.CELLVAR, squish(mom(3,:,:,:)), facenumber);
             end
 
         end
 
         function setMag_allConstantBC(obj, mag, facenumber)
-            obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(1), obj.CELLVAR, squeeze(mag(1,:,:,:)), facenumber);
-            obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(2), obj.CELLVAR, squeeze(mag(2,:,:,:)), facenumber);
+            obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(1), obj.CELLVAR, squish(mag(1,:,:,:)), facenumber);
+            obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(2), obj.CELLVAR, squish(mag(2,:,:,:)), facenumber);
             if size(mag,4) > 1
-                obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(3), ENUM.CELLVAR, squeeze(mag(3,:,:,:)), facenumber);
+                obj.setConstantBC(ENUM.MAG, ENUM.VECTOR(3), ENUM.CELLVAR, squish(mag(3,:,:,:)), facenumber);
             end
         end
 
         function setFluid_allFadeBC(obj, mass, ener, mom, facenumber, bcinf)
             obj.setFadeBC(ENUM.MASS, ENUM.SCALAR,   obj.CELLVAR, mass, facenumber, bcinf);
             obj.setFadeBC(ENUM.ENER, ENUM.SCALAR,   obj.CELLVAR, ener, facenumber, bcinf);
-            obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(1), obj.CELLVAR, squeeze(mom(1,:,:,:)), facenumber, bcinf);
-            obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(2), obj.CELLVAR, squeeze(mom(2,:,:,:)), facenumber, bcinf);
+            obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(1), obj.CELLVAR, squish(mom(1,:,:,:)), facenumber, bcinf);
+            obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(2), obj.CELLVAR, squish(mom(2,:,:,:)), facenumber, bcinf);
             if size(mom,4) > 1
-                obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(3), ENUM.CELLVAR, squeeze(mom(3,:,:,:)), facenumber, bcinf);
+                obj.setFadeBC(ENUM.MOM, ENUM.VECTOR(3), ENUM.CELLVAR, squish(mom(3,:,:,:)), facenumber, bcinf);
             end
         end
 
         function setMag_allFadeBC(obj, mag, facenumber, bcinf)
-            obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(1), obj.CELLVAR, squeeze(mag(1,:,:,:)), facenumber, bcinf);
-            obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(2), obj.CELLVAR, squeeze(mag(2,:,:,:)), facenumber, bcinf);
+            obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(1), obj.CELLVAR, squish(mag(1,:,:,:)), facenumber, bcinf);
+            obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(2), obj.CELLVAR, squish(mag(2,:,:,:)), facenumber, bcinf);
             if size(mag,4) > 1
-                obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(3), ENUM.CELLVAR, squeeze(mag(3,:,:,:)), facenumber, bcinf);
+                obj.setFadeBC(ENUM.MAG, ENUM.VECTOR(3), ENUM.CELLVAR, squish(mag(3,:,:,:)), facenumber, bcinf);
             end
         end
 
@@ -194,44 +194,6 @@ classdef StaticsInitializer < handle
             inds = obj.indexSetForVolume(xset, yset, zset);
 
             obj.addStatics(inds, array(inds(:,1)));
-
-            obj.associateStatics(varID, component, fieldID, numel(obj.indexSet), numel(obj.valueSet), numel(obj.coeffSet));
-        end
-
-        % DO NOT USE YET
-        function setFadeBC(obj, varID, component, fieldID, array, facenumber, bcInfinity)
-            vmap = obj.mapVaridToIdx(varID, component);
-
-            xset=[]; yset=[]; zset=[];
-            coeff = [];
-            AS = size(array); if numel(AS) == 2; AS(3) = 1; end
-            switch facenumber
-                case 1; xset=1:bcInfinity;
-                        yset=1:AS(2); zset=1:AS(3); % minus X
-                        coeff = ndgrid(1:bcInfinity, yset, zset);
-                case 2; xset=AS(1):-1:(AS(1)-bcInfinity+1);
-                        yset=1:AS(2); zset=1:AS(3);% plux  X
-                        coeff = ndgrid(bcInfinity:-1:1, yset, zset);
-
-                case 3; xset=1:AS(1); % minus Y
-                        yset=1:bcInfinity; zset=1:AS(3);
-                        [drop1 coeff drop2] = ndgrid(xset, 1:bcInfinity, zset);
-                case 4; xset=1:AS(1); % plus  Y
-                        yset=AS(2):-1:(AS(2)-bcInfinity+1); zset=1:AS(3);
-                        [drop1 coeff drop2] = ndgrid(xset, bcInfinity:-1:1, zset);
-
-                case 5; xset=1:AS(1); yset=1:AS(2); % minus Z
-                        zset=1:bcInfinity;
-                        [drop1 drop2 coeff] = ndgrid(xset, yset, 1:bcInfinity);
-                case 6; xset=1:AS(1); yset=1:AS(2); % plus  Z
-                        zset=AS(3):-1:(AS(3)-bcInfinity+1);
-                        [drop1 drop2 coeff] = ndgrid(xset, yset, bcInfinity:-1:1);
-            end
-
-            inds = obj.indexSetForVolume(xset, yset, zset);
-            coeff= pchip([0 ceil(bcInfinity/4) round(bcInfinity/2) (bcInfinity-1) bcInfinity], [1 1 .02 0 0], coeff); 
-            
-            obj.addStatics(inds, array(inds(:,1)), coeff(:));
 
             obj.associateStatics(varID, component, fieldID, numel(obj.indexSet), numel(obj.valueSet), numel(obj.coeffSet));
         end

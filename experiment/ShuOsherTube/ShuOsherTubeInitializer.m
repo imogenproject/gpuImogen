@@ -47,7 +47,7 @@ classdef ShuOsherTubeInitializer < Initializer
             obj.bcMode.y         = 'circ';
             obj.bcMode.z         = 'circ';
             
-            obj.operateOnInput(input, [1024, 4, 4]);
+            obj.operateOnInput(input, [1024 1 1]);
 
                obj.lambda        = 8;
             obj.mach             = 3;
@@ -65,7 +65,7 @@ classdef ShuOsherTubeInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             %--- Initialization ---%
             statics             = []; % No statics used in this problem
@@ -101,8 +101,10 @@ classdef ShuOsherTubeInitializer < Initializer
                         
             % Compute energy density array
             ener = ener/(obj.gamma - 1) ...
-            + 0.5*squeeze(sum(mom.*mom,1))./mass...
-            + 0.5*squeeze(sum(mag.*mag,1));    
+            + 0.5*squish(sum(mom.*mom,1))./mass...
+            + 0.5*squish(sum(mag.*mag,1));
+
+            fluids = obj.stateToFluid(mass, mom, ener);
     end
         
 end%PROTECTED

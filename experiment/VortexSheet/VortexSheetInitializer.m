@@ -11,7 +11,7 @@ classdef VortexSheetInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
 
-	mach;
+        mach;
     end %PUBLIC
 
 %===================================================================================================
@@ -43,10 +43,10 @@ classdef VortexSheetInitializer < Initializer
             obj.bcMode.y = 'bcstatic';
             obj.bcMode.z = 'bcstatic';
            
-	    obj.mach = .5; %this is a test number
+            obj.mach = .5; %this is a test number
  
-	    obj.pureHydro        = true;
-            obj.operateOnInput(input);
+            obj.pureHydro        = true;
+            obj.operateOnInput(input, [256 128 128]);
         end
                
         
@@ -72,30 +72,27 @@ classdef VortexSheetInitializer < Initializer
             speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
             [X Y Z] = GIS.ndgridSetXYZ();
 
-	    obj.dGrid = [1 1 1] / obj.grid(1);
+            obj.dGrid = [1 1 1] / obj.grid(1);
 
-            mass    = ones(GIS.pMySize);
-            mom     = zeros([3 GIS.pMySize]);
-            mag     = zeros([3 GIS.pMySize]);
-            P	    = ones(GIS.pMySize);
-	    
-	    radius = max(obj.grid)/50;
+            [mass mom mag ener] = GIS.basicFluidXYZ();
+            
+            radius = max(obj.grid)/50;
 
-	    ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2 + (Z-obj.grid(3)/2).^2) < radius^2;
-	    %mom(1,:,:,:) = obj.Velocity*mass(:,:,:);
-	    mom(1,:,:,:) = speed*mass(:,:,:);
+            ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2 + (Z-obj.grid(3)/2).^2) < radius^2;
+            %mom(1,:,:,:) = obj.Velocity*mass(:,:,:);
+            mom(1,:,:,:) = speed*mass(:,:,:);
 
-	    momx = squeeze(mom(1,:,:,:));
-	    momy = squeeze(mom(2,:,:,:));
-	    momz = squeeze(mom(3,:,:,:));
-	    
-	    momx(ball) = 0;
-	    
-	    ener = P/(obj.gamma - 1) ...     		% internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
+            momx = squish(mom(1,:,:,:));
+            momy = squish(mom(2,:,:,:));
+            momz = squish(mom(3,:,:,:));
+            
+            momx(ball) = 0;
+            
+            ener = ener/(obj.gamma - 1) ...             % internal
+            + 0.5*squish(sum(mom.*mom,1))./mass ...    % kinetic
+            + 0.5*squish(sum(mag.*mag,1));             % magnetic
           
-	    statics.indexSet{1} = indexSet_fromLogical(ball); % ball
+            statics.indexSet{1} = indexSet_fromLogical(ball); % ball
             statics.valueSet = { mass(ball),  momx(ball), momy(ball), momz(ball), ener(ball) };
 
             clear momx; clear momy; clear momz
@@ -104,7 +101,7 @@ classdef VortexSheetInitializer < Initializer
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 2);
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 3);
                 statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
-                if GIS.pMySize(3) > 1
+                if GIS.pLocalRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
 

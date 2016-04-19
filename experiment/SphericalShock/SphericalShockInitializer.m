@@ -46,7 +46,7 @@ classdef SphericalShockInitializer < Initializer
             obj.bcMode.y = 'circ';
             obj.bcMode.z = 'mirror';
             
-            obj.operateOnInput(input);
+            obj.operateOnInput(input, [256 256 256]);
 
         end
 
@@ -87,8 +87,8 @@ classdef SphericalShockInitializer < Initializer
 
             % Calculate energy density array
             ener = ener/(obj.gamma - 1) ...             % internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...    % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));             % magnetic
+            + 0.5*squish(sum(mom.*mom,1))./mass ...    % kinetic
+            + 0.5*squish(sum(mag.*mag,1));             % magnetic
         end
     end%PROTECTED       
 %===================================================================================================    

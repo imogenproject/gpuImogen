@@ -53,7 +53,7 @@ classdef SodShockTubeInitializer < Initializer
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             
-            obj.operateOnInput(input, [1024, 2, 1]);
+            obj.operateOnInput(input, [1024, 1, 1]);
 
             obj.pureHydro = 1;
         end
@@ -102,11 +102,11 @@ classdef SodShockTubeInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
 %            obj.runCode           = [obj.runCode upper(obj.direction)];
-            statics               = []; % No statics used in this problem
+            statics               = [];
             potentialField        = [];
             selfGravity           = [];
             half                  = floor(obj.grid/2);
@@ -119,10 +119,11 @@ classdef SodShockTubeInitializer < Initializer
             NdotX = (obj.pShockNormal(1)*X + obj.pShockNormal(2)*Y + obj.pShockNormal(3)*Z) > 0;
 
             %--- Set array values to high density condition ---%
-            mass                  = ones(size(X));
-            mom                   = zeros([3 size(X)]);
-            mag                   = zeros([3 size(X)]);
-            ener                  = ones(size(X))/(obj.gamma - 1); % Pressure to 1
+
+            mass        = ones(size(X));
+            mom         = zeros([3 size(X)]);
+            mag         = zeros([3 size(X)]);
+            ener        = ones(size(X))/(obj.gamma - 1); % Pressure to 1
 
             %--- Set low density condition ---%
             mass(NdotX) = .125*mass(NdotX);
@@ -140,7 +141,9 @@ classdef SodShockTubeInitializer < Initializer
             if ~obj.saveSlicesSpecified
                 obj.activeSlices.xyz = true;
             end
-            
+
+            fluids = obj.stateToFluid(mass, mom, ener);
+
         end
         
     end%PROTECTED

@@ -59,7 +59,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 
             obj.autoEndtime = 1;
 
-            obj.operateOnInput(input, [65, 65, 65]);
+            obj.operateOnInput(input, [64 64 64]);
         end
                
         
@@ -81,7 +81,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
 
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
@@ -134,6 +134,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             %--- Determine Energy Distribution ---%
             ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
             ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.dGrid));
+
+            fluids = obj.stateToFluid(mass, mom, ener);
         end
     
     end%PROTECTED

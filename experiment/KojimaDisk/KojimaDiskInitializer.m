@@ -58,7 +58,6 @@ classdef KojimaDiskInitializer < Initializer
             obj.iterMax             = 300;
             obj.bcMode.x            = ENUM.BCMODE_FADE;
             obj.bcMode.y            = ENUM.BCMODE_FADE;
-            obj.bcInfinity          = 5;
             obj.activeSlices.xy     = true;
             obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             obj.bgDensityCoeff      = 1e-5;
@@ -110,7 +109,7 @@ classdef KojimaDiskInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
 %            if (obj.grid(3) > 1)
 %                if obj.useZMirror == 1
@@ -122,8 +121,8 @@ classdef KojimaDiskInitializer < Initializer
 %                obj.bcMode.z    = ENUM.BCMODE_CONST;
 %            end
 
-            obj.frameParameters.omega = 1;
-            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
+%            obj.frameParameters.omega = 1;
+%            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
@@ -152,8 +151,8 @@ classdef KojimaDiskInitializer < Initializer
             end
             
             ener    = (max(mass, minDiskMass).^obj.gamma)/(obj.gamma - 1) ...   % internal energy
-                        + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
-                        + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
+                        + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
+                        + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
 statics = [];%StaticsInitializer(obj.grid);
 
@@ -169,6 +168,8 @@ statics = [];%StaticsInitializer(obj.grid);
                                            % [m R x y z vx vy vz lx ly lz]
 
             potentialField = [];%PotentialFieldInitializer();
+
+            fluids = obj.stateToFluid(mass, mom, ener);
 
 %            if obj.useZMirror == 1
 %                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
