@@ -542,8 +542,13 @@ px = px + dpx1;
 py = py + dpy1;
 
 %GPU
-
+% Make the GPU uploader partition the X-Y vectors correctly
+gm = GPUManager.getInstance();
+gm.pushParameters();
+gm.partitionDir = 1;
 cudaSourceRotatingFrame(rhoD, ED, pxD, pyD, w, dt, GPU_Type([1:res(1) 1:res(2)], 1));
+gm.popParameters();
+
 a = max(px(:) - pxD.array(:));
 b = max(py(:) - pyD.array(:));
 c = max(E(:) - ED.array(:));
@@ -679,11 +684,7 @@ function fail = testFreezeAndPtot(res)
     Bz = zeros(res);
 
     ptot = (2/3)*(E - .5*(px.^2+py.^2+pz.^2)./rho);
-    if res(3) == 1
-      freeze = max(sqrt((5/3)*ptot./rho) + abs(px./rho),[], 1)';
-    else
-      freeze = max(sqrt((5/3)*ptot./rho) + abs(px./rho),[], 1);
-    end
+    freeze = max(sqrt((5/3)*ptot./rho) + abs(px./rho),[], 1);
 
     % Translate to GPU vars
     rhoD = GPU_Type(rho);
@@ -692,7 +693,9 @@ function fail = testFreezeAndPtot(res)
     BxD = GPU_Type(Bx); ByD = GPU_Type(By); BzD = GPU_Type(Bz);
 
     % Call GPU routine
-    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01);
+    GIS = GlobalIndexSemantics();
+    GIS.setup(res);
+    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, GIS.topology);
 
     pd = GPU_Type(pdev);
     cf = GPU_Type(cdev);
@@ -700,7 +703,7 @@ function fail = testFreezeAndPtot(res)
 %[cf.array(:) freeze(:) (cf.array(:) - freeze(:))]
     fail = 0;
     if max(max(max(abs(pd.array - ptot)))) > 1e-10;  disp('   !!! Test failed: P !!!'); fail = 1; end
-    if max(max(abs(cf.array(:) - freeze(:)))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; 
+    if max(max(abs(cf.array(1,:,:) - freeze))) > 1e-10; disp('   !!! Test failed: C_f !!!'); fail = 1; 
 end
 
 end

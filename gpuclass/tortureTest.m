@@ -105,7 +105,7 @@ else; onedev = 0; end
 mpi_barrier();
 
 % Test two partitions on different devices
-if printit(2); disp('==================== Testing two GPUs, X partitioning'); end
+if printit(2); disp('==================== Testing multiple GPUs, X partitioning'); end
 if functests(2)
     x.init(multidev, 3, 1); rng(randSeed);
     devx = unitTest(nTests, res2d, nTests, res3d, names);
@@ -113,7 +113,7 @@ else; devx = 0; end
 
 mpi_barrier();
 
-if printit(3); disp('==================== Testing two GPUs, Y partitioning'); end
+if printit(3); disp('==================== Testing multiple GPUs, Y partitioning'); end
 if functests(3)
     x.init(multidev, 3, 2); rng(randSeed);
     devy = unitTest(nTests, res2d, nTests, res3d, names);
@@ -121,10 +121,10 @@ else; devy = 0; end
 
 mpi_barrier();
 
-if printit(4); disp('==================== Testing two GPUs, Z partitioning'); end
+if printit(4); disp('==================== Testing multiple GPUs, Z partitioning'); end
 if functests(4)
     x.init(multidev, 3, 3); rng(randSeed);
-    devz = unitTest(nTests, res2d, nTests, res3d, names);
+    devz = unitTest(0, res2d, nTests, res3d, names);
 else; devz = 0; end
 
 mpi_barrier();
