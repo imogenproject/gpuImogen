@@ -40,12 +40,12 @@ classdef PotentialFieldManager < handle
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
                 self.field = 0;
-                if mpi_amirank0(); run.save.logPrint('Static potential field in use.\n'); end
+                if mpi_amirank0(); run.save.logPrint('Static potential field not used.\n'); end
             else
                 self.ACTIVE = true;
                 self.currentCoefficient = initialConds.constant;
                 self.field = GPU_Type(initialConds.field * self.currentCoefficient);
-                if mpi_amirank0(); run.save.logPrint('Static potential field not used\n'); end
+                if mpi_amirank0(); run.save.logPrint('Static potential field ACTIVE.\n'); end
             end
         end
 
