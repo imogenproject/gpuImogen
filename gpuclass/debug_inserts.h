@@ -1,3 +1,6 @@
+#include "cudaCommon.h"
+#include "mex.h"
+
 #warning "WARNING: COMPILING cudaFluidStep() WITH DEBUG ENABLED. cudaFluidStep will require an output argument to dump to!"
 
 // If defined, the code runs the Euler prediction step and copies wStepValues back to the Matlab fluid data arrays
@@ -22,42 +25,42 @@
 // Assuming debug has been put on the wStepValues array, download it to a Matlab array
 void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray *plhs[])
 {
-  CHECK_CUDA_ERROR("entering returnDebugArray");
+	CHECK_CUDA_ERROR("entering returnDebugArray");
 
-  MGArray m = *ref;
-  
-  int nd = 3;
-  if(m.dim[2] == 1) {
-    nd = 2;
-    if(m.dim[1] == 1) {
-      nd = 1;
-    }
-  }
-  nd = 4;
-  mwSize odims[4];
-  odims[0] = m.dim[0];
-  odims[1] = m.dim[1];
-  odims[2] = m.dim[2];
-  odims[3] = x;
+	MGArray m = *ref;
 
-  // Create output numeric array
-  plhs[0] = mxCreateNumericArray(nd, odims, mxDOUBLE_CLASS, mxREAL);
+	int nd = 3;
+	if(m.dim[2] == 1) {
+		nd = 2;
+		if(m.dim[1] == 1) {
+			nd = 1;
+		}
+	}
+	nd = 4;
+	mwSize odims[4];
+	odims[0] = m.dim[0];
+	odims[1] = m.dim[1];
+	odims[2] = m.dim[2];
+	odims[3] = x;
 
-  double *result = mxGetPr(plhs[0]);
+	// Create output numeric array
+	plhs[0] = mxCreateNumericArray(nd, odims, mxDOUBLE_CLASS, mxREAL);
 
-  // Create a sacrificial MGA
-  MGArray scratch = ref[0];
-  // wStepValues is otherwise identical so overwrite the new one's pointers
-  int j, k;
-  for(j = 0; j < scratch.nGPUs; j++) scratch.devicePtr[j] = dbgArrays[j];
+	double *result = mxGetPr(plhs[0]);
 
-  for(k = 0; k < x; k++) {
-	  // download
-	  MGA_downloadArrayToCPU(&scratch, &result, 0);
-	  // move over and repeat
-	  result += scratch.numel;
-	  for(j = 0; j < scratch.nGPUs; j++) { scratch.devicePtr[j] += scratch.slabPitch[j] / 8; }
+	// Create a sacrificial MGA
+	MGArray scratch = ref[0];
+	// wStepValues is otherwise identical so overwrite the new one's pointers
+	int j, k;
+	for(j = 0; j < scratch.nGPUs; j++) scratch.devicePtr[j] = dbgArrays[j];
 
-  }
-  return;
+	for(k = 0; k < x; k++) {
+		// download
+		MGA_downloadArrayToCPU(&scratch, &result, 0);
+		// move over and repeat
+		result += scratch.numel;
+		for(j = 0; j < scratch.nGPUs; j++) { scratch.devicePtr[j] += scratch.slabPitch[j] / 8; }
+
+	}
+	return;
 }

@@ -26,13 +26,13 @@ typedef struct __FluidStepParams {
 #define FLUX_Z 3
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, mxArray **dbOutput);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo, mxArray **dbOutput);
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo);
 #endif
 
 pParallelTopology topoStructureToC(const mxArray *prhs);
-void cfSync(double *cfArray, int cfNumel, const mxArray *topo);
+void cfSync(double *cfArray, int cfNumel, pParallelTopology topology);
 
 __global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz);
 __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, int ny, int nz);
@@ -54,7 +54,8 @@ template <unsigned int PCswitch>
 __global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
 
 template <unsigned int PCswitch>
-__global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *Cfreeze, double lambda, int nx, int ny);
+
 
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
 __global__ void cukern_PressureSolverHydro(double *state, double *gasPressure, int devArrayNumel);
