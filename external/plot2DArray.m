@@ -22,7 +22,7 @@ function hFig = plot2DArray(array, contrast, type)
     %-----------------------------------------------------------------------------------------------
     % Verify that array is 2D
     %------------------------
-    array = squeeze(array);
+    array = squish(array);
     N = size(array); dim = length(N); 
     vector = 1; ng = 1;
     if (dim ~= 2) 
@@ -41,7 +41,7 @@ function hFig = plot2DArray(array, contrast, type)
     set(hFig,'KeyReleaseFcn',@Colormap_KeyRelease_Callback);
     for i=1:vector
         hAxis = subplot(ng,ng,i);
-        if (vector > 1); resArray = squeeze(array(i,:,:));
+        if (vector > 1); resArray = squish(array(i,:,:));
         else resArray = array; end
 
         

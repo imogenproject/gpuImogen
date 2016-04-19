@@ -7,8 +7,8 @@ function result = magneticDivergence(run, mag)
 %<< result  numerical divergence of magnetic field array                    double(GRID)
     
     result = zeros(run.gridSize);
+warning('WARNING: This function is broken because the calculate2PtDerivative function has been removd from ImogenArray class.');
     for i=1:3
-        result = result + mag(i).calculate2PtDerivative(i,run.dGrid{i});
+%        result = result + mag(i).calculate2PtDerivative(i,run.dGrid{i});
     end
-
 end

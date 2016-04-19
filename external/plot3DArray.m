@@ -46,7 +46,7 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
     %-----------------------------------------------------------------------------------------------
     % Verify the array is 3D
     %-----------------------
-    array = squeeze(array);    
+    array = squish(array);    
     N = size(array);
     dim = length(N); 
     if (dim < 3);       error('Array is not 3D. Unable to plot'); 
@@ -84,7 +84,7 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
         array3D = zeros(N+1);
         % Select individual components if 4-D vector array
         if (iMax > 1) 
-            array3D(1:N(1),1:N(2),1:N(3)) = squeeze(array(i,:,:,:)); offset = 4*(i-1);
+            array3D(1:N(1),1:N(2),1:N(3)) = squish(array(i,:,:,:)); offset = 4*(i-1);
             slicePlotAbility = true;
             minTest = min(array3D(:)); maxTest = max(array3D(:));
             if ( (minTest - maxTest) == 0 ); slicePlotAbility = false; end
@@ -118,8 +118,8 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
         title('YZ Slice');
         xlabel('Y'); ylabel('Z');
         caxis(contrast/100 * [minA maxA]);
-        hPlot = imagesc(squeeze(array3D(sliceVals(1),1:N(2),1:N(3)))');
-        set(hPlot,'UserData',squeeze(array3D(sliceVals(1),1:N(2),1:N(3)))');
+        hPlot = imagesc(squish(array3D(sliceVals(1),1:N(2),1:N(3)))');
+        set(hPlot,'UserData',squish(array3D(sliceVals(1),1:N(2),1:N(3)))');
         set(hPlot,'ButtonDownFcn',{@plotClick_Callback,['YZ Slice at: ' mat2str(sliceVals(2:3))]});
         
         % --- XZ axis slice ---%
@@ -128,8 +128,8 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
         title('XZ Slice');
         xlabel('X'); ylabel('Z');
         caxis(contrast/100 * [minA maxA]);
-        hPlot = imagesc(squeeze(array3D(1:N(1),sliceVals(2),1:N(3)))');
-        set(hPlot,'UserData',squeeze(array3D(1:N(1),sliceVals(2),1:N(3)))');
+        hPlot = imagesc(squish(array3D(1:N(1),sliceVals(2),1:N(3)))');
+        set(hPlot,'UserData',squish(array3D(1:N(1),sliceVals(2),1:N(3)))');
         set(hPlot,'ButtonDownFcn',{@plotClick_Callback,['XZ Slice at: ' mat2str([sliceVals(1) sliceVals(3)])]});
         
         % --- XY axis slice ---%
@@ -138,8 +138,8 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
         title('XY Slice');
         xlabel('X'); ylabel('Y');
         caxis(contrast/100 * [minA maxA]);
-        hPlot = imagesc(squeeze(array3D(1:N(1),1:N(2),sliceVals(3)))');
-        set(hPlot,'UserData',squeeze(array3D(1:N(1),1:N(2),sliceVals(3)))');
+        hPlot = imagesc(squish(array3D(1:N(1),1:N(2),sliceVals(3)))');
+        set(hPlot,'UserData',squish(array3D(1:N(1),1:N(2),sliceVals(3)))');
         set(hPlot,'ButtonDownFcn',{@plotClick_Callback,['XY Slice at: ' mat2str(sliceVals(1:2))]});
         
     end

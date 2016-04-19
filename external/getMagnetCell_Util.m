@@ -9,14 +9,14 @@ function magCell = getMagnetCell_Util(mag)
 			
 		case 3
 			for i=1:2
-				magCell(i,:,:) = 0.5 * ( squeeze(mag(i,:,:)) ...
-											+ circ_shift( squeeze(mag(i,:,:)),i,1) );
+				magCell(i,:,:) = 0.5 * ( squish(mag(i,:,:)) ...
+											+ circ_shift( squish(mag(i,:,:)),i,1) );
 			end
 			
 		case 4
 			for i=1:3
-				magCell(i,:,:,:) = 0.5 * ( squeeze(mag(i,:,:,:)) ...
-											+ circ_shift( squeeze(mag(i,:,:,:)),i,1) );
+				magCell(i,:,:,:) = 0.5 * ( squish(mag(i,:,:,:)) ...
+											+ circ_shift( squish(mag(i,:,:,:)),i,1) );
 			end
     
 end

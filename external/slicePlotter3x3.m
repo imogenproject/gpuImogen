@@ -89,30 +89,30 @@ function slicePlotter(data, pTag, slice)
     %--- Slice the arrays if desired ---%
     if ~isempty(slice)
         sliceStr = local_sliceStrFromSlice(slice);
-        mass    = squeeze( eval(['data.mass('      sliceStr]));
-        energy  = squeeze( eval(['data.ener('    sliceStr]));
+        mass    = squish( eval(['data.mass('      sliceStr]));
+        energy  = squish( eval(['data.ener('    sliceStr]));
         
-        mom     = squeeze( eval(['mom(:,'     sliceStr]));
-        xMom    = squeeze( eval(['data.momX('      sliceStr]));
-        yMom    = squeeze( eval(['data.momY('      sliceStr]));
-        zMom    = squeeze( eval(['data.momZ('      sliceStr]));
+        mom     = squish( eval(['mom(:,'     sliceStr]));
+        xMom    = squish( eval(['data.momX('      sliceStr]));
+        yMom    = squish( eval(['data.momY('      sliceStr]));
+        zMom    = squish( eval(['data.momZ('      sliceStr]));
 
-        mag     = squeeze( eval(['mag(:,'      sliceStr]));
-        xMag    = squeeze( eval(['data.magX('      sliceStr]));
-        yMag    = squeeze( eval(['data.magY('      sliceStr]));
-        zMag    = squeeze( eval(['data.magZ('      sliceStr]));
+        mag     = squish( eval(['mag(:,'      sliceStr]));
+        xMag    = squish( eval(['data.magX('      sliceStr]));
+        yMag    = squish( eval(['data.magY('      sliceStr]));
+        zMag    = squish( eval(['data.magZ('      sliceStr]));
 
-        spen    = squeeze( eval(['spen('      sliceStr]));
-        preT    = squeeze( eval(['preT('      sliceStr]));
-        preG    = squeeze( eval(['preG('      sliceStr]));
-        preM    = squeeze( eval(['preM('      sliceStr]));
-        delB    = squeeze( eval(['delB('      sliceStr]));
-        speed   = squeeze( eval(['speed('     sliceStr]));
-        mach    = squeeze( eval(['mach('      sliceStr]));
-        velComp = squeeze( eval(['velComp('   sliceStr]));
-        velVort = squeeze( eval(['velVort(:,' sliceStr]));
-        magStrength = squeeze( eval(['magStrength(' sliceStr]));
-        %beta    = squeeze( eval(['beta('      sliceStr]));
+        spen    = squish( eval(['spen('      sliceStr]));
+        preT    = squish( eval(['preT('      sliceStr]));
+        preG    = squish( eval(['preG('      sliceStr]));
+        preM    = squish( eval(['preM('      sliceStr]));
+        delB    = squish( eval(['delB('      sliceStr]));
+        speed   = squish( eval(['speed('     sliceStr]));
+        mach    = squish( eval(['mach('      sliceStr]));
+        velComp = squish( eval(['velComp('   sliceStr]));
+        velVort = squish( eval(['velVort(:,' sliceStr]));
+        magStrength = squish( eval(['magStrength(' sliceStr]));
+        %beta    = squish( eval(['beta('      sliceStr]));
         
         N = size(mass);
     end
@@ -163,20 +163,20 @@ function slicePlotter(data, pTag, slice)
     %--- X Velocity Plot ---%
     hAxis = subplot(rows,cols,5); hold all;
     local_addHoldsArray(hAxis,'xvel','Vx', data.momX ./ data.mass);
-    local_addHoldsArray(hAxis,'xvort','Vort X',squeeze(data.vort(1,:,:,:)));
+    local_addHoldsArray(hAxis,'xvort','Vort X',squish(data.vort(1,:,:,:)));
     hPlot = local_plotChoices(dimension,hAxis,hFig, true);
     
     
     %--- Y Velocity Plot ---%
     hAxis = subplot(rows,cols,6); hold all;
     local_addHoldsArray(hAxis,'yvel','Vy', data.momY ./ data.mass);
-    local_addHoldsArray(hAxis,'yvort','Vort Y',squeeze(data.vort(2,:,:,:)));
+    local_addHoldsArray(hAxis,'yvort','Vort Y',squish(data.vort(2,:,:,:)));
     hPlot = local_plotChoices(dimension,hAxis,hFig, true);
     
     %--- Z Velocity Plot ---%
     hAxis = subplot(rows,cols,7); hold all;
     local_addHoldsArray(hAxis,'zvel','Vz',data.momZ./ data.mass);
-    local_addHoldsArray(hAxis,'zvort','Vort Z',squeeze(data.vort(3,:,:,:)));
+    local_addHoldsArray(hAxis,'zvort','Vort Z',squish(data.vort(3,:,:,:)));
     hPlot = local_plotChoices(dimension,hAxis,hFig, true);
     
     %--- Speed Plot ---%
