@@ -40,7 +40,7 @@ classdef ImplosionInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.45;
+            obj.cfl              = 0.4;
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
@@ -52,7 +52,7 @@ classdef ImplosionInitializer < Initializer
             obj.Mcorner = 0.125;
             obj.Pcorner = 0.14;
 
-            obj.operateOnInput(input);
+            obj.operateOnInput(input, [512 512 1]);
 
         end
         
@@ -66,7 +66,7 @@ classdef ImplosionInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
             statics = [];
@@ -98,8 +98,10 @@ classdef ImplosionInitializer < Initializer
 
             % Calculate the energy density array
             ener = ener/(obj.gamma - 1) ...           % internal
-            + 0.5*squeeze(sum(mom.*mom,1))./mass ...  % kinetic
-            + 0.5*squeeze(sum(mag.*mag,1));           % magnetic
+            + 0.5*squish(sum(mom.*mom,1))./mass ...  % kinetic
+            + 0.5*squish(sum(mag.*mag,1));           % magnetic
+
+           fluids = obj.stateToFluid(mass, mom, ener);
         end
     end%PROTECTED       
 %===================================================================================================    

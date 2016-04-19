@@ -81,7 +81,6 @@ classdef RadiatingShockInitializer < Initializer
             obj.bcMode.x         = ENUM.BCMODE_CONST;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
-            obj.bcInfinity       = 20;
             obj.activeSlices.xy  = true;
             obj.activeSlices.xyz = true;
             obj.ppSave.dim2      = 5;
@@ -89,8 +88,6 @@ classdef RadiatingShockInitializer < Initializer
             obj.image.mass       = true;
             obj.image.interval   = 10;
 
-%            obj.dGrid.x.points   = [0, 5;    33.3, 1;    66.6, 1;    100, 5];
-            
             obj.perturbationType = RadiatingShockInitializer.RANDOM;
             obj.randomSeed_spectrumLimit = 64; % 
             obj.seedAmplitude    = 5e-4;
@@ -107,7 +104,7 @@ classdef RadiatingShockInitializer < Initializer
             
             obj.logProperties    = [obj.logProperties, 'gamma'];
 
-            obj.operateOnInput(input, [300, 6, 6]);
+            obj.operateOnInput(input, [512 1 1]);
             obj.pureHydro = 1;
         end
 
@@ -122,7 +119,7 @@ classdef RadiatingShockInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         % Returns the initial conditions for a corrugation shock wave according to the settings for
         % the initializer.
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
@@ -225,7 +222,7 @@ classdef RadiatingShockInitializer < Initializer
         %----------- BOOST TRANSFORM ---------%
         dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
         yboost = mass*dvy;
-        mom(2,:,:,:) = squeeze(mom(2,:,:,:)) + yboost;
+        mom(2,:,:,:) = squish(mom(2,:,:,:)) + yboost;
 
         %----------- SALT TO SEED INSTABILITIES -----------%
 	% Salt everything from half the preshock region to half the cooling region.
@@ -244,7 +241,7 @@ classdef RadiatingShockInitializer < Initializer
 
 %                    perturb = zeros(10, obj.grid(2), obj.grid(3));
 %                    for xp = 1:size(perturb,1)
-%                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squeeze(amp(1,:,:).*exp(1i*phase(1,:,:)))));
+%                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squish(amp(1,:,:).*exp(1i*phase(1,:,:)))));
 %                    end
                      junk = obj.seedAmplitude*(rand(size(mass))-.5);
                      mass(Xsalt,:,:) = mass(Xsalt,:,:) + junk(Xsalt,:,:);
@@ -270,15 +267,15 @@ classdef RadiatingShockInitializer < Initializer
 
 %            seeds = seedIndices(mine);
 %
-%            mass(seedIndices,:,:) = squeeze( mass(seedIndices,:,:) ) + perturb;
+%            mass(seedIndices,:,:) = squish( mass(seedIndices,:,:) ) + perturb;
             % Add seed to mass while maintaining self-consistent momentum/energy
             % This will otherwise take a dump on e.g. a theta=0 shock with
             % a large density fluctuation resulting in negative internal energy
-%            mom(1,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(1,1);
-%            mom(2,seedIndices,:,:) = squeeze(mass(seedIndices,:,:)) * jump.v(2,1);
+%            mom(1,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(1,1);
+%            mom(2,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(2,1);
         
-        ener = ener/(obj.gamma-1) + ...
-               .5*squeeze(sum(mom.^2,1))./mass + .5*squeeze(sum(mag.^2,1));
+            ener = ener/(obj.gamma-1) + ...
+               .5*squish(sum(mom.^2,1))./mass + .5*squish(sum(mag.^2,1));
 
             statics = StaticsInitializer(); 
 
@@ -288,6 +285,8 @@ classdef RadiatingShockInitializer < Initializer
             %statics.setFluid_allConstantBC(mass, ener, mom, 2);
             %statics.setMag_allConstantBC(mag, 2);
 
+
+            fluids = obj.stateToFluid(mass, mom, ener);
         end
 
 

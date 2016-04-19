@@ -65,7 +65,6 @@ classdef HachisuDiskInitializer < Initializer
 %            obj.bcMode.mom.z      = ENUM.BCMODE_FLIP;
 %            obj.bcMode.mom.flux.z = ENUM.BCMODE_FLIP;
             
-            obj.bcInfinity        = 5;
             obj.activeSlices.xy   = true;
             obj.timeUpdateMode    = ENUM.TIMEUPDATE_PER_STEP;
             obj.bgDensityCoeff    = 1e-4;
@@ -172,8 +171,8 @@ classdef HachisuDiskInitializer < Initializer
             mag     = zeros([3 obj.grid]);
             
             ener    = (max(mass, obj.minMass).^obj.gamma)/(obj.gamma - 1) ...   % internal energy
-                        + 0.5*squeeze(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
-                        + 0.5*squeeze(sum(mag .* mag, 1));                      % magnetic energy                    
+                        + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
+                        + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
             if (obj.useStatics)
                 statics.values(1) = 1e-5;
