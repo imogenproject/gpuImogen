@@ -1,4 +1,4 @@
-function resultsHandler(saveEvent, run, mass, ener, mom, mag)
+function resultsHandler(saveEvent, run, fluids, mag)
 %   Prepare and manage the storage of intermediate and then final results as a trial is run.
 %
 %>< run     Imogen Run manager object.                                          ImogenManager
@@ -25,23 +25,17 @@ function resultsHandler(saveEvent, run, mass, ener, mom, mag)
     iteration = run.time.iteration;
     saveState = 1*(iteration == 0) +2*(run.save.done == true);
 
+% HACK HACK AHCK
+mass = fluids(1).mass;
+mom = fluids(1).mom;
+ener = fluids(1).ener;
+
     %-----------------------------------------------------------------------------------------------
     % Save Data to File
     %------------------
     if run.save.saveData
-        
-        %--- Preparation for save using lab 1 ---%
-            switch saveState
-                case 2;            
-                    fileSuffix         = 'FINAL'; 
-                    
-                case 1;            
-                    fileSuffix         = 'START';
-%                    run.save.firstSave = false; % Update for later saves.
-                    
-                otherwise;        
-                    fileSuffix         = run.paths.iterationToString(iteration);
-            end
+        % Just use the ****ing numeric suffix, FFS...       
+        fileSuffix         = run.paths.iterationToString(iteration);
 
         run.save.firstSave = false; % Update for later saves.
 
