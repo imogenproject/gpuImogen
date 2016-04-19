@@ -177,7 +177,15 @@ classdef GPU_Type < handle
                 if numel(obj.asize) == 2; obj.asize(3) = 1; end
                 obj.numdims = ndims(arrin);
 
-                halo = gm.useHalo; if docloned; halo = -1; end
+                halo = gm.useHalo;
+                if docloned;
+                    halo = 0;
+                    pd = gm.partitionDir;
+                    
+                    if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
+                        error('Upload of cloned data does not fit.');
+                    end
+                end
 
                 obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
             elseif isa(arrin, 'GPU_Type') == 1

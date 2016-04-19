@@ -36,7 +36,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 		if(a >= 1) {
 			m.haloSize = (int)*d;
-			if(m.haloSize < 0) m.haloSize = PARTITION_CLONED;
+			if(m.haloSize < 0) {
+				printf("WARNING: Halo size %i is being clamped to zero.\n", m.haloSize);
+				m.haloSize = 0;
+			}
+
 		}
 		if(a >= 2) {
 			m.partitionDir = (int)d[1];
@@ -78,8 +82,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	for(;      i < 3; i++) { m.dim[i] = 1; }
 
 	// If the size in the partition direction is 1, clone it instead
-	// calcPartitionExtent will take care of this for us
-	if(m.dim[m.partitionDir-1] == 1) m.haloSize = PARTITION_CLONED;
+	int forceClone = 0;
+
+	if((m.dim[m.partitionDir-1] == 1) && (m.nGPUs > 1)) {
+		m.haloSize = 0;
+		m.dim[m.partitionDir-1] = m.nGPUs;
+		forceClone = 1;
+	}
 
 	m.numel = m.dim[0]*m.dim[1]*m.dim[2];
 	int sub[6];
@@ -91,11 +100,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray *dest = MGA_createReturnedArrays(plhs, 1, &m);
 
-	int worked = MGA_uploadArrayToGPU(hmem, dest, 0);
+	int worked;
+	if(forceClone) {
+		worked = MGA_uploadArrayToGPU(hmem, dest, 0);
+	} else {
+		worked = MGA_uploadArrayToGPU(hmem, dest, -1);
+	}
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		mexErrMsgTxt("Attempt to upload Matlab array to GPU was unsuccessful.\n");
 		return;
 	}
+	if(forceClone) {
+	    worked = MGA_distributeArrayClones(dest, 0);
+	    if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+	    	mexErrMsgTxt("Redistribution of cloned array failed!\n");
+	    }
+	}
+
 
 	return;
 }

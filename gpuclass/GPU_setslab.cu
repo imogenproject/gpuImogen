@@ -46,7 +46,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	mxClassID dtype = mxGetClassID(prhs[2]);
         if(dtype == mxDOUBLE_CLASS) {
-		MGA_uploadMatlabArrayToGPU(prhs[2], &slab, 0);
+		MGA_uploadMatlabArrayToGPU(prhs[2], &slab, -1);
 	} else {
 		MGArray src;
 		MGA_accessMatlabArrays(prhs, 2, 2, &src);

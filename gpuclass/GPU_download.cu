@@ -48,7 +48,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   double *result = mxGetPr(plhs[0]);
 
-  worked = MGA_downloadArrayToCPU(&m, &result, 0);
+  worked = MGA_downloadArrayToCPU(&m, &result, -1);
   if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 	  mexErrMsgTxt("GPU_download accessed but couldn't download GPU arra.");
 	  return;
