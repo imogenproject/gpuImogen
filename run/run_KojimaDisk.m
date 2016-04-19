@@ -30,14 +30,17 @@ run.info        = 'Kojima disk simulation';
 run.notes       = '';
 
 rp = RealtimePlotter();
-  rp.plotmode = 4;
+  rp.plotmode = 7;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
-  rp.iterationsPerCall = 1;
+  rp.insertPause = 1;
+  rp.iterationsPerCall =1;
   rp.firstCallIteration = 1;
-%run.peripherals{end+1} = rp;
+run.peripherals{end+1} = rp;
 
 run.image.parallelUniformColors = true;
+
+run.frameParameters.omega = 2.1715;
+run.frameParameters.rotateCenter = [256.5 256.5 0];
 
 %--- Run tests ---%
 if (true) %Primary test
