@@ -1,4 +1,4 @@
-function result = tsSedov(iniResolution, multiples, prettyPictures)
+function result = tsSedov(iniResolution, multiples, prettyPictures, methodPicker)
 
 if nargin < 3
     prettyPictures = 0;
@@ -41,6 +41,10 @@ if prettyPictures
     rp.iterationsPerCall = 25;
     run.peripherals{end+1} = rp;
 end
+if nargin == 4
+    run.peripherals{end+1} = methodPicker;
+end
+
 
 %--- Run tests ---%
 for N = 1:numel(multiples)

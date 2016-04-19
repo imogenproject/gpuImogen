@@ -1,4 +1,4 @@
-function result = tsCentrifuge(iniResolution, w0, doublings, prettyPictures)
+function result = tsCentrifuge(iniResolution, w0, doublings, prettyPictures, methodPicker)
 %iniResolution = [512 512 1];
 %doublings = 7; % will run from 32x32 to 2Kx2K
 %w0 = 1.5;
@@ -58,6 +58,9 @@ if prettyPictures
     rp.firstCallIteration = 1;
     rp.iterationsPerCall = 25;
     run.peripherals{end+1} = rp;
+end
+if nargin == 5
+    run.peripherals{end+1} = methodPicker;
 end
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';

@@ -1,4 +1,3 @@
-
 % Run sonic advection test at 3 different resolutions,
 % Check accuracy & scaling
 
@@ -36,18 +35,23 @@ if mpi_amirank0();
 end
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 5;
-einfeldtDoublings   = 7;
-sodDoublings        = 7;
-centrifugeDoublings = 5;
-sedov2D_scales      = [1 2 4 8 16 32 64];
-sedov3D_scales      = [1 2 4 8 12];
+advectionDoublings  = 4;
+einfeldtDoublings   = 5;
+sodDoublings        = 5;
+centrifugeDoublings = 4;
+sedov2D_scales      = [1 2 4 8];
+sedov3D_scales      = [1 2 4];
+
+fm = FlipMethod();
+  fm.iniMethod = 1; % HLL
+%  fm.iniMethod = 2; % HLLC
+%  fm.iniMethod = 3; % XJ
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
     if mpi_amirank0(); disp('Testing advection against stationary background.'); end
     try
-        x = tsAdvection('sonic',[baseResolution 2 1], [1 0 0], [0 0 0], 0, advectionDoublings, realtimePictures);
+        x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings, realtimePictures, fm);
     catch ME
         fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         prettyprintException(ME);
@@ -61,7 +65,7 @@ end
 if doSonicAdvectMovingBG || doALLTheTests
     if mpi_amirank0(); disp('Testing advection against moving background'); end
     try
-        x = tsAdvection('sonic',[baseResolution 2 1], [1 0 0], [0 0 0], -.526172, advectionDoublings, realtimePictures);
+        x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], -.526172, advectionDoublings, realtimePictures, fm);
     catch ME
         fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         prettyprintException(ME);
@@ -76,7 +80,7 @@ end
 if doSonicAdvectAngleXY || doALLTheTests
     if mpi_amirank0(); disp('Testing advection in 2D across moving background'); end
     try
-        x = tsAdvection('sonic',[baseResolution baseResolution 1], [5 3 0], [0 0 0], .4387, advectionDoublings, realtimePictures);
+        x = tsAdvection('sonic',[baseResolution baseResolution 1], [5 3 0], [0 0 0], .4387, advectionDoublings, realtimePictures, fm);
     catch ME
         fprintf('2D Advection test simulation barfed.\n');
         prettyprintException(ME);
@@ -97,7 +101,7 @@ end
 if doEinfeldtTests || doALLTheTests
     if mpi_amirank0(); disp('Testing convergence of Einfeldt tube'); end
     try
-        x = tsEinfeldt(baseResolution, 1.4, 5.5, einfeldtDoublings, realtimePictures);
+        x = tsEinfeldt(baseResolution, 1.4, 5.5, einfeldtDoublings, realtimePictures, fm);
     catch ME
         fprintf('Einfeldt tube test has failed.\n');
         prettyprintException(ME);
@@ -111,7 +115,7 @@ end
 if doSodTubeTests || doALLTheTests
     if mpi_amirank0(); disp('Testing convergence of Sod tube'); end
     try
-        x = tsSod(baseResolution, 1, sodDoublings, realtimePictures);
+        x = tsSod(baseResolution, 1, sodDoublings, realtimePictures, fm);
     catch ME
         fprintf('Sod shock tube test has failed.\n');
         prettyprintException(ME);
@@ -125,7 +129,7 @@ end
 if doCentrifugeTests || doALLTheTests
     if mpi_amirank0(); disp('Testing centrifuge equilibrium-maintainence.'); end
     try
-        x = tsCentrifuge([baseResolution baseResolution 1], 1.5, centrifugeDoublings, realtimePictures); 
+        x = tsCentrifuge([baseResolution baseResolution 1], 1.5, centrifugeDoublings, realtimePictures, fm);
     catch ME
         disp('Centrifuge test has failed.');
         prettyprintException(ME);
@@ -152,7 +156,7 @@ if doSedovTests || doALLTheTests
     if ~isempty(sedov2D_scales)
     if mpi_amirank0(); disp('Testing 2D Sedov-Taylor explosion'); end
         try
-            x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures);
+            x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures, fm);
         catch ME
             disp('2D Sedov-Taylor test has failed.');
             prettyprintException(ME);
@@ -165,7 +169,7 @@ if doSedovTests || doALLTheTests
     if ~isempty(sedov3D_scales)
         if mpi_amirank0(); disp('Testing 3D Sedov-Taylor explosion'); end
         try
-            x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures);
+            x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures, fm);
         catch ME
             disp('3D Sedov-Taylor test has failed.');
             prettyprintException(ME);

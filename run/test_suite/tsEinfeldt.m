@@ -1,4 +1,4 @@
-function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures)
+function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures, methodPicker);
 % result = tsEinfeldt(N0, doublings, M) runs a sequence of Einfeldt tests with
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
@@ -12,7 +12,7 @@ if nargin < 5
 end
 
 %--- Initialize test ---%
-run             = EinfeldtInitializer([N0 2 1]);
+run             = EinfeldtInitializer([N0 1 1]);
 % Run the test until the rarefaction propagates 95% of the way to the edge of
 % the grid.
 run.timeMax     = .95*.5/((1+M)*sqrt(gamma));
@@ -53,6 +53,9 @@ if prettyPictures
     rp.iterationsPerCall = 25;
     run.peripherals{end+1} = rp;
 end
+if nargin == 6
+    run.peripherals{end+1} = methodPicker;
+end
 
 result.N = [];
 result.L1 = [];
@@ -62,7 +65,7 @@ result.paths = {};
 %--- Run tests ---%
 for R = 1:doublings;
     % Set resolution and go
-    run.grid = [N0*2^R 2 1];
+    run.grid = [N0*2^R 1 1];
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
     enforceConsistentView(dirout);

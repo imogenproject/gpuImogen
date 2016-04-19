@@ -1,11 +1,11 @@
-function result = tsSod(N, direct, doublings, prettyPictures)
+function result = tsSod(N, direct, doublings, prettyPictures, methodPicker)
 
 if nargin < 4
     prettyPictures = 0;
 end
 
 %--- Initialize test ---%
-run         = SodShockTubeInitializer([N 2 1]);
+run         = SodShockTubeInitializer([N 1 1]);
 run.normal(direct);
 run.iterMax     = 50000;
 run.timeMax     = 0.25;
@@ -26,6 +26,9 @@ if prettyPictures
     rp.firstCallIteration = 1;
     rp.iterationsPerCall = 25;
     run.peripherals{end+1} = rp;
+end
+if nargin == 5
+    run.peripherals{end+1} = methodPicker;
 end
 
 %--- Run tests ---%

@@ -1,4 +1,4 @@
-function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings, prettyPictures)
+function result = tsAdvection(wavetype, grid, N0, B0, V0, doublings, prettyPictures, methodPicker)
 
 if nargin < 6
     if mpi_amirank0(); disp('Number of grid resolution doublings not given: defaulted to 3'); end 
@@ -53,8 +53,11 @@ if prettyPictures
     rp.plotDifference = 0;
     rp.insertPause = 0;
     rp.firstCallIteration = 1;
-    rp.iterationsPerCall = 25;
+    rp.iterationsPerCall = 10;
     run.peripherals{end+1} = rp;
+end
+if nargin == 8
+    run.peripherals{end+1} = methodPicker;
 end
 
 result.firstGrid = grid;
@@ -79,8 +82,8 @@ for D = 1:doublings;
 
     % Refine grid
     grid=grid*2;
-    if grid(2) <= 4; grid(2) = 2; end % keep 1D from becoming 2D
-    if grid(3) == 2; grid(3) = 1; end; % keep 2D from becoming 3D
+    if grid(2) <= 2; grid(2) = 1; end % keep 1D from becoming 2D
+    if grid(3) <= 2; grid(3) = 1; end; % keep 2D from becoming 3D
     run.grid = grid;
 end
 
