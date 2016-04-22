@@ -9,23 +9,9 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     shutDownEverything = 0;
     failed = starterRun(gpuSet);
 
-    if failed == 0;
-        % Accept magic name 'gputest' to simply hammer the GPUs with work rather than run Imogen
-        if strcmp(runFile,'gputest')
-            shutDownEverything = 1;
-            cd gpuclass; % tortureTest expects to be run from here
-            try
-                tortureTest(gpuSet, 'y', 4);
-            catch crap
-                prettyprintException(crap, 1, 'One or more ranks have failed GPU tests! ECC -> hardware problem. Other -> Bad code checked into git?');
-                failed = 1;
-            end
-            
-            failed = mpi_max(failed);
-            if(failed) mpi_abort(); end
-        else
+    if ~iscell(runFile); runFile = {runFile}; end
 
-            runFile = strrep(runFile,'.m','');
+    if failed == 0;
             assignin('base','logFile',logFile);
             assignin('base','alias',alias);
     
@@ -36,9 +22,20 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
             end
 
             try
-                eval(runFile);
+                talker = mpi_amirank0();
+                Nmax = numel(runFile);
+
+                if talker
+                    fprintf('==================== Received %i runfiles to execute.\n', Nmax);
+                end
+                for N = 1:Nmax
+                    Fi = strrep(runFile{N},'.m','');
+                    if mpi_amirank0(); fprintf('==================== EVALUATING %i/%i: %s.m\n',N, Nmax, Fi); end
+                    eval(Fi);
+                end
+            
             catch ME
-                fprintf('FATAL: Runfile has thrown an exception back to loader.\nRANK %i IS ABORTING JOB!\nException report follows:\n', mpi_myrank());
+                fprintf('FATAL: A runfile has thrown an exception back to loader.\nRANK %i IS ABORTING JOB!\nException report follows:\n', mpi_myrank());
                 prettyprintException(ME);
                 if shutDownEverything;
                     fprintf('Run is non-interactive: Invoking MPI_Abort() to avoid hanging job.\n');
@@ -46,7 +43,6 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
                 end
             end
 
-        end
     else
         shutDownEverything = 1;
     end
@@ -54,10 +50,10 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
     mpi_barrier(); % If testing n > 1 procs on one node, don't let anyone reset GPUs before we're done.
 
     if shutDownEverything
-        clear all;         % Trashcan all leftover arrays, can now safely...
-        GPU_ctrl('reset'); % Trashcan CUDA context and
+        clear all;         % Trashcan any remaining user GPU arrays
+        GPU_ctrl('reset'); % Trashcan CUDA context
         mpi_finalize();    % Trashcan MPI runtime
-	quit
+        quit               % Trashcan Matlab runtime
     end
 
 
