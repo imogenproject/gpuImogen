@@ -13,8 +13,7 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-
-#include "mpi.h"
+#include "mpi_common.h"
 
 #define SYNCBLOCK 16
 
@@ -55,11 +54,11 @@ bool sanityCheckTag(const mxArray *tag)
 
 	// Some basic does-this-make-sense
 	if(nDevs < 1) {
-		printf("Tag indicates less than one GPU in use.\n");
+		printf((const char *)"Tag indicates less than one GPU in use.\n");
 		return false;
 	}
 	if(nDevs > MAX_GPUS_USED) {
-		printf("Tag indicates %i GPUs in use, current config only supports %i.\n", nDevs, MAX_GPUS_USED);
+		printf((const char *)"Tag indicates %i GPUs in use, current config only supports %i.\n", nDevs, MAX_GPUS_USED);
 		return false;
 	}
 	if(halo < 0) { // not reasonable.
@@ -70,26 +69,26 @@ bool sanityCheckTag(const mxArray *tag)
 		if(permtag == 0) {
 			// meh
 		} else {
-			printf("Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
+			printf((const char *)"Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
 			return false;
 		}
 	}
 
 	if((circlebits < 0) || (circlebits > 63)) {
-		printf("halo sharing bits have value %i, valid range is 0-63!\n", circlebits);
+		printf((const char *)"halo sharing bits have value %i, valid range is 0-63!\n", circlebits);
 		return false;
 
 	}
 
 	if((partitionDir < 1) || (partitionDir > 3)) {
-		printf("Indicated partition direction of %i is not 1, 2, or 3.\n", partitionDir);
+		printf((const char *)"Indicated partition direction of %i is not 1, 2, or 3.\n", partitionDir);
 		return false;
 	}
 
 	// Require there be enough additional elements to hold the physical device pointers & cuda device IDs
 	int requisiteNumel = GPU_TAG_LENGTH + 2*nDevs;
 	if(tagsize != requisiteNumel) {
-		printf("Tag length is %i: Must be %i base + 2*nDevs = %i\n", tagsize, GPU_TAG_LENGTH, requisiteNumel);
+		printf((const char *)"Tag length is %i: Must be %i base + 2*nDevs = %i\n", tagsize, GPU_TAG_LENGTH, requisiteNumel);
 		return false;
 	}
 
@@ -110,7 +109,7 @@ void calcPartitionExtent(MGArray *m, int P, int *sub)
 {
 	if(P >= m->nGPUs) {
 		char bugstring[256];
-		sprintf(bugstring, "Fatal: Requested partition %i but only %i GPUs in use.", P, m->nGPUs);
+		sprintf(bugstring, (const char *)"Fatal: Requested partition %i but only %i GPUs in use.", P, m->nGPUs);
 		mexErrMsgTxt(bugstring);
 	}
 
@@ -169,7 +168,7 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 		bool sanity = sanityCheckTag(gputype);
 		if(sanity == false) {
 			PRINT_FAULT_HEADER;
-			printf("Failure to access GPU tag: Sanity check failed.\n");
+			printf((const char *)"Failure to access GPU tag: Sanity check failed.\n");
 			PRINT_FAULT_FOOTER;
 			return ERROR_GET_GPUTAG_FAILED;
 		}
@@ -181,16 +180,16 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 	const char *cname = mxGetClassName(gputype);
 
 	/* If we were passed a GPU_Type, retreive the GPU_MemPtr element */
-	if(strcmp(cname, "GPU_Type") == 0) {
-		tag = mxGetProperty(gputype, mxarrayIndex, "GPU_MemPtr");
+	if(strcmp(cname, (const char *)"GPU_Type") == 0) {
+		tag = mxGetProperty(gputype, mxarrayIndex, (const char *)"GPU_MemPtr");
 	} else { /* Assume it's an ImogenArray or descendant and retrieve the gputag property */
-		tag = mxGetProperty(gputype, mxarrayIndex, "gputag");
+		tag = mxGetProperty(gputype, mxarrayIndex, (const char *)"gputag");
 	}
 
 	/* We have done all that duty required, there is no dishonor in surrendering */
 	if(tag == NULL) {
 		PRINT_FAULT_HEADER;
-		printf("getGPUTypeTag was called with something that is not a gpu tag, or GPU_Type class, or ImogenArray class\nArgument order wrong?\n");
+		printf((const char *)"getGPUTypeTag was called with something that is not a gpu tag, or GPU_Type class, or ImogenArray class\nArgument order wrong?\n");
 		PRINT_FAULT_FOOTER;
 		return ERROR_CRASH;
 	}
@@ -198,7 +197,7 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 	bool sanity = sanityCheckTag(tag);
 	if(sanity == false) {
 		PRINT_FAULT_HEADER;
-		printf("Failure to access GPU tag: Sanity check failed.\n");
+		printf((const char *)"Failure to access GPU tag: Sanity check failed.\n");
 		PRINT_FAULT_FOOTER;
 		return ERROR_GET_GPUTAG_FAILED;
 	}
@@ -208,7 +207,7 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 }
 
 cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
-	mxArray *streamptr  = mxGetProperty(fluidarray, 0, "streamptr");
+	mxArray *streamptr  = mxGetProperty(fluidarray, 0, (const char *)"streamptr");
 
 	return (cudaStream_t *)(*((int64_t *)mxGetData(streamptr)) );
 }
@@ -218,7 +217,7 @@ int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
 	if(tag == NULL) {
 			PRINT_FAULT_HEADER;
-			printf("input tag pointer was null!\n");
+			printf((const char *)"input tag pointer was null!\n");
 			PRINT_FAULT_FOOTER;
 			return ERROR_NULL_POINTER;
 		}
@@ -421,11 +420,11 @@ MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 	}
 
 #ifdef ALLOCFREE_DEBUG
-printf("============= MGA_allocArrays invoked\n");
-printf("Creating %i arrays\n", N);
-printf("Array ptr: %x\n", m);
+printf((const char *)"============= MGA_allocArrays invoked\n");
+printf((const char *)"Creating %i arrays\n", N);
+printf((const char *)"Array ptr: %x\n", m);
 for(i = 0; i < N; i++) {
-	for(j = 0; j < m[i].nGPUs; j++) printf("	Pointer %i: %x\n", m[i].deviceID[j], m[i].devicePtr[j]);
+	for(j = 0; j < m[i].nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", m[i].deviceID[j], m[i].devicePtr[j]);
 }
 #endif
 
@@ -477,20 +476,20 @@ int MGA_delete(MGArray *victim)
 	int j = 0;
 
 #ifdef ALLOCFREE_DEBUG
-printf("MGA_delete invoked ==============\n");
-printf("Victim *: %x\n", victim);
+printf((const char *)"MGA_delete invoked ==============\n");
+printf((const char *)"Victim *: %x\n", victim);
 for(j = 0; j < victim->nGPUs; j++) {
-	printf("	Device: %i, ptr %x\n", victim->deviceID[j], victim->devicePtr[j]);
+	printf((const char *)"	Device: %i, ptr %x\n", victim->deviceID[j], victim->devicePtr[j]);
 }
 fflush(stdout);
 #endif
 
 	for(j = 0; j<victim->nGPUs; j++){
 		cudaSetDevice(victim->deviceID[j]);
-		returnCode = CHECK_CUDA_ERROR("In MGA_delete, setting device");
+		returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete, setting device");
 
 		cudaFree(victim->devicePtr[j]);
-		if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR("In MGA_delete after free");
+		if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after free");
 
 		if(returnCode != SUCCESSFUL) break;
 	}
@@ -632,11 +631,11 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 	int i;
 	for(i = 0; i < in->nGPUs; i++) {
 		cudaSetDevice(in->deviceID[i]);
-		returnCode = CHECK_CUDA_ERROR("calling cudaSetDevice()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"calling cudaSetDevice()");
 		if(returnCode != SUCCESSFUL) break;
 
 		cudaMallocHost(&blockValues[i], gridsize.x * sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cudaMallocHost");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMallocHost");
 		if(returnCode != SUCCESSFUL) break;
 		switch(operate) {
 				case MGA_OP_SUM:  cukern_reduceScalar<MGA_OP_SUM><<<gridsize, blocksize>>>(in->devicePtr[i], blockValues[i], in->partNumel[i]); break;
@@ -644,7 +643,7 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 				case MGA_OP_MAX:  cukern_reduceScalar<MGA_OP_MAX><<<gridsize, blocksize>>>(in->devicePtr[i], blockValues[i], in->partNumel[i]); break;
 				case MGA_OP_MIN:  cukern_reduceScalar<MGA_OP_MIN><<<gridsize, blocksize>>>(in->devicePtr[i], blockValues[i], in->partNumel[i]); break;
 				}
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, in, i, "directionalMaxFinder(phi)");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, in, i, (const char *)"directionalMaxFinder(phi)");
 		if(returnCode != SUCCESSFUL) break;
 	}
 
@@ -656,11 +655,11 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 
 	for(devCount = 0; devCount < in->nGPUs; devCount++) {
 		cudaSetDevice(in->deviceID[devCount]);
-		returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaSetDevice()");
 		if(returnCode != SUCCESSFUL) break;
 
 		cudaDeviceSynchronize(); // FIXME: can use less restrictive form here?
-		returnCode = CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaDeviceSynchronize()");
 		if(returnCode != SUCCESSFUL) break;
 
 		// FIXME: get OMP to play nice with nvcc+mex & parallelize this
@@ -668,7 +667,7 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 			result = cpu_reducePair(result, blockValues[devCount][i], operate);
 
 		cudaFreeHost(blockValues[devCount]);
-		returnCode = CHECK_CUDA_ERROR("cudaFreeHost");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaFreeHost");
 		if(returnCode != SUCCESSFUL) break;
 	}
 
@@ -677,7 +676,7 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 	return returnCode;
 }
 
-int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, pParallelTopology topology)
+int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, ParallelTopology *topology)
 {
 	double nodeValue;
 	int returnCode = MGA_localReduceScalar(in, &nodeValue, operate);
@@ -722,7 +721,7 @@ int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator
 	/* If the partition already has size 1, just copy input to output. */
 	if(sub[2+dir] == 1) {
 		cudaMemcpyAsync(out->devicePtr[partition], in->devicePtr[partition], sizeof(double)*in->partNumel[partition], cudaMemcpyDeviceToDevice);
-		return CHECK_CUDA_ERROR("partition reduce shortcircuit via memcpy");
+		return CHECK_CUDA_ERROR((const char *)"partition reduce shortcircuit via memcpy");
 	}
 
 	switch(dir) {
@@ -761,7 +760,7 @@ int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator
 	} break;
 	}
 
-	return CHECK_CUDA_LAUNCH_ERROR(grid, blk, in, dir, "Simple partition reduction function");
+	return CHECK_CUDA_LAUNCH_ERROR(grid, blk, in, dir, (const char *)"Simple partition reduction function");
 
 }
 
@@ -909,7 +908,7 @@ int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator op
 		if(out[0]->dim[2] != clone.dim[2]) returnCode = ERROR_INVALID_ARGS;
 		if(returnCode != SUCCESSFUL) {
 			PRINT_FAULT_HEADER;
-			printf("out[0] was not null, but the passed MGArray** is of inappropriate dimensions.\nCannot safely free it & overwrite: Must return error.\n");
+			printf((const char *)"out[0] was not null, but the passed MGArray** is of inappropriate dimensions.\nCannot safely free it & overwrite: Must return error.\n");
 			PRINT_FAULT_FOOTER;
 			return returnCode;
 		}
@@ -937,7 +936,7 @@ int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator op
 /* First see MGA_localReduceDimension.
  * MGA_globalReduceDimension applies the given reduction to the local array, then applies reduce across distributed nodes using MPI reduction
  */
-int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, pParallelTopology topology)
+int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, ParallelTopology *topology)
 {
 	int returnCode = SUCCESSFUL;
 
@@ -959,7 +958,7 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 		if(out[0]->dim[2] != clone.dim[2]) returnCode = ERROR_INVALID_ARGS;
 		if(returnCode != SUCCESSFUL) {
 			PRINT_FAULT_HEADER;
-			printf("out[0] was not null, but the passed MGArray** is of inappropriate dimensions.\nCannot safely free it & overwrite: Must return error.\n");
+			printf((const char *)"out[0] was not null, but the passed MGArray** is of inappropriate dimensions.\nCannot safely free it & overwrite: Must return error.\n");
 			PRINT_FAULT_FOOTER;
 			return returnCode;
 		}
@@ -992,7 +991,7 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 		double *writeBuf= (double *)malloc(out[0]->numel*sizeof(double));
 		if(writeBuf == NULL) {
 			PRINT_FAULT_HEADER;
-			printf("Failed to allocate write buffer memory!\n");
+			printf((const char *)"Failed to allocate write buffer memory!\n");
 			PRINT_FAULT_FOOTER;
 			return ERROR_NULL_POINTER;
 		}
@@ -1060,43 +1059,6 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 }
 
 
-/* FIXME: Copied this flush out of cudaFluidStep, it should be checked for bullshit */
-pParallelTopology topoStructureToC(const mxArray *prhs)
-{
-	mxArray *a;
-
-	pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
-
-	a = mxGetFieldByNumber(prhs,0,0);
-	pt->ndim = (int)*mxGetPr(a);
-	a = mxGetFieldByNumber(prhs,0,1);
-	pt->comm = (int)*mxGetPr(a);
-
-	int *val;
-	int i;
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
-	for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
-	for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
-	for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
-
-	val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
-	for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
-
-	for(i = pt->ndim; i < 4; i++) {
-		pt->coord[i] = 0;
-		pt->nproc[i] = 1;
-	}
-
-	return pt;
-
-}
-
-
 template<MGAReductionOperator OP>
 __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel);
 template<MGAReductionOperator OP>
@@ -1137,13 +1099,13 @@ int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redis
 	case 1: break; // Well this was a waste of time
 	case 2: // reduce(A,B)->A
 		cudaSetDevice(a->deviceID[0]);
-		returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaSetDevice()");
 		if(returnCode != SUCCESSFUL) break;
 		cudaMalloc((void **)&B, eachPartSize*sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cudaMalloc()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMalloc()");
 		if(returnCode != SUCCESSFUL) break;
 		cudaMemcpy((void *)B, (void*)a->devicePtr[1], eachPartSize*sizeof(double), cudaMemcpyDeviceToDevice);
-		returnCode = CHECK_CUDA_ERROR("cudaMalloc()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMalloc()");
 		if(returnCode != SUCCESSFUL) break;
 
 		switch(operate) {
@@ -1156,25 +1118,25 @@ int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redis
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 2 GPUs");
 		if(returnCode != SUCCESSFUL) break;
 		cudaFree(B);
-		returnCode = CHECK_CUDA_ERROR("cudaFree()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaFree()");
 		if(returnCode != SUCCESSFUL) break;
 		break;
 	case 3: // reduce(A,B)->A; reduce(A, C)->A
 		cudaSetDevice(a->deviceID[0]);
-		returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaSetDevice()");
 		if(returnCode != SUCCESSFUL) break;
 		cudaMalloc((void **)&B, eachPartSize*sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cuda malloc");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cuda malloc");
 		if(returnCode != SUCCESSFUL) break;
 		cudaMalloc((void **)&C, eachPartSize*sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cuda malloc");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cuda malloc");
 		if(returnCode != SUCCESSFUL) break;
 
 		cudaMemcpy((void *)B, (void *)a->devicePtr[1], eachPartSize*sizeof(double), cudaMemcpyDeviceToDevice);
-		returnCode = CHECK_CUDA_ERROR("cuda memcpy");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cuda memcpy");
 		if(returnCode != SUCCESSFUL) break;
 		cudaMemcpy((void *)C, (void *)a->devicePtr[2], eachPartSize*sizeof(double), cudaMemcpyDeviceToDevice);
-		returnCode = CHECK_CUDA_ERROR("cuda memcpy");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cuda memcpy");
 		if(returnCode != SUCCESSFUL) break;
 
 		switch(operate) {
@@ -1184,7 +1146,7 @@ int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redis
 		case MGA_OP_MAX: cukern_TwoElementwiseReduce<MGA_OP_MAX><<<32, 256>>>(a->devicePtr[0], B, eachPartSize); break;
 		}
 
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, first call");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, (const char *)"clone reduction for 3 GPUs, first call");
 		if(returnCode != SUCCESSFUL) break;
 
 		switch(operate) {
@@ -1194,28 +1156,28 @@ int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redis
 		case MGA_OP_MAX: cukern_TwoElementwiseReduce<MGA_OP_MAX><<<32, 256>>>(a->devicePtr[0], C, eachPartSize); break;
 		}
 
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 3 GPUs, second call");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, (const char *)"clone reduction for 3 GPUs, second call");
 		if(returnCode != SUCCESSFUL) break;
 
 		cudaFree(B);
-		returnCode = CHECK_CUDA_ERROR("cudaFree");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaFree");
 		if(returnCode != SUCCESSFUL) break;
 		cudaFree(C);
-		returnCode = CHECK_CUDA_ERROR("cudaFree");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaFree");
 		if(returnCode != SUCCESSFUL) break;
 
 		break;
 	case 4: // {reduce(A,B)->A, reduce(C,D)->C}; reduce(A,C)->A
 		// FIXME: This is broken right now...
-		mexErrMsgTxt("This is broken soz.");
+		mexErrMsgTxt((const char *)"This is broken soz.");
 
 		// On device 0, allocate storage for device 1 and copy device 1 partition to device 0
 		cudaSetDevice(a->deviceID[0]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
+		CHECK_CUDA_ERROR((const char *)"cudaSetDevice()");
 		cudaMalloc((void **)&B, eachPartSize*sizeof(double));
-		CHECK_CUDA_ERROR("cudaMalloc");
+		CHECK_CUDA_ERROR((const char *)"cudaMalloc");
 		cudaMemcpyAsync((void *)B, (void *)a->devicePtr[1], eachPartSize*sizeof(double), cudaMemcpyDeviceToDevice);
-		returnCode = CHECK_CUDA_ERROR("cuda memcpy");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cuda memcpy");
 		if(returnCode != SUCCESSFUL) break;
 
 		// Launch (A,B)->A reduction on device 0
@@ -1230,9 +1192,9 @@ int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redis
 
 		// On device 2, allocate storage for device 3 and copy device 3 partition to device 2
 		cudaSetDevice(a->deviceID[2]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
+		CHECK_CUDA_ERROR((const char *)"cudaSetDevice()");
 		cudaMalloc((void **)&C, eachPartSize*sizeof(double));
-		CHECK_CUDA_ERROR("cudaMalloc");
+		CHECK_CUDA_ERROR((const char *)"cudaMalloc");
 		cudaMemcpyAsync((void *)C, (void *)a->devicePtr[3], eachPartSize*sizeof(double), cudaMemcpyDeviceToDevice);
 		returnCode = CHECK_CUDA_ERROR("cuda memcpy");
 		if(returnCode != SUCCESSFUL) break;
@@ -1562,7 +1524,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 
 	if(linear[0] == NULL) {
 		cudaMalloc((void **)linear, 2*haloNumel*sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cudaMalloc()");
+		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMalloc()");
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
@@ -1588,7 +1550,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 		default: returnCode = ERROR_CRASH;
 		}
 		if(returnCode == ERROR_CRASH) break;
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, "cudaMGA_haloXrw");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, (const char *)"cudaMGA_haloXrw");
 		break;
 	}
 	case 2: {
@@ -1604,7 +1566,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 		default: returnCode = ERROR_CRASH;
 		}
 		if(returnCode == ERROR_CRASH) break;
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, "cudaMGA_haloYrw");
+		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, right + 2*toHalo, (const char *)"cudaMGA_haloYrw");
 		break;
 	}
 
@@ -1890,7 +1852,7 @@ if(m == NULL) return -1;
 if(g == NULL) return -1;
 
 mwSize ndims = mxGetNumberOfDimensions(m);
-if(ndims > 3) { DROP_MEX_ERROR("Input array has more than 3 dimensions!"); }
+if(ndims > 3) { DROP_MEX_ERROR((const char *)"Input array has more than 3 dimensions!"); }
 
 const mwSize *arraydims = mxGetDimensions(m);
 
@@ -2001,7 +1963,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		}
 
 		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[i], (void *)gmem[i], g->partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
-		returnCode = CHECK_CUDA_ERROR("MGArray_uploadArrayToGPU");
+		returnCode = CHECK_CUDA_ERROR((const char *)"MGArray_uploadArrayToGPU");
 		if(returnCode != SUCCESSFUL) break;
 
 		free(gmem[i]);
@@ -2101,7 +2063,7 @@ void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, di
 	griddim->z = dims[2] / tileDim->z; griddim->z += ((griddim->z * tileDim->z) < dims[2]);
 }
 
-int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname)
+int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, const char *srcname, const char *fname, int lname)
 {
 	if(E == cudaSuccess) return SUCCESSFUL;
 
@@ -2137,7 +2099,7 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 	return ERROR_CUDA_BLEW_UP;
 }
 
-int checkCudaError(char *where, char *fname, int lname)
+int checkCudaError(const char *where, const char *fname, int lname)
 {
 	cudaError_t epicFail = cudaGetLastError();
 	if(epicFail == cudaSuccess) return SUCCESSFUL;
@@ -2152,13 +2114,13 @@ int checkCudaError(char *where, char *fname, int lname)
 	return ERROR_CUDA_BLEW_UP;
 }
 
-int checkImogenError(int errtype, char *infile, const char *infunc, int atline)
+int checkImogenError(int errtype, const char *infile, const char *infunc, int atline)
 {
 	if(errtype == SUCCESSFUL) return SUCCESSFUL;
 	int mpirank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
 
-	char *estring;
+	const char *estring;
 
 	switch(errtype)
 	{
@@ -2173,7 +2135,7 @@ int checkImogenError(int errtype, char *infile, const char *infunc, int atline)
 	return errtype;
 }
 
-void dropMexError(char *excuse, char *infile, int atline)
+void dropMexError(const char *excuse, const char *infile, int atline)
 {
 	char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
 

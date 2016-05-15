@@ -13,12 +13,14 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "mpi_common.h"
+
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// wrapper for cudaFree().
-	if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt("GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");
+	if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt((const char *)"GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");
 
-	int returnCode = CHECK_CUDA_ERROR("Entering GPU_free()");
+	int returnCode = CHECK_CUDA_ERROR((const char *)"Entering GPU_free()");
 	if(returnCode != SUCCESSFUL)
 		return;
 
