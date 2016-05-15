@@ -4,10 +4,8 @@
 #include "mex.h"
 #include "matrix.h"
 
-#include "parallel_halo_arrays.h"
-#include "mpi_common.h"
-
-pParallelTopology topoStructureToC(const mxArray *prhs); 
+/*#include "mpi_common.h" */
+using namespace std;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {

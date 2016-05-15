@@ -1,7 +1,6 @@
 #include "stdio.h"
 
 #include "mpi.h"
-
 #include "mex.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -43,7 +42,7 @@ if(rank == root) { iobuf = mxGetPr(prhs[0]); } else { iobuf = mxGetPr(plhs[0]); 
 
 /* calc numel */
 int numel = 1; for(j = 0; j < arrayinfo[0]; j++) { numel *= arrayinfo[j+2]; }
-
+// FIXME: use the mpi2ml class identifier? 
 /* call the exchange of the data */
 switch(mxGetClassID(plhs[0])) {
   case mxCHAR_CLASS:   MPI_Bcast(iobuf, numel, MPI_CHAR, root, MPI_COMM_WORLD); break;

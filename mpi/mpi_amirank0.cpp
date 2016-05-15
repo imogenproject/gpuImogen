@@ -1,13 +1,12 @@
 #include "stdio.h"
 
 #include "mpi.h"
-
 #include "mex.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-if((nlhs != 1 ) || (nrhs != 0)) { mexErrMsgTxt("call is rank = mpi_myrank()"); }
+    if((nlhs != 1 ) || (nrhs != 0)) { mexErrMsgTxt("call is [1/0] = mpi_amirank0()"); }
 
    int bee;
    MPI_Comm_rank(MPI_COMM_WORLD, &bee);
@@ -18,6 +17,6 @@ if((nlhs != 1 ) || (nrhs != 0)) { mexErrMsgTxt("call is rank = mpi_myrank()"); }
 
    double *d = mxGetPr(plhs[0]);
 
-   d[0] = (double)bee;
+   d[0] = (bee == 0) ? 1 : 0;
 
 }

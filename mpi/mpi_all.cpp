@@ -1,13 +1,13 @@
 #include "stdio.h"
+#include "stdint.h"
 
 #include "mpi.h"
 #include "mex.h"
 #include "matrix.h"
 
-#include "parallel_halo_arrays.h"
 #include "mpi_common.h"
 
-pParallelTopology topoStructureToC(const mxArray *prhs); 
+using namespace std;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -33,10 +33,10 @@ dst = mxGetData(plhs[0]);
 
 /* Safe to do on the Matlab data */
 if(mpidatatypeIsInteger(mtype)) {
-    MPI_Allreduce(src, dst, numel, mtype, MPI_LAND, commune);
+    MPI_Allreduce(src, dst, numel, mtype, MPI_BAND, commune);
 } else {
 /* Whelp, this just got slower */
-    uint8_t *logicSrc = malloc(numel*2);
+    uint8_t *logicSrc = (uint8_t *)malloc(numel*2);
     uint8_t *logicDst = logicSrc + numel;
 
     long k;
@@ -44,7 +44,7 @@ if(mpidatatypeIsInteger(mtype)) {
         double *d = (double *)src;
         for(k = 0; k < numel; k++)
             logicSrc[k] = (d[k] != 0);
-        MPI_Allreduce(logicSrc, logicDst, numel, MPI_BYTE, MPI_LAND, commune);
+        MPI_Allreduce(logicSrc, logicDst, numel, MPI_BYTE, MPI_BAND, commune);
 
         d = (double *)dst;
         for(k = 0; k < numel; k++)
@@ -55,7 +55,7 @@ if(mpidatatypeIsInteger(mtype)) {
         float *d  = (float *)src;
         for(k = 0; k < numel; k++)
             logicSrc[k] = (d[k] != 0);
-        MPI_Allreduce(logicSrc, logicDst, numel, MPI_BYTE, MPI_LAND, commune);
+        MPI_Allreduce(logicSrc, logicDst, numel, MPI_BYTE, MPI_BAND, commune);
 
         d = (float *)dst;
         for(k = 0; k < numel; k++)
@@ -67,40 +67,4 @@ if(mpidatatypeIsInteger(mtype)) {
 
 
 }
-
-pParallelTopology topoStructureToC(const mxArray *prhs)
-{
-mxArray *a;
-
-pParallelTopology pt = (pParallelTopology)malloc(sizeof(ParallelTopology));
-
-a = mxGetFieldByNumber(prhs,0,0);
-pt->ndim = (int)*mxGetPr(a);
-a = mxGetFieldByNumber(prhs,0,1);
-pt->comm = (int)*mxGetPr(a);
-
-int *val;
-int i;
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,2));
-for(i = 0; i < pt->ndim; i++) pt->coord[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,3));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_left[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,4));
-for(i = 0; i < pt->ndim; i++) pt->neighbor_right[i] = val[i];
-
-val = (int *)mxGetData(mxGetFieldByNumber(prhs,0,5));
-for(i = 0; i < pt->ndim; i++) pt->nproc[i] = val[i];
-
-for(i = pt->ndim; i < 4; i++) {
-  pt->coord[i] = 0;
-  pt->nproc[i] = 1;
-  }
-
-return pt;
-
-}
-
 
