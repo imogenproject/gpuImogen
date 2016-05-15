@@ -1,7 +1,8 @@
 function tortureTest(multidev, dorad, nTests)
-% tortureTest([device list], 'y'/'n' to radiative cooling test)
+% tortureTest([device list], 'y'/'n' to radiative cooling test, numTests)
 % > device list: Set of integers naming GPUs to use, as enumerated by GPU_ctrl('info')
 % > dorad: If == 'y' tests cudaFreeRadiation
+% > numTests: How many times to fuzz each function
 
 if nargin < 1
     multidev = [0];
