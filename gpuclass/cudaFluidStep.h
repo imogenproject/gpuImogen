@@ -26,13 +26,13 @@ typedef struct __FluidStepParams {
 #define FLUX_Z 3
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo, mxArray **dbOutput);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, mxArray **dbOutput);
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo);
 #endif
 
-pParallelTopology topoStructureToC(const mxArray *prhs);
-void cfSync(double *cfArray, int cfNumel, pParallelTopology topology);
+ParallelTopology * topoStructureToC(const mxArray *prhs);
+void cfSync(double *cfArray, int cfNumel, ParallelTopology * topology);
 
 __global__ void replicateFreezeArray(double *freezeIn, double *freezeOut, int ncopies, int ny, int nz);
 __global__ void reduceFreezeArray(double *freezeClone, double *freeze, int nx, int ny, int nz);

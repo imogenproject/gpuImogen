@@ -8,6 +8,6 @@
 #ifndef CUDAHALOEXCHANGE_H_
 #define CUDAHALOEXCHANGE_H_
 
-int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xchgDir);
+int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xchgDir);
 
 #endif /* CUDAHALOEXCHANGE_H_ */

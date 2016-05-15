@@ -12,7 +12,7 @@
 
 int setFluidBoundaries(MGArray *x, int nArrays, int dir);
 
-int performFluidUpdate_3D(MGArray *fluid, pParallelTopology parallelTopo, int order, int stepNumber, double *lambda, double gamma, double stepMethod)
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double stepMethod)
 {
 int sweep, flag_1D = 0;
 

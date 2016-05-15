@@ -21,9 +21,7 @@
 // Only uncomment this if you plan to debug this file.
 //#define DEBUGMODE
 
-#include "mpi.h"
-#include "parallel_halo_arrays.h"
-//#include "mpi_common.h"
+#include "mpi_common.h"
 
 /* THIS FUNCTION
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -173,7 +171,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int method   = (int)thermo[2];
 	int stepdir  = (int)thermo[3];
 
-	pParallelTopology topology = topoStructureToC(prhs[13]);
+	ParallelTopology topology;
+	topoStructureToC(prhs[13], &topology);
 
 	FluidStepParams stepParameters;
 	stepParameters.lambda      = lambda;
@@ -184,9 +183,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	stepParameters.stepDirection = stepdir;
 
 #ifdef DEBUGMODE
-	performFluidUpdate_1D(&fluid[0], FluidStepParams params, topology, mxArray **dbOutput);
+	performFluidUpdate_1D(&fluid[0], FluidStepParams params, &topology, mxArray **dbOutput);
 #else
-	performFluidUpdate_1D(&fluid[0], stepParameters, topology);
+	performFluidUpdate_1D(&fluid[0], stepParameters, &topology);
 #endif
 }
 
@@ -267,9 +266,9 @@ void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray **plhs)
 }
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo,  mxArray **dbOutput)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo,  mxArray **dbOutput)
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo)
 #endif
 {
 	CHECK_CUDA_ERROR("entering cudaFluidStep");

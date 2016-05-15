@@ -13,11 +13,9 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
-// PGW
-#include "parallel_halo_arrays.h"
-
 // My stuff
 #include "cudaCommon.h"
+#include "mpi_common.h"
 #include "cudaHaloExchange.h"
 
 /* THIS ROUTINE
@@ -44,22 +42,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	CHECK_CUDA_ERROR("entering cudaHaloExchange");
 	int xchg = (int)*mxGetPr(prhs[1]);
 
-	pParallelTopology parallelTopo = topoStructureToC(prhs[2]);
+	ParallelTopology parallelTopo;
+	topoStructureToC(prhs[2], &parallelTopo);
 
-	if(parallelTopo->nproc[xchg] == 1) return;
+	if(parallelTopo.nproc[xchg] == 1) return;
 	// Do not waste time if we can't possibly have any work to do
 
 	MGArray phi;
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access GPU array."); }
 
-	if(CHECK_IMOGEN_ERROR(exchange_MPI_Halos(&phi, 1, parallelTopo, xchg)) != SUCCESSFUL) {
+	if(CHECK_IMOGEN_ERROR(exchange_MPI_Halos(&phi, 1, &parallelTopo, xchg)) != SUCCESSFUL) {
 		DROP_MEX_ERROR("Failed to perform MPI halo exchange!");
 	}
 }
 #endif
 
-int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xchgDir)
+int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xchgDir)
 {
 	int returnCode = CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	if(returnCode != SUCCESSFUL) { return returnCode; }
@@ -131,7 +130,7 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, pParallelTopology topo, int xc
 			cudaDeviceSynchronize();
 		}
 
-		parallel_exchange_dim_contig(topo, xchgDir, (void*)ptrHalo,
+		mpi_exchangeHalos(topo, xchgDir, (void*)ptrHalo,
 				(void*)(ptrHalo + numPerHalo),\
 				(void*)(ptrHalo+2*numPerHalo),\
 				(void*)(ptrHalo+3*numPerHalo), numPerHalo, MPI_DOUBLE);
