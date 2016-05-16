@@ -9,19 +9,20 @@
 
 // CUDA
 #include "cuda.h"
-
 #include "cuda_runtime.h"
-
-
 #include "cublas.h"
 
+// MPI
+#include "mpi.h"
+#include "mpi_common.h"
+
+// Local defs
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
 
 // Only uncomment this if you plan to debug this file.
+// Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
-
-#include "mpi_common.h"
 
 /* THIS FUNCTION
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -44,9 +45,8 @@ law is built into Imogen in multiple locations and significant re-checking would
 if it were to be generalized.
 
 The hydro functions solve the same equations with B set to <0,0,0> which simplifies
-and considerably speeds up the process.
+and considerably speeds up the process. */
 
- */
 
 //__device__ void __syncthreads(void);
 
@@ -140,7 +140,9 @@ __constant__ __device__ int    arrayParams[4];
 #define DEV_SLABSIZE arrayParams[3]
 
 #ifdef STANDALONE_MEX_FUNCTION
-
+// FIXME: I think we can do away with calling this with input pressure & freeze speeds
+// FIXME: because with the topology we have the facility to compute them here
+// FIXME: and we shouldn't have temp vars computed/exposed in ML anyway.
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
 #ifdef DEBUGMODE
@@ -560,8 +562,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 }
 
-// Because nSight won't stop being a fucking cunt and do its goddamn job and parse the goddamn header files
-// It's right there on line 131 of device_functions.h, assface!
+// Sometimes nsight gets stupid about parsing the nVidia headers and I'm tired of this
+// crap about how __syncthreads is "undeclared."
 extern __device__ __device_builtin__ void                   __syncthreads(void);
 
 // These tell the HLL and HLLC solvers how to dereference their shmem blocks in convenient shorthand

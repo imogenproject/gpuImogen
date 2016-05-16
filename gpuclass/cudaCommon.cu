@@ -15,6 +15,13 @@
 #include "cudaCommon.h"
 #include "mpi_common.h"
 
+/* THIS FUNCTION ACCEPTS THE FOLLOWING FLAGS VIA -D:
+ * -DALLOCFREE_DEBUG
+ *     Causes every call to MGA_allocArrays and MGA_delete to emit a message to stdout;
+ *     A poor man's valgrind.
+ */
+
+
 #define SYNCBLOCK 16
 
 __global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
@@ -26,6 +33,10 @@ __global__ void cudaMGA_haloXrw(double *phi, double *linear, int nx, int ny, int
 template<int lr_rw>
 __global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int nz, int h);
 
+/* Given an mxArray* that points to a GPU tag (specifically the uint64_t array, not the more
+ * general types tolerated by the higher-level functions), checks whether it can pass
+ * muster as a MGArray (i.e. one packed by serializeMGArrayToTag).
+ */
 bool sanityCheckTag(const mxArray *tag)
 {
 	int64_t *x = (int64_t *)mxGetData(tag);
@@ -104,7 +115,10 @@ bool sanityCheckTag(const mxArray *tag)
 	return true;
 }
 
-// Fills sub with [x0 y0 z0 nx ny nz] of partition P of multi-GPU array m
+/* Write [x0 y0 z0 nx ny nz] to the first 6 elements of sub for partition P of the MGArray
+ * pointed to by m.
+ * DO NOT use ANY other function to compute MGA extents!!!
+ */
 void calcPartitionExtent(MGArray *m, int P, int *sub)
 {
 	if(P >= m->nGPUs) {
@@ -145,12 +159,18 @@ void calcPartitionExtent(MGArray *m, int P, int *sub)
 
 }
 
-// This does the "ugly" work of deciding what was passed and getting a hold of the raw data pointer
+/* Given an mxArray *X, it searches "all the places you'd expect" any function in Imogen to have
+ * stored the uint64_t pointer to the tag itself. Specifically, if X is a:
+ *   uint64_t class: returns mxGetData(X)
+ *   GPU_Type class: returns mxGetData(mxGetProperty(X, 0, "GPU_MemPtr"));
+ *   FluidArray    : returns mxGetData(mxGetProperty(X, 0, "gputag"));
+ */
 int getGPUTypeTag(const mxArray *gputype, int64_t **tagPointer)
 {
 	return getGPUTypeTagIndexed(gputype, tagPointer, 0);
 }
 
+/* Behaves as getGPUTypeTag, but can fetch outside of index zero. */
 int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex)
 {
 	if(tagPointer == NULL) {
@@ -212,7 +232,7 @@ cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
 	return (cudaStream_t *)(*((int64_t *)mxGetData(streamptr)) );
 }
 
-// SERDES routines
+// SERDES: Unpacks a uint64_t vector into an MGArray
 int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 {
 	if(tag == NULL) {
@@ -264,6 +284,7 @@ int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 	return SUCCESSFUL;
 }
 
+// SERDES: Packs an MGArray into a uint64_t vector
 void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 {
 	tag[GPU_TAG_DIM0]    = mg->dim[0];
@@ -286,6 +307,10 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 	return;
 }
 
+/* Converts the MGArray's .permtag element which uniquely specifies the current in-memory layout
+ * into p[3] such that p[i] gives the 'physical' direction which lies in the i direction
+ * in memory, for convenience.
+ * */
 void MGA_permtagToNums(int permtag, int *p)
 {
 	if(p == NULL) return;
@@ -301,6 +326,9 @@ void MGA_permtagToNums(int permtag, int *p)
 
 }
 
+/* Reverse of permtagToNums: Routines which rotate memory and alter the currentPermutation[]
+ * should use this to make sure that .permtag, which actually represents it, is updated too
+ */
 int MGA_numsToPermtag(int *nums)
 {
 	if(nums == NULL) return -1;
@@ -323,7 +351,14 @@ int MGA_numsToPermtag(int *nums)
 return 0;
 }
 
-// Helpers to easily access/create multiple arrays
+/* Facilitates access to MGArrays stored in Imogen's Matlab structures:
+ * the mxArray pointers prhs[i] for i spanning idxFrom to idxTo inclusive
+ * are decoded into mg[i - idxFrom]. Such that if the Matlab call is
+ *    matlabFoo(1, 2, gpuA, gpuB, gpuC)
+ * then foo(const mxArray *prhs[], ...) should use
+ *    MGA_accessMatlabArrays(prhs, 2, 4, x)
+ * with the result that x[0] = gpuA, x[1] = gpuB, x[2] = gpuC.
+ */
 int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg)
 {
 
@@ -349,7 +384,13 @@ int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArra
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
-// Helpers to easily access/create multiple arrays
+/* Facilitates access to vector GPU array arguments from Matlab. Such that if
+ *   matlab>> x = [gpuA gpuB gpuC];
+ *   matlab>> matlabFoo(1, x, stuff)
+ * Then foo(const mxArray *prhs, ...) should use
+ *   MGA_accessMatlabArrayVector(prhs[1], 0, 2, z)
+ * with the result that z[0] = gpuA, z[1] = gpuB, z[2] = gpuC.
+ */
 int MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArray *mg)
 {
 
@@ -374,6 +415,10 @@ int MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArra
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
+/* Given a pointer to a template array 'skeleton', returns a vector of N MGArrays whose
+ * size and partitioning match that of skeleton. If skeleton is a slab referent, new arrays
+ * are real arrays the size of one slab (numSlabs = 1).
+ */
 MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 {
 	// Do some preliminaries,
@@ -431,6 +476,10 @@ for(i = 0; i < N; i++) {
 	return m;
 }
 
+/* A convenient wrapper for returning data to Matlab:
+ * Creates arrays in the style of MGA_allocArrays, but serializes them into the
+ * first N elements of plhs[] as well before returning the C vector pointer.
+ */
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton)
 {
 	MGArray *m = MGA_allocArrays(N, skeleton);
@@ -451,6 +500,9 @@ MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton)
 	return m;
 }
 
+/* Does exactly what it says: Accepts one MGArray pointer and
+ * writes one serialized representation to plhs[0].
+ */
 void MGA_returnOneArray(mxArray *plhs[], MGArray *m)
 {
 	mwSize dims[2]; dims[0] = GPU_TAG_LENGTH+2*m->nGPUs; dims[1] = 1;
@@ -462,6 +514,8 @@ void MGA_returnOneArray(mxArray *plhs[], MGArray *m)
 	serializeMGArrayToTag(m, r);
 }
 
+/* Deallocates an MGArray by freeing all its devicePtr[] entries.
+ * If it is passed a slab reference (numSlabs < 1), does nothing */
 int MGA_delete(MGArray *victim)
 {
 	if(victim == NULL) {
@@ -518,8 +572,7 @@ dim3 makeDim3(int *b) {
 	dim3 a; a.x = (unsigned int)b[0]; a.y = (unsigned int)b[1]; a.z = (unsigned int)b[2]; return a; }
 
 /* This function should only be used for debugging race conditions
- * It loops over ALL devices used by MGArray q, and synchronizes them
- * one by one. */
+ * It loops over q->deviceID[] and calls cudaDeviceSynchronize() for each. */
 void MGA_sledgehammerSequentialize(MGArray *q)
 {
 	int i;
@@ -528,6 +581,7 @@ void MGA_sledgehammerSequentialize(MGArray *q)
 		cudaDeviceSynchronize();
 	}
 }
+
 
 double cpu_reduceInitValue(MGAReductionOperator op)
 {
@@ -615,6 +669,9 @@ __global__ void cukern_reduceScalar(double *phi, double *retvals, int n)
 	retvals[blockIdx.x] = cukern_reducePair(W[0],W[1], OPERATION);
 }
 
+/* MGA_localReduceScalar uses the GPU to compute the reduction of the array described by
+ * 'in' to a single value and writes that to scalar[0].
+ */
 int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate)
 {
 	int returnCode;
@@ -676,6 +733,10 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 	return returnCode;
 }
 
+/* The global reduction function accepts in addition a topology: After using the GPU to find
+ * the local reduction, uses MPI to find the global value & stores it to scalar[0] for all
+ * ranks participating in topology->comm.
+ */
 int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, ParallelTopology *topology)
 {
 	double nodeValue;
@@ -875,16 +936,15 @@ __global__ void cukern_ReduceZ(double *phi, double *r, int nx, int ny, int nz)
 /* MGA_localReduceDimension operates such that
  *    out[...,dir=0,...] = REDUCE(in[...,:,...])
  *    out.dim[dir-1] will equal 1.
- * i.e. reduction operation is applied independent to every vector of elements transverse to 'dir'.
+ * i.e. reduction to scalar is done to every vector of elements in the 'dir' direction.
  *
- * If the in->partitionDir == dir, data is reduced across partitions and ends on device partitionOnto.
+ * If the in->partitionDir == dir, the answer stored to partition 'partitionOnto.'
  *    If this is the case and 'redistribute' is set, this data is copied to all other partitions before return.
- *    If this is not the case, both 'partitionOnto' and 'redistribute' are irrelevant.
+ * If in->partitionDir != dir, 'partitionOnto' and 'redistribute' are irrelevant.
  *
- * If out[0] is nonnull and the correct size, it is overwritten as the output array.
- * If out[0] is null, an output array of the correct size is allocated.
- */
-
+ * If out[0] is nonnull and the correct size, its contents are overwritten with the output array.
+ * If out[0] is nonnull but is an incorrect size, ERROR_INVALID_ARGS occurs.
+ * If out[0] is null, an output array of the correct size is allocated. */
 int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute)
 {
 	int returnCode = SUCCESSFUL;
@@ -933,8 +993,10 @@ int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator op
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
-/* First see MGA_localReduceDimension.
- * MGA_globalReduceDimension applies the given reduction to the local array, then applies reduce across distributed nodes using MPI reduction
+/* First uses MGA_localReduceDimension to perform an accelerated reduce locally.
+ * Then the result is copied to host memory and the MPI communicator in topology->dimcomm
+ * corresponding to the direction is used to find the reduction across nodes,
+ * then results transferred back to the GPU.
  */
 int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, ParallelTopology *topology)
 {
@@ -1066,10 +1128,10 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
 
 /* Requiring that each partition have equal # of elements, computes
  * a->devicePtr[0][i] = REDUCTION(a->devicePtr[0][i], a->devicePtr[1][i], ..., a->devicePtr[a->nGPUs][i])
+ * for i in 0 to a->partNumel[0].
  *
- * if redistribute = 1, a->devicePtr[0] data is copied to partitions 1 through a->nGPUs as well.
- */
-int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute)
+ * if redistribute == 1, a->devicePtr[0] data is copied to partitions 1 through a->nGPUs as well. */
+int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute)
 {
 	/* FIXME: should have a partitionOnto option... */
 	int i;
@@ -1292,7 +1354,8 @@ __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel)
 	}
 }
 
-// Necessary when non-point operations have been performed in the partition direction
+/* Synchronizes the halo regions between data partitions of a[0] to a[n-1].
+ * Does nothing if a[i].haloSize == 0 or a[i].nGPUs == 1. */
 int MGA_exchangeLocalHalos(MGArray *a, int n)
 {
 	int i, j, jn, jp;
@@ -1435,6 +1498,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
+
 int MGA_wholeFaceHaloNumel(MGArray *a, int direction, int h)
 {
 if(a == NULL) DROP_MEX_ERROR("In MGA_faceHaloNumel sanity checks: a is NULL!\n");
@@ -1454,7 +1518,13 @@ return q;
 
 }
 
-/* FIXME: This routine is potentially dangerous when called to fetch halos for outside-MGA purposes
+/* From the MGArray pointed to by 'a', will read to CPU (writehalo == 0) or upload to gpu
+ * (writehalo == 1) the lowest-index (rightside == 0) or highest-index (rightside == 1)
+ * face of 'a' in the 'direction' direction (x=1,y=2,z=3) from linear[0].
+ * If linear[0] is null, allocates storage into it.
+ * If linear[0] is not null, it must point to sufficient storage.
+ *
+ * FIXME: This routine is potentially dangerous when called to fetch halos for outside-MGA purposes
  * FIXME: Reason: it assumes that ranks A and B have identical partitioning, in which case the metadata
  * FIXME: associated with MGA_partitionHaloToLinear output will be the same (i.e. partition i on rank B
  * FIXME: will have the same size, halo size and index permutation as partition i on rank A)
@@ -1483,8 +1553,8 @@ int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehal
 }
 
 
-/* Fetches the indicated face of a partition's cube to a linear swatch of memory,
- * suitable for memcpy or MPI internode halo exchange
+/* Determines how many linear memory elements will be required to store the given partition/direction
+ * halo of 'a'
  */
 int MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h)
 {
@@ -1721,9 +1791,13 @@ __global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int
 
 }
 
-/* Given an MGArray, allocates prod(g->dim) doubles at p and
- * copies it back to the cpu.
- * if(g->haloSize == PARTITION_CLONED), the partitionFrom-th device pointer is read*/
+/* Copes the MGArray pointed to by g into the space at p[0].
+ * If partitionFrom is nonnegative, fetches only that partition.
+ * If partitionFrom is negative, returns the entire array.
+ *
+ * If p[0] == NULL, attempts to allocate sufficient storage, which is one of
+ *     g->partNumel[partitionFrom] or g->numel.
+ * If p[0] != NULL, p[0] must point to sufficient storage. */
 // FIXME: this entire crapshow should just make a few calls to cudaMemcpy2D/3D
 int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 {
@@ -1845,6 +1919,13 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 	return SUCCESSFUL;
 }
 
+/* Given a pointer to the Matlab array m, checks that g points to an
+ * MGArray of the same size as m:
+ * if partitionTo is nonnegative, that that partition's extent equals
+ * the size of m
+ * if partitionTo is negative, that the g->dim equals the size of m.
+ * and then initiates the transfer.
+ */
 int MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo)
 {
 
@@ -1869,6 +1950,10 @@ return CHECK_IMOGEN_ERROR(MGA_uploadArrayToGPU(mxGetPr(m), g, partitionTo));
 
 }
 
+/* Assuming that p points to an array whose size is compatible with either
+ * the whole of g (partitionOnto < 0) or a specific partition of g (if
+ * partitionOnto >= 0), transfers elements of p to g.
+ */
 int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 {
 	int returnCode = SUCCESSFUL;
@@ -1978,8 +2063,8 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 
 }
 
-// Just grab in.fieldA.fieldB
-// Or in.fieldA if fieldB is blank
+/* A utility to ease access to Matlab structures/classes, fetches in.{fieldA}.{fieldB}
+ * or in.{fieldA} if fieldB is blank and returns the resulting mxArray*. */
 mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 {
 	if(fieldA == NULL) mexErrMsgTxt("In derefAdotBdotC: fieldA null!");
@@ -2023,8 +2108,9 @@ mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 	}
 }
 
-// Two utility extensions of the deref above, to grab either the
-// first element of a presumed double array or the first N elements
+/* Fetches in.{fieldA}.{fieldB}, or in.{fieldA} if fieldB is NULL,
+ * and returns the first double element of this.
+ */
 double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
 {
 	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
@@ -2034,6 +2120,11 @@ double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
 	return NAN;
 }
 
+/* Fetches in.{fieldA}.{fieldB}, or in.{fieldA} if fieldB is NULL,
+ * and copies the first N elements of this into x[0, ..., N-1] if we get
+ * a valid double *, or writes NANs if we do not.
+ * If the Matlab array has fewer than N elements, truncates the copy.
+ */
 void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N)
 {
 	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
@@ -2063,6 +2154,10 @@ void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, di
 	griddim->z = dims[2] / tileDim->z; griddim->z += ((griddim->z * tileDim->z) < dims[2]);
 }
 
+/* This should be checked after every GPU kernel launch: It provides detailed metadata feedback to
+ * greatly facilitate debugging. If it does not return SUCCESSFUL, the function should
+ * abort and return its return value: This effectively prints a compiled code backtrace.
+ */
 int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, const char *srcname, const char *fname, int lname)
 {
 	if(E == cudaSuccess) return SUCCESSFUL;
@@ -2099,6 +2194,10 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 	return ERROR_CUDA_BLEW_UP;
 }
 
+/* This should be polled after CUDA API calls. In the event of a problem, it provides detailed
+ * metadata feedback to assist with debugging. If it returns unsuccessful, the function
+ * should immediately cleanup & return its return value.
+ */
 int checkCudaError(const char *where, const char *fname, int lname)
 {
 	cudaError_t epicFail = cudaGetLastError();
@@ -2114,6 +2213,19 @@ int checkCudaError(const char *where, const char *fname, int lname)
 	return ERROR_CUDA_BLEW_UP;
 }
 
+/* This function facilitates error feedback that assists with debugging.
+ * Functions which can fail should return an error integer.
+ * Every call to a function which can fail should use the CHECK_IMOGEN_ERROR() macro
+ * and abort in the event it returns other than SUCCESSFUL;
+ * This process will print a backtrace of where the error occurred, leading back
+ * to the invoking mexFunction entry point.
+ *
+ * The mexFunction itself, upon detecting failure, should cause a mexError, which will
+ * cause the invocation of a similar backtrace in the Matlab layer
+ *
+ * NOTE: Don't use this directly, use the CHECK_IMOGEN_ERROR(errorcode) macro which will automatically
+ * have the correct filename, function name and line number.
+ */
 int checkImogenError(int errtype, const char *infile, const char *infunc, int atline)
 {
 	if(errtype == SUCCESSFUL) return SUCCESSFUL;
@@ -2135,6 +2247,10 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	return errtype;
 }
 
+/* This function should be used the mexFunction entry points to signal Matlab of problems.
+ * NOTE: Don't call this directly, use DROP_MEX_ERROR("string") to automatically
+ * fill in the file and line numbers correctly.
+ */
 void dropMexError(const char *excuse, const char *infile, int atline)
 {
 	char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
@@ -2153,6 +2269,9 @@ void printdim3(char *name, dim3 dim)
 void printgputag(char *name, int64_t *tag)
 { printf("gputag %s is [*=%lu dims=%lu size=(%lu %lu %lu)]\n", name, tag[0], tag[1], tag[2], tag[3], tag[4]); }
 
+/* Accepts an MPI_Op reduction type and returns an enum appropriate
+ * for my templated accelerated reduce functions.
+ */
 MGAReductionOperator MGAReductionOperator_mpi2mga(MPI_Op mo)
 {
 	MGAReductionOperator op = MGA_OP_SUM;
@@ -2163,6 +2282,9 @@ MGAReductionOperator MGAReductionOperator_mpi2mga(MPI_Op mo)
 	if(mo == MPI_MIN) op = MGA_OP_MIN;
 	return op;
 }
+/* Accepts my enumerated reduce operators & converts them to MPI_Op types
+ * for global operations.
+ */
 MPI_Op MGAReductionOperator_mga2mpi(MGAReductionOperator op)
 {
 	MPI_Op mo = MPI_SUM;
