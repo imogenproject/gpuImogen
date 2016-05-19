@@ -9,21 +9,20 @@
 
 // CUDA
 #include "cuda.h"
-
 #include "cuda_runtime.h"
-
-
 #include "cublas.h"
 
+// MPI
+#include "mpi.h"
+#include "mpi_common.h"
+
+// Local defs
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
 
 // Only uncomment this if you plan to debug this file.
+// Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
-
-#include "mpi.h"
-#include "parallel_halo_arrays.h"
-//#include "mpi_common.h"
 
 /* THIS FUNCTION
 This function calculates a first order accurate upwind step of the conserved transport part of the 
@@ -46,9 +45,8 @@ law is built into Imogen in multiple locations and significant re-checking would
 if it were to be generalized.
 
 The hydro functions solve the same equations with B set to <0,0,0> which simplifies
-and considerably speeds up the process.
+and considerably speeds up the process. */
 
- */
 
 //__device__ void __syncthreads(void);
 
@@ -142,7 +140,9 @@ __constant__ __device__ int    arrayParams[4];
 #define DEV_SLABSIZE arrayParams[3]
 
 #ifdef STANDALONE_MEX_FUNCTION
-
+// FIXME: I think we can do away with calling this with input pressure & freeze speeds
+// FIXME: because with the topology we have the facility to compute them here
+// FIXME: and we shouldn't have temp vars computed/exposed in ML anyway.
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
 #ifdef DEBUGMODE
@@ -173,7 +173,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int method   = (int)thermo[2];
 	int stepdir  = (int)thermo[3];
 
-	pParallelTopology topology = topoStructureToC(prhs[13]);
+	ParallelTopology topology;
+	topoStructureToC(prhs[13], &topology);
 
 	FluidStepParams stepParameters;
 	stepParameters.lambda      = lambda;
@@ -184,9 +185,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	stepParameters.stepDirection = stepdir;
 
 #ifdef DEBUGMODE
-	performFluidUpdate_1D(&fluid[0], FluidStepParams params, topology, mxArray **dbOutput);
+	performFluidUpdate_1D(&fluid[0], FluidStepParams params, &topology, mxArray **dbOutput);
 #else
-	performFluidUpdate_1D(&fluid[0], stepParameters, topology);
+	performFluidUpdate_1D(&fluid[0], stepParameters, &topology);
 #endif
 }
 
@@ -267,9 +268,9 @@ void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray **plhs)
 }
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo,  mxArray **dbOutput)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo,  mxArray **dbOutput)
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopology topo)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo)
 #endif
 {
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
@@ -397,7 +398,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopol
 
 #ifdef DBG_FIRSTORDER // 1st-order testing: Dumps upwinded values straight back to output arrays
 			printf("WARNING: Operating at first order for debug purposes!\n");
-			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].numel*sizeof(double), cudaMemcpyDeviceToDevice);
+i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
 
 #ifdef DEBUGMODE // If in first-order debug mode, intermediate values were dumped to wStepValues to be returned
 			returnDebugArray(fluid, 6, wStepValues, dbOutput);
@@ -435,7 +436,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopol
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
-
+#endif // still have to avoid memory leak regardless of order we ran at
 			MGA_delete(cfreeze[0]);
 			MGA_delete(cfreeze[1]);
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -444,7 +445,6 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopol
 				returnCode = CHECK_CUDA_ERROR("cudaFree()");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
-#endif
 		} break;
 		case METHOD_HLL:
 		case METHOD_HLLC: {
@@ -561,8 +561,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, pParallelTopol
 
 }
 
-// Because nSight won't stop being a fucking cunt and do its goddamn job and parse the goddamn header files
-// It's right there on line 131 of device_functions.h, assface!
+// Sometimes nsight gets stupid about parsing the nVidia headers and I'm tired of this
+// crap about how __syncthreads is "undeclared."
 extern __device__ __device_builtin__ void                   __syncthreads(void);
 
 // These tell the HLL and HLLC solvers how to dereference their shmem blocks in convenient shorthand
@@ -1516,53 +1516,55 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			// Load from init inputs, write to Qstore[]
 			Q[0] = Qbase[x0];
 			Q[1] = Qbase[x0+  DEV_SLABSIZE];
-			switch(PCswitch & 6) {
-			case 0:
-				Q[2] = Qbase[x0+2*DEV_SLABSIZE];
-				Q[3] = Qbase[x0+3*DEV_SLABSIZE];
-				Q[4] = Qbase[x0+4*DEV_SLABSIZE]; break;
-			case 2:
-				Q[2] = Qbase[x0+3*DEV_SLABSIZE];
-				Q[3] = Qbase[x0+2*DEV_SLABSIZE];
-				Q[4] = Qbase[x0+4*DEV_SLABSIZE]; break;
-			case 4:
-				Q[2] = Qbase[x0+4*DEV_SLABSIZE];
-				Q[3] = Qbase[x0+2*DEV_SLABSIZE];
-				Q[4] = Qbase[x0+3*DEV_SLABSIZE]; break;
-			}
-
+			Q[2] = Qbase[x0+2*DEV_SLABSIZE];
+			Q[3] = Qbase[x0+3*DEV_SLABSIZE];
+			Q[4] = Qbase[x0+4*DEV_SLABSIZE];
 		} else {
 			// Load from qstore, update init inputs
 			Q[0] = Qstore[x0];
 			Q[1] = Qstore[x0+  DEV_SLABSIZE];
-			switch(PCswitch & 6) {
-			case 0:
-				Q[2] = Qstore[x0+2*DEV_SLABSIZE];
-				Q[3] = Qstore[x0+3*DEV_SLABSIZE];
-				Q[4] = Qstore[x0+4*DEV_SLABSIZE]; break;
-			case 2:
-				Q[2] = Qstore[x0+3*DEV_SLABSIZE];
-				Q[3] = Qstore[x0+2*DEV_SLABSIZE];
-				Q[4] = Qstore[x0+4*DEV_SLABSIZE]; break;
-			case 4:
-				Q[2] = Qstore[x0+4*DEV_SLABSIZE];
-				Q[3] = Qstore[x0+2*DEV_SLABSIZE];
-				Q[4] = Qstore[x0+3*DEV_SLABSIZE]; break;
-			}
-
+			Q[2] = Qstore[x0+2*DEV_SLABSIZE];
+			Q[3] = Qstore[x0+3*DEV_SLABSIZE];
+			Q[4] = Qstore[x0+4*DEV_SLABSIZE];
 		}
 
 		P  = FLUID_GM1 * (Q[1] - .5*(Q[4]*Q[4]+Q[3]*Q[3]+Q[2]*Q[2])/Q[0]);
-		vx = Q[2] / Q[0];
+		switch(PCswitch & 6) {
+		case 0: vx = Q[2] / Q[0]; break;
+		case 2: vx = Q[3] / Q[0]; break;
+		case 4: vx = Q[4] / Q[0]; break;
+		}
 
 		for(i = 0; i < 5; i++) {
 			/* Calculate raw fluxes for rho, E, px, py, pz in order: */
+			/* Permute which things we use to calculate the fluxes here 
+			in order to avoid having to rearrange the memory loads which
+			causes problems when this loop iterates over the memory slabs in order. */
+			switch(PCswitch & 6) {
+			case 0:
 			switch(i) {
 			case 0: w = Q[2];          break;
 			case 1: w = vx*(Q[1] + P); break;
 			case 2: w = vx*Q[2] + P;   break;
 			case 3: w = vx*Q[3];       break;
 			case 4: w = vx*Q[4];       break;
+			} break;
+			case 2:
+			switch(i) {
+			case 0: w = Q[3];          break;
+			case 1: w = vx*(Q[1] + P); break;
+			case 2: w = vx*Q[2];       break;
+			case 3: w = vx*Q[3] + P;   break;
+			case 4: w = vx*Q[4];       break;
+			} break;
+			case 4:
+			switch(i) {
+			case 0: w = Q[3];          break;
+			case 1: w = vx*(Q[1] + P); break;
+			case 2: w = vx*Q[2];       break;
+			case 3: w = vx*Q[3];       break;
+			case 4: w = vx*Q[4] + P;   break;
+			} break;
 			}
 
 			shblk[IC + BOS0] = (C_f*Q[i] - w); /* Cell's leftgoing  flux */
@@ -1571,12 +1573,12 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 
 			if((PCswitch & 1) == RK_CORRECT) {
 				/* Entertain two flux corrections */
-				shblk[IC + BOS2] = (shblk[IC + BOS0] - shblk[IL + BOS0]) / 2.0; /* Deriv of leftgoing flux */
-				shblk[IC + BOS3] = (shblk[IC + BOS1] - shblk[IL + BOS1]) / 2.0; /* Deriv of ritegoing flux */
+				shblk[IC + BOS2] = 0.5*(shblk[IC + BOS0] - shblk[IL + BOS0]); /* Deriv of leftgoing flux */
+				shblk[IC + BOS3] = 0.5*(shblk[IC + BOS1] - shblk[IL + BOS1]); /* Deriv of ritegoing flux */
 				__syncthreads();
 
 				/* Impose TVD limiter */
-				shblk[IC + BOS0] += LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
+				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
 				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]);
 				__syncthreads();
 			}
@@ -1607,38 +1609,15 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			if((PCswitch & 1) == RK_PREDICT) {
 				Qstore[x0]                = prop[0];
 				Qstore[x0+DEV_SLABSIZE]   = prop[1];
-				switch(PCswitch & 6) {
-				case 0:
-					Qstore[x0+2*DEV_SLABSIZE] = prop[2];
-					Qstore[x0+3*DEV_SLABSIZE] = prop[3];
-					Qstore[x0+4*DEV_SLABSIZE] = prop[4]; break;
-				case 2:
-					Qstore[x0+3*DEV_SLABSIZE] = prop[2];
-					Qstore[x0+2*DEV_SLABSIZE] = prop[3];
-					Qstore[x0+4*DEV_SLABSIZE] = prop[4]; break;
-				case 4:
-					Qstore[x0+4*DEV_SLABSIZE] = prop[2];
-					Qstore[x0+2*DEV_SLABSIZE] = prop[3];
-					Qstore[x0+3*DEV_SLABSIZE] = prop[4]; break;
-				}
+				Qstore[x0+2*DEV_SLABSIZE] = prop[2];
+				Qstore[x0+3*DEV_SLABSIZE] = prop[3];
+				Qstore[x0+4*DEV_SLABSIZE] = prop[4];
 			} else {
 				Qbase[x0]                = prop[0];
 				Qbase[x0+DEV_SLABSIZE]   = prop[1];
-				switch(PCswitch & 6) {
-				case 0:
-					Qbase[x0+2*DEV_SLABSIZE] = prop[2];
-					Qbase[x0+3*DEV_SLABSIZE] = prop[3];
-					Qbase[x0+4*DEV_SLABSIZE] = prop[4]; break;
-				case 2:
-					Qbase[x0+3*DEV_SLABSIZE] = prop[2];
-					Qbase[x0+2*DEV_SLABSIZE] = prop[3];
-					Qbase[x0+4*DEV_SLABSIZE] = prop[4]; break;
-				case 4:
-					Qbase[x0+4*DEV_SLABSIZE] = prop[2];
-					Qbase[x0+2*DEV_SLABSIZE] = prop[3];
-					Qbase[x0+3*DEV_SLABSIZE] = prop[4]; break;
-				}
-
+				Qbase[x0+2*DEV_SLABSIZE] = prop[2];
+				Qbase[x0+3*DEV_SLABSIZE] = prop[3];
+				Qbase[x0+4*DEV_SLABSIZE] = prop[4];
 			}
 		}
 

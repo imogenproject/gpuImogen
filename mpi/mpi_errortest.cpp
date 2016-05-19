@@ -2,16 +2,14 @@
 
 #include "mpi.h"
 #include "mex.h"
-#include "matrix.h"
 
-#include "parallel_halo_arrays.h"
 #include "mpi_common.h"
-
-pParallelTopology topoStructureToC(const mxArray *prhs); 
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-if((nrhs != 1) || (nlhs != 0)) mexErrMsgTxt("Call is  mpi_errortest(value); if any rank has value != 0, causes error\n");
+if((nrhs != 1) || (nlhs != 0)) {
+mexErrMsgTxt("Call is  mpi_errortest(value); if any rank has value != 0, causes error\n");
+}
 
 MPI_Comm commune = MPI_COMM_WORLD;
 

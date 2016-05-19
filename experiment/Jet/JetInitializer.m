@@ -56,7 +56,7 @@ classdef JetInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.7;
+            obj.cfl              = 0.4;
             obj.iterMax          = 250;
             obj.bcMode.x         = ENUM.BCMODE_CONST;
             obj.bcMode.y         = ENUM.BCMODE_CONST;
@@ -145,7 +145,7 @@ classdef JetInitializer < Initializer
 
             injCase = [iBack; iTop; iBot];
 
-            statics.indexSet = {statics.indexSetForVolume(xMin:xMax+1,yMin:yMax,zMin:zMax), injCase, statics.indexSetForVolume( (obj.grid(1)-1):obj.grid(1),1:obj.grid(2),1) };
+            statics.indexSet = {statics.indexSetForVolume(xMin:xMax,yMin:yMax,zMin:zMax), injCase, statics.indexSetForVolume( (obj.grid(1)-1):obj.grid(1),1:obj.grid(2),1) };
             statics.indexSet{4} = statics.indexSetForVolume(1:(obj.grid(1)-2), 1:2, 1);
 
             statics.associateStatics(ENUM.MASS, ENUM.SCALAR,   statics.CELLVAR, 1, 2);

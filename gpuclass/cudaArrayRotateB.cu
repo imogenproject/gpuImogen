@@ -80,7 +80,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 {
 	int returnCode = SUCCESSFUL;
 
-	MGArray trans = *phi;
+	MGArray trans;
 
 	int i, sub[6];
 	int is3d = (phi->dim[2] > 3);
@@ -102,6 +102,8 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 	int j;
 	for(j = 0; j < nArrays; j++) {
+		trans = *phi;
+
 		// Transpose XY or XZ
 		switch(exchangeCode) {
 		case 2: /* Transform XYZ -> YXZ */

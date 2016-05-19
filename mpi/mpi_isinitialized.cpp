@@ -1,7 +1,6 @@
 #include "stdio.h"
 
 #include "mpi.h"
-
 #include "mex.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -21,6 +20,6 @@ x = MPI_Initialized(&y);
 double *a = mxGetPr(plhs[0]);
 
 *a = y ? 1.0 : 0.0;
-return;
 
+return;
 }

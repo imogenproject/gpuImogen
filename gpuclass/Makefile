@@ -8,16 +8,18 @@ NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2
 # If you enjoy verbose assembler output
 #NVCC_OPTS = $(NVCC_OPTS) -Xptxas="-v"
 
-NVCC_INCL = -I$(MATLAB_DIR)/extern/include
+NVCC_INCL = -I$(MATLAB_DIR)/extern/include -I../mpi
 
 MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
-MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include
+MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include -I../mpi
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
 
-PAR_INCL = -I$(PGW_DIR)/include -I$(MPI_DIR)/include
-PAR_LDIR = -L$(PGW_DIR)/lib -L$(MPI_DIR)/lib
-PAR_LIBS = -lpgw -lmpi
+PAR_INCL = -I../mpi -I$(MPI_DIR)/include
+PAR_LDIR = -L$(MPI_DIR)/lib
+PAR_LIBS = -lmpi -lmpi_cxx
+
+OUTPUTCMD = -output
 
 ###############################################################################
 all: base fluids lambda
@@ -53,8 +55,8 @@ standalones: cudaArrayRotateB cudaHaloExchange cudaFluidStep cudaStatics cudaSou
 
 # build procedure from the rest
 # Remove all object code once done to prevent standalone/not-standalone cross contamination
-fluidstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+fluidstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o ../mpi/mpi_common.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 flux.o: flux.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux.cu -o flux.cpp
@@ -76,7 +78,7 @@ rotate_standalone: cudaArrayRotateB.cu
 	mex $(MEX_OPTS) -c cudaArrayRotateB.cpp
 
 cudaArrayRotateB: rotate_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o -o cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o $(OUTPUTCMD) cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaArrayRotateB.o
 	
 # Parallel halo exchanges
@@ -89,7 +91,7 @@ halo_standalone: cudaHaloExchange.cu
 	mex $(MEX_OPTS) $(PAR_INCL) -c cudaHaloExchange.cpp
 
 cudaHaloExchange: halo_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaHaloExchange.o cudaCommon.o -o cudaHaloExchange $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaHaloExchange.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaHaloExchange $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaHaloExchange.o
 
 # Fluid step
@@ -102,7 +104,7 @@ fluid_standalone: cudaFluidStep.cu
 	mex $(MEX_OPTS) -c cudaFluidStep.cpp
 
 cudaFluidStep: fluid_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o -o cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaFluidStep.o
 
 # Statics / boundary condition settings
@@ -115,7 +117,7 @@ statics_standalone: cudaStatics.cu
 	mex $(MEX_OPTS) -c cudaStatics.cpp
 
 cudaStatics: statics_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaCommon.o -o cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaCommon.o $(OUTPUTCMD) cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaStatics.o
 	
 # Standalone EOS solver
@@ -128,7 +130,7 @@ soundspeed_standalone: cudaSoundspeed.cu
 	mex $(MEX_OPTS) -c cudaSoundspeed.cpp
 
 cudaSoundspeed: soundspeed_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaSoundspeed.o cudaCommon.o -o cudaSoundspeed $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaSoundspeed.o cudaCommon.o $(OUTPUTCMD) cudaSoundspeed $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaSoundspeed.o
 
 
@@ -138,171 +140,171 @@ GPU_copy.o: GPU_copy.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_copy.cu -o GPU_copy.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_copy.cpp
 GPU_copy: GPU_copy.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_copy.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_copy.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 
 GPU_getslab.o: GPU_getslab.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_getslab.cu -o GPU_getslab.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_getslab.cpp
 GPU_getslab: GPU_getslab.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_getslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_getslab.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 
 GPU_setslab.o: GPU_setslab.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_setslab.cu -o GPU_setslab.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_setslab.cpp
 GPU_setslab: GPU_setslab.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_setslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_setslab.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 
 GPU_makeslab.o: GPU_makeslab.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_makeslab.cu -o GPU_makeslab.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_makeslab.cpp
 GPU_makeslab: GPU_makeslab.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_makeslab.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_makeslab.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 GPU_slabs.o: GPU_slabs.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_slabs.cu -o GPU_slabs.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_slabs.cpp
 
 GPU_slabs: GPU_slabs.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_slabs.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_slabs.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 GPU_ctrl.o: GPU_ctrl.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_ctrl.cu -o GPU_ctrl.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_ctrl.cpp
 
 GPU_ctrl: GPU_ctrl.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_ctrl.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_ctrl.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 GPU_free.o: GPU_free.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_free.cu -o GPU_free.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_free.cpp 
 GPU_free: GPU_free.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx cudaCommon.o $@.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 GPU_clone.o: GPU_clone.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_clone.cu -o GPU_clone.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_clone.cpp 
 GPU_clone: GPU_clone.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 GPU_download.o: GPU_download.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_download.cu -o GPU_download.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_download.cpp 
 GPU_download: GPU_download.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 GPU_upload.o: GPU_upload.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_upload.cu -o GPU_upload.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_upload.cpp 
 GPU_upload: GPU_upload.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 GPU_cudamemcpy.o: GPU_cudamemcpy.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_cudamemcpy.cu -o GPU_cudamemcpy.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_cudamemcpy.cpp 
 GPU_cudamemcpy: GPU_cudamemcpy.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 GPU_memavail.o: GPU_memavail.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_memavail.cu -o GPU_memavail.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_memavail.cpp 
 GPU_memavail: GPU_memavail.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 ######## CUDA FLUID ROUTINES
 cudaArrayAtomic.o: cudaArrayAtomic.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaArrayAtomic.cu -o cudaArrayAtomic.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaArrayAtomic.cpp
 cudaArrayAtomic: cudaCommon.o cudaArrayAtomic.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaBasicOperations.o: cudaBasicOperations.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaBasicOperations.cu -o cudaBasicOperations.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaBasicOperations.cpp
 cudaBasicOperations: cudaCommon.o cudaBasicOperations.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaShift.o: cudaShift.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaShift.cu -o cudaShift.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaShift.cpp
 cudaShift: cudaCommon.o cudaShift.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 directionalMaxFinder.o: directionalMaxFinder.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda directionalMaxFinder.cu -o directionalMaxFinder.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c directionalMaxFinder.cpp
 directionalMaxFinder: cudaCommon.o directionalMaxFinder.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o ../mpi/mpi_common.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 freezeAndPtot.o: freezeAndPtot.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda freezeAndPtot.cu -o freezeAndPtot.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c freezeAndPtot.cpp
-freezeAndPtot: cudaCommon.o freezeAndPtot.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+freezeAndPtot: cudaCommon.o ../mpi/mpi_common.o freezeAndPtot.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 
 cudaMHDKernels.o: cudaMHDKernels.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaMHDKernels.cu -o cudaMHDKernels.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaMHDKernels.cpp
 cudaMHDKernels: cudaCommon.o cudaMHDKernels.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaFwdAverage.o: cudaFwdAverage.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFwdAverage.cu -o cudaFwdAverage.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFwdAverage.cpp
 cudaFwdAverage: cudaCommon.o cudaFwdAverage.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaFwdDifference.o: cudaFwdDifference.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFwdDifference.cu -o cudaFwdDifference.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFwdDifference.cpp
 cudaFwdDifference: cudaCommon.o cudaFwdDifference.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaMagPrep.o: cudaMagPrep.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaMagPrep.cu -o cudaMagPrep.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaMagPrep.cpp
 cudaMagPrep: cudaCommon.o cudaMagPrep.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaMagW.o: cudaMagW.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaMagW.cu -o cudaMagW.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaMagW.cpp
 cudaMagW: cudaCommon.o cudaMagW.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaMagTVD.o: cudaMagTVD.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaMagTVD.cu -o cudaMagTVD.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaMagTVD.cpp
 cudaMagTVD: cudaCommon.o cudaMagTVD.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 # SOURCE/SINK ROUTINES
 cudaSourceScalarPotential.o: cudaSourceScalarPotential.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceScalarPotential.cu -o cudaSourceScalarPotential.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceScalarPotential.cpp
 cudaSourceScalarPotential: cudaCommon.o cudaSourceScalarPotential.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaSourceRotatingFrame.o: cudaSourceRotatingFrame.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceRotatingFrame.cu -o cudaSourceRotatingFrame.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceRotatingFrame.cpp
 cudaSourceRotatingFrame: cudaCommon.o cudaSourceRotatingFrame.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaFreeRadiation.o: cudaFreeRadiation.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFreeRadiation.cu -o cudaFreeRadiation.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFreeRadiation.cpp
 cudaFreeRadiation: cudaCommon.o cudaFreeRadiation.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o -o $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaAccretingStar.o: cudaAccretingStar.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaAccretingStar.cu -o cudaAccretingStar.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaAccretingStar.cpp
 cudaAccretingStar: cudaCommon.o cudaAccretingStar.o
-	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o -o $@
+	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@
 
 
 clean:

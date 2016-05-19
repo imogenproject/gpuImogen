@@ -9,11 +9,11 @@ context.request = 0;
 context.error = 0;
 
 topo.ndim = 3;
-topo.comm = 0;
+topo.comm = -1;
 topo.coord = [0 0 0];
 topo.neighbor_left = [0 0 0];
 topo.neighbor_right = [0 0 0];
 topo.nproc = [1 1 1];
-
+topo.dimcomm = [-1 -1 -1];
 
 end

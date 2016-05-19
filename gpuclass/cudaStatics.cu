@@ -97,7 +97,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 	}
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
-	mxArray *boundaryData = mxGetProperty(matlabhandle, 0, "boundaryData");
+	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
 	if(boundaryData == NULL) {
 		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
 		return ERROR_INVALID_ARGS;

@@ -16,7 +16,6 @@ function includeImogenPaths()
     for i=1:length(directories); 
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
-    addpath('~/parallel-gateway/build/lib');
 
     % There's no actual pressing need to announce this
     % printf('Imogen directories have been added to the path listing.\n');

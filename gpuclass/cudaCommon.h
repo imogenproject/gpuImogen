@@ -1,7 +1,7 @@
 #ifndef CUDACOMMONH_
+#define CUDACOMMONH_
 
-#include "parallel_halo_arrays.h"
-
+#include "mpi_common.h" 
 // These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
 // These parameters would normally be stored in a __device__ __constant__ array:
 // gm1fact = gamma - 1
@@ -64,17 +64,27 @@ typedef struct {
 #define MGA_BOUNDARY_ZMINUS 16
 #define MGA_BOUNDARY_ZPLUS 32
 
+/* These enumerate the reduction operators which we accelerate on the GPU */
 enum MGAReductionOperator { MGA_OP_SUM, MGA_OP_PROD, MGA_OP_MAX, MGA_OP_MIN };
 
-
+/* The MGArray is the basic data unit for GPU arrays
+ * This is interfaced with Matlab through the serializer/deserializer functions
+ * that return/decipher opaque blobs of uint64_t's.
+ */
 typedef struct {
-    int dim[3];
+    int dim[3];    // The size of the array that the CPU downloader will return
+                   // This does not include halos of any kind
     int64_t numel; // = nx ny nz of the global array, not # allocated
-    int numSlabs; // = dim[4] if positive, which zero-indexed slab # if <= 0
+    int numSlabs; // = dim[4] if positive, identifies which zero-indexed slab # if <= 0
     int64_t slabPitch[MAX_GPUS_USED]; // numel[partition]*sizeof(double) (BYTES ALLOCATED PER SLAB), rounded up to nearest 256
 
-    int haloSize;
+    int haloSize; // Gives the depth of the halo region on interfacial boundaries
+                  // NOTE that this applies only to inter-gpu partitions created
+                  // by MGA partitioning onto multiple devices: The MPI-level scheme
+                  // can and usually does have inter-node halos
     int partitionDir;
+                  // Indicates which direction data is split across GPUs in
+                  // Should equal one of PARTITION_X, PARTITION_Y, PARTITION_Z
 
     /* MGArrays don't concern themselves with the cluster-wide partitioning scheme. While we always
      * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
@@ -86,11 +96,17 @@ typedef struct {
      * Ergo, this value is TRUE iff there is exactly one rank in the partition direction.
      */
     int addExteriorHalo;
+    // As mentioned at haloSize: This indicates whether MGA needs to add an exterior
+    // halo if true (typical of mpi-serial operation) or not (typical of mpi-parallel
+    // where the MPI partitioning has already added it)
 
     int permtag;
+    // Unique integer that compactly represents the 6 possible tuple->linear mappings
+    // of a 3D array
     int currentPermutation[3];
+    // Marks which memory stride is associated with each physical direction
 
-    int nGPUs; // Number of devices this MGA lives on: [1, ..., MAX_GPUS_USED].
+    int nGPUs; // Number of devices this MGA lives on: \elem [1, MAX_GPUS_USED].
     int deviceID[MAX_GPUS_USED]; // for indexes [0, ..., MAX_GPUS_USED-1], appropriate value for cudaSetDevice() etc
     double *devicePtr[MAX_GPUS_USED]; // for indices [0, ..., MAX_GPUS_USED-1], device data pointers allocated on the matching device.
     int partNumel[MAX_GPUS_USED]; // Number of elements allocated per devicePtr (i.e. includes halo).
@@ -125,9 +141,24 @@ typedef struct {
  *
  */
 
-int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer); // matlab -> c
+/* getGPUTypeTag(mxArray *gputype, int64_t **tagpointer)
+ *     gputype must be a Matlab array that is one of
+ *       - an Nx1 vector of uint64_ts as created by MGA
+ *       - a Matlab GPU_Type class
+ *       - an Imogen fluid array which has a public .gpuptr property
+ */
+int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer);
+/* getGPUTypeTagIndexed(mxArray *gputype, int64_t **tagPointer, int idx)
+ *     behaves as getGPUTypeTag, but accepts an index as well such that given
+ *     matlabFoo({tag0, tag1, ..., tagN})
+ *     getGPUTypeTagIndexed(..., M) fetches the Mth element of the cell array
+ */
 int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex);
 cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
+
+/* Not meant for user calls: Checks basic properties of the input
+ * tag; Returns FALSE if they clearly violate basic properties a
+ * valid gpu tag must have */
 bool     sanityCheckTag(const mxArray *tag);     // sanity
 
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
@@ -154,14 +185,13 @@ int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator
 int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute);
 
 int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute);
-int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, pParallelTopology topology);
+int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, ParallelTopology * topology);
 
 int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate);
-int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, pParallelTopology topology);
+int MGA_globalReduceScalar(MGArray *in, double *scalar, MGAReductionOperator operate, ParallelTopology * topology);
 
 // Drops m[0...N].devicePtr[i] into dst[0...N] to avoid hueg sets of fluid[n].devicePtr[i] in calls:
 void pullMGAPointers( MGArray *m, int N, int i, double **dst);
-pParallelTopology topoStructureToC(const mxArray *prhs);
 
 /* MultiGPU Array I/O */
 int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
@@ -182,9 +212,9 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehalo, int h, double **linear);
 
 // Error catchers, handlers, etc
-int checkCudaError(char *where, char *fname, int lname);
-int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, char *srcname, char *fname, int lname);
-int checkImogenError(int errtype, char *infile, const char *infunc, int atline);
+int checkCudaError(const char *where, const char *fname, int lname);
+int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, const char *srcname, const char *fname, int lname);
+int checkImogenError(int errtype, const char *infile, const char *infunc, int atline);
 
 #define PRINT_FAULT_HEADER printf("========== FAULT IN COMPILED CODE: function %s (%s:%i)\n", __func__, __FILE__, __LINE__)
 #define PRINT_FAULT_FOOTER printf("========== COMPILED CODE STACK TRACE SHOULD FOLLOW: ============================\n")
@@ -195,7 +225,7 @@ checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string
 #define CHECK_CUDA_ERROR(astring) CHECK_IMOGEN_ERROR(checkCudaError(astring, __FILE__, __LINE__))
 #define BAIL_ON_FAIL(errtype) if( CHECK_IMOGEN_ERROR(errtype) != SUCCESSFUL) { return errtype; }
 
-void dropMexError(char *excuse, char *infile, int atline);
+void dropMexError(const char *excuse, const char *infile, int atline);
 #define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
 
 #define SUCCESSFUL 0
@@ -230,7 +260,6 @@ dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z);
 dim3 makeDim3(unsigned int *b);
 dim3 makeDim3(int *b);
 
-pParallelTopology topoStructureToC(const mxArray *prhs);
 int MGA_localElmentwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute);
 int MGA_localPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute);
 int MGA_globalElementwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute, const mxArray *topo);

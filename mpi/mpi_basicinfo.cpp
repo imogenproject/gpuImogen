@@ -1,7 +1,7 @@
 #include "stdio.h"
+#include "unistd.h"
 
 #include "mpi.h"
-
 #include "mex.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -20,7 +20,7 @@ if((nlhs != 1 ) || (nrhs != 0)) { mexErrMsgTxt("call is q = mpi_basicinfo(), q=[
    double *d = mxGetPr(plhs[0]);
    d[0] = size; d[1] = bee;
 
-   char *hn = calloc(255, sizeof(char));
+   char *hn = (char *)calloc(255, sizeof(char));
    gethostname(hn,255);
    int i;
 

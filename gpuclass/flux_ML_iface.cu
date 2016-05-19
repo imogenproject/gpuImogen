@@ -15,6 +15,7 @@
 #include "mex.h"
 
 #include "cuda.h"
+#include "mpi.h"
 
 #include "cudaCommon.h"
 #include "flux.h"
@@ -22,8 +23,6 @@
 // Only uncomment this if you plan to debug this file.
 //#define DEBUGMODE
 
-#include "mpi.h"
-#include "parallel_halo_arrays.h"
 
 #ifdef DEBUGMODE
     #include "debug_inserts.h"
@@ -71,7 +70,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int stepMethod  = (int)scalars[5]; /* 1=HLL, 2=HLLC, 3=Xin/Jin */
 
 	/* Access topology structure */
-	pParallelTopology topo = topoStructureToC(prhs[idxpost+1]);
+	ParallelTopology topo;
+	topoStructureToC(prhs[idxpost+1], &topo);
 
 	double lambda[3];
 
@@ -95,7 +95,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	CHECK_CUDA_ERROR("entering compiled fluid step");
-	int returnCode = performFluidUpdate_3D(&fluid[0], topo, sweepDirect, stepNum, &lambda[0], gamma, stepMethod);
+	int returnCode = performFluidUpdate_3D(&fluid[0], &topo, sweepDirect, stepNum, &lambda[0], gamma, stepMethod);
 	CHECK_IMOGEN_ERROR(returnCode);
 
 	if(returnCode != SUCCESSFUL) mexErrMsgTxt("Fluid update code returned unsuccessfully!");

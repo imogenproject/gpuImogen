@@ -1,7 +1,6 @@
 #include "stdio.h"
 
 #include "mpi.h"
-
 #include "mex.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -20,7 +19,6 @@ plhs[0] = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
 
 double *recv = mxGetPr(plhs[0]);
 
-MPI_Allgather( sbuf, numel, MPI_DOUBLE, recv, numel, MPI_DOUBLE, MPI_COMM_WORLD); 
-
+MPI_Allgather( sbuf, numel, MPI_DOUBLE, recv, numel, MPI_DOUBLE, MPI_COMM_WORLD);
 
 }

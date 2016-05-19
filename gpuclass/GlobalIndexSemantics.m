@@ -55,8 +55,12 @@ classdef GlobalIndexSemantics < handle
             end
 
             if nargin < 2;
-                warning('desire GlobalIndexSemantics(parallelContext, parallelTopology): Fudging serial operation...');
-                [obj.context obj.topology] = fakeParallelStart();
+                warning('GlobalIndexSemantics received no topology: generating one');
+                if nargin < 1;
+		    warning('GlobalIndexSemantics received no context: generating one.');
+		    obj.context = parallel_start();
+		end
+		obj.topology = parallel_topology(obj.context, 3);
             else
                 obj.topology = topology;
                 obj.context = context;

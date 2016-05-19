@@ -2,7 +2,6 @@
 
 #include "mpi.h"
 #include "mex.h"
-#include "matrix.h"
 
 #include "mpi_common.h"
 

@@ -13,6 +13,8 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
+#include "mpi_common.h"
+
 #include "freezeAndPtot.h"
 
 /* THIS FUNCTION:
@@ -39,7 +41,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	CHECK_CUDA_ERROR("entering freezeAndPtot");
 
-	pParallelTopology topology = topoStructureToC(prhs[11]);
+	ParallelTopology topology;
+	int zee = topoStructureToC(prhs[11], &topology);
 
 	int ispurehydro = (int)*mxGetPr(prhs[9]);
 
@@ -132,7 +135,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	cfOut = NULL;
 
-	MGA_globalReduceDimension(cfLocal, &cfOut, MGA_OP_MAX, 1, 0, 1, topology);
+	MGA_globalReduceDimension(cfLocal, &cfOut, MGA_OP_MAX, 1, 0, 1, &topology);
 
 	MGA_delete(cfLocal);
 
