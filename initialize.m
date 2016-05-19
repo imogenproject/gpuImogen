@@ -95,7 +95,7 @@ end
 %% .iterMax                     Maximum number of iterations
 
 try
-    run.time.ITERMAX = ini.iterMax; 
+    run.time.ITERMAX = ceil(ini.iterMax);
     run.appendInfo('Maximum iteration',run.time.ITERMAX);
 catch MERR, loc_initializationError('iterMax',MERR);
 end
