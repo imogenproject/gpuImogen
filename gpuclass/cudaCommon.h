@@ -266,6 +266,8 @@ int MGA_globalElementwiseReduce(MGArray *in, int dir, int partitionOnto, int red
 int MGA_globalPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute, const mxArray *topo);
 int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 
+// FIXME: This should go in a different file because it has nothing to do with CUDA per se...
+int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *fluid);
 
 mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB);
 double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB);
