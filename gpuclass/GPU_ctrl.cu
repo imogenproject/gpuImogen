@@ -81,7 +81,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		// print accessibility matrix
 		int nDevices;
 		cudaGetDeviceCount(&nDevices);
-
 		cudaError_t goofed;
 
 		// turn it on/off if given to
@@ -93,14 +92,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			int doit = (int)*f;
 			// FIXME: loop over only gm.deviceList devices
 			int u, v, IseeU;
-			for(u = 0; u < nDevices; u++) {
-				for(v = 0; v < nDevices; v++) {
+			mxArray *mxDevList = mxGetProperty(getGM[0], 0, "deviceList");
+			double *devList = mxGetPr(mxDevList);
+			int numList = mxGetNumberOfElements(mxDevList);
+
+			for(u = 0; u < numList; u++) {
+				for(v = 0; v < numList; v++) {
 					if(u == v) continue;
-					cudaDeviceCanAccessPeer(&IseeU, u, v);
+					int uhat = (int)devList[u];
+					int vhat = (int)devList[v];
+
+					cudaDeviceCanAccessPeer(&IseeU, uhat, vhat);
 					if(IseeU) {
-						cudaSetDevice(u);
-						if(doit == 1) cudaDeviceEnablePeerAccess(v, 0);
-						if(doit == 0) cudaDeviceDisablePeerAccess(v);
+						cudaSetDevice(uhat);
+						if(doit == 1) cudaDeviceEnablePeerAccess(vhat, 0);
+						if(doit == 0) cudaDeviceDisablePeerAccess(vhat);
 
 						goofed = cudaGetLastError();
 						if(goofed == cudaErrorPeerAccessAlreadyEnabled) {
