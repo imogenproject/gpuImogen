@@ -12,7 +12,7 @@
 
 int setFluidBoundaries(MGArray *x, int nArrays, int dir);
 
-int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double stepMethod)
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod)
 {
 int sweep, flag_1D = 0;
 
@@ -39,7 +39,7 @@ int nowDir;
 FluidStepParams stepParameters;
 stepParameters.onlyHydro = 1;
 stepParameters.thermoGamma = gamma;
-stepParameters.minimumRho = 1e-8; // FIXME HAX HAX HAX
+stepParameters.minimumRho = minRho;
 stepParameters.stepMethod = stepMethod;
 
 // Just short-circuit for a one-D run, don't try to make the 2/3D loop reduce for it

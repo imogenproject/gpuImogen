@@ -72,7 +72,7 @@ classdef RiemannProblemInitializer < Initializer
             self.pCenterCoord = ctr; % FIXME: check for mistakes in this
         end
         
-        function demo_interactingRP(self)
+        function demo_interactingRP1(self)
             % Sets up a 4-quadrant Riemann problem with a strongly interacting
             % central region. See
             % https://depts.washington.edu/clawpack/clawpack-4.3/applications/euler/2d/quadrants/www/
@@ -87,6 +87,14 @@ classdef RiemannProblemInitializer < Initializer
             self.center([0.8 0.8 0.5]);
             self.orientate([0 0 0]);
             self.timeMax = 0.8;
+        end
+
+        function demo_interactingRP2(self)
+        % Liska & Wendroff 2003, 2D RP case number 6
+            self.setupRiemann2D([1 .75 -.5 0 1],[2,.75,.5,0,1],[3,-.75,-.5,0,1],[1,-.75,.5,0,1]);
+            self.center([.5 .5 .5]); self.orientate([0 0 0]);
+            self.timeMax = 0.3;
+            self.gamma = 1.4;
         end
         
         function demo_SodTube(self)
