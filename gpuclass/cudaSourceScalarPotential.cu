@@ -9,8 +9,6 @@
 
 // CUDA
 #include "cuda.h"
-#include "cuda_runtime.h"
-#include "cublas.h"
 
 #include "cudaCommon.h"
 #include "cudaSourceScalarPotential.h"

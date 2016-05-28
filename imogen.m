@@ -109,10 +109,10 @@ function outdirectory = imogen(srcData, resumeinfo)
     while run.time.running
         run.time.update(run.fluid, mag);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
-%        flux(run, run.fluid, mag, 1);
+        %flux(run, run.fluid, mag, 1);
         source(run, run.fluid, mag, 1.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
-%        flux(run, run.fluid, mag, -1);
+        %flux(run, run.fluid, mag, -1);
 
         run.time.step();
         run.pollEventList(run.fluid, mag);

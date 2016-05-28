@@ -114,8 +114,8 @@ __constant__ __device__ double *inputPointers[PTRS_PER_KERN*MAX_GPUS_USED];
 __constant__ __device__ double fluidQtys[8];
 
 //#define LIMITERFUNC fluxLimiter_Zero
-#define LIMITERFUNC fluxLimiter_minmod
-//#define LIMITERFUNC fluxLimiter_Osher
+//#define LIMITERFUNC fluxLimiter_minmod
+#define LIMITERFUNC fluxLimiter_Osher
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
@@ -140,9 +140,6 @@ __constant__ __device__ int    arrayParams[4];
 #define DEV_SLABSIZE arrayParams[3]
 
 #ifdef STANDALONE_MEX_FUNCTION
-// FIXME: I think we can do away with calling this with input pressure & freeze speeds
-// FIXME: because with the topology we have the facility to compute them here
-// FIXME: and we shouldn't have temp vars computed/exposed in ML anyway.
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
 #ifdef DEBUGMODE
@@ -150,31 +147,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 #endif
 
 	// Input and result
-	if ((nrhs!=14) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep(rho, E, px, py, pz, bx, by, bz, Ptot, c_f, lambda, purehydro?, [fluid gamma run.fluid.MINMASS method direction])\n");
+	if ((nrhs!=10) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
-	int hydroOnly;
-	hydroOnly = (int)*mxGetPr(prhs[11]);
+	double *scalars = mxGetPr(prhs[0]);
 
-	MGArray fluid[5], mag[3], PC[2];
-	int worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
+	double lambda = scalars[0];
+	int hydroOnly = (int)scalars[1];
+	double gamma  = scalars[2];
+	double rhomin = scalars[3];
+	int method    = (int)scalars[4];
+	int stepdir   = (int)scalars[5];
+
+	MGArray fluid[5], mag[3];
+	int worked = MGA_accessMatlabArrays(prhs, 1, 5, &fluid[0]);
 
 	// The sanity checker tended to barf on the 9 [allzeros] that represent "no array" before.
-	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 5, 7, &mag[0]);
-	// NOTE: These are not used for Riemann-based algorithms but are/were needed by the xin-jin code
-	worked = MGA_accessMatlabArrays(prhs, 8, 9, &PC[0]);
-
-	double lambda     = *mxGetPr(prhs[10]);
-
-	double *thermo = mxGetPr(prhs[12]);
-	double gamma = thermo[0];
-	double rhomin= thermo[1];
-	int method   = (int)thermo[2];
-	int stepdir  = (int)thermo[3];
+	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 6, 8, &mag[0]);
 
 	ParallelTopology topology;
-	topoStructureToC(prhs[13], &topology);
+	topoStructureToC(prhs[9], &topology);
 
 	FluidStepParams stepParameters;
 	stepParameters.lambda      = lambda;
@@ -385,7 +378,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 				blocksize = makeDim3(32, (arraysize.y > 1) ? 4 : 1, 1);
 				gridsize = makeDim3(ROUNDUPTO(arraysize.x,blocksize.x - 4)/(blocksize.x-4), arraysize.z, 1);
-
+// FIXME: This will apparently dump if the arraysize.x < 28?
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
 				case 1: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda, arraysize.x, arraysize.y); break;

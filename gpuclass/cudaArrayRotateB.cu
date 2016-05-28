@@ -5,16 +5,13 @@
 #include <stdint.h>
 #include <unistd.h>
 #endif
+// Matlab
 #include "mex.h"
 
 // CUDA
 #include "cuda.h"
-#include "device_functions.h"
 
-
-#include "cuda_runtime.h"
-#include "cublas.h"
-
+// Local
 #include "cudaCommon.h"
 #include "cudaArrayRotateB.h"
 
@@ -28,6 +25,15 @@ __global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny
 #define BDIM 16
 
 #ifdef STANDALONE_MEX_FUNCTION
+/* Generates a directly Matlab-accessible entry point for the array index transposition routines.
+ * [L0, L1, ..., Ln] = cudaArrayRotateB(R0, R1, ..., Rn, transpositionCode)
+ * where {R0, R1, ..., Rn} are n GPU arrays,
+ *       {L0, L1, ..., Ln} must be either not exist (nlhs=0) or be present in equal number
+ * and the transpositionCode is one of 2 (switch X/Y), 3 (switch X/Z), 4 (switch Y/Z),
+ * 5 (shift left XYZ->YZX) or 6 (shift right XYZ->ZXY).
+ * If nz == 1: code 3 = 4 = identity (no change in memory layout)
+ *             code 5 = 6 -> 2 (Permutation either direction reduces to XY transposition)
+ */
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	int makeNew = 0;
@@ -62,7 +68,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 }
 #endif
 
-/* phi: MGArray pointer to nArrays input MGArrays
+/* flipArrayIndices alters the memory layout of the input arrays according to the exchange code.
+ * If new arrays are created, consumes additional memory equal to sum of input arrays. If changes
+ * are in place, consumes temporary memory equal to largest single input array.
+ *
+ * phi: MGArray pointer to nArrays input MGArrays
  * psi: MGArray *.
  *   IF NOT NULL: allocates nArrays arrays & returns completely new MGArrays
  *   IF NULL:     overwrites phi[*], reusing original data *ers
@@ -74,7 +84,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
  * 	- 5: Permute indices left (XYZ -> YZX)
  * 	- 6: Permute indices right(XYZ -> ZXY)
  * 	- other than (2, 3, 4, 5, 6): Return ERROR_INVALID_ARGS
- * 	- If((exchangeCode != 2) and phi[j].dim[3] == 1)) for any j, returns ERROR_NULL_OPERATION upon encountering
+ * 	- If nz=1, codes 3/4 are identity and 5/6 reduce to transposition.
  */
 int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode)
 {
@@ -83,7 +93,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	MGArray trans;
 
 	int i, sub[6];
-	int is3d = (phi->dim[2] > 3);
+	int is3d;
 
 	MGArray *psi = NULL;
 	if(newArrays != NULL) {
@@ -91,20 +101,32 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		psi = newArrays[0];
 	}
 
-	// These choices assure that the 3D rotation semantics reduce properly for 2D
-	if(is3d == 0) {
-		if(exchangeCode == 3) return SUCCESSFUL;
-		if(exchangeCode == 4) return SUCCESSFUL;
-
-		if(exchangeCode == 5) exchangeCode = 2; // Index rotate becomes XY transpose
-		if(exchangeCode == 6) exchangeCode = 2;
-	}
-
 	int j;
 	for(j = 0; j < nArrays; j++) {
 		trans = *phi;
 
-		// Transpose XY or XZ
+		is3d = (phi->dim[2] > 3);
+		// These choices assure that the 3D transformation semantics reduce properly for 2D
+		if(is3d == 0) {
+			if((exchangeCode == 3) || (exchangeCode == 4)) {
+				// Identity operation:
+				if(newArrays != NULL) {
+					// If returning new, build deep copy
+					MGArray *tp = NULL;
+					returnCode = MGA_duplicateArray(&tp, phi);
+					psi[0] = *tp;
+					free(tp);
+
+					if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) break;
+				}   // Otherwise do nothing
+				phi++;
+				continue;
+			}
+
+			if(exchangeCode == 5) exchangeCode = 2; // Index rotate becomes XY transpose
+			if(exchangeCode == 6) exchangeCode = 2;
+		}
+
 		switch(exchangeCode) {
 		case 2: /* Transform XYZ -> YXZ */
 			trans.dim[0] = phi->dim[1];
@@ -115,7 +137,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
 			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
-			break;
+  			break;
 		case 3: /* Transform XYZ to ZYX */
 			trans.dim[0] = phi->dim[2];
 			trans.dim[2] = phi->dim[0];
@@ -171,7 +193,10 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 			trans.partNumel[i] = sub[3]*sub[4]*sub[5];
 		}
 
-		MGArray *nuClone = MGA_allocArrays(1, &trans);
+		MGArray *nuClone;
+		if((exchangeCode != -1) || (psi != NULL)) {
+			nuClone = MGA_allocArrays(1, &trans);
+		}
 
 		dim3 blocksize, gridsize;
 
@@ -271,7 +296,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
 {
-	__shared__ double tmp[BDIM][BDIM];
+	__shared__ double tmp[BDIM][BDIM+1];
 
 	int myx = threadIdx.x + BDIM*blockIdx.x;
 	int myy = threadIdx.y + BDIM*((blockIdx.y + blockIdx.x) % gridDim.y);

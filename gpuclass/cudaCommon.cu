@@ -21,7 +21,6 @@
  *     A poor man's valgrind.
  */
 
-
 #define SYNCBLOCK 16
 
 __global__ void cudaMGHaloSyncX_p2p(double *L, double *R, int nxL, int nxR, int ny, int nz, int h);
@@ -474,6 +473,36 @@ for(i = 0; i < N; i++) {
 #endif
 
 	return m;
+}
+
+int MGA_duplicateArray(MGArray **dst, MGArray *src)
+{
+	int status = SUCCESSFUL;
+	if((src == NULL) || (dst == NULL)) {
+		PRINT_FAULT_HEADER;
+		printf("Null src argument passed to MGA_duplicateArray\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_NULL_POINTER;
+	}
+	if(dst[0] == NULL) {
+		dst[0] = MGA_allocArrays(1, src);
+	}
+
+	int i;
+	for(i = 0; i < src->nGPUs; i++) {
+		cudaSetDevice(src->deviceID[i]);
+		if(CHECK_CUDA_ERROR("Array duplicator:cudaSetDevice") != SUCCESSFUL) {
+					status = ERROR_CRASH;
+					break;
+				}
+
+		cudaError_t unhappy = cudaMemcpy((void *)dst[0]->devicePtr[i], (void *)src->devicePtr[i], src->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+		if(CHECK_CUDA_ERROR("Array duplicator:cudaMemcpy") != SUCCESSFUL) {
+			status = ERROR_CRASH;
+			break;
+		}
+	}
+	return status;
 }
 
 /* A convenient wrapper for returning data to Matlab:
@@ -1058,50 +1087,12 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 			return ERROR_NULL_POINTER;
 		}
 
-		/* FIXME: This is a temporary hack
-   FIXME: The creation of these communicators should be done once,
-   FIXME: by PGW, at start time. */
-		/* FIXME this fixme is as old as this crap from cudaWStep... */
-		int dimprocs[dmax];
-		int proc0, procstep;
-		switch(d) { /* everything here is Wrong because fortran is Wrong */
-		case 0: /* i0 = nx Y + nx ny Z, step = 1 -> nx ny */
-			/* x dimension: step = ny nz, i0 = z + nz y */
-			proc0 = topology->coord[2] + topology->nproc[2]*topology->coord[1];
-			procstep = topology->nproc[2]*topology->nproc[1];
-			break;
-		case 1: /* i0 = x + nx ny Z, step = nx */
-			/* y dimension: step = nz, i0 = z + nx ny x */
-			proc0 = topology->coord[2] + topology->nproc[2]*topology->nproc[1]*topology->coord[0];
-			procstep = topology->nproc[2];
-			break;
-		case 2: /* i0 = x + nx Y, step = nx ny */
-			/* z dimension: i0 = nz y + nz ny x, step = 1 */
-			proc0 = topology->nproc[2]*(topology->coord[1] + topology->nproc[1]*topology->coord[0]);
-			procstep = 1;
-			break;
-		}
-		int j;
-		for(j = 0; j < dmax; j++) {
-			dimprocs[j] = proc0 + j*procstep;
-		}
-
-		MPI_Group worldgroup, dimgroup;
-		MPI_Comm dimcomm;
-		/* r0 has our rank in the world group */
-		MPI_Comm_group(commune, &worldgroup);
-		MPI_Group_incl(worldgroup, dmax, dimprocs, &dimgroup);
-		/* Create communicator for this dimension */
-		MPI_Comm_create(commune, dimgroup, &dimcomm);
-
-		/* Perform the reduce */
 		int numToReduce = (dir == out[0]->partitionDir) ? out[0]->partNumel[partitionOnto] : out[0]->numel;
-		MPI_Allreduce((void *)readBuf, (void *)writeBuf, numToReduce, MPI_DOUBLE, MGAReductionOperator_mga2mpi(operate), dimcomm);
+		MPI_Comm dircom = MPI_Comm_f2c(topology->dimcomm[dir-1]);
 
-		MPI_Barrier(dimcomm);
-		/* Clean up */
-		MPI_Group_free(&dimgroup);
-		MPI_Comm_free(&dimcomm);
+		MPI_Allreduce((void *)readBuf, (void *)writeBuf, numToReduce, MPI_DOUBLE, MGAReductionOperator_mga2mpi(operate), dircom);
+
+		MPI_Barrier(dircom);
 
 		int upPart = (dir == out[0]->partitionDir) ? partitionOnto : -1;
 		returnCode = MGA_uploadArrayToGPU(writeBuf, out[0], upPart);
@@ -1110,8 +1101,9 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 
 		if(redistribute && (dir == out[0]->partitionDir)) returnCode = MGA_distributeArrayClones(out[0], partitionOnto);
 
-		free(readBuf); free(writeBuf); // This leaks if we encounter an error
-		// But if that's the case this sucker is going down like the Hindenburg anyway...
+		free(readBuf); free(writeBuf);
+		// This leaks if we encounter an error
+		// But if that's the case we're crashing anyway...
 
 		return CHECK_IMOGEN_ERROR(returnCode);
 	} else {
@@ -1149,13 +1141,6 @@ int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redist
 	dim3 blocksize; blocksize.x = 256; blocksize.y = blocksize.z = 1;
 
 	double *B; double *C;
-
-	// FIXME: not needed I don't think?
-	// FIXME: replace with the sledgehammer call?
-	for(i = 0; i < a->nGPUs; i++) {
-		cudaSetDevice(a->deviceID[i]);
-		cudaDeviceSynchronize();
-	}
 
 	switch(a->nGPUs) {
 	case 1: break; // Well this was a waste of time
@@ -1301,19 +1286,9 @@ int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redist
 	}
 
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-/* FIXME: not necessary? */
-	for(i = 0; i < a->nGPUs; i++) {
-		cudaSetDevice(a->deviceID[i]);
-		cudaDeviceSynchronize();
-	}
 
 	if(redistribute)
 		returnCode = MGA_distributeArrayClones(a, 0);
-	/* FIXME: not necessary? */
-	for(i = 0; i < a->nGPUs; i++) {
-		cudaSetDevice(a->deviceID[i]);
-		cudaDeviceSynchronize();
-	}
 
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
@@ -1331,10 +1306,12 @@ int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
 		if(cloned->partNumel[j] != cloned->partNumel[0]) return ERROR_INVALID_ARGS;
 	}
 
+	cudaSetDevice(cloned->deviceID[partitionFrom]);
+
 	for(j = 0; j < cloned->nGPUs; j++) {
 		if(j == partitionFrom) continue;
 
-		cudaMemcpy(cloned->devicePtr[j], cloned->devicePtr[partitionFrom], sizeof(double)*cloned->partNumel[partitionFrom], cudaMemcpyDeviceToDevice);
+		cudaMemcpyAsync(cloned->devicePtr[j], cloned->devicePtr[partitionFrom], sizeof(double)*cloned->partNumel[partitionFrom], cudaMemcpyDeviceToDevice);
 		returnCode = CHECK_CUDA_ERROR("MGA_distributeArrayClones");
 		if(returnCode != SUCCESSFUL) break;
 	}
@@ -2063,6 +2040,42 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 
 }
 
+/* Given a pointer to a FluidManager class, accesses the fluids stored
+ * within it. */
+int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *fluid)
+{
+	/* Access the FluidManager canisters */
+	mxArray *fluidPtrs[3];
+	fluidPtrs[0] = mxGetProperty(canister, fluidIdx,(const char *)("mass"));
+	if(fluidPtrs[0] == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to fetch 'mass' property from canister\nNot a FluidManager class?\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_INVALID_ARGS;
+	}
+	fluidPtrs[1] = mxGetProperty(canister, fluidIdx,(const char *)("ener"));
+	if(fluidPtrs[1] == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to fetch 'mass' property from canister\nNot a FluidManager class?\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_INVALID_ARGS;
+	}
+	fluidPtrs[2] = mxGetProperty(canister, fluidIdx,(const char *)("mom"));
+	if(fluidPtrs[2] == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to fetch 'mass' property from canister\nNot a FluidManager class?\n");
+		PRINT_FAULT_FOOTER;
+		return ERROR_INVALID_ARGS;
+	}
+
+	int status = MGA_accessMatlabArrays((const mxArray **)&fluidPtrs[0], 0, 1, &fluid[0]);
+	if(status != SUCCESSFUL) return CHECK_IMOGEN_ERROR(status);
+    status = MGA_accessMatlabArrayVector(fluidPtrs[2], 0, 2, &fluid[2]);
+    if(status != SUCCESSFUL) return CHECK_IMOGEN_ERROR(status);
+
+    return SUCCESSFUL;
+}
+
 /* A utility to ease access to Matlab structures/classes, fetches in.{fieldA}.{fieldB}
  * or in.{fieldA} if fieldB is blank and returns the resulting mxArray*. */
 mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
@@ -2192,6 +2205,37 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
     PRINT_FAULT_FOOTER;
 
 	return ERROR_CUDA_BLEW_UP;
+}
+
+void MGA_debugPrintAboutArray(MGArray *x)
+{
+	int n = x->nGPUs;
+	printf("========== DEBUG INFORMATION ABOUT ARRAY\n");
+	printf("  This array's address: %x\n", x);
+	printf("===== Device information\n");
+	printf("Array distributed onto    %i GPUs\n", x->nGPUs);
+	int j;
+	for(j = 0; j < n; j++) { printf("Device %i: [%i | %x]\n", j, x->deviceID[j], x->devicePtr[j]); }
+
+	printf("Array's host-side extent: [%i %i %i]\n", x->dim[0], x->dim[1], x->dim[2]);
+	printf("Array's host #elements  : %li", x->numel);
+	if(x->numSlabs > 1) {
+		printf("Array IS A REAL ALLOCATION with %i slabs.\n", x->numSlabs);
+	} else {
+		printf("Array IS A SLAB REFERENCE  index number %i\n", -x->numSlabs);
+	}
+	printf("Array's slab pitch      : [");
+	for(j = 0; j < n; j++) { printf("%li ", x->slabPitch[j]); }
+	printf("]\n");
+	printf("Partition halo size     : %i\n", x->haloSize);
+	printf("Partition direction     : %i\n", x->partitionDir);
+	printf("Halo added to exterior? : %c\n", x->addExteriorHalo ? 'y' : 'n');
+	printf("Permutation tag value   : %i\n", x->permtag);
+	printf("Which represents        : [%i %i %i] stride ordering\n", x->currentPermutation[0], x->currentPermutation[1], x->currentPermutation[2]);
+	printf("circularBoundaryBits    : %i\n", x->circularBoundaryBits);
+	printf("Matlab source class index is %i\n", x->mlClassHandleIndex);
+	printf("==========\n");
+
 }
 
 /* This should be polled after CUDA API calls. In the event of a problem, it provides detailed
