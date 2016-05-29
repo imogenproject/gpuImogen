@@ -69,6 +69,7 @@ classdef RiemannProblemInitializer < Initializer
         end
         
         function center(self, ctr)
+            if numel(ctr) == 1; ctr = [1 1 1]*ctr; end
             self.pCenterCoord = ctr; % FIXME: check for mistakes in this
         end
         
@@ -92,7 +93,8 @@ classdef RiemannProblemInitializer < Initializer
         function demo_interactingRP2(self)
         % Liska & Wendroff 2003, 2D RP case number 6
             self.setupRiemann2D([1 .75 -.5 0 1],[2,.75,.5,0,1],[3,-.75,-.5,0,1],[1,-.75,.5,0,1]);
-            self.center([.5 .5 .5]); self.orientate([0 0 0]);
+            self.center([.5 .5 .5]);
+            self.orientate([0 0 0]);
             self.timeMax = 0.3;
             self.gamma = 1.4;
         end
@@ -106,7 +108,28 @@ classdef RiemannProblemInitializer < Initializer
             self.half(1, [0.125 0 0 0 0.1]);
             self.timeMax = 0.2;
         end
+
+        function setupEinfeldt(self, mach, gam)
+            self.center([0.5 0.5 0.5]);
+            self.orientate(0,0,0);
+            self.gamma = gam;
+
+            c0 = sqrt(gam);
+            left = [1 -c0*mach(1) 0 0 1];
+            right= [1  c0*mach(1) 0 0 1];
+            if numel(mach) >= 2;
+                left(3) = mach(2)*c0;
+                right(3)= mach(2)*c0;
+            end
+            if numel(mach) >= 3
+                left(4) = mach(3)*c0;
+                right(4)= mach(3)*c0;
+            end
         
+            self.half(1, right);
+            self.half(2, left);
+        end
+
         function setupRiemann1D(self, Uleft, Uright)
             self.half(2, Uleft);
             self.half(1, Uright);

@@ -12,24 +12,15 @@ if nargin < 5
 end
 
 %--- Initialize test ---%
-run             = EinfeldtInitializer([N0 1 1]);
+run             = RiemannProblemInitializer([N0 1 1]);
 % Run the test until the rarefaction propagates 95% of the way to the edge of
 % the grid.
-run.timeMax     = .95*.5/((1+M)*sqrt(gamma));
-run.iterMax     = 9999;
+run.timeMax     = .92*.5/((1+M)*sqrt(gamma));
+run.iterMax     = 19999;
 
 run.cfl 	= .4;
-run.gamma = gamma;
 
-run.rhol	= 1;
-run.ml		= -M*sqrt(run.gamma);
-run.nl		= 0;
-run.el		= 1/(run.gamma-1) + .5*(run.ml^2 + run.nl^2);
-
-run.rhor	= 1;
-run.mr		= M*sqrt(run.gamma);
-run.nr		= 0;
-run.er		= 1/(run.gamma-1) + .5*(run.ml^2+run.nr^2);
+run.setupEinfeldt(M, gamma)
 
 %run.useInSituAnalysis = 0;
 %run.stepsPerInSitu = 10;
@@ -40,9 +31,9 @@ run.info        = 'Einfeldt Strong Rarefaction test.';
 run.notes	= '';
 run.ppSave.dim3 = 100;
 
-fm = FlipMethod();
-  fm.iniMethod = 2; % hllc
-run.peripherals{end+1} = fm;
+%fm = FlipMethod();
+%  fm.iniMethod = 2; % hllc
+%run.peripherals{end+1} = fm;
 
 if prettyPictures
     rp = RealtimePlotter();
@@ -79,7 +70,7 @@ for R = 1:doublings;
 
     % Generate analytic solution and compute metrics
     T = sum(f.time.history);
-    X = ((1:run.grid(1))')/run.grid(1) - .5;
+    X = ((1:run.grid(1))' + .5)/run.grid(1) - .5;
 
     [rho v P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
 
