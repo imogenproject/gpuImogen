@@ -30,7 +30,7 @@ while theSame == 0
 	    names = [names fileList(N).name];
         totalBytes = totalBytes + fileList(N).bytes;
     end
-    testvec = [N 1*do_xor_hash(names) totalBytes]
+    testvec = [N 1*do_xor_hash(names) totalBytes];
 
     most = mpi_max(testvec);
     least= mpi_min(testvec);
