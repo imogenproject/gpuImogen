@@ -5,8 +5,9 @@ if nargin < 4
 end
 
 %--- Initialize test ---%
-run         = SodShockTubeInitializer([N 1 1]);
-run.normal(direct);
+run             = RiemannProblemInitializer([N 1 1]);
+run.demo_SodTube();
+
 run.iterMax     = 50000;
 run.timeMax     = 0.25;
 
