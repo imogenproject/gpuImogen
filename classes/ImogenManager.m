@@ -179,7 +179,10 @@ classdef ImogenManager < handle
 % FIXME: All these should take just 'f' as their fluid state arg
 % FIXME: All these should be peripherals subsumed under the above loop, not bespoke "special" things Imogen does.
                       obj.image.initialize();
-                      obj.fluid.initialize(); % FIXME why does this work fur the radiation call didn't?
+                      for n = 1:numel(f)
+                          f(n).initialize();
+                      end
+                    % FIXME why does this work fur the radiation call didn't?
                   obj.radiation.initialize(obj, f(1).mass, f(1).mom, f(1).ener, mag);
                 obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
              obj.potentialField.initialize(IC.potentialField);

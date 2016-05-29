@@ -24,6 +24,8 @@ function [fluid mag] = uploadDataArrays(FieldSource, run, statics)
 
     fluid = FluidManager.empty(numel(FieldSource.fluids), 0);
 
+    hasNoCFL = 1;
+
     % Handle each fluid
     for F = 1:numel(FieldSource.fluids)
         fluid(F) = FluidManager();
@@ -51,7 +53,13 @@ function [fluid mag] = uploadDataArrays(FieldSource, run, statics)
             mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, fluid(F), statics);
         end
 
-        fluid(F).attachFluid(DataHolder, mass, ener, mom);       
+        fluid(F).processFluidDetails(FluidData.details);
+        if fluid(F).checkCFL; hasNoCFL = 0; end
+        fluid(F).attachFluid(DataHolder, mass, ener, mom);
+    end
+
+    if hasNoCFL;
+        error('Fatal error: ALL fluids are marked to not have CFL checked!!!');
     end
 
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;

@@ -66,7 +66,6 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     try
         [run.fluid mag] = uploadDataArrays(FieldSource, run, statics);
-%       run.fluid.attachFluid(DataHolder, mass, ener, mom); % attach the fluid to a fluid manager
     catch oops
         run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\nAdditional execption will be printed by loader.\n');
         prettyprintException(oops);

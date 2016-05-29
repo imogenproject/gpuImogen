@@ -472,7 +472,7 @@ classdef Initializer < handle
             
             function f = stateToFluid(mass, mom, ener)
                 % This is a compat function: Convert old mass/mom/ener arrays to fluid() struct.
-                f = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener);
+                f = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener,'details',[]);
             end
             
         end%PROTECTED

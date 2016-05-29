@@ -20,8 +20,8 @@ classdef FluidManager < handle
     end%PUBLIC
    
     properties (SetAccess = public, GetAccess = public)
-        DataHolder; % A GPU_Type that holds the handle on the actual memory allocation
-        mass, ener, mom; % Actual fluid state data                             ImogenArrays
+        DataHolder; % A GPU_Type that holds the handle on the memory allocation
+        mass, ener, mom; % Fluid state data                             ImogenArrays
     end
  
 %===================================================================================================
@@ -43,9 +43,9 @@ classdef FluidManager < handle
         function obj = FluidManager() 
             obj.viscosity    = ArtificialViscosity();
             obj.fluidName    = 'some_gas';
-% FIXME: Make this programmable
+            % Set defaults
+            % Note that isDust being false will result in use of complex fluid riemann solver
             obj.checkCFL     = 1;
-% FIXME: make this programmable
             obj.isDust       = 0;
         end
 
@@ -61,6 +61,10 @@ classdef FluidManager < handle
             obj.mom = mom;
         end
 
+        function processFluidDetails(obj, details)
+            if isfield(details,'isDust');   obj.isDust   = details.isDust;   end
+            if isfield(details,'checkCFL'); obj.checkCFL = details.checkCFL; end
+        end
 
 %___________________________________________________________________________________________________ initialize
         function initialize(obj)

@@ -62,7 +62,7 @@ classdef TimeManager < handle
             obj.dtAverage   = 0;
         end
     
-	function recordWallclock(obj)
+        function recordWallclock(obj)
             obj.firstWallclockValue = clock;
         end
 
@@ -78,10 +78,9 @@ classdef TimeManager < handle
             cmax        = 1e-2; % Min threshold to prevent excessively large timesteps.
             gridIndex   = 0;    % Defaults max velocity direction to invalid error value.
 
-	    tau = 0;
+            tau = 0;
 
             for f = 1:numel(fluids)
-% FIXME: Check at start-time if ALL fluids have no-cfl-check set, that would be BAD
                 if fluids(f).checkCFL == 0; continue; end
 
                 mass = fluids(f).mass;
@@ -102,11 +101,11 @@ classdef TimeManager < handle
 
                 if ~isreal(cmax)
                     error('Forcing simulation crash: My timestep limit is nonphysical!');
-		end
+                end
 
                 dtMin = mpi_min(obj.parent.MINDGRID(gridIndex) / cmax);
-		if f == 1; tau = dtMin; else; tau = min(tau, dtMin); end
-	    end
+                if f == 1; tau = dtMin; else; tau = min(tau, dtMin); end
+            end
  
             %--- Calculate new timestep ---%
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
@@ -115,7 +114,7 @@ classdef TimeManager < handle
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
-		newTime = obj.TIMEMAX;
+                newTime = obj.TIMEMAX;
             end
             obj.timePercent = 100*newTime/obj.TIMEMAX;
         end
