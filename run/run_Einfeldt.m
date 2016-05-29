@@ -7,6 +7,7 @@ run.timeMax     = 0.1;
 run.iterMax     = round(5*run.timeMax*grid(1)); % This will give steps max ~ 1.2x required
 
 run.cfl         = .4;
+run.bcMode.x    = ENUM.BCMODE_CONST;
 
 if 1; % use Mach-based formula
     c0 = sqrt(run.gamma);
