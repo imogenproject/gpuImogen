@@ -6,14 +6,15 @@ run             = NohTubeInitializer(grid);
 
 run.rho0 = 1;
 run.r0 = 0.2;
-run.t0 = 1; % positive time solution
+run.t0 = -1; % positive time solution
 run.v0 = -1;
-run.M0 = 10;
+run.M0 = 8;
 
-run.cfl = .4;
+run.cfl = .35;
+run.timeMax = 1;
 run.iterMax     = 3*run.timeMax*grid(1)/run.cfl; % This will give steps max ~ 1.2x required
 
-run.bcMode = ENUM.BCMODE_CONST;
+run.bcMode = ENUM.BCMODE_STATIC;
 
 run.alias       = '';
 run.info        = 'Sod shock tube test.';
