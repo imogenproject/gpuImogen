@@ -29,6 +29,8 @@ classdef RealtimePlotter <  LinkedListNode
         firstCallIteration;
 
         generateTeletextPlots;
+
+	forceRedraw;
     end %PUBLIC
     
     %===================================================================================================
@@ -56,6 +58,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.cut = [1 1 1];
 
             self.generateTeletextPlots = 0; % FIXME: set this depending on availability of graphics
+	    self.forceRedraw           = 0;
         end
         
         function initialize(self, IC, run, fluids, mag)
@@ -83,7 +86,7 @@ classdef RealtimePlotter <  LinkedListNode
             c = self.cut;
 
             colorset={'b','r','g'};            
-
+% FIXME: Add support for 'drawnow' to force graphics updates over e.g. laggy remote connections
             hold off;
             for i = 1:numel(fluids);
                 plotdat = fluids(i).mass.array;
@@ -110,11 +113,11 @@ classdef RealtimePlotter <  LinkedListNode
             end
             
             title(sum(run.time.history));
+            if self.forceRedraw; drawnow; end
             
             % Rearm myself
             p.iter = p.iter + self.iterationsPerCall;
             p.active = 1;
-            
             
             if self.insertPause; input('Enter to continue: '); end
         end
