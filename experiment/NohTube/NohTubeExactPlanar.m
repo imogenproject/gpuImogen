@@ -1,4 +1,4 @@
-classdef NohTubeSolution < handle
+classdef NohTubeExactPlanar < handle
     % Class annotation template for creating new classes.
     %___________________________________________________________________________________________________
     
@@ -26,7 +26,7 @@ classdef NohTubeSolution < handle
     
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-        function self = NohTubeSolution(rho0, P0, m)
+        function self = NohTubeExactPlanar(rho0, P0, m)
             self.rho0 = rho0;
             self.P0   = P0;
             self.pMach = m;
@@ -34,21 +34,24 @@ classdef NohTubeSolution < handle
             self.gamma = 5/3;
         end
 
-        function [rho v P] = solve(self, t);
+        function [rho v P] = solve(self, ignoredSpacedim, R, r0);
             
             c0 = sqrt(self.gamma*self.P0/self.rho0);
             vsh0 = self.pMach * c0;
 
-            d0 = size(self.xpos);
+	    d0 = size(R);
             rho = zeros(d0); v = zeros(d0); P = zeros(d0);
 
-            % Calculate how long until the 1st shock hits the wall
-            tImpact = self.xini / vsh0;
+	    hplane = sign(R);
+	    R      = abs(R);
 
-            if t < tImpact
-                xShock = self.xini - t*vsh0;
-                a = (self.xpos < xShock);
-                b = (self.xpos >= xShock);
+            % Calculate how long until the 1st shock hits the wall
+	    
+            if r0 < 0 % 1st shock has not hit wall
+	            r0 = -r0; % correct sign bit
+
+                a = (R <  r0);
+                b = (R >= r0);
 
                 phi = (self.gamma-1+2/self.pMach^2)/(self.gamma+1);
 
@@ -56,14 +59,12 @@ classdef NohTubeSolution < handle
                 rho(b) = self.rho0/phi;
         
                 v(a) = 0;
-                v(b) = (self.pMach*c0*(phi-1));
+                v(b) = (self.pMach*c0*(phi-1)) .* hplane(b);
 
                 P(a) = self.P0;
                 P(b) = self.P0 * (self.gamma*(2*self.pMach^2 - 1)+1)/(self.gamma+1);
-
             else
                 phi = (self.gamma-1+2/self.pMach^2)/(self.gamma+1);
-                tau = t - tImpact;
 
                 % calculate first postshock parameters as new preshock params
                 rho1 = self.rho0/phi;
@@ -81,36 +82,25 @@ classdef NohTubeSolution < handle
                 Vsh  = c*((3-g)*m + sqrt(16 + gp1*gp1*m*m))/4;
                 P2   = P1 + rho1*m*c^2*(m*gp1 - sqrt(16 + gp1*gp1*m*m))/4;
 
-                xShock = Vsh * tau;
-                a = (self.xpos < xShock);
-                b = (self.xpos >= xShock);
+                self.r0 = Vsh * t0;
 
-                rho(a) = rho2; rho(b) = rho1;
-                v(a) = 0.0;    v(b) = vin;
-                P(a) = P2;     P(b) = P1;
+                a = (R <  r0);
+                b = (R >= r0);
+
+                rho(a) = rho2;
+		rho(b) = rho1;
+
+                v(a) = 0.0;
+		v(b) = vin.*hplane(b);
+
+                P(a) = P2;
+		P(b) = P1;
 
             end
 
             % Remember that cell values are integral volume averages:
             % Average the cell the shock traverses
-            i0 = numel(find(a)); % center of cell left
-            if i0 < numel(a) 
-                x0 = self.xpos(i0);
-                x1 = self.xpos(i0+1);
-                delta = (xShock-x0)/(x1-x0);
-                if delta < .5 % left cell needs avg
-                    delta = delta + .5;
-                    rho(i0) = delta*rho(i0) + (1-delta)*rho(i0+1);
-                    v(i0)   = delta*v(i0)   + (1-delta)*v(i0+1);
-                    P(i0)   = delta*P(i0)   + (1-delta)*P(i0+1);
-                else % rite cell needs avg
-                    delta = delta - .5;
-                    rho(i0+1) = delta*rho(i0) + (1-delta)*rho(i0+1);
-                    v(i0+1)   = delta*v(i0)   + (1-delta)*v(i0+1);
-                    P(i0+1)   = delta*P(i0)   + (1-delta)*P(i0+1);
-                end
-            end
-            
+            % FIXME implement this
 
         end
     end%PUBLIC

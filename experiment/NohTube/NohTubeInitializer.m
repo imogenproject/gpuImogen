@@ -11,8 +11,6 @@ classdef NohTubeInitializer < Initializer
 	r0;    % Radius of implosion
 
 	M0;    % Mach (large for analytical soln to work)
-	
-	t0;    % Positive: center is postshock, negative: center is vacuum
     end %PUBLIC
     
     %===================================================================================================
@@ -40,11 +38,12 @@ classdef NohTubeInitializer < Initializer
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
             
-            obj.bcMode.x         = ENUM.BCMODE_CIRCULAR;%CONST;
-            obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
-            obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
-            
             obj.operateOnInput(input, [1024, 1, 1]);
+
+            obj.bcMode.x         = ENUM.BCMODE_CONST;
+            obj.bcMode.y         = ENUM.BCMODE_CONST;
+            obj.bcMode.z         = ENUM.BCMODE_CONST;
+	    obj.useHalfspace([0 0 0]);
             
             obj.pureHydro = 1;
         end
@@ -54,7 +53,27 @@ classdef NohTubeInitializer < Initializer
     
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-        
+        function useHalfspace(self, direct)
+	    if numel(direct) == 1; direct = [1 1 1]*direct; end
+
+	    if direct(1)
+		self.bcMode.x = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+	    else
+	        self.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+	    end
+	    if direct(2) && (self.grid(2) > 1)
+		self.bcMode.y = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+	    else
+	        self.bcMode.y = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+	    end
+	    if self.grid(3) > 1
+		if direct(3)
+		    self.bcMode.z = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+		else
+		    self.bcMode.z = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+		end
+	    else; self.bcMode.z = {ENUM.BCMODE_CIRCULAR, ENUM.BCMODE_CIRCULAR}; end
+	end
     end%PUBLIC
     
     %===================================================================================================
@@ -72,59 +91,71 @@ classdef NohTubeInitializer < Initializer
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
             
-	    obj.dGrid = [1 1 1]/obj.grid(1);
+            
             half = floor(obj.grid/2);
-
-            %--- Compute the conditions for the domains ---%
+            needDia = [2 2 2].*(obj.grid > 1);
+            
+            % Use halfspaces if negative-edge boundaries are mirrors
+            if strcmp(obj.bcMode.x{1}, ENUM.BCMODE_MIRROR); half(1) = 3; needDia(1) = 1; end
+            if strcmp(obj.bcMode.y{1}, ENUM.BCMODE_MIRROR); half(2) = 3; needDia(2) = 1; end
+            if obj.grid(3) > 1;
+                if strcmp(obj.bcMode.z{1}, ENUM.BCMODE_MIRROR); half(3) = 3; needDia(3)=1; end
+            end
+            
+            obj.dGrid = max(needDia./obj.grid);
             [X Y Z] = GIS.ndgridSetXYZ(half + .5, obj.dGrid);
-       
-            R = sqrt(X.^2+Y.^2+Z.^2);
-
+            
             spaceDim = 1;
             if obj.grid(2) > 1; spaceDim = spaceDim + 1; end
             if obj.grid(3) > 1; spaceDim = spaceDim + 1; end
-
+            
+            if spaceDim > 1
+                generator = NohTubeColdGeneral(obj.rho0, 1, obj.M0);
+                % 1 = p0 (init pressure) is IGNORED for multi-dim problem
+                R = sqrt(X.^2+Y.^2+Z.^2);
+                Rmax = max(R(:));
+                Rmin = 0;
+                dynr = Rmax - Rmin;
+                Rsolve = Rmin:.0001*dynr:Rmax;
+            else
+                generator = NohTubeExactPlanar(obj.rho0, 1, obj.M0);
+                Rsolve = X;
+            end
+            
             [mass mom mag ener] = GIS.basicFluidXYZ();
-
-	    if obj.t0 > 0; % Begin with nonvacuum at r < r0
-		% Solve the actual time associated with r0
-		Dee = (1-obj.gamma)*obj.v0/2;
-		t = obj.r0 / Dee;
-
-		mass(R > obj.r0) = obj.rho0*(1 - obj.v0*t./R(R > obj.r0)).^(spaceDim-1);
-
-		px = (X./R).*mass*obj.v0;;
-		if spaceDim >= 2; py = (Y./R).*mass*obj.v0; end
-		if spaceDim >= 3; pz = (Z./R).*mass*obj.v0; end
-
-		px(R < obj.r0) = 0;
-		py(R < obj.r0) = 0;
-		pz(R < obj.r0) = 0;
-
-		% KE plus small qty for finite pressure requirement, defined thru Mach
-		% Define density at shock
-		jc = (obj.gamma+1)/(obj.gamma-1);
-		rhopre = obj.rho0*jc^(spaceDim-1);
-		% The pressure for the Mach to be such
-		p0 = rhopre*(obj.v0/obj.M0)^2/(obj.gamma*(obj.gamma-1));
-
-		% Add this to preshock energy density assuming adiabaticity
-		ener(R > obj.r0) = .5*obj.v0^2*mass(R > obj.r0) + p0*(mass(R > obj.r0)./rhopre).^obj.gamma / (obj.gamma-1);
-
-		% Compute the central region
-		% Shocked, stationary central region
-		mcent = obj.rho0 * jc^spaceDim;
-		mass(R <= obj.r0)= mcent;
-		% mom is zero by default: yay
-		ener(R <= obj.r0)= mcent*obj.v0^2 / 2;
-	    else
-		error('Do not support imploding shell yet: Set run.t0 > 0 please.\n');
-        end
-           
-        mom(1,:,:,:) = px;
-        if(spaceDim >= 2); mom(2,:,:,:) = py; end
-        if(spaceDim >= 3); mom(3,:,:,:) = pz; end
- 
+            
+            [rho vradial Pini] = generator.solve(spaceDim, Rsolve, obj.r0);
+            
+            Pini(rho< obj.minMass) = obj.minMass/(obj.gamma - 1);
+            rho(rho < obj.minMass) = obj.minMass;
+            
+            switch spaceDim;
+                case 1;
+                    mass = rho;
+                    px = mass.*vradial;
+                    py = zeros(size(mass));
+                    pz = zeros(size(mass));
+                    ener = .5*mass.*(vradial.^2) + Pini /(obj.gamma-1);
+                case 2;
+                    mass = interp1(Rsolve, rho, R);
+                    prad = interp1(Rsolve, rho.*vradial, R);
+                    px = prad .* X ./ R;
+                    py = prad .* Y ./ R;
+                    pz = zeros(size(mass));
+                    ener = interp1(Rsolve, Pini/(obj.gamma-1), R) + .5*(px.^2+py.^2)./mass;
+                case 3;
+                    mass = interp1(Rsolve, rho, R);
+                    prad = interp1(Rsolve, rho.*vradial, R);
+                    px = prad .* X ./ R;
+                    py = prad .* Y ./ R;
+                    pz = prad .* Z ./ R;
+                    ener = interp1(Rsolve, Pini/(obj.gamma-1), R) + .5*(px.^2+py.^2+pz.^2)./mass;
+            end;
+            
+            mom(1,:,:,:) = px;
+            mom(2,:,:,:) = py;
+            mom(3,:,:,:) = pz;
+            
             if ~obj.saveSlicesSpecified
                 obj.activeSlices.xyz = true;
             end
@@ -137,16 +168,6 @@ classdef NohTubeInitializer < Initializer
     
     %===================================================================================================
     methods (Static = true) %                                                     S T A T I C    [M]
-        
-        function tf = stateIsPhysical(state)
-            
-            if numel(state) ~= 5; tf = false; else
-                tf = true;
-                if state(1) <= 0; tf = false; end;
-                if state(5) <= 0; tf = false; end;
-            end
-            
-        end
         
     end
 end%CLASS
