@@ -2,9 +2,13 @@
 
 include ../Make.config
 
-NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+
+DEFINES = -DRECONSTRUCT_VELOCITY 
+#-DFLOATFLUX
+
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
 # Debuggable code
-#NVCC_OPTS = -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
+#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
 # If you enjoy verbose assembler output
 #NVCC_OPTS = $(NVCC_OPTS) -Xptxas="-v"
 

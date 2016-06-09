@@ -331,12 +331,21 @@ if(r > 0.0) { return r /(derivL+derivR); }
 return 0;
 }
 
-__device__ __inline__ double slopeLimiter_minmod(double derivL, double derivR)
+#ifdef FLOATFLUX
+__device__ __inline__ float slopeLimiter_minmod(float derivL, float derivR)
+{
+if(derivL * derivR < 0) return 0.0;
+
+if(fabsf(derivL) > fabsf(derivR)) { return .5*derivR; } else { return .5*derivL; }
+}
+#else
+__device__ __inline__ float slopeLimiter_minmod(double derivL, double derivR)
 {
 if(derivL * derivR < 0) return 0.0;
 
 if(fabs(derivL) > fabs(derivR)) { return .5*derivR; } else { return .5*derivL; }
 }
+#endif
 
 __device__ __inline__ double slopeLimiter_superbee(double derivL, double derivR)
 {
