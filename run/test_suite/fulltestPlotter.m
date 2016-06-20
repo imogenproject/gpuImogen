@@ -12,37 +12,48 @@ if doquad; maxplot = 4; end
 % Tick-tock our little plot creating state machine along as well
 
 % Plot the advection test results
-plotno = prepNextPlot(maxplot, plotno);
-plotAdvecOutput(FTR.advection.Xalign_mach0);
-title('X advection, n = [1 0 0], stationary bg,','fontsize',14);
+if isfield(FTR,'advection')
+    
+    plotno = prepNextPlot(maxplot, plotno);
+    plotAdvecOutput(FTR.advection.Xalign_mach0);
+    title('X advection, n = [1 0 0], stationary bg,','fontsize',14);
+    
+    plotno = prepNextPlot(maxplot, plotno);
+    plotAdvecOutput(FTR.advection.Xalign_mach0p5);
+    title('X advection, n = [1 0 0], moving bg','fontsize',14);
+    
+    plotno = prepNextPlot(maxplot, plotno);
+    plotAdvecOutput(FTR.advection.XY);
+    title('Cross-grid advection, n = [4 5 0]','fontsize',14);
+end
 
-plotno = prepNextPlot(maxplot, plotno);
-plotAdvecOutput(FTR.advection.Xalign_mach0p5);
-title('X advection, n = [1 0 0], moving bg','fontsize',14);
+if isfield(FTR,'einfeldt')
+    % Plot the Einfeldt rarefaction test results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotEinfeldt(FTR.einfeldt);
+    title('Einfeldt test results','fontsize',14);
+end
 
-plotno = prepNextPlot(maxplot, plotno);
-plotAdvecOutput(FTR.advection.XY);
-title('Cross-grid advection, n = [4 5 0]','fontsize',14);
+if isfield(FTR,'sod')
+    % Plot the Sod tube results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotSod(FTR.sod.X)
+    title('Sod tube convergence results','fontsize',14);
+end
 
-% Plot the Einfeldt rarefaction test results
-plotno = prepNextPlot(maxplot, plotno);
-plotEinfeldt(FTR.einfeldt);
-title('Einfeldt test results','fontsize',14);
+if isfield(FTR,'centrifuge')
+    % Plot centrifuge test results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotCentrifuge(FTR.centrifuge);
+    title('Centrifuge equilibrium maintainence results','fontsize',14);
+end
 
-% Plot the Sod tube results
-plotno = prepNextPlot(maxplot, plotno);
-plotSod(FTR.sod.X)
-title('Sod tube convergence results','fontsize',14);
-
-% Plot centrifuge test results
-plotno = prepNextPlot(maxplot, plotno);
-plotCentrifuge(FTR.centrifuge);
-title('Centrifuge equilibrium maintainence results','fontsize',14);
-
-% Plot Sedov-Taylor metric results 
-plotno = prepNextPlot(maxplot, plotno);
-plotSedov(FTR.sedov3d);
-title('3D Sedov-Taylor density errors','fontsize',14);
+if isfield(FTR, 'sedov3d')
+    % Plot Sedov-Taylor metric results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotSedov(FTR.sedov3d);
+    title('3D Sedov-Taylor density errors','fontsize',14);
+end
 
 end
 
