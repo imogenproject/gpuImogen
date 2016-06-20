@@ -2,7 +2,6 @@
 
 include ../Make.config
 
-
 DEFINES = -DRECONSTRUCT_VELOCITY 
 #-DFLOATFLUX
 

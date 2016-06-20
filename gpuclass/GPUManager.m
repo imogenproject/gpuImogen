@@ -9,11 +9,11 @@ classdef GPUManager < handle
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         deviceList; % Integers enumerating which GPUs this instance will use e.g. [0 2]
-	    useHalo;    % If > 0, boundaries between shared segments will have a useHalo-wide halo
+        useHalo;    % If > 0, boundaries between shared segments will have a useHalo-wide halo
         partitionDir;
         isInitd;
         cudaStreamsPtr;
-	    nprocs;
+        nprocs;
     end %PUBLIC
 
 %===================================================================================================
@@ -30,7 +30,7 @@ classdef GPUManager < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function g = GPUManager()
-	        g.deviceList = 0;
+            g.deviceList = 0;
             g.useHalo = 0;
             g.partitionDir = 1;
             g.isInitd = 0;
@@ -43,13 +43,17 @@ classdef GPUManager < handle
         end
 
         function init(obj, devlist, halo, partitionDirection)
-	        obj.deviceList = devlist;
+            if obj.isValidDeviceList(devlist)
+                obj.deviceList = devlist;
+            else
+                
+            end
 % This was added when I thought it was needed, now it isn't.
 %            obj.cudaStreamsPtr = GPU_ctrl('createStreams',devlist);
-	        obj.useHalo = halo;
+            obj.useHalo = halo;
             obj.partitionDir = partitionDirection;
             obj.isInitd = 1;
-	        obj.nprocs = obj.GIS.topology.nproc;
+            obj.nprocs = obj.GIS.topology.nproc;
         end
 
         function describe(obj)
@@ -87,6 +91,13 @@ classdef GPUManager < handle
 
 %===================================================================================================        
     methods (Access = protected) %                                          P R O T E C T E D    [M]
+
+        function tf = isValidDeviceList(self, devlist)
+           mem = GPU_ctrl('memory');
+           ndevs = size(mem,1);
+           tf = all(devlist >= 0) && all(devlist < ndevs);
+        end
+
     end%PROTECTED
 
 %===================================================================================================    

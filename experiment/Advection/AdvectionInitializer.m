@@ -1,13 +1,13 @@
 classdef AdvectionInitializer < Initializer
-    %___________________________________________________________________________________________________
+    %_______________________________________________________________________________________________
     
-    %===================================================================================================
-    properties (Constant = true, Transient = true) %                                            C O N S T A N T         [P]
+    %===============================================================================================
+    properties (Constant = true, Transient = true) %                     C O N S T A N T         [P]
         multifluidCompatible = 1;
     end%CONSTANT
     
-    %===================================================================================================
-    properties (SetAccess = public, GetAccess = public) %                                           P U B L I C  [P]
+    %===============================================================================================
+    properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         %FIXME If only magnetism even worked this would be relevant...
         backgroundB;         % Initial magnetic field. Automatically actives magnetic fluxing. [1x3].
         
@@ -18,8 +18,8 @@ classdef AdvectionInitializer < Initializer
         waveOmega;           % Omega is calculated from dispersion relation and K
     end
     
-    %===================================================================================================
-    properties (SetAccess = protected, GetAccess = public) %                                     P R O T E C T E D [P]
+    %===============================================================================================
+    properties (SetAccess = protected, GetAccess = public) %                   P R O T E C T E D [P]
         %Controlling values that define the simulation
         pBackgroundMach;      % The background fluid's velocity in multiples of infinitesmal c_s (3x1 dbl)
         pWavenumber;
@@ -42,8 +42,8 @@ classdef AdvectionInitializer < Initializer
         amplitude; backgroundMach; wavenumber; cycles;
     end
     
-    %===================================================================================================
-    methods %                                                                                       G E T / S E T  [M]
+    %===============================================================================================
+    methods %                                                                      G E T / S E T  [M]
         function obj = AdvectionInitializer(input)
             obj                 = obj@Initializer();
             obj.gamma           = 5/3;
@@ -142,8 +142,8 @@ classdef AdvectionInitializer < Initializer
         
     end%GET/SET
     
-    %===================================================================================================
-    methods (Access = public) %                                                                      P U B L I C  [M]
+    %===============================================================================================
+    methods (Access = public) %                                                     P U B L I C  [M]
         function waveLinearity(self, tf)
         % If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact stationary frame
             if tf; self.pBeLinear = 1; self.pUseStationaryFrame = 0; else; self.pBeLinear = 0; end
@@ -157,8 +157,8 @@ classdef AdvectionInitializer < Initializer
 
     end%PUBLIC
     
-    %===================================================================================================
-    methods (Access = protected) %                                                              P R O T E C T E D    [M]
+    %===============================================================================================
+    methods (Access = protected) %                                          P R O T E C T E D    [M]
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             statics  = StaticsInitializer();                           
             potentialField = [];
@@ -237,23 +237,26 @@ classdef AdvectionInitializer < Initializer
                 fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
                 fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
                 fluids(1).ener = ener;
+		fluids(1).details = [];
 
                 fluids(2).mass = mass; fluids(2).momX = -squish(mom(1,:,:,:));
                 fluids(2).momY = -squish(mom(2,:,:,:)); fluids(2).momZ = -squish(mom(3,:,:,:));
                 fluids(2).ener = ener;
+		fluids(2).details = [];
                 fprintf('WARNING: Experimental two-fluid mode: Generating 2nd fluid with reversed momentum!\n');
             else
                 fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
                 fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
                 fluids(1).ener = ener;
+		fluids(1).details = [];
             end
 
             if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end
         end
     end%PROTECTED
     
-    %===================================================================================================
-    methods (Static = true) %                                                                   S T A T I C    [M]
+    %===============================================================================================
+    methods (Static = true) %                                                     S T A T I C    [M]
     end%PROTECTED
     
 end%CLASS

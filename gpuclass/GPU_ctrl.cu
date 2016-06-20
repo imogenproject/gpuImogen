@@ -152,9 +152,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		}
 	}
 	if(strcmp(c, "reset") == 0) {
-		//mxArray *getGM[1];
-		//int stupid = mexCallMATLAB(1, &getGM[0], 0, NULL, "GPUManager.getInstance");
-		// FIXME: device reset needs to be actually implemented.
 		int nDevices;
 		cudaGetDeviceCount(&nDevices);
 		int i;
