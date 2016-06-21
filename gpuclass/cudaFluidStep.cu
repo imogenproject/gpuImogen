@@ -76,11 +76,14 @@ asm(    ".reg .f64 s;\n\t"      // hold sum
 return retval;
 }*/
 
-template <unsigned int PCswitch>
-__global__ void cukern_AUSM_step(double *Qstore, double lambda, int nx, int ny);
+template <unsigned int fluxDirection>
+__global__ void  __launch_bounds__(128, 6) cukern_DustRiemann_1storder(double *Qin, double *Qout, double lambda);
+
+template <unsigned int fluxDirection>
+__global__ void __launch_bounds__(128, 6) cukern_DustRiemann_2ndorder(double *Qin, double *Qout, double lambda);
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny);
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda);
 
 template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_1storder(double *Qin, double *Qout, double lambda);
@@ -88,17 +91,16 @@ template <unsigned int fluxDirection>
 __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda);
 
 template <unsigned int PCswitch>
-__global__ void cukern_XinJinMHD_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag, double *Cfreeze, double lambda);
 
 template <unsigned int PCswitch>
-__global__ void cukern_XinJinHydro_step(double *Qstore, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel);
+__global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *Cfreeze, double lambda);
 
 // FIXME: pressure is now solved for by the XJ kernel, this fcn need only compute the freeze speed.
 /* Stopgap until I manage to stuff pressure solvers into all the predictors... */
 __global__ void cukern_PressureSolverHydro(double *state, double *gasPressure);
 __global__ void cukern_PressureFreezeSolverHydro(double *state, double *gasPressure, double *Cfreeze);
 
-// FIXME: this needs to be rewritten like the above...
 __global__ void cukern_PressureFreezeSolverMHD(double *state, double *totalPressure, double *mag, double *Cfreeze);
 
 #define BLOCKLEN 28
@@ -120,9 +122,9 @@ __constant__ __device__ double fluidQtys[8];
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
-//#define SLOPEFUNC slopeLimiter_Osher
+#define SLOPEFUNC slopeLimiter_Osher
 //#define SLOPEFUNC slopeLimiter_Zero
-#define SLOPEFUNC slopeLimiter_minmod
+//#define SLOPEFUNC slopeLimiter_minmod
 //#define SLOPEFUNC slopeLimiter_VanLeer
 
 #define FLUID_GAMMA   fluidQtys[0]
@@ -341,12 +343,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 			// Allocate memory for the half timestep's output
 			int numarrays = 6 ;
-			for(i = 0; i < fluid->nGPUs; i++) {
-				cudaSetDevice(fluid->deviceID[i]);
-				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->partNumel[i]*sizeof(double)); // [rho px py pz E P]_.5dt
-				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
-				if(returnCode != SUCCESSFUL) return returnCode;
-			}
+			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			arraysize = makeDim3(&fluid[0].dim[0]);
 			blocksize = makeDim3(BLOCKLENP4, YBLOCKS, 1);
@@ -384,19 +382,19 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 				blocksize = makeDim3(32, (arraysize.y > 1) ? 4 : 1, 1);
 				gridsize = makeDim3(ROUNDUPTO(arraysize.x,blocksize.x - 4)/(blocksize.x-4), arraysize.z, 1);
-// FIXME: This will apparently dump if the arraysize.x < 28?
+// FIXME: This will apparently dump if the arraysize.x < 28? Wat???
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
-				case 1: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda, arraysize.x, arraysize.y); break;
-				case 2: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda, arraysize.x, arraysize.y); break;
-				case 3: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda, arraysize.x, arraysize.y); break;
+				case 1: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case 2: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case 3: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 #ifdef DBG_FIRSTORDER // 1st-order testing: Dumps upwinded values straight back to output arrays
-			printf("WARNING: Operating at first order for debug purposes!\n");
+			printf("WARNING: Operating at first order for debug purposes!\nURGENT: THIS WILL NOT WORK WITH NGPUS > 1\n");
 i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
 
 #ifdef DEBUGMODE // If in first-order debug mode, intermediate values were dumped to wStepValues to be returned
@@ -428,9 +426,9 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
-				case 1: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda, arraysize.x, arraysize.y); break;
-				case 2: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda, arraysize.x, arraysize.y); break;
-				case 3: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda, arraysize.x, arraysize.y); break;
+				case 1: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case 2: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case 3: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -438,12 +436,8 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 #endif // still have to avoid memory leak regardless of order we ran at
 			MGA_delete(cfreeze[0]);
 			MGA_delete(cfreeze[1]);
-			for(i = 0; i < fluid->nGPUs; i++) {
-				cudaSetDevice(fluid->deviceID[i]);
-				cudaFree(wStepValues[i]);
-				returnCode = CHECK_CUDA_ERROR("cudaFree()");
-				if(returnCode != SUCCESSFUL) return returnCode;
-			}
+			returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 		} break;
 		case METHOD_HLL:
 		case METHOD_HLLC: {
@@ -452,16 +446,9 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 			numarrays = 6 + DBG_NUMARRAYS;
 #else
 			numarrays = 6;
-			#endif
-
-			// Allocate memory for the half timestep's output
-			for(i = 0; i < fluid->nGPUs; i++) {
-				cudaSetDevice(fluid->deviceID[i]);
-				CHECK_CUDA_ERROR("cudaSetDevice()");
-				cudaMalloc((void **)&wStepValues[i], numarrays*fluid->slabPitch[i]); // [rho px py pz E P]_.5dt
-				returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: halfstep malloc");
-				if(returnCode != SUCCESSFUL) return returnCode;
-			}
+#endif
+			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			// Launch zee kernels
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -478,9 +465,9 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 					switch(stepdirect) {
-					case 1: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
-					case 2: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
-					case 3: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda, sub[3], sub[4]); break;
+					case 1: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case 2: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case 3: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 					}
 				} else switch(stepdirect) {
 				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
@@ -502,9 +489,9 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 					switch(stepdirect) {
-					case 1: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
-					case 2: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
-					case 3: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda, sub[3], sub[4]); break;
+					case 1: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case 2: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case 3: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
 					}
 
 				} else switch(stepdirect) {
@@ -518,23 +505,17 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 				returnDebugArray(fluid, 6, wStepValues, dbOutput);
 #endif
 
-				#endif
+#endif
 			}
-			for(i = 0; i < fluid->nGPUs; i++) {
-				// Release the memory taken for this step
-				cudaSetDevice(fluid->deviceID[i]);
-				CHECK_CUDA_ERROR("cudaSetDevice();");
-				cudaFree(wStepValues[i]);
-				returnCode = CHECK_CUDA_ERROR("cudaFree()");
-				if(returnCode != SUCCESSFUL) return returnCode;
-			}
+			returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 		} break;
 		}
 		if(fluid->partitionDir == PARTITION_X) returnCode = MGA_exchangeLocalHalos(fluid, 5);
 		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 	} else { // If MHD case
-//		int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
+		//		int MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
 		//worked = MGA_globalPancakeReduce(MGArray *in, MGArray *out, MPI_Op operate, int dir, int partitionOnto, int redistribute, const mxArray *topo)
 		//cfSync(hostptrs[9], fluid[0].dim[1]*fluid[0].dim[2], prhs[13]); // prhs[13] is the parallel topo
 		/*CHECK_CUDA_ERROR("In cudaFluidStep: first mhd c_f sync");
@@ -560,6 +541,33 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 
 }
 
+int grabTemporaryMemory(double **m, MGArray *ref, int nCopies)
+{
+	int i, returnCode = SUCCESSFUL;
+	for(i = 0; i < ref->nGPUs; i++) {
+		cudaSetDevice(ref->deviceID[i]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		cudaMalloc((void **)&m[i], nCopies*ref->slabPitch[i]); // [rho px py pz E P]_.5dt
+		returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: temporary storage malloc");
+		if(returnCode != SUCCESSFUL) { break; }
+	}
+	return returnCode;
+}
+
+int releaseTemporaryMemory(double **m, MGArray *ref)
+{
+	int i, returnCode = SUCCESSFUL;
+	for(i = 0; i < ref->nGPUs; i++) {
+		// Release the memory taken for this step
+		cudaSetDevice(ref->deviceID[i]);
+		CHECK_CUDA_ERROR("cudaSetDevice();");
+		cudaFree(m[i]);
+		returnCode = CHECK_CUDA_ERROR("cudaFree()");
+		if(returnCode != SUCCESSFUL) return returnCode;
+	}
+	return returnCode;
+
+}
 // Sometimes nsight gets stupid about parsing the nVidia headers and I'm tired of this
 // crap about how __syncthreads is "undeclared."
 extern __device__ __device_builtin__ void                   __syncthreads(void);
@@ -1203,7 +1211,7 @@ DBGSAVE(1, E);
 #define HLLTEMPLATE_ZDIR 4
 
 template <unsigned int PCswitch>
-__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int nx, int ny)
+__global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 {
 	// Create center, rotate-left and rotate-right indexes
 	int IC = threadIdx.x;
@@ -1229,15 +1237,15 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
-	if(x0 < 0) x0 += nx; // left wraps to right edge
-	if(x0 > (nx+1)) return; // More than 2 past right returns
-	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
+	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
+	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
 
 	/* Do some index calculations */
-	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
 	int j = threadIdx.y;
 
-	for(; j < ny; j += blockDim.y) {
+	for(; j < DEV_NY; j += blockDim.y) {
 
 		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
@@ -1502,7 +1510,7 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 			}
 		}
 
-		x0 += blockDim.y*nx;
+		x0 += blockDim.y*DEV_NX;
 		__syncthreads();
 	}
 
@@ -1512,10 +1520,10 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda, int 
 #define DBGSAVE(n, x) if(thisThreadDelivers) { Qstore[((n)+6)*(1024*64)] = (x); }
 
 template <unsigned int PCswitch>
-__global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *Cfreeze, double lambda, int nx, int ny)
+__global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *Cfreeze, double lambda)
 {
 
-	if(threadIdx.y >= ny) return;
+	if(threadIdx.y >= DEV_NY) return;
 
 	// Create center, rotate-left and rotate-right indexes
 	int IC = threadIdx.x;
@@ -1538,17 +1546,17 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= BLOCKLENP4-3);
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
-	if(x0 < 0) x0 += nx; // left wraps to right edge
-	if(x0 > (nx+1)) return; // More than 2 past right returns
-	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
+	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
+	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
 
 	/* Do some index calculations */
-	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
 	int j = threadIdx.y;
 	int i;
 
-	for(; j < ny; j += YBLOCKS) {
-		C_f = Cfreeze[j + ny*blockIdx.y];
+	for(; j < DEV_NY; j += YBLOCKS) {
+		C_f = Cfreeze[j + DEV_NY*blockIdx.y];
 		if((PCswitch & 1) == RK_PREDICT) {
 			// Load from init inputs, write to Qstore[]
 			Q[0] = Qbase[x0];
@@ -1658,14 +1666,14 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			}
 		}
 
-		x0 += YBLOCKS*nx;
+		x0 += YBLOCKS*DEV_NX;
 		__syncthreads();
 	}
 
 }
 
 template <unsigned int PCswitch>
-__global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag, double *Cfreeze, double lambda, int nx, int ny, int devArrayNumel)
+__global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag, double *Cfreeze, double lambda)
 {
 	// Create center, rotate-left and rotate-right indexes
 	int IC = threadIdx.x;
@@ -1688,17 +1696,17 @@ __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= 13);
 
 	int x0 = threadIdx.x + (BLOCKLEN)*blockIdx.x - 2;
-	if(x0 < 0) x0 += nx; // left wraps to right edge
-	if(x0 > (nx+1)) return; // More than 2 past right returns
-	if(x0 > (nx-1)) { x0 -= nx; thisThreadDelivers = 0; } // past right must wrap around to left
+	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
+	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
+	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
 
 	/* Do some index calculations */
-	x0 += nx*(ny*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
+	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
 	int j = threadIdx.y;
 	int i;
 
-	for(; j < ny; j += YBLOCKS) {
-		C_f = Cfreeze[j + ny*blockIdx.y];
+	for(; j < DEV_NY; j += YBLOCKS) {
+		C_f = Cfreeze[j + DEV_NY*blockIdx.y];
 
 		if((PCswitch & 1) == RK_PREDICT) {
 			// Load from init inputs, write to Qstore[]
@@ -1809,7 +1817,7 @@ __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag
 			}
 		}
 
-		x0 += YBLOCKS*nx;
+		x0 += YBLOCKS*DEV_NX;
 		__syncthreads();
 	}
 

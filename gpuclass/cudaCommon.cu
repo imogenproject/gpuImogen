@@ -748,7 +748,6 @@ int MGA_localReduceScalar(MGArray *in, double *scalar, MGAReductionOperator oper
 		returnCode = CHECK_CUDA_ERROR((const char *)"cudaDeviceSynchronize()");
 		if(returnCode != SUCCESSFUL) break;
 
-		// FIXME: get OMP to play nice with nvcc+mex & parallelize this
 		for(i = 0; i < gridsize.x; i++)
 			result = cpu_reducePair(result, blockValues[devCount][i], operate);
 
@@ -1125,7 +1124,6 @@ __global__ void cudaClonedReducerQuad(double *a, double *b, double *c, double *d
  * if redistribute == 1, a->devicePtr[0] data is copied to partitions 1 through a->nGPUs as well. */
 int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute)
 {
-	/* FIXME: should have a partitionOnto option... */
 	int i;
 
 	// Check that this operation is acceptable

@@ -82,7 +82,7 @@ return griddim;
 }
 
 /* This collection of cookie-cutter functions is so GPU_Type can overload the basic math
- * functions expected of any Matlab array */
+ * functions to provide GPU-accelerated basic math */
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   dim3 blocksize; blocksize.x = BLEN; blocksize.y = blocksize.z = 1;
