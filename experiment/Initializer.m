@@ -34,7 +34,6 @@ classdef Initializer < handle
         specSaves;      % Arrays of special iterations used to save data.   struct
         thresholdMass;  % Minium mass acted on by gravitational forces      double
         timeMax;        % Maximum simulation time before run exits.         double
-        timeUpdateMode; % Enumerated frequency of timestep updates.         int
         treadmill;      % Treadmilling direction, inactive if empty.        string
         viscosity;      % Viscosity sub initializer object.                 ViscositySubInitializer
         radiation;      % Radiation sub initializer objet.                  RadiationSubInitializer
@@ -100,7 +99,6 @@ classdef Initializer < handle
             obj.timeMax              = 1e5;
             obj.wallMax              = 1e5;
             obj.treadmill            = 0;
-            obj.timeUpdateMode       = ENUM.TIMEUPDATE_PER_ITERATION;
             obj.gravity              = SelfGravityInitializer();
             obj.viscosity            = ViscositySubInitializer();
             obj.radiation            = RadiationSubInitializer();

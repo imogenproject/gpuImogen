@@ -37,14 +37,12 @@ __global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
-	if ((nrhs!=7) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceRotatingFrame(rho, E, px, py, omega, dt, [xvector yvector])\n");
+	if ((nrhs!=4) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceRotatingFrame(FluidManager, omega, dt, [xvector yvector])\n");
 
 	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
 	// Get source array info and create destination arrays
-	MGArray fluid[4];
-	int worked = MGA_accessMatlabArrays(prhs, 0, 3, &fluid[0]);
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access fluid arrays."); }
+	MGArray fluid[5];
 
 	/* FIXME: accept this as a matlab array instead
 	 * FIXME: Transfer appropriate segments to __constant__ memory
@@ -60,8 +58,16 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double omega = *mxGetPr(prhs[4]);
 	double dt    = *mxGetPr(prhs[5]);
 
-	worked = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
+	int numFluids = mxGetNumberOfElements(prhs[0]);
+	int fluidct;
+
+	for(fluidct = 0; fluidct < numFluids; fluidct++) {
+		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
+
+		worked = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
+		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
+	}
 
 }
 

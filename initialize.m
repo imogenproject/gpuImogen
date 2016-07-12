@@ -59,13 +59,6 @@ try
 catch MERR, loc_initializationError('cfl',MERR);
 end
 
-%% .timeUpdateMode              How frequently the timestep should be updated.
-try
-    run.time.updateMode = ini.timeUpdateMode;
-    run.appendInfo('Time Update Mode', run.time.updateMode);
-catch MERR, loc_initializationError('timeUpdateMode',MERR);
-end
-
 %% .thresholdMass               Threshold value below which gravity will not act
 
 %HACK HACK HACK disabled for multifluid

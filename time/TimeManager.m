@@ -16,7 +16,6 @@ classdef TimeManager < handle
         WALLMAX;     % Maximum wall time before finishing run in hours.              double
         wallTime;    % Number of hours since run was started.                        double
         startTime;   % Time the run was started.                                     Date Vector
-        updateMode;  % Frequency of updates (PER_ITERATION or PER_STEP)              int
         timePercent; % Percent complete based on simulation time.                    double
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
@@ -55,7 +54,6 @@ classdef TimeManager < handle
             obj.TIMEMAX     = 5000;
             obj.WALLMAX     = 1e5;
             obj.history     = zeros(obj.ITERMAX,1);
-            obj.updateMode  = ENUM.TIMEUPDATE_PER_ITERATION;
             obj.iterPercent = 0;
             obj.timePercent = 0;
             obj.wallPercent = 0;
