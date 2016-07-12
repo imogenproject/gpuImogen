@@ -1,11 +1,11 @@
 function source(run, fluids, mag, tFraction)
-% This function sources the non-conservative terms in the MHD equations like gravitational potential
-% and radiation terms. Effectively it provides the means to add terms that cannot be brought within 
-% the del operator, which is the foundation of the spatial fluxing routines.
+% This function sources the non-conservative terms in the MHD equations like gravitational
+% potential and radiation terms. Effectively it provides the means to add terms that cannot be 
+% brought within the del operator, which is the foundation of the spatial fluxing routines.
 %
-%>< run			data manager object.                                            ImogenManager
-%>< mass		mass density                                                    FluidArray  
-%>< mom			momentum density                                                FluidArray(3)
+%>< run         data manager object.                                            ImogenManager
+%>< mass        mass density                                                    FluidArray  
+%>< mom         momentum density                                                FluidArray(3)
 %>< ener        energy density                                                  FluidArray
 %>< mag         magnetic field density                                          FluidArray(3)
 
@@ -27,11 +27,15 @@ dosync = zeros(5,3);
 % We double the dtime here because one source step is sandwiched between two flux steps
 dTime = 2 * tFraction * run.time.dTime;
 
+if GIS.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+    cudaSourceCylindricalTerms(fluids, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], GIS.pInnerRadius);
+end
+
     % FIXME: This could be improved by calculating this affine transform once and storing it
     if run.frameTracking.omega ~= 0
         [xg yg] = GIS.ndgridVecs;
         xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameTracking.rotateCenter(1)) run.DGRID{2}*(yg-run.frameTracking.rotateCenter(2)) ], 1); 
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameTracking.omega, dTime/2, xyvector);
+        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
     end
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -52,7 +56,7 @@ dTime = 2 * tFraction * run.time.dTime;
 
     
     if run.frameTracking.omega ~= 0
-        cudaSourceRotatingFrame(mass, ener, mom(1), mom(2), run.frameTracking.omega, dTime/2, xyvector);
+        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
         clear xyvector;
     end
 

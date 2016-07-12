@@ -5,9 +5,9 @@ include ../Make.config
 DEFINES = -DRECONSTRUCT_VELOCITY 
 #-DFLOATFLUX
 
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
 # Debuggable code
-#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
 # If you enjoy verbose assembler output
 #NVCC_OPTS = $(NVCC_OPTS) -Xptxas="-v"
 
@@ -41,7 +41,7 @@ fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot f
 magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
 	echo "Done building MHD kernels"
 
-lambda: cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
+lambda: cudaSourceCylindricalTerms cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
 	echo "Done building source/sink term kernels"
 
 thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidStep
@@ -295,6 +295,12 @@ cudaSourceRotatingFrame.o: cudaSourceRotatingFrame.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceRotatingFrame.cu -o cudaSourceRotatingFrame.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceRotatingFrame.cpp
 cudaSourceRotatingFrame: cudaCommon.o cudaSourceRotatingFrame.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
+cudaSourceCylindricalTerms.o: cudaSourceCylindricalTerms.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCLA) $(NVCC_INCL) -cuda cudaSourceCylindricalTerms.cu -o cudaSourceCylindricalTerms.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceCylindricalTerms.cpp
+cudaSourceCylindricalTerms: cudaCommon.o cudaSourceCylindricalTerms.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaFreeRadiation.o: cudaFreeRadiation.cu

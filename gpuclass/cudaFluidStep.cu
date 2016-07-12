@@ -55,27 +55,6 @@ and considerably speeds up the process. */
  * It is observed to to save some 10% on execution time if used
  */
 
-/*__device__ double slopeLimiter_Osher_asm(double A, double B)
-{
-double retval;
-asm(    ".reg .f64 s;\n\t"      // hold sum
-        ".reg .f64 p;\n\t"       // hold product
-        ".reg .f64 q;\n\t"       // hold quotient"
-        ".reg .pred isneg;\n\t"  // predicate for positivity
-        "mul.f64        s, %1, %2;\n\t" // Store AB in s
-        "mov.f64        %0, 0d0000000000000000;\n\t" // Load output register with zero
-        "setp.le.f64    isneg, s, 0d0000000000000000;\n\t" // isneg is true if AB <= 0
-        "@isneg bra     endline;\n\t" // Hop past the computation to follow
-        "neg.f64        p, s;\n\t"      // store -AB in p
-        "add.f64        s, %1, %2;\n\t" // Store A+B in s
-        "fma.rn.f64     q, s, s, p;\n\t" // Store (A+B)^2 - AB = AA + AB + BB in q
-        "mul.f64        p, p, 0dBFE8000000000000;\n\t" // store -.75(-AB) = .75AB in p
-        "mul.f64        p, p, s;\n\t" // Store p s  = (.75 A B) (A+B) in p
-        "div.rn.f64     %0, p, q;\n\t" // Store that / the quotient in return register
-        "endline:\n\t" : "=d"(retval) : "d"(A), "d"(B) );
-return retval;
-}*/
-
 template <unsigned int fluxDirection>
 __global__ void  __launch_bounds__(128, 6) cukern_DustRiemann_1storder(double *Qin, double *Qout, double lambda);
 
@@ -111,9 +90,9 @@ __global__ void cukern_PressureFreezeSolverMHD(double *state, double *totalPress
 #define FREEZE_NY 4
 
 #ifdef FLOATFLUX
-__constant__ __device__ float fluidQtys[8];
+__constant__ __device__ float fluidQtys[12];
 #else
-__constant__ __device__ double fluidQtys[8];
+__constant__ __device__ double fluidQtys[12];
 #endif
 
 //#define LIMITERFUNC fluxLimiter_Zero
@@ -135,6 +114,10 @@ __constant__ __device__ double fluidQtys[8];
 #define MHD_PRESS_B   fluidQtys[5]
 #define MHD_CS_B      fluidQtys[6]
 #define FLUID_GOVERGM1 fluidQtys[7]
+// The following define the center of the innermost
+// cell of the cylindrical annulus and the radial step size
+#define CYLGEO_RINI   fluidQtys[8]
+#define CYLGEO_DR     fluidQtys[9]
 
 __constant__ __device__ int    arrayParams[4];
 #define DEV_NX arrayParams[0]
@@ -150,7 +133,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 #endif
 
 	// Input and result
-	if ((nrhs!=10) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
+	if ((nrhs!=10) || (nlhs != wanted_nlhs)) {
+		if(wanted_nlhs == 0) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
+		if(wanted_nlhs == 1) mexErrMsgTxt("Wrong number of arguments. cudaFluidStep was compiled for debug and requires\n dbgArrays = cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
+	}
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
@@ -162,6 +148,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double rhomin = scalars[3];
 	int method    = (int)scalars[4];
 	int stepdir   = (int)scalars[5];
+	// fetch rin / h from here if cylindrical?
+	// how to define geometry?
+	// shitty api!
 
 	MGArray fluid[5], mag[3];
 	int worked = MGA_accessMatlabArrays(prhs, 1, 5, &fluid[0]);
@@ -173,12 +162,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	topoStructureToC(prhs[9], &topology);
 
 	FluidStepParams stepParameters;
-	stepParameters.lambda      = lambda;
+	stepParameters.dt      = lambda;
+	int j; for(j = 0; j < 3; j++) { stepParameters.h[j] = 1; } // HACK HACK HACK
 	stepParameters.onlyHydro   = 1;
 	stepParameters.thermoGamma = gamma;
 	stepParameters.minimumRho  = rhomin;
 	stepParameters.stepMethod  = method;
 	stepParameters.stepDirection = stepdir;
+
+	// FIXME: hacked
+	stepParameters.geometryType = SQUARE;
+	stepParameters.geomCylindricalRinner = 1.0;
 
 #ifdef DEBUGMODE
 	performFluidUpdate_1D(&fluid[0], FluidStepParams params, &topology, mxArray **dbOutput);
@@ -273,21 +267,32 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 	int hydroOnly = params.onlyHydro;
 
-	double lambda     = params.lambda;
+	double lambda     = params.dt / params.h[params.stepDirection-1];
 
 	double gamma = params.thermoGamma;
 	double rhomin= params.minimumRho;
 
+	// We let the callers just tell us X/Y/Z (~ directions 1/2/3),
+	// At this point we know enough to map these to different templates
+	// (e.g. the two Theta direction fluxes depend on current array orientation)
 	int stepdirect = params.stepDirection;
+	if(params.geometryType == CYLINDRICAL) {
+		if(stepdirect == FLUX_X) stepdirect = FLUX_RADIAL;
+		if(stepdirect == FLUX_Y) {
+			if(fluid->currentPermutation[1] == 1) stepdirect = FLUX_THETA_213;
+			if(fluid->currentPermutation[1] == 3) stepdirect = FLUX_THETA_231;
+			if(fluid->currentPermutation[1] == 2) DROP_MEX_ERROR("Fatal: Misordered coordinates! Cannot flux Y if Y is not linear in mem.");
+		}
+	}
 
 	int returnCode = SUCCESSFUL;
 
 	/* Precalculate thermodynamic values which we'll dump to __constant__ mem
 	 */
 #ifdef FLOATFLUX
-	float gamHost[8];
+	float gamHost[12];
 #else
-	double gamHost[8];
+	double gamHost[12];
 #endif
 	gamHost[0] = gamma;
 	gamHost[1] = gamma-1.0;
@@ -303,6 +308,10 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
+	if(params.geometryType == CYLINDRICAL) {
+		gamHost[8] = params.geomCylindricalRinner;
+		gamHost[9] = params.h[params.stepDirection-1];
+	}
 
 	if(fluid->dim[0] < 3) return SUCCESSFUL;
 
@@ -326,9 +335,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 #ifdef FLOATFLUX
-		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(float), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 10*sizeof(float), 0, cudaMemcpyHostToDevice);
 #else
-		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 8*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 10*sizeof(double), 0, cudaMemcpyHostToDevice);
 #endif
 	}
 	returnCode = CHECK_CUDA_ERROR("Parameter upload");
@@ -385,17 +394,28 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 // FIXME: This will apparently dump if the arraysize.x < 28? Wat???
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
-				case 1: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case 2: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case 3: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_X: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_Y: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_Z: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_RADIAL:
+				case FLUX_THETA_213:
+				case FLUX_THETA_231:
+					PRINT_FAULT_HEADER;
+					printf("Fatal problem: The XinJin flux algorithm (1st order) has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
+					PRINT_FAULT_FOOTER;
+					returnCode = ERROR_INVALID_ARGS;
+					return returnCode;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 #ifdef DBG_FIRSTORDER // 1st-order testing: Dumps upwinded values straight back to output arrays
-			printf("WARNING: Operating at first order for debug purposes!\nURGENT: THIS WILL NOT WORK WITH NGPUS > 1\n");
-i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
+			printf("WARNING: Operating at first order for debug purposes!\n");
+			for(i = 0; i < fluid->nGPUs; i++ ) {
+				cudaSetDevice(fluid->deviceID[i]);
+				cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[i], cudaMemcpyDeviceToDevice);
+			}
 
 #ifdef DEBUGMODE // If in first-order debug mode, intermediate values were dumped to wStepValues to be returned
 			returnDebugArray(fluid, 6, wStepValues, dbOutput);
@@ -426,9 +446,17 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
-				case 1: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case 2: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case 3: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_X: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_Y: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_Z: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_RADIAL:
+				case FLUX_THETA_213:
+				case FLUX_THETA_231:
+					PRINT_FAULT_HEADER;
+					printf("Fatal problem: The XinJin flux algorithm (2nd order) kernel has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
+					PRINT_FAULT_FOOTER;
+					returnCode = ERROR_INVALID_ARGS;
+					return returnCode;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -465,21 +493,35 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 					switch(stepdirect) {
-					case 1: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-					case 2: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-					case 3: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case FLUX_X: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case FLUX_Y: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case FLUX_Z: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+					case FLUX_RADIAL:
+					case FLUX_THETA_213:
+					case FLUX_THETA_231:
+						PRINT_FAULT_HEADER;
+						printf("Fatal problem: The HLL scheme has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
+						PRINT_FAULT_FOOTER;
+						returnCode = ERROR_INVALID_ARGS;
+						return returnCode;
 					}
 				} else switch(stepdirect) {
-				case 1: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case 2: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case 3: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_Z: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_RADIAL: cukern_HLLC_1storder<FLUX_RADIAL><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+				case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 				if(returnCode != SUCCESSFUL) return returnCode;
 
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
 				printf("WARNING: Operating at first order for debug purposes!\n");
-				cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0], cudaMemcpyDeviceToDevice);
+				for(i = 0; i < fluid->nGPUs; i++) {
+					cudaSetDevice(fluid->deviceID[i]);
+					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[i], cudaMemcpyDeviceToDevice);
+				}
 #ifdef DEBUGMODE
 				returnDebugArray(fluid, 6, wStepValues, dbOutput);
 #endif
@@ -489,15 +531,26 @@ i=0;			cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[0]
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 					switch(stepdirect) {
-					case 1: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
-					case 2: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
-					case 3: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case FLUX_X: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case FLUX_Y: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case FLUX_Z: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
+					case FLUX_RADIAL:
+					case FLUX_THETA_213:
+					case FLUX_THETA_231:
+						PRINT_FAULT_HEADER;
+						printf("Fatal problem: The HLL solver (2nd order) has not been extended to support cylindrical coordinates\nCrashing Imogen...\n");
+						PRINT_FAULT_FOOTER;
+						returnCode = ERROR_INVALID_ARGS;
+						return returnCode;
 					}
 
 				} else switch(stepdirect) {
-				case 1: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case 2: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case 3: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_X: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+				case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -607,11 +660,13 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 	float A, B, C, D, E, F, G, H;
 	__shared__ float shblk[YBLOCKS*N_SHMEM_BLOCKS_FO*BLOCKLENP4];
 	float *shptr = &shblk[IC];
+	float cylgeomA, cylgeomB, cylgeomC;
 #else
 	/* Declare shared variable array */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS_FO*BLOCKLENP4];
 	double *shptr = &shblk[IC];
 	double A, B, C, D, E, F, G, H;
+	float cylgeomA, cylgeomB, cylgeomC;
 #endif
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
@@ -621,6 +676,24 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
 	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
 	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
+
+	/* If doing cylindrical geometry... */
+	// Compute multiple scale factors for radial direction fluxes
+	if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
+		A = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
+		cylgeomA = (A - .5*CYLGEO_DR) / (A);
+		cylgeomB = (A + .5*CYLGEO_DR) / (A);
+		cylgeomC = CYLGEO_DR / A;
+	}
+	// The kern will step through r, so we have to add to R and compute 1.0/R
+	if(fluxDirection == FLUX_THETA_213) {
+		cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
+		}
+	// The threads will step through z, so R is fixed and we can rescale the flux factor once:
+	// We just scale lambda ( = dt / dtheta) by 1/r_c
+	if(fluxDirection == FLUX_THETA_231) {
+		lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
+	}
 
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
@@ -636,11 +709,14 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 		B = Qin[  DEV_SLABSIZE]; /* E */
 		switch(fluxDirection) {
 		case FLUX_X: /* Variables are in normal order [px py pz] */
+		case FLUX_RADIAL:
 			C = Qin[2*DEV_SLABSIZE]; /* Px */
 			D = Qin[3*DEV_SLABSIZE]; /* Py */
 			E = Qin[4*DEV_SLABSIZE]; /* Pz */
 			break;
 		case FLUX_Y: /* Slabs are in order [py px pz] */
+		case FLUX_THETA_213:
+		case FLUX_THETA_231:
 			C = Qin[3*DEV_SLABSIZE]; /* Px */
 			D = Qin[2*DEV_SLABSIZE]; /* Py */
 			E = Qin[4*DEV_SLABSIZE]; /* Pz */
@@ -759,7 +835,7 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 				C *= A; // rho vx vy        = PY FLUX
 				D *= A; // rho vx vz        = PZ FLUX
 				G = A*B+F; // rho vx vx + P = PX FLUX
-				B *= (E+FLUID_GOVERGM1*F); //    = ENERGY FLUX
+				B *= (E+FLUID_GOVERGM1*F);//= ENERGY FLUX
 				break;
 			case 2: 
 /* Case 3 differs from case 2 only in that C <-> D (Sleft for Sright) and loading right cell's left edge vs left cell's right edge */
@@ -810,6 +886,10 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 		} // case 0,1: [A B G C D] = [rho E px py pz] flux
 		  // case 2,3: [A G B F H] = [rho E px py pz] flux
 
+		if(fluxDirection == FLUX_RADIAL) {
+			E = shptr[BOS1];
+		} // If computing cylindrical radial flux save pressure to compute P dt / r geometric term.
+
 		__syncthreads();
 		switch(fluxmode) {
 			case 0:
@@ -840,8 +920,25 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              = Qin[0           ] - lambda * ((double)shptr[BOS0]-(double)shblk[IL+BOS0]);
-			Qout[DEV_SLABSIZE]   = Qin[  DEV_SLABSIZE] - lambda * ((double)shptr[BOS1]-(double)shblk[IL+BOS1]);
+			// Flux the scalars
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_Y:
+			case FLUX_Z:
+			case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+				Qout[0]              = Qin[0           ] - lambda * ((double)shptr[BOS0]-(double)shblk[IL+BOS0]);
+				Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS1]-(double)shblk[IL+BOS1]);
+				break;
+			case FLUX_RADIAL:
+				Qout[0]              = Qin[0           ] - lambda*(cylgeomB*(double)shptr[BOS0] - cylgeomA*(double)shblk[IL+BOS0]);
+				Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda*(cylgeomB*(double)shptr[BOS1] - cylgeomA*(double)shblk[IL+BOS1]);
+				break;
+			case FLUX_THETA_213:
+				Qout[0]              = Qin[0           ] - lambda * ((double)shptr[BOS0]-(double)shblk[IL+BOS0]) / cylgeomA;
+				Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS1]-(double)shblk[IL+BOS1]) / cylgeomA;
+				break;
+			}
+
 			switch(fluxDirection) {
 			case FLUX_X:
 				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]);
@@ -858,11 +955,33 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]);
 				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]);
 				break;
+			case FLUX_THETA_231:// NOTE lambda was rescaled in this path to lambda / r_center
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]); // FIXME subtract dt rho vr vtheta / r
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]); // FIXME add rho dt vphi^2/r
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]);
+				break;
+			case FLUX_RADIAL:
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS2])
+																		-(double)(cylgeomA*shblk[IL+BOS2])
+																		- cylgeomC*E); // (P dt / r) source term
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS3])-(double)(cylgeomA*shblk[IL+BOS3]));
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS4])-(double)(cylgeomA*shblk[IL+BOS4]));
+				break;
+			case FLUX_THETA_213:
+				// p_theta
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]) / cylgeomA; // FIXME subtract dt rho vr vtheta / r
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]) / cylgeomA; // FIXME add rho dt vphi^2/r
+				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]) / cylgeomA;
+				break;
 			}
 		}
 
 		Qin += blockDim.y*DEV_NX;
 		Qout += blockDim.y*DEV_NX;
+		// Move the r_center coordinate out as the y-aligned blocks march in x (=r)
+		if(fluxDirection == FLUX_THETA_213) {
+			cylgeomA += YBLOCKS*CYLGEO_DR;
+		}
 	}
 
 }
@@ -890,11 +1009,14 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 	__shared__ float shblk[YBLOCKS*N_SHMEM_BLOCKS_SO*BLOCKLENP4];
 		float *shptr = &shblk[IC];
 		float A, B, C, D, E, F, G, H;
+		float cylgeomA, cylgeomB, cylgeomC;
 #else
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS_SO*BLOCKLENP4];
 	double *shptr = &shblk[IC];
 	double A, B, C, D, E, F, G, H;
+	double cylgeomA, cylgeomB, cylgeomC;
 #endif
+
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
 	int thisThreadDelivers = (threadIdx.x >= 2) && (threadIdx.x <= (BLOCKLENP4-3));
@@ -903,6 +1025,26 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
 	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
 	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
+
+	/* If doing cylindrical geometry... */
+	// Compute multiple scale factors for radial direction fluxes
+	if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
+		A = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
+		cylgeomA = (A - .5*CYLGEO_DR) / (A);
+		cylgeomB = (A + .5*CYLGEO_DR) / (A);
+		cylgeomC = 0.5 * CYLGEO_DR / A; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
+		                    // At the fluxer stage to recover the average from the left/right values
+	}
+	// The kern will step through r, so we have to add to R and compute 1.0/R
+	if(fluxDirection == FLUX_THETA_213) {
+		cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
+	}
+	// The kerns will step through z so R is fixed and we compute it once
+	// We just scale lambda ( = dt / dtheta) by 1/r_c
+	if(fluxDirection == FLUX_THETA_231) {
+		lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
+	}
+
 
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
@@ -918,11 +1060,14 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		B = Qin[  DEV_SLABSIZE];
 		switch(fluxDirection) {
 		case FLUX_X: /* Variables are in normal order [px py pz] */
+		case FLUX_RADIAL:
 			C = Qin[2*DEV_SLABSIZE]; /* Px */
 			D = Qin[3*DEV_SLABSIZE]; /* Py */
 			E = Qin[4*DEV_SLABSIZE]; /* Pz */
 			break;
 		case FLUX_Y: /* Slabs are in order [py px pz] */
+		case FLUX_THETA_213:
+		case FLUX_THETA_231:
 			C = Qin[3*DEV_SLABSIZE]; /* Px */
 			D = Qin[2*DEV_SLABSIZE]; /* Py */
 			E = Qin[4*DEV_SLABSIZE]; /* Pz */
@@ -1171,9 +1316,42 @@ DBGSAVE(1, E);
 #endif
 
 		if(thisThreadDelivers) {
-			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
-			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			// Update mass and total energy densities: Scalar equations
 			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_Y:
+			case FLUX_Z:
+			case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+				Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+				Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+				break;
+			case FLUX_RADIAL:
+				Qout[0]              -= lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]);
+				Qout[DEV_SLABSIZE]   -= lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]);
+				break;
+			case FLUX_THETA_213:
+				Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
+				Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
+				break;
+			}
+			switch(fluxDirection) {
+			case FLUX_RADIAL:
+				Qout[2*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS6]
+				                                 -cylgeomA*(double)shblk[IL+BOS6]
+				                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
+				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // Note from earlier in fcn,
+				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+				break;
+			case FLUX_THETA_213:
+				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6])/cylgeomA; // FIXME sub rho vr vtheta dt / r
+				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8])/cylgeomA; // FIXME add rho vtheta^2 dt / r
+				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9])/cylgeomA;
+				break;
+			case FLUX_THETA_231: // NOTE in this case lambda was rescaled to lambda / r_center
+				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
+				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
+				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+				break;
 			case FLUX_X:
 				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
 				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
@@ -1194,6 +1372,11 @@ DBGSAVE(1, E);
 
 		Qin += blockDim.y*DEV_NX;
 		Qout += blockDim.y*DEV_NX;
+
+		// Move the r_center coordinate out as the y-aligned blocks march in x (=r)
+		if(fluxDirection == FLUX_THETA_213) {
+			cylgeomA += YBLOCKS*CYLGEO_DR;
+		}
 		__syncthreads();
 
 	}

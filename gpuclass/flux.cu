@@ -12,7 +12,8 @@
 
 int setFluidBoundaries(MGArray *x, int nArrays, int dir);
 
-int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod)
+//int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod, int geomType, double Rinner)
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order)
 {
 int sweep, flag_1D = 0;
 
@@ -36,16 +37,11 @@ int n;
 int returnCode = SUCCESSFUL;
 int nowDir;
 
-FluidStepParams stepParameters;
-stepParameters.onlyHydro = 1;
-stepParameters.thermoGamma = gamma;
-stepParameters.minimumRho = minRho;
-stepParameters.stepMethod = stepMethod;
+FluidStepParams stepParameters = fsp;
 
 // Just short-circuit for a one-D run, don't try to make the 2/3D loop reduce for it
 if(flag_1D) {
 	nowDir = 1;
-	stepParameters.lambda = lambda[0];
 	stepParameters.stepDirection = nowDir;
 
 	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
@@ -63,7 +59,6 @@ if(order > 0) { /* If we are doing forward sweep */
 	for(n = 0; n < 3; n++) {
 		nowDir = fluxcall[n][sweep];
 		if(fluid->dim[nowDir-1] > 3) {
-			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
@@ -88,7 +83,6 @@ if(order > 0) { /* If we are doing forward sweep */
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
 		if(fluid->dim[nowDir-1] > 3) {
-			stepParameters.lambda = lambda[nowDir-1];
 			stepParameters.stepDirection = nowDir;
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);

@@ -1,14 +1,21 @@
 #ifndef CUDAFLUIDSTEP_H
 #define CUDAFLUIDSTEP_H
 
+enum geometryType_t { SQUARE, CYLINDRICAL };
+
 typedef struct __FluidStepParams {
-	double lambda;      // = dt / dx;
+	double dt;      // = dt / dx;
+	double h[3];
 	int onlyHydro;   // true if B == zero
 	double thermoGamma; // Gas adiabatic index
 
 	double minimumRho; // Smallest density, enforced for non-positivity-preserving methods
 	int stepMethod;
 	int stepDirection;
+
+	geometryType_t geometryType;
+
+	double geomCylindricalRinner;
 } FluidStepParams;
 
 // To pick among them
@@ -24,6 +31,9 @@ typedef struct __FluidStepParams {
 #define FLUX_X 1
 #define FLUX_Y 2
 #define FLUX_Z 3
+#define FLUX_RADIAL 4
+#define FLUX_THETA_213 5
+#define FLUX_THETA_231 6
 
 #ifdef DEBUGMODE
 int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, mxArray **dbOutput);

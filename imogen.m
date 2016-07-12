@@ -59,7 +59,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         GIS.setup(dframe.parallel.globalDims);
 
         cd(origpath); clear origpath;
-        FieldSource = dframe;
+        gieldSource = dframe;
     else
         FieldSource = IC;
     end
@@ -103,14 +103,13 @@ function outdirectory = imogen(srcData, resumeinfo)
     direction           = [1 -1];
     run.time.recordWallclock();
 
-
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod GIS.pGeometryType GIS.pInnerRadius], GIS.topology, run.DGRID);
         %flux(run, run.fluid, mag, 1);
         source(run, run.fluid, mag, 1.0);
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], GIS.topology, run.DGRID);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod GIS.pGeometryType GIS.pInnerRadius], GIS.topology, run.DGRID);
         %flux(run, run.fluid, mag, -1);
 
         run.time.step();

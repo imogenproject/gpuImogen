@@ -24,7 +24,13 @@ classdef GlobalIndexSemantics < handle
 
         edgeInterior; % Whether my [ left or right, x/y/z ] side is interior & therefore circular, or exterior
                       %                                          The Oxford comma, it matters!! -^
+        
     end % Private
+
+    properties (SetAccess = private, GetAccess = public)
+        pGeometryType;
+        pInnerRadius;   % Used only if geometryType = ENUM.GEOMETRY_CYLINDRICAL
+    end % Readonly
 
     properties (SetAccess = private, GetAccess = private)
         % The local parts of the x/y/z index counting vectors
@@ -37,6 +43,8 @@ classdef GlobalIndexSemantics < handle
         % Local indices such that validArray(nohaloXindex, ...) contains everything but the halo cells
         % Useful for array reducing operations
         nohaloXindex, nohaloYindex, nohaloZindex;
+
+        localXposition; localYposition; localZposition;
     end
 
     properties (Dependent = true)
@@ -57,14 +65,16 @@ classdef GlobalIndexSemantics < handle
             if nargin < 2;
                 warning('GlobalIndexSemantics received no topology: generating one');
                 if nargin < 1;
-		    warning('GlobalIndexSemantics received no context: generating one.');
-		    obj.context = parallel_start();
-		end
-		obj.topology = parallel_topology(obj.context, 3);
+                    warning('GlobalIndexSemantics received no context: generating one.');
+                    obj.context = parallel_start();
+                end
+                obj.topology = parallel_topology(obj.context, 3);
             else
                 obj.topology = topology;
                 obj.context = context;
             end
+
+            obj.geometrySquare(); % Set default geometry to cartesian
 
             instance = obj;
         end
@@ -120,6 +130,18 @@ classdef GlobalIndexSemantics < handle
             obj.updateGridVecs();
         end
 
+        function geometrySquare(obj)
+            obj.pGeometryType = ENUM.GEOMETRY_SQUARE;
+            obj.pInnerRadius = 1.0;
+        end
+
+        function geometryCylindrical(obj, Rin)
+            obj.pGeometryType = ENUM.GEOMETRY_CYLINDRICAL;
+            %obj.makeDimNotCircular(1); % updates grid vecs
+            obj.pInnerRadius  = Rin;
+	    warning('WARNING: Cylindrical geometry does not reset rin per rank, do not use in parallel!!!');
+	    % FIXME recompute pInnerRadius per rank based on localXvector(1).
+        end
         
         function [u v w] = toLocalIndices(obj, x, y, z)
             % [u v w] = GIS.toLocalIndices(x, y, z) converts a global set of coordinates to 

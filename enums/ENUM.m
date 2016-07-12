@@ -12,6 +12,9 @@ classdef ENUM
         
         POINT_FADE = 'point';
         
+        GEOMETRY_SQUARE = 1;
+        GEOMETRY_CYLINDRICAL = 2;
+        
         %--- Pressure Types ---%
         PRESSURE_TOTAL_AND_SOUND = 'totsnd';
         PRESSURE_SOUND_SPEED     = 'sound';
@@ -33,10 +36,6 @@ classdef ENUM
         BCMODE_TRANSPARENT  = 'trans';      % Transparent boundary condition type.
         BCMODE_WALL         = 'wall';       % Immutable wall boundary set by initial conditions.
         BCMODE_ZERO         = 'zero';       % Zero fluxes but constant values.
-
-        %--- Time update Modes ---%
-        TIMEUPDATE_PER_STEP       = 0;      % Update timestep every flux step.
-        TIMEUPDATE_PER_ITERATION  = 1;      % Update timestemp every iteration.
 
         %--- Gravitational Solvers ---%
         GRAV_SOLVER_EMPTY       = 'empty';         % Empty solver.
