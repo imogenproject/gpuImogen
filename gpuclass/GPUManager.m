@@ -18,7 +18,6 @@ classdef GPUManager < handle
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-        GIS;
         stackDeviceList, stackUseHalo, stackPartitionDir, stackCudaStreamsPtr, stackNprocs;
         numStack;
     end %PROTECTED
@@ -36,8 +35,6 @@ classdef GPUManager < handle
             g.isInitd = 0;
             g.cudaStreamsPtr = int64(0); % initialize to NULL
 
-            g.GIS = GlobalIndexSemantics();
-            
             g.init([0], 3, 1);
             g.numStack = 0;
         end
@@ -53,7 +50,9 @@ classdef GPUManager < handle
             obj.useHalo = halo;
             obj.partitionDir = partitionDirection;
             obj.isInitd = 1;
-            obj.nprocs = obj.GIS.topology.nproc;
+            pg = ParallelGlobals();
+            
+            obj.nprocs = pg.topology.nproc;
         end
 
         function describe(obj)

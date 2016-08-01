@@ -5,7 +5,8 @@ if nargin < 4
 end
 
 %--- Initialize test ---%
-run             = RiemannProblemInitializer([N 1 1]);
+grid = [N 1 1];
+run             = RiemannProblemInitializer(grid);
 run.demo_SodTube();
 
 run.iterMax     = 50000;
@@ -41,7 +42,9 @@ result.paths = {};
 
 for p = 1:doublings;
     % Run test at given resolution
-    run.grid(direct) = N*2^(p-1);
+    grid(direct) = N*2^(p-1);
+    
+    run.geometry.setup(grid);
     icfile           = run.saveInitialCondsToFile();
     outpath          = imogen(icfile);
     enforceConsistentView(outpath);
@@ -52,12 +55,13 @@ for p = 1:doublings;
     u = S.jumpToLastFrame();
 
     % Compute L_n integral error norms and output
+    % FIXME broken in parallel
     T = sum(u.time.history);
-    X = SodShockSolution(run.grid(direct), T);
+    X = SodShockSolution(run.geometry.globalDomainRez(direct), T);
 
     result.L2(p)    = sqrt(mpi_sum(norm(u.mass(:,1)-X.mass',2).^2) / mpi_sum(numel(X.mass)) );
     result.L1(p)    = mpi_sum(norm(u.mass(:,1)-X.mass',1)) / mpi_sum(numel(X.mass));
-    result.res(p)   = run.grid(direct);
+    result.res(p)   = run.geometry.globalDomainRez(direct);
     result.paths{p} = outpath;
 
 end

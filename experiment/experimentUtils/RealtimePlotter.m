@@ -70,7 +70,6 @@ classdef RealtimePlotter <  LinkedListNode
             for i = 1:numFluids;
                 self.q0{i} = fluids(i).mass.array;
             end
-            
 
             self.cut=[0 0 0];
             for i=1:3; self.cut(i) = ceil(size(self.q0{1},i)/2); end
@@ -84,6 +83,7 @@ classdef RealtimePlotter <  LinkedListNode
             figure(1);
             
             c = self.cut;
+            run.time.iteration
 
             colorset={'b','r','g'};            
 % FIXME: Add support for 'drawnow' to force graphics updates over e.g. laggy remote connections
@@ -100,7 +100,23 @@ classdef RealtimePlotter <  LinkedListNode
                     case 3
                         plot(squish(plotdat(c(1),c(2),:)), colorset{i});
                     case 4
-                        self.mkimage(plotdat(:,:,c(3)));
+                        q = plotdat(:,:,c(3));
+                        if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+                           [r, phi] = run.geometry.ndgridSetIJ('pos');
+                           u = r(:,1);
+                           v = squeeze(phi(1,:));
+                           
+                           mm = max(u) * 1.05;
+                           dmm = .0025*mm;
+                           
+                           [x, y] = ndgrid(-mm:dmm:mm, -mm:dmm:mm);
+                           rquer = sqrt(x.^2+y.^2);
+                           phiquer = atan2(y,x);
+                           
+                           dinterp = interp2(v, u, q, phiquer+pi,rquer);
+                           self.mkimage(dinterp);
+                        end
+                        %self.mkimage(q);
                     case 5
                         self.mkimage(squish(plotdat(:,c(2),:)));
                     case 6

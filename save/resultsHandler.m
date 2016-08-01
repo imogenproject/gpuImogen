@@ -80,26 +80,23 @@ ener = fluids(1).ener;
                 %--- Slice DGRID to match arrays if necessary ---%
                 sl.dGrid = cell(1,3);
                 for n=1:3
-                    if numel(run.DGRID{n}) > 1
-                        sl.dGrid{n} = run.save.getSaveSlice(run.DGRID{n}, i);
+                    if numel(run.geometry.d3h(n)) > 1 % FIXME: need a new way to recognize variable spacing
+                        sl.dGrid{n} = run.save.getSaveSlice(run.geometry.d3h(n), i);
                     else
-                        sl.dGrid{n} = run.DGRID{n};
+                        sl.dGrid{n} = run.geometry.d3h(n);
                     end
                 end
-                
-                GIS = GlobalIndexSemantics();
 
                 % Saves the layout of nodes, the global array size, and this subset's offset
-                pInfo.geometry   = GIS.getNodeGeometry();
-                pInfo.globalDims = GIS.pGlobalDomainRez;
-                pInfo.myOffset   = GIS.pLocalDomainOffset;
+                pInfo.geometry   = run.geometry.getNodeGeometry();
+                pInfo.globalDims = run.geometry.globalDomainRez;
+                pInfo.myOffset   = run.geometry.pLocalDomainOffset;
 
                 sl.parallel = pInfo;
                 sl.dim = sliceDim;
        
-                
                 fileName = [run.paths.save, '/', sliceDim, '_', run.save.SLICELABELS{i}, ...
-                            '_rank', sprintf('%i_',GIS.context.rank), fileSuffix];
+                            '_rank', sprintf('%i_',run.geometry.context.rank), fileSuffix];
                 % I don't care anymore
                 if fileName(1) == '~'
                    fileName = [getenv('HOME') fileName(2:end)];

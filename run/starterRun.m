@@ -35,8 +35,10 @@ function failed = starterRun(gpuSet)
         % Start up PGW
         context = parallel_start();
         topology = parallel_topology(context, 3);
-        % Start up global indexing
-        GIS = GlobalIndexSemantics(context, topology);
+
+        % This will be init'd & stores itself as a persistent var
+        parInfo = ParallelGlobals(context, topology);
+        
         if context.rank==0
             fprintf('\n---------- MPI Startup\nFirst start: MPI is now ready. Roll call:\n'); end
         mpi_barrier();

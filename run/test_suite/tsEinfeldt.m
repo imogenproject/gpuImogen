@@ -1,4 +1,4 @@
-function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures, methodPicker);
+function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures, methodPicker)
 % result = tsEinfeldt(N0, doublings, M) runs a sequence of Einfeldt tests with
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
@@ -12,7 +12,8 @@ if nargin < 5
 end
 
 %--- Initialize test ---%
-run             = RiemannProblemInitializer([N0 1 1]);
+grid = [N0 1 1 ];
+run             = RiemannProblemInitializer(grid);
 % Run the test until the rarefaction propagates 95% of the way to the edge of
 % the grid.
 run.timeMax     = .92*.5/((1+M)*sqrt(gamma));
@@ -57,7 +58,8 @@ result.paths = {};
 %--- Run tests ---%
 for R = 1:doublings;
     % Set resolution and go
-    run.grid = [N0*2^R 1 1];
+    grid(1) = N0 * 2^R;
+    run.geometry.setup(grid);
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
     enforceConsistentView(dirout);
@@ -70,14 +72,15 @@ for R = 1:doublings;
     f = S.jumpToLastFrame();
 
     % Generate analytic solution and compute metrics
+    % NOTE: use run.geometry.localXposition?
     T = sum(f.time.history);
-    X = ((1:run.grid(1))' + .5)/run.grid(1) - .5;
+    X = ((1:run.geometry.globalDomainRez(1))' + .5)/run.geometry.globalDomainRez(1) - .5;
 
-    [rho v P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
+    [rho, v, P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
 
-    result.N(end+1) = run.grid(1);
-    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.grid(1);
-    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.grid(1));
+    result.N(end+1) = run.geometry.globalDomainRez(1);
+    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.geometry.globalDomainRez(1);
+    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.geometry.globalDomainRez(1));
 end
 
 

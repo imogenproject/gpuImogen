@@ -1,27 +1,23 @@
 #ifndef CUDAFLUIDSTEP_H
 #define CUDAFLUIDSTEP_H
 
-enum geometryType_t { SQUARE, CYLINDRICAL };
+#include "cudaCommon.h"
+
+typedef enum FluidMethods {
+	METHOD_HLL = 1, METHOD_HLLC = 2, METHOD_XINJIN = 3
+} FluidMethods;
 
 typedef struct __FluidStepParams {
 	double dt;      // = dt / dx;
-	double h[3];
 	int onlyHydro;   // true if B == zero
 	double thermoGamma; // Gas adiabatic index
 
 	double minimumRho; // Smallest density, enforced for non-positivity-preserving methods
-	int stepMethod;
+	FluidMethods stepMethod;
 	int stepDirection;
 
-	geometryType_t geometryType;
-
-	double geomCylindricalRinner;
+	GeometryParams geometry;
 } FluidStepParams;
-
-// To pick among them
-#define METHOD_HLL 1
-#define METHOD_HLLC 2
-#define METHOD_XINJIN 3
 
 // For kernels templated on upwind/corrector step
 #define RK_PREDICT 0

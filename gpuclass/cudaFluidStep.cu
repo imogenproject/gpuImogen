@@ -134,23 +134,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	// Input and result
 	if ((nrhs!=10) || (nlhs != wanted_nlhs)) {
-		if(wanted_nlhs == 0) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
-		if(wanted_nlhs == 1) mexErrMsgTxt("Wrong number of arguments. cudaFluidStep was compiled for debug and requires\n dbgArrays = cudaFluidStep([lambda, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, topology)\n");
+		if(wanted_nlhs == 0) mexErrMsgTxt("Wrong number of arguments: need cudaFluidStep([dt, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, geometry)\n");
+		if(wanted_nlhs == 1) mexErrMsgTxt("Wrong number of arguments. cudaFluidStep was compiled for debug and requires\n dbgArrays = cudaFluidStep([dt, purehydro, fluid gamma, run.fluid.MINMASS, method, direction], rho, E, px, py, pz, bx, by, bz, geometry)\n");
 	}
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
 	double *scalars = mxGetPr(prhs[0]);
 
-	double lambda = scalars[0];
+	double dt = scalars[0];
 	int hydroOnly = (int)scalars[1];
 	double gamma  = scalars[2];
 	double rhomin = scalars[3];
 	int method    = (int)scalars[4];
 	int stepdir   = (int)scalars[5];
-	// fetch rin / h from here if cylindrical?
-	// how to define geometry?
-	// shitty api!
 
 	MGArray fluid[5], mag[3];
 	int worked = MGA_accessMatlabArrays(prhs, 1, 5, &fluid[0]);
@@ -159,20 +156,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if(hydroOnly == false) worked = MGA_accessMatlabArrays(prhs, 6, 8, &mag[0]);
 
 	ParallelTopology topology;
-	topoStructureToC(prhs[9], &topology);
-
 	FluidStepParams stepParameters;
-	stepParameters.dt      = lambda;
-	int j; for(j = 0; j < 3; j++) { stepParameters.h[j] = 1; } // HACK HACK HACK
+
+	stepParameters.geometry = accessMatlabGeometryClass(prhs[9]);
+	const mxArray *mxtopo = mxGetProperty(prhs[9], 0, "topology");
+	topoStructureToC(mxtopo, &topology);
+
+	stepParameters.dt      = dt;
 	stepParameters.onlyHydro   = 1;
 	stepParameters.thermoGamma = gamma;
 	stepParameters.minimumRho  = rhomin;
-	stepParameters.stepMethod  = method;
-	stepParameters.stepDirection = stepdir;
+	//stepParameters.stepMethod  = method;
+	switch(method) { // FIXME: this should use a single fcn like flux_ML_iface's
+	case 1:
+		stepParameters.stepMethod = METHOD_HLL; break;
+	case 2:
+		stepParameters.stepMethod = METHOD_HLLC; break;
+	case 3:
+		stepParameters.stepMethod = METHOD_XINJIN; break;
+	}
 
-	// FIXME: hacked
-	stepParameters.geometryType = SQUARE;
-	stepParameters.geomCylindricalRinner = 1.0;
+	stepParameters.stepDirection = stepdir;
 
 #ifdef DEBUGMODE
 	performFluidUpdate_1D(&fluid[0], FluidStepParams params, &topology, mxArray **dbOutput);
@@ -267,7 +271,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 	int hydroOnly = params.onlyHydro;
 
-	double lambda     = params.dt / params.h[params.stepDirection-1];
+	double lambda     = params.dt / params.geometry.h[params.stepDirection-1];
 
 	double gamma = params.thermoGamma;
 	double rhomin= params.minimumRho;
@@ -276,7 +280,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	// At this point we know enough to map these to different templates
 	// (e.g. the two Theta direction fluxes depend on current array orientation)
 	int stepdirect = params.stepDirection;
-	if(params.geometryType == CYLINDRICAL) {
+	if(params.geometry.shape == CYLINDRICAL) {
 		if(stepdirect == FLUX_X) stepdirect = FLUX_RADIAL;
 		if(stepdirect == FLUX_Y) {
 			if(fluid->currentPermutation[1] == 1) stepdirect = FLUX_THETA_213;
@@ -308,9 +312,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
-	if(params.geometryType == CYLINDRICAL) {
-		gamHost[8] = params.geomCylindricalRinner;
-		gamHost[9] = params.h[params.stepDirection-1];
+	if(params.geometry.shape == CYLINDRICAL) {
+		gamHost[8] = params.geometry.Rinner;
+		gamHost[9] = params.geometry.h[params.stepDirection-1];
 	}
 
 	if(fluid->dim[0] < 3) return SUCCESSFUL;
@@ -963,7 +967,7 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 			case FLUX_RADIAL:
 				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS2])
 																		-(double)(cylgeomA*shblk[IL+BOS2])
-																		- cylgeomC*E); // (P dt / r) source term
+																		);//- cylgeomC*E); // (P dt / r) source term
 				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS3])-(double)(cylgeomA*shblk[IL+BOS3]));
 				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS4])-(double)(cylgeomA*shblk[IL+BOS4]));
 				break;
@@ -1338,7 +1342,7 @@ DBGSAVE(1, E);
 			case FLUX_RADIAL:
 				Qout[2*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS6]
 				                                 -cylgeomA*(double)shblk[IL+BOS6]
-				                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
+				                                 );//-cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
 				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // Note from earlier in fcn,
 				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
 				break;
@@ -1423,6 +1427,28 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
 	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
 	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
+/*
+	if(0) {
+		double cylgeomA, cylgeomB, cylgeomC;
+		/* If doing cylindrical geometry...
+		// Compute multiple scale factors for radial direction fluxes
+		if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
+			A = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
+			cylgeomA = (A - .5*CYLGEO_DR) / (A);
+			cylgeomB = (A + .5*CYLGEO_DR) / (A);
+			cylgeomC = 0.5 * CYLGEO_DR / A; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
+			// At the fluxer stage to recover the average from the left/right values
+		}
+		// The kern will step through r, so we have to add to R and compute 1.0/R
+		if(fluxDirection == FLUX_THETA_213) {
+			cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
+		}
+		// The kerns will step through z so R is fixed and we compute it once
+		// We just scale lambda ( = dt / dtheta) by 1/r_c
+		if(fluxDirection == FLUX_THETA_231) {
+			lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
+		}
+	} */
 
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */

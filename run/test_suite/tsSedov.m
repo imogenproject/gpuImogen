@@ -52,7 +52,7 @@ for N = 1:numel(multiples)
     if iniResolution(2) <= 2; grid(2) = iniResolution(2); end % Keep 1D, 1D
     if iniResolution(3) == 1; grid(3) = 1; end % keep 2D, 2D
 
-    run.grid    = grid;
+    run.geometry.setup(grid);
     run.iterMax = 100 * max(grid); % Safely make sure that saving is set by time, not iteration
     icfile      = run.saveInitialCondsToFile();
     outdir      = imogen(icfile);

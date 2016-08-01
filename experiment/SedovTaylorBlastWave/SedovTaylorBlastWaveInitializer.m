@@ -11,10 +11,9 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         autoEndtime;
-
         backgroundDensity;
-	sedovAlphaValue;
-	sedovExplosionEnergy;
+        sedovAlphaValue;
+        sedovExplosionEnergy;
     end %PUBLIC
 
 %===================================================================================================
@@ -32,7 +31,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-%___________________________________________________________________________________________________ SedovTaylorBlastWaveInitializer
+%___________________________________________________________________ SedovTaylorBlastWaveInitializer
         function obj = SedovTaylorBlastWaveInitializer(input)
             obj                  = obj@Initializer();
             obj.gamma            = 1.4;
@@ -70,7 +69,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 
         function depositRadiusCells(self, N); self.pDepositRadius = N; end
         function depositRadiusFraction(self, f); self.pDepositRadius = f*max(self.grid)/2; end
-        function setBlastEnergy(self, Eblast);
+        function setBlastEnergy(self, Eblast)
             self.pBlastEnergy = Eblast;
          end
 
@@ -80,35 +79,34 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 %===================================================================================================    
     methods (Access = protected) %                                          P R O T E C T E D    [M]
 
-%___________________________________________________________________________________________________ calculateInitialConditions
+%________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
+            geom = obj.geomgr;
+            geom.makeBoxSize([1 1 1]);
+            
             %--- Initialization ---%
             statics         = [];
             potentialField  = [];
             selfGravity     = [];
-            obj.dGrid       = 1./obj.grid;
 
-            if obj.grid(3) == 1
+            if geom.globalDomainRez(3) == 1
                 obj.bcMode.z = 'circ';
             end
 
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geom.basicFluidXYZ();
 
             mass            = mass * obj.backgroundDensity;
 
-            obj.pSedovAlpha = SedovSolver.findAlpha(obj.pBlastEnergy, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1));
+            obj.pSedovAlpha = SedovSolver.findAlpha(obj.pBlastEnergy, obj.backgroundDensity, obj.gamma, 2+1*(obj.geomgr.globalDomainRez(3)>1));
 
             if obj.autoEndtime
                 if mpi_amirank0(); disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)'); end
-                obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.grid(3)>1), obj.pSedovAlpha);
+                obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.geomgr.globalDomainRez(3)>1), obj.pSedovAlpha);
             end
 
             %--- Calculate Radial Distance ---%
-            [X Y Z] = GIS.ndgridSetXYZ(floor(obj.grid/2));
+            [X, Y, Z] = geom.ndgridSetIJK(floor(obj.geomgr.globalDomainRez/2));
             distance  = sqrt(X.*X + Y.*Y + Z.*Z);
 
             %--- Find the correct energy density Ec = Eblast / (# deposit cells) ---%
@@ -118,11 +116,11 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             % Seeing to it that the 
             % WARNING: This works because we know from above that the coordinate zero is integer...
             gv = floor(-obj.pDepositRadius-1):ceil(obj.pDepositRadius+1);
-            if obj.grid(3) == 1 % 2D
-                [xctr yctr] = ndgrid(gv,gv);
+            if obj.geomgr.globalDomainRez(3) == 1 % 2D
+                [xctr, yctr] = ndgrid(gv,gv);
                 activeCells = (xctr.^2+yctr.^2 < obj.pDepositRadius^2);
             else % 3D
-                [xctr yctr zctr] = ndgrid(gv,gv,gv);
+                [xctr, yctr, zctr] = ndgrid(gv,gv,gv);
                 activeCells = (xctr.^2+yctr.^2+zctr.^2 < obj.pDepositRadius^2);
             end
  
@@ -133,7 +131,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             
             %--- Determine Energy Distribution ---%
             ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
-            ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.dGrid));
+            ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.geomgr.d3h));
 
             fluids = obj.stateToFluid(mass, mom, ener);
         end

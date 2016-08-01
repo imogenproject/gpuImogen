@@ -27,9 +27,10 @@ run.image.pGas = true;
 %run.radiation.coolLength = .10;
 %run.radiation.strengthMethod = 'coollen';
 
+rez = run.geometry.globalDomainRez;
 run.alias       = sprintf('IC_ms%i_ma0pt%2i_ang%i', run.sonicMach, round(100*run.alfvenMach), run.theta);
 run.info        = sprintf('Corrugation instability test [Th=%g, Ms=%g, Ma=%g] with grid [%g, %g, %g]', ...
-                          run.theta, run.sonicMach, run.alfvenMach, run.grid(1), run.grid(2), run.grid(3));
+                          run.theta, run.sonicMach, run.alfvenMach, rez(1), rez(2), rez(3));
 
 %--- Run tests ---%
 if (true) %Primary test

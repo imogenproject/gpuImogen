@@ -10,5 +10,4 @@
 
 int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, double Rinner);
 
-
 #endif /* CUDASOURCECYLINDRICALTERMS_H_ */

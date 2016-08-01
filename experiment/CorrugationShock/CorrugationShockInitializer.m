@@ -87,7 +87,7 @@ classdef CorrugationShockInitializer < Initializer
             obj.randomSeed_spectrumLimit = 64; % 
             obj.seedAmplitude    = 5e-3;
 
-            GIS = GlobalIndexSemantics(); GIS.makeDimNotCircular(1);            
+            obj.geomgr.makeDimNotCircular(1);
 
             obj.theta            = 10;
             obj.sonicMach        = 10;
@@ -132,9 +132,7 @@ classdef CorrugationShockInitializer < Initializer
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
         potentialField = [];
         selfGravity = [];        
-        GIS = GlobalIndexSemantics();
-        GIS.setup(obj.grid);
-
+        
         %--- Attempt to load data from file ---%
             result = [];
             relaxed = [];
@@ -183,22 +181,22 @@ classdef CorrugationShockInitializer < Initializer
             obj.dGrid = obj.dGrid.value * ones(1,3);
             %obj.appendInfo('Grid cell spacing set to %g.',obj.dGrid.value);
             
-            [vecX vecY vecZ] = GIS.ndgridVecs();
+            [vecX, vecY, vecZ] = obj.geomgr.ndgridVecs();
 
             half        = ceil(obj.grid/2);
             preX = (vecX < half(1));
             postX = (vecX >= half(1));
 
-            preIndeces  = { 1:(half(1)-1), 1:obj.grid(2), 1:obj.grid(3) };
-            postIndeces = { half(1):obj.grid(1), 1:obj.grid(2), 1:obj.grid(3) };
+            SCAL = obj.geomgr.SCALAR;
+            VEC  = obj.geomgr.VECTOR;
             
             %--- Create and populate data arrays ---%
-            mass                 = GIS.onesXYZ(GIS.SCALAR);
+            mass                 = obj.geomgr.onesXYZ(SCAL);
             mass(preX,:,:)  = obj.mass(1);
             mass(postX,:,:) = obj.mass(2);
             
-            mom                  = GIS.zerosXYZ(GIS.VECTOR);
-            mag                  = GIS.zerosXYZ(GIS.VECTOR);
+            mom                  = obj.geomgr.zerosXYZ(VEC);
+            mag                  = obj.geomgr.zerosXYZ(VEC);
             for i=1:3
                 mom(i,preX,  :, :) = obj.velocity(i,1);
                 mom(i,postX, :, :) = obj.velocity(i,2);
@@ -216,16 +214,16 @@ classdef CorrugationShockInitializer < Initializer
             TMpost = .5*obj.mass(2)*norm(obj.velocity(:,2))^2 + .5*norm(obj.magnet(:,2))^2;
 
             % Calculate total energy (internal + kinetic + magnetic) 
-            ener              = GIS.zerosXYZ(GIS.SCALAR);
+            ener              = obj.geomgr.zerosXYZ(SCAL);
             ener(preX,  :, :) = obj.pressure(1)/(obj.gamma - 1) + TMpre; 
             ener(postX, :, :) = obj.pressure(2)/(obj.gamma - 1) + TMpost;
 
             % Find the 32 cells near the shock, in local coordinates
-            x0 = (round(obj.grid(1)/2) - 16 - GIS.pLocalDomainOffset(1) ) + (1:32);
+            x0 = (round(obj.grid(1)/2) - 16 - obj.geomgr.pLocalDomainOffset(1) ) + (1:32);
             % Find the set which are actually on my part of the grid
-            mine = find((x0 >= 1) & (x0 < GIS.pLocalRez(1)) );
+            mine = find((x0 >= 1) & (x0 < obj.geomgr.localDomainRez(1)) );
             
-            if ~isempty(relaxed) & any(mine)
+            if ~isempty(relaxed) && any(mine)
                 x0 = x0(mine);
                 ai = 1:32; ai=ai(mine);
 
@@ -253,8 +251,8 @@ classdef CorrugationShockInitializer < Initializer
             %       to seed the formation of the instability.
 
             delta       = ceil(0.12*obj.grid(1));
-            seedIndices = (1:10) + obj.grid(1)/2 - 20 - GIS.pLocalDomainOffset(1);
-            mine = find((seedIndices >= 1) & (seedIndices < GIS.pLocalRez(1)));
+            seedIndices = (1:10) + obj.grid(1)/2 - 20 - obj.geomgr.pLocalDomainOffset(1);
+            mine = find((seedIndices >= 1) & (seedIndices < obj.geomgr.localDomainRez(1)));
 
             if any(mine);
                 switch (obj.perturbationType)
@@ -275,12 +273,12 @@ classdef CorrugationShockInitializer < Initializer
 
 
                     case CorrugationShockInitializer.COSINE
-                        [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                        [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                         perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
                                         .*sin(pi*(X - 1)/(delta - 1));
                     % COSINE Seeds ____________________________________________________________________
                     case CorrugationShockInitializer.COSINE_2D 
-                        [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                        [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                         perturb = obj.seedAmplitude ...
                                     *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
                                      + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...
@@ -305,7 +303,7 @@ classdef CorrugationShockInitializer < Initializer
 
             end
         
-                statics = StaticsInitializer(); 
+                statics = StaticsInitializer(obj.geomgr); 
 
                 %statics.setFluid_allConstantBC(mass, ener, mom, 1);
                 %statics.setMag_allConstantBC(mag, 1);

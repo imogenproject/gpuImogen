@@ -45,8 +45,6 @@ for F = 1:nFuncs;
     targfunc = @noSuchThing; % Default to failure
     if strcmp(funcList{F}, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
     if strcmp(funcList{F}, 'cudaArrayRotateB'); targfunc = @testCudaArrayRotateB; end
-    if strcmp(funcList{F}, 'cudaFluidTVD'); targfunc = @testCudaFluidTVD; end
-    if strcmp(funcList{F}, 'cudaFluidW'); targfunc = @testCudaFluidW; end
     if strcmp(funcList{F}, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
     if strcmp(funcList{F}, 'cudaFwdAverage'); targfunc = @testCudaFwdAverage; end
     if strcmp(funcList{F}, 'cudaFwdDifference'); targfunc = @testCudaFwdDifference; end
@@ -159,45 +157,6 @@ function fail = testCudaArrayRotateB(res)
 
      end
 
-end
-
-function fail = testCudaFluidTVD(res)
-fail = -1;
-%no
-end
-
-function fail = testCudaWStep(res)
-    fail = 0;
-    [xpos ypos zpos] = ndgrid((1:res(1))*2*pi/res(1), (1:res(2))*2*pi/res(2), (1:res(3))*2*pi/res(3));
-    rho = ones(res);
-    px = zeros(res) + sin(xpos);
-    py = ones(res) + sin(ypos + zpos);
-    pz = cos(zpos);
-    E  = .5*(px.^2+py.^2+pz.^2)./rho + 2;
-    Bx = zeros(res);
-    By = zeros(res);
-    Bz = zeros(res);
-
-    disp('    Hydro');
-
-    ptot = (2/3)*(E - .5*(px.^2+py.^2+pz.^2)./rho);
-    if res(3) == 1
-      freeze = max(sqrt((5/3)*ptot./rho) + abs(px./rho),[], 1)';
-    else
-      freeze = max(sqrt((5/3)*ptot./rho) + abs(px./rho),[], 1);
-    end
-
-    rhoD = GPU_Type(rho);
-    pxD = GPU_Type(px); pyD = GPU_Type(py); pzD = GPU_Type(pz);
-    ED = GPU_Type(E);
-    BxD = GPU_Type(Bx); ByD = GPU_Type(By); BzD = GPU_Type(Bz);
-    PtotD = GPU_Type(ptot);
-    freezespeed = GPU_Type(10*ones([size(rho,2) size(rho,3)]));
-
-    [rhow Ew pxw pyw pzw] = cudaFluidW(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, PtotD, freezespeed, .1, 1);
-
-    % Now to find out what the exact goddamn answer is :/ 
-    % test stuff here
 end
 
 function fail = testCudaFreeRadiation(res)
@@ -693,8 +652,7 @@ function fail = testFreezeAndPtot(res)
     BxD = GPU_Type(Bx); ByD = GPU_Type(By); BzD = GPU_Type(Bz);
 
     % Call GPU routine
-    GIS = GlobalIndexSemantics();
-    GIS.setup(res);
+    GIS = GeometryManager(res);
     [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, GIS.topology);
 
     pd = GPU_Type(pdev);

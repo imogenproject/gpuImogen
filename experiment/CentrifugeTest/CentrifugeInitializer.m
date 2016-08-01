@@ -159,7 +159,7 @@ fmin = 0;
             GIS = GlobalIndexSemantics();
             GIS.setup(obj.grid);
 
-            mygrid = GIS.pLocalRez;
+            mygrid = GIS.localDomainRez;
 
             obj.dGrid = (1+obj.pEdgeFraction)*2./obj.grid;
  

@@ -50,9 +50,7 @@ classdef RadiatingShockInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-        mass;               % pre and post shock mass density values.                   double(2)
-        velocity;           % pre and post shock momentum density values.               double(3,2)
-        pressure;           % pre and post shock pressure density values.               double(2)
+        
     end %PROTECTED
     
 %===================================================================================================
@@ -76,7 +74,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
             obj.treadmill        = false;
-            obj.cfl              = 0.35;
+            obj.cfl              = 0.5;
             obj.iterMax          = 10;
             obj.bcMode.x         = ENUM.BCMODE_CONST;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
@@ -125,10 +123,10 @@ classdef RadiatingShockInitializer < Initializer
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
         potentialField = [];
         selfGravity = [];        
-        GIS = GlobalIndexSemantics();
-        GIS.setup(obj.grid);
+        geom = obj.geomgr;
+        geom.makeBoxSize(1); % Box length
 
-        GIS.makeDimNotCircular(1);
+        geom.makeDimNotCircular(1);
 
         obj.radiation.type                      = ENUM.RADIATION_OPTICALLY_THIN;
         obj.radiation.exponent                  = obj.radTheta;
@@ -169,7 +167,7 @@ classdef RadiatingShockInitializer < Initializer
 
         obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
 
-        [vecX vecY vecZ] = GIS.ndgridVecs();
+        [vecX, vecY, vecZ] = geom.ndgridVecs();
 
         % Identify the preshock, radiating and cold gas layers.
         preshock =  (vecX < obj.grid(1)*obj.fractionPreshock);
@@ -181,7 +179,7 @@ classdef RadiatingShockInitializer < Initializer
         Xshock = obj.dGrid(1)*numPre;
 
         % Generate blank slates
-        [mass mom mag ener] = GIS.basicFluidXYZ();
+        [mass, mom, mag, ener] = geom.basicFluidXYZ();
 
         % Fill in preshock values of uniform flow
         mass(preshock,:,:) = jump.rho(1);
@@ -248,12 +246,12 @@ classdef RadiatingShockInitializer < Initializer
 
                 case RadiatingShockInitializer.COSINE
 %                   perturb = GIS.evaluateFunctionOnGrid(@(x,y,z) obj.seedAmplitude*
-                    [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                    [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
                                     .*sin(pi*(X - 1)/(delta - 1));
                 % COSINE Seeds ____________________________________________________________________
                 case RadiatingShockInitializer.COSINE_2D 
-                    [X Y Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
+                    [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude ...
                                 *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
                                  + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...

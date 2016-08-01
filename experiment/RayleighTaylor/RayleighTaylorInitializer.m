@@ -43,7 +43,7 @@ classdef RayleighTaylorInitializer < Initializer
             obj.runCode             = 'RAYLEIGH_TAYLOR';
             obj.info                = 'Rayleigh-Taylor instability test';
             obj.mode.fluid          = true;
-             obj.pureHydro          = true;        
+            obj.pureHydro          = true;        
             obj.mode.magnet         = false;
             obj.mode.gravity        = false;
             obj.iterMax             = 300;
@@ -89,18 +89,19 @@ classdef RayleighTaylorInitializer < Initializer
             selfGravity = [];
             statics = [];
 
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
+            geo = obj.geomgr;
+            
+            grid = geo.globalDomainRez;
+            geo.makeBoxSize(grid(2)/grid(1));
 
             % Initialize Parallelized X,Y,Z vectors
-            obj.dGrid   = [1 1 1]/obj.grid(2);
-            [X Y Z] = GIS.ndgridSetXYZ([0 0 0], obj.dGrid);
+            [X, Y, Z] = geo.ndgridSetIJK([0 0 0], obj.dGrid);
 
             % Define boundary
-            Y0 = .5*obj.dGrid(2)*GIS.pLocalRez(2);
+            Y0 = .5*obj.dGrid(2)*geo.localDomainRez(2);
 
             % Initialize Arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Establish low density below, high density above
             mass(Y < Y0)     = obj.rhoBottom;
@@ -125,20 +126,20 @@ classdef RayleighTaylorInitializer < Initializer
         % If random perturbations are selected, it will impart random y-velocity to each column of the grid.
         % Otherwise, it will create a sinusoid of wavenumber Kx,Ky,Kz.
             if obj.randomPert == 0
-                if GIS.pLocalRez(3) == 1;
+                if GIS.localDomainRez(3) == 1;
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5))/ 4;
                 else
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5)) .* (1+cos(2*pi*obj.Kz*Z/.5))/ 8;
                 end
             else
-                w = (rand([GIS.pLocalRez(1) GIS.pLocalRez(3)])*-0.5) * obj.pertAmplitude;
+                w = (rand([geo.localDomainRez(1) geo.localDomainRez(3)])*-0.5) * obj.pertAmplitude;
 
-                for y = 1:GIS.pLocalRez(2); mom(2,:,y,:) = w; end
+                for y = 1:geo.localDomainRez(2); mom(2,:,y,:) = w; end
             end
             mom(2,:,:,:) = squish(mom(2,:,:,:)).*mass;
 
             % Don't perturb +y limit
-	    if GIS.edgeInterior(2,2) == 0; mom(2,:,(end-2):end,:) = 0; end
+	    if geo.edgeInterior(2,2) == 0; mom(2,:,(end-2):end,:) = 0; end
         
             % If doing magnetic R-T, turn on magnetic flux & set magnetic field & add magnetic energy
             if (obj.Bx ~= 0.0) || (obj.Bz ~= 0.0)

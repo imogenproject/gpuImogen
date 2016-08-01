@@ -106,15 +106,13 @@ classdef JetInitializer < Initializer
                 obj.offset = [ceil(obj.grid(1)/10), ceil(obj.grid(2)/2), ceil(obj.grid(3)/2)];
             end
                
-            obj.dGrid = [1 1 1]/obj.grid(2);
+            % Box height = 1, width = aspect ratio
+            obj.geomgr.makeBoxSize(obj.grid(1)/obj.grid(2));
 
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-	    [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = obj.geomgr.basicFluidXYZ();
             
             %--- Magnetic background ---%
-            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(GIS.pLocalRez); end
+            for i=1:3;    mag(i,:,:,:) = obj.backMags(i)*ones(obj.geomgr.localDomainRez); end
             
             %--- Total energy ---%
             magSquared    = squish( sum(mag .* mag, 1) );

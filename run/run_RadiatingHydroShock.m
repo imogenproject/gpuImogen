@@ -54,9 +54,10 @@ rp = RealtimePlotter();
   rp.iterationsPerCall = 10;
 run.peripherals{end+1} = rp;
 
+rez = run.geometry.globalDomainRez;
 run.alias       = sprintf('RHD_ms%i_ang%i', run.sonicMach, run.theta);
 run.info        = sprintf('Radiating hydrodynamic shock test [Th=%g, Ms=%g] with grid [%g, %g, %g]', ...
-                          run.theta, run.sonicMach, run.grid(1), run.grid(2), run.grid(3));
+                          run.theta, run.sonicMach, rez(1), rez(2), rez(3));
 %run.notes       = 'Experimenting with fade BC - ref run with const';
 
 %--- Run tests ---%

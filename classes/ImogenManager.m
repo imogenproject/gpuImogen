@@ -19,11 +19,8 @@ classdef ImogenManager < handle
         info;           % Information generated during initialization and run.          cell(?,2)
         iniInfo;        % Information regarding data initial condition settings.        str
         DEBUG;          % Specifies if Imogen is run in debug mode.                     logical    
-        DGRID;          % Grid spacings each spatial direction.                         cell(3)
-        MINDGRID;       % Smallest grid spacing for each spatial direction.             double(3)
         GAMMA;          % Polytropic index for the run.                                 double
         PROFILE;        % Specifies state of profiler for the run.                      logical
-        gridSize;       % Grid size for the arrays.                                     int(3)
         paths;          % Contains various paths needed for saving data.                Paths
         fades;          %
 
@@ -42,7 +39,7 @@ classdef ImogenManager < handle
         fluid;          % Manages fluid routines.                                   FluidManager
         radiation;      % Manage radiation behaviors                                Radiation
         magnet;         % Manages magnetic routines.                                MagnetManager
-        parallel;       % Parallel behavior/semantic manager                        ParallelSemantics
+        geometry;       % Parallel behavior/semantics/global geometry handler       GeometryManager
 
         %--- Source/Sink or nonideal behavior control
         selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
@@ -69,22 +66,10 @@ classdef ImogenManager < handle
         notes;          % String of information regarding all manner of run activity.   str
     end %DEPENDENT
     
-    
-    
-    
-    
-    
 %===================================================================================================
     methods %                                                                    G E T / S E T   [M]    
         
-%___________________________________________________________________________________________________ GS: gridSize
-% Stores the grid size parameters for the arrays.
-        function set.gridSize(obj,value)
-            if ( length(value) < 3), value = [value 1]; end
-            obj.gridSize = value;
-        end
-        
-%___________________________________________________________________________________________________ GS: notes
+%_________________________________________________________________________________________ GS: notes
 % The "notes" variable. On get, this variable is formatted for wiki syntax output.
         function result = get.notes(obj)
             if isempty(obj.pNotes)
@@ -98,7 +83,7 @@ classdef ImogenManager < handle
         
         function set.notes(obj,value); obj.pNotes = value; end
         
-%___________________________________________________________________________________________________ GS: warnings
+%______________________________________________________________________________________ GS: warnings
 % Returns the formatted warnings statements in wiki syntax
         function result = get.warnings(obj)
             if isempty(obj.pWarnings)
@@ -109,7 +94,7 @@ classdef ImogenManager < handle
             end     
         end
         
-%___________________________________________________________________________________________________ G: infoIndex
+%______________________________________________________________________________________ G: infoIndex
         function value = get.infoIndex(obj); value = obj.infoIndex; end
         
     end%GET/SET    
@@ -117,7 +102,7 @@ classdef ImogenManager < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-        %___________________________________________________________________________________________________ ImogenManager
+        %_____________________________________________________________________________ ImogenManager
         function obj = ImogenManager()
         % Creates a new ImogenManager object and initializes default values.
 
@@ -150,12 +135,8 @@ classdef ImogenManager < handle
             obj.pAbortTime  = rem(now,1);
             obj.pAbortFile  = '/state.itf';
             obj.matlab      = ver('matlab');
-            obj.DGRID       = num2cell(ones(1,3));
-            obj.MINDGRID    = ones(1,3);
-            
             obj.pureHydro   = 0;
-
-            obj.cfdMethod = 2;
+            obj.cfdMethod   = 2; % HLLC
         end
 
         function setNumFluids(obj, N)
@@ -163,7 +144,7 @@ classdef ImogenManager < handle
             obj.fluid = FluidManager.empty(N, 0);
         end
         
-%___________________________________________________________________________________________________ initialize
+%_______________________________________________________________________________________ initialize
 % Run pre-simulation initialization actions that require already initialized initial conditions for
 % the primary array objects.
         function initialize(obj, IC, mag)
@@ -189,7 +170,7 @@ classdef ImogenManager < handle
               obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);
         end
         
-%___________________________________________________________________________________________________ postliminary
+%_____________________________________________________________________________________ postliminary
 % Function to be called at the end of a run to deactivate and cleanup remaining resources before
 % ending the run entirely.
         function finalize(obj, fluids, mag)
@@ -219,108 +200,35 @@ classdef ImogenManager < handle
             end
         end
     
-%___________________________________________________________________________________________________ setGridSpacing
-% Creates the grid cell spacing arrays necessary for uniform OR non-uniform grids. In uniform cases,
-% the grid spacing parameter is a single value for each dimension. For non-uniform cases the dgrid
-% for each dimension is a 3D array with appropriate spacing values for each grid cell.
-% * dgrid        grid spacing structure (or 1x3 double array) from run file input            *
-% * gridSize    number of grid cells in each spatial dimension                                int(3)
-        function setGridSpacing(obj, dgrid, gridSize)
-            
-            %--- Uniform Spacing ---%
-            if ~isstruct(dgrid)
-                obj.MINDGRID = dgrid;
-                for i=1:3    
-                    obj.DGRID{i} = dgrid(i); 
-                end
-                return
-            end
-            
-            %--- Non-uniform Spacing ---%
-            obj.MINDGRID    = zeros(1,3);
-            fields          = {'x','y','z'};    
-            for i=1:3
-                if isfield(dgrid,fields{i})
-                    if isstruct(dgrid.(fields{i}))
-                        dg = dgrid.(fields{i});
-                        
-                        if isfield(dg, 'value')
-                            value = dg.value;
-                        elseif isfield(dgrid, 'value')
-                            value = dgrid.value;
-                        else
-                            value = 1;
-                        end
-                        
-                        if isfield(dg, 'points')
-                            interps = dg.points;
-                        else
-                            interps = [0,1;100,1];
-                        end
-                        
-                        %--- Rescale Interpolation Points ---%
-                        %       Interpolation points are entered during initialization as 
-                        %       percentages so that they are not explicitly expressed in terms of a
-                        %       grid size. However, before interpolation they must be converted to
-                        %       grid points.
-                        interps(:,1)    = floor((gridSize(i)-1)*interps(:,1)/100) + 1;
-                        
-                        %--- Initialize 1D Interploted Array ---%
-                        lineSize        = ones(1,3);
-                        lineSize(i)     = gridSize(i);
-                        deltaGridLine   = zeros(lineSize);
-                        
-                        %--- Interpolate and Replicate ---%
-                        %       Uses Piecewise Hermite interpolation to spline interpolate smooth
-                        %       data grid points over the specified interpolation values and then
-                        %       replicate the 1D vector result as the full 3D DGRID points array.
-                        lineSize        = num2cell(lineSize);
-                        lineSize{i}     = 1:gridSize(i);
-                        deltaGridLine(lineSize{:}) ...
-                                        = interp1(interps(:,1), value*interps(:,2), ...
-                                          1:gridSize(i), 'pchip');
-                                      
-                        gridReps        = gridSize; 
-                        gridReps(i)     = 1;
-                        obj.DGRID{i}    = repmat(deltaGridLine, gridReps);
-                    else
-                        obj.DGRID{i}    = dgrid.(fields{i});
-                    end
-                else
-                    obj.DGRID{i}        = dgrid.value;
-                end
-                obj.MINDGRID(i)         = minFinderND(obj.DGRID{i});
-            end
-        end
-        
-%___________________________________________________________________________________________________ addFades
+%__________________________________________________________________________________________ addFades
         function addFades(obj,iniFades)
             if isempty(iniFades); return; end
             
             ids = {ENUM.MASS, ENUM.MOM, ENUM.ENER, ENUM.MAG, ENUM.GRAV};
             obj.fades = cell(1,length(iniFades));
-            for i=1:length(iniFades)
-                switch iniFades.type
-                    case ENUM.POINT_FADE;      
-                        obj.fades{i} = PointFade(obj.gridSize, iniFades.location, iniFades.size);
-                end
-                
-                obj.fades{i}.fluxes     = iniFades.fluxes;
-                obj.fades{i}.activeList = iniFades.active;
-                for n=1:length(iniFades.active)
-                    if ~any(strcmp(iniFades.active{n},ids))
-                        warning('ImogenManager:Fade', 'Unable to resolve fade for %s.', ...
-                                    iniFades.active{n});
-                    end
-                end
-            end
+            % FIXME: wat the heck is this doing?
+            %for i=1:length(iniFades)
+            %    switch iniFades.type
+            %        case ENUM.POINT_FADE;      
+            %            obj.fades{i} = PointFade(obj.gridSize, iniFades.location, iniFades.size);
+            %    end
+            %    
+            %    obj.fades{i}.fluxes     = iniFades.fluxes;
+            %    obj.fades{i}.activeList = iniFades.active;
+            %    for n=1:length(iniFades.active)
+            %        if ~any(strcmp(iniFades.active{n},ids))
+            %            warning('ImogenManager:Fade', 'Unable to resolve fade for %s.', ...
+            %                        iniFades.active{n});
+            %        end
+            %    end
+            %end
             
             
             
         end
         
         
-%___________________________________________________________________________________________________ appendInfo
+%________________________________________________________________________________________ appendInfo
 % Appends an info string and value to the info cell array.
 % * info    the information string                                                        srt
 % * value    the value corresponding to the information string                            *
@@ -337,7 +245,7 @@ classdef ImogenManager < handle
             obj.infoIndex = obj.infoIndex + 1;
         end
         
-%___________________________________________________________________________________________________ appendWarning
+%_____________________________________________________________________________________ appendWarning
 % Appends a warning string (with value if necessary) to the warning string.
 % * warning        the warning string                                                        str
 % * (type)        the kind of warning ( >DEFAULT< or OVERRIDE)                            ENUM
@@ -394,7 +302,7 @@ classdef ImogenManager < handle
             end
         end
 
-%___________________________________________________________________________________________________ abortCheck
+%________________________________________________________________________________________ abortCheck
 % Determines if the state.itf file abort bit has been set, and if so adjusts the time manager so
 % that the active run will complete on the next iteration.
         function abortCheck(obj)

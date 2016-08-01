@@ -24,7 +24,7 @@ classdef BCManager < handle
     methods (Access = public) %                                                     P U B L I C  [M]
 %___________________________________________________________________________________________________ BCManager
 % Creates a new BCManager instance.
-        function obj = BCManager();
+        function obj = BCManager()
 
         end
       
@@ -117,9 +117,8 @@ classdef BCManager < handle
                 end
             end
             
-            GIS = GlobalIndexSemantics();
-
-
+            edgeInternal = obj.parent.geometry.edgeInterior;
+            
             arrayObj.bcHaloShare = zeros(2,3);
             for i=1:3
                 if iscell(result.(fields{i}))
@@ -131,11 +130,11 @@ classdef BCManager < handle
                     arrayObj.bcModes{2,i} = result.(fields{i});
                 end
 
-                if GIS.edgeInterior(1,i) == 1; arrayObj.bcModes{1,i} = ENUM.BCMODE_CIRCULAR; end
-                if GIS.edgeInterior(2,i) == 1; arrayObj.bcModes{2,i} = ENUM.BCMODE_CIRCULAR; end
+                if edgeInternal(1,i) == 1; arrayObj.bcModes{1,i} = ENUM.BCMODE_CIRCULAR; end
+                if edgeInternal(2,i) == 1; arrayObj.bcModes{2,i} = ENUM.BCMODE_CIRCULAR; end
 
-                if (strcmp(arrayObj.bcModes{1,i}, ENUM.BCMODE_CIRCULAR)) && (GIS.topology.nproc(i) > 1); arrayObj.bcHaloShare(1,i) = 1; end
-                if (strcmp(arrayObj.bcModes{2,i}, ENUM.BCMODE_CIRCULAR)) && (GIS.topology.nproc(i) > 1); arrayObj.bcHaloShare(2,i) = 1; end
+                if (strcmp(arrayObj.bcModes{1,i}, ENUM.BCMODE_CIRCULAR)) && (obj.parent.geometry.topology.nproc(i) > 1); arrayObj.bcHaloShare(1,i) = 1; end
+                if (strcmp(arrayObj.bcModes{2,i}, ENUM.BCMODE_CIRCULAR)) && (obj.parent.geometry.topology.nproc(i) > 1); arrayObj.bcHaloShare(2,i) = 1; end
             end
 
             arrayObj.edgeshifts  = cell(2,3);

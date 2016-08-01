@@ -230,13 +230,16 @@ classdef RiemannProblemInitializer < Initializer
             statics               = [];
             potentialField        = [];
             selfGravity           = [];
-            half                  = floor(obj.pCenterCoord.*obj.grid);
+            half                  = floor(obj.pCenterCoord.*obj.geomgr.globalDomainRez);
             
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-            
+            geo = obj.geomgr;
+             % FIXME: need to do proper geometry calcs & switch cylindrical vs square stuff here... 
             %--- Compute the conditions for the domains ---%
-            [X Y Z] = GIS.ndgridSetXYZ(half + .5);
+            [X, Y, Z] = geo.ndgridSetIJK('coords');
+            
+            X=X-half(1) - .5;
+            Y=Y-half(2) - .5;
+            Z=Z-half(3) - .5;
             
             r = obj.pOctantRotation(3);
             p = obj.pOctantRotation(2);
@@ -254,7 +257,7 @@ classdef RiemannProblemInitializer < Initializer
             clear X Y Z;
             
             
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
             px = 1.0*mass;
             py = 1.0*mass;
             pz = 1.0*mass;
@@ -272,9 +275,6 @@ classdef RiemannProblemInitializer < Initializer
             mom(1,:,:,:) = px; clear px;
             mom(2,:,:,:) = py; clear py;
             mom(3,:,:,:) = pz; clear pz;
-            
-            % All RP simulations run on boxes of unit size
-            obj.dGrid             = 1./obj.grid;
             
             if ~obj.saveSlicesSpecified
                 obj.activeSlices.xyz = true;

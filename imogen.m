@@ -29,7 +29,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       needed in the process.
     run = initialize(ini);
 
-    if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
+    if isfield(IC, 'amResuming'); RESTARTING = true; else RESTARTING = false; end
 
     % Behavior depends if IC.originalPathStruct exists
     initializeResultPaths(run, IC)
@@ -39,8 +39,6 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     mpi_barrier();
     run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
-
-    GIS = GlobalIndexSemantics();
 
     if RESTARTING
         run.save.logPrint('   Accessing restart data files\n');
@@ -55,25 +53,20 @@ function outdirectory = imogen(srcData, resumeinfo)
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
         run.image.frame = resumeinfo.imgframe;
 
-        % (4) Recall and give a somewhat late init to indexing semantics.
-        GIS.setup(dframe.parallel.globalDims);
-
         cd(origpath); clear origpath;
-        gieldSource = dframe;
+        FieldSource = dframe;
     else
         FieldSource = IC;
     end
 
     try
-        [run.fluid mag] = uploadDataArrays(FieldSource, run, statics);
+        [run.fluid, mag] = uploadDataArrays(FieldSource, run, statics);
     catch oops
-        run.save.logAllPrint('    FATAL: Unsuccessful uploading data arrays!\nAborting run...\nAdditional execption will be printed by loader.\n');
-        prettyprintException(oops);
+        prettyprintException(oops, 0, ...
+            '    FATAL: Unsuccessful uploading data arrays!\nAborting run...\nAdditional execption will be printed by loader.\n');
         collectiveFailure = 1;
     end
- 
-    mpi_barrier();
-    collectiveFailure = mpi_max(collectiveFailure); if collectiveFailure; error('Data upload unsuccessful!'); end
+    mpi_errortest(collectiveFailure);
 
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
@@ -90,27 +83,38 @@ function outdirectory = imogen(srcData, resumeinfo)
         try
             resultsHandler([], run, run.fluid, mag);
         catch booboo
-            run.save.logAllPrint('    FATAL: First resultsHandler() call failed! Data likely unaccessible. Aborting run.\n');
+            prettyprintException(booboo, 0, ...
+                '    FATAL: First resultsHandler() call failed! Data likely unaccessible. Aborting run.\n');
             collectiveFailure = 1;
         end
-        mpi_errortest(collectiveFailure); % generate error() if failure; loader will abort
+        mpi_errortest(collectiveFailure); % All ranks will error() if any failed, & make loader abort
 
         run.save.logPrint('Succeeded.\n');
     else
         run.save.logPrint('Simulation resuming after iteration %i\n',run.time.iteration);
     end
 
-    direction           = [1 -1];
     run.time.recordWallclock();
-
+%    backupdata = [];
+                               
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod GIS.pGeometryType GIS.pInnerRadius], GIS.topology, run.DGRID);
+
+%        if mod(run.time.iteration, run.time.stepsPerChkpt) == run.time.stepsPerChkpt-1
+%         if mod(run.time.iteration, 15) == 14
+%	    backupData = dumpCheckpoint(run);
+%	end
+
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, 1);
-        source(run, run.fluid, mag, 1.0);
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod GIS.pGeometryType GIS.pInnerRadius], GIS.topology, run.DGRID);
+        source(run, run.fluid, mag, 1);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
+
+%        if checkPhysicality(run.fluid)
+%            restoreCheckpoint(run, backupData);
+%	end
 
         run.time.step();
         run.pollEventList(run.fluid, mag);

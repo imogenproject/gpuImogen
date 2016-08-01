@@ -1,6 +1,6 @@
 classdef DoubleBlastInitializer < Initializer
-%This test is a very simple hydrodynamic shocktube filled with a γ=1.4 gas of uniform density 
-% ρ = 1 and three different pressures. In the leftmost tenth the pressure is 1000, in the rightmost 
+%This test is a very simple hydrodynamic shocktube filled with a gamma=1.4 gas of uniform density 
+% rho = 1 and three different pressures. In the leftmost tenth the pressure is 1000, in the rightmost 
 % tenth the pressure is 100, and in the center the pressure is a much smaller 0.01. The boundary 
 % conditions are reflecting at both ends. Immediately both sides launch strong shocks towards the 
 % center and strong rarefactions towards the walls. The various initial shocks, rarefactions, and 
@@ -36,7 +36,7 @@ classdef DoubleBlastInitializer < Initializer
             obj                  = obj@Initializer();
             obj.gamma            = 1.4;
             obj.runCode          = 'DoubleBlast';
-            obj.info             = '2 Dimensional Double Blast Wave test';
+            obj.info             = '1 Dimensional Double Blast Wave test';
             obj.mode.fluid       = true;
             obj.pureHydro        = 1;
             obj.mode.magnet      = false;
@@ -74,22 +74,21 @@ classdef DoubleBlastInitializer < Initializer
             statics               = []; % No statics used in this problem
             potentialField        = [];
             selfGravity           = [];
-            GIS                   = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
 
+            geo = obj.geomgr;
+            
+            geo.makeBoxSize(1); % double blast is done on box normalized to length = 1
+            
             % Initialize parallel vectors
-            X = GIS.ndgridSetXY();
-            obj.dGrid   = [1 obj.grid(2)/obj.grid(1) 1]./obj.grid;
-            left = (X <= obj.grid(1)/10);
-            right= (X > obj.grid(1)*9/10);
+            X = geo.ndgridSetIJ();
+            left = (X <= geo.globalDomainRez(1)/10);
+            right= (X > geo.globalDomainRez(1)*9/10);
 
-            %--- Set array values ---%
-            [mass mom mag ener]   = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener]   = obj.geomgr.basicFluidXYZ();
 
-            P                     = GIS.onesXYZ() * obj.pMid;        %Pressure of inner zone = .01
-
+            P                        = obj.geomgr.onesXYZ() * obj.pMid;        %Pressure of inner zone = .01
             % Assign pressures of the two shockwave-creating regions
-            P(left) = obj.pLeft;
+            P(left)  = obj.pLeft;
             P(right) = obj.pRight;
 
             % Compute energy density array

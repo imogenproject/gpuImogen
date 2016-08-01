@@ -17,13 +17,12 @@ classdef StaticsInitializer < handle
         arrayStatics; % Cell array with one cell per simulation var Cell[8];
         % WARNING: THIS MUST BE THE SAME SIZE AS THE NUMBER OF SIMULATION VARIABLES
 
-        GIS; % handle to global semantics class
+        geometry; % handle to global semantics class
 
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-
         readyForReadout; % Set if prepareStaticsForSimulation() has been called and
                          % no new associations have been created since
 
@@ -37,9 +36,8 @@ classdef StaticsInitializer < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-        function obj = StaticsInitializer()
-
-            obj.GIS = GlobalIndexSemantics();
+        function obj = StaticsInitializer(geometry)
+            obj.geometry = geometry;
             obj.arrayStatics = cell(8,1); % Create one arrayStatics for every variable
             for x = 1:8
                 obj.arrayStatics{x} = struct('arrayField',[], 'indexId',[], 'valueId',[], 'coeffId',[]);
@@ -49,7 +47,7 @@ classdef StaticsInitializer < handle
 
         end
 
-        function [indices values coeffs] = staticsForVariable(obj, varId, component, fieldId)
+        function [indices, values, coeffs] = staticsForVariable(obj, varId, component, fieldId)
             indices = [];
             values = [];
             coeffs = [];
@@ -79,7 +77,7 @@ classdef StaticsInitializer < handle
 
                     % Fail if nonequally sized arrays are paired; This cannot be done
                     if size(newVal,1) ~= size(newIdx,1)
-                    error(sprintf('Unrecoverable error preparing statics; numel(index set %i) = %i but numel(value set %i) = %i.\n', x, size(newIdx,1), x, numel(newVal)));
+                        error('Unrecoverable error preparing statics; numel(index set %i) = %i but numel(value set %i) = %i.\n', x, size(newIdx,1), x, numel(newVal));
                     end
 
                     indices = [indices; newIdx]; % cat indices
@@ -203,15 +201,15 @@ classdef StaticsInitializer < handle
             S = {xslice, yslice, zslice};
 
             for dim = 1:3;
-                if isempty(S{dim}); s0 = (1:obj.GIS.pLocalRez(dim)); else; s0 = S{dim} - obj.GIS.pLocalDomainOffset(dim); end
-                s0 = s0( (s0 > 0) & (s0 <= obj.GIS.pLocalRez(dim)) );
+                if isempty(S{dim}); s0 = (1:obj.geometry.localDomainRez(dim)); else s0 = S{dim} - obj.geometry.pLocalDomainOffset(dim); end
+                s0 = s0( (s0 > 0) & (s0 <= obj.geometry.localDomainRez(dim)) );
                 S{dim} = s0;        
             end
                 
             % Build the grid and compute linear offset indices for it IN GPU ADDRESSES (0-indexed)
-            [u v w] = ndgrid(S{:});
+            [u, v, w] = ndgrid(S{:});
 
-            indices = (u-1) + obj.GIS.pLocalRez(1)*((v-1) + obj.GIS.pLocalRez(2)*(w-1));
+            indices = (u-1) + obj.geometry.localDomainRez(1)*((v-1) + obj.geometry.localDomainRez(2)*(w-1));
             indices = [indices(:) u(:) v(:) w(:)];
         end
 

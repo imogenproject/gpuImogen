@@ -35,17 +35,20 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt);
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs != 4) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceCylindricalTerms(FluidManager, dt, d3x, Rinner)\n");
+    if ((nrhs != 3) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceCylindricalTerms(FluidManager, dt, run.geometry)\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceCylindricalTerms") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceScalarPotential."); }
+
+    int status = SUCCESSFUL;
 
     // Get source array info and create destination arrays
     MGArray fluid[5];
 
     // Each partition uses the same common parameters
+    GeometryParams geom = accessMatlabGeometryClass(prhs[2]);
+
     double dt = *mxGetPr(prhs[1]);
-    double *dx = mxGetPr(prhs[2]);
-    double Rinner = *mxGetPr(prhs[3]); /* R- in  */
+    double Rinner = geom.Rinner;
 
     int numFluids = mxGetNumberOfElements(prhs[0]);
 	int fluidct;
@@ -53,8 +56,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("cylindrical term source dumping: unable to access fluid.");
 
-		worked = sourcefunction_CylindricalTerms(&fluid[0], dt, dx, Rinner);
-		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("cylindrical term source dumping: failed to apply source termss.");
+		status = sourcefunction_CylindricalTerms(&fluid[0], dt, &geom.h[0], Rinner);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("cylindrical term source dumping: failed to apply source terms.");
 	}
 }
 
@@ -113,7 +116,7 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 
 	int delta = ARRAY_NR * ARRAY_NPHI;
 
-	double rho, u, v, E;
+	double rho, u, v, w, E, P;
 	double diffmom;
 	double r = ARRAY_RIN + x*ARRAY_DR;
 
@@ -127,7 +130,6 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 
 		base[2*ARRAY_SLABSIZE] = u + v * diffmom;
 		base[3*ARRAY_SLABSIZE] = v - u * diffmom;
-		base[  ARRAY_SLABSIZE] = E + (u*u+v*v)*diffmom/(2*rho);
 
 		z += 1; base += delta;
 	}

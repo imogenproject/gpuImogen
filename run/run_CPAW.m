@@ -21,16 +21,15 @@ run         = CPAlfvenWave(grid);
 %run.image.magY = true;
 %run.image.pGas = true;
 
-%run.numericalICfile = sprintf('/data/Results/NASdata/shock_ini/IC_ms%i_ma0pt%2i_ang%i/3D_XYZ_FINAL.mat', run.sonicMach, round(100*run.alfvenMach), run.theta);
-
 %run.radiation.type = ENUM.RADIATION_OPTICALLY_THIN;
 %run.radiation.coolLength = .10;
 %run.radiation.strengthMethod = 'coollen';
 
 run.alias = '';
+%rez = run.geometry.globalDomainRez;
 %run.alias       = sprintfs%i_ma0pt%2i_ang%i', run.sonicMach, round(100*run.alfvenMach), run.theta);
 %run.info        = sprintf('Corrugation instability test [Th=%g, Ms=%g, Ma=%g] with grid [%g, %g, %g]', ...
-%                          run.theta, run.sonicMach, run.alfvenMach, run.grid(1), run.grid(2), run.grid(3));
+%                          run.theta, run.sonicMach, run.alfvenMach, rez(1), rez(2), rez(3));
 %run.notes       = 'Experimenting with fade BC - ref run with const';
 
 %--- Run tests ---%

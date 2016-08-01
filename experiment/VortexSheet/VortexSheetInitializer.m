@@ -3,9 +3,7 @@ classdef VortexSheetInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
+
     end%CONSTANT
     
 %===================================================================================================
@@ -67,14 +65,14 @@ classdef VortexSheetInitializer < Initializer
             potentialField = [];
             selfGravity = [];
 
-            GIS = GlobalIndexSemantics();
+            geo = obj.geomgr;
+            
+            geo.makeBoxSize([1 1 1]);
 
             speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
-            [X Y Z] = GIS.ndgridSetXYZ();
+            [X, Y, Z] = geo.ndgridSetIJK();
 
-            obj.dGrid = [1 1 1] / obj.grid(1);
-
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
             
             radius = max(obj.grid)/50;
 
@@ -101,7 +99,7 @@ classdef VortexSheetInitializer < Initializer
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 2);
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 3);
                 statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
-                if GIS.pLocalRez(3) > 1
+                if geo.localDomainRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
 

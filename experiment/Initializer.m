@@ -12,11 +12,9 @@ classdef Initializer < handle
         cfl;            % Multiplicative coefficient for timesteps.         double
         customSave;     % Which arrays to save in custom save slices.       struct
         debug;          % Run Imogen in debug mode.                         logical *
-        dGrid;          % Grid cell spacing and parameters.                 struct
         gamma;          % Polytropic equation of state constant.            double
         gravity;        % Gravity sub-initializer object containing all     GravitySubInitializer
                         %   gravity related settings.
-        grid;           % # of cells for each spatial dimension (1x3).      double
         info;           % Short information describing run.                 string
         image;          % Which images to save.                             struct
         iterMax;        % Maximum iterations for the run.                   int
@@ -40,18 +38,20 @@ classdef Initializer < handle
         logProperties;  % List of class properties to include in run.log    cell
         fluxLimiter;    % Specifies the flux limiter(s) to use.             struct
 
-        gpuDeviceNumber; % ID of the device to attempt to run on
+        gpuDeviceNumber;% ID of the device to attempt to run on
         pureHydro;      % if true, uses nonmagnetic flux routines
 
-        useInSituAnalysis; % If nonzero, will do as below
-        inSituHandle; % Must be @SimulationAnalyzer.getInstance for some simulation analyzer
-        stepsPerInSitu;  % If > 0, Imogen will pass the sim state to the instance's FrameAnalyer() function
-                        % one in this many frames
+        useInSituAnalysis;%If nonzero, will do as below
+        inSituHandle;   % Must be @SimulationAnalyzer.getInstance for some simulation analyzer
+        stepsPerInSitu; % If > 0, Imogen will pass the sim state to the instance's FrameAnalyer() function
+                        % once per this many frames
         inSituInstructions;
         peripherals;
 
-        frameParameters; % .omega, rotateCenter, centerVelocity
+        frameParameters;% .omega, rotateCenter, centerVelocity
         numFluids;
+        
+        geomgr;         % GeometryManager class
     end %PUBLIC
 
 %===================================================================================================
@@ -119,10 +119,10 @@ classdef Initializer < handle
                 obj.activeSlices.(fields{i}) = false; 
             end
             
-            obj.logProperties       = {'alias', 'grid'};
+            obj.logProperties       = {'alias'};
             
             obj.numFluids = 1;
-
+            obj.geomgr = GeometryManager([128 128 128]);
         end           
 
 %___________________________________________________________________________________________________ GS: saveSlicesSpecified
@@ -146,7 +146,7 @@ classdef Initializer < handle
 
 %___________________________________________________________________________________________________ GS: image
         function result = get.image(obj)
-            fields = ImageManager.FIELDS;
+            fields = ImageManager.IMGTYPES;
             if ~isempty(obj.image);     result = obj.image; end
             for i=1:length(fields)
                if isfield(obj.image,fields{i}); result.(fields{i}) = obj.image.(fields{i});
@@ -176,11 +176,6 @@ classdef Initializer < handle
            end
         end
         
-%___________________________________________________________________________________________________ GS: grid
-        function set.grid(obj,value)
-            obj.grid = Initializer.make3D(value, 1);
-        end
-        
 %___________________________________________________________________________________________________ GS: fluxLimiter
         function result = get.fluxLimiter(obj)
             result = struct();
@@ -202,21 +197,23 @@ classdef Initializer < handle
 %___________________________________________________________________________________________________ operateOnInput
         function operateOnInput(obj, input, defaultGrid)
             if isempty(input)
-                obj.grid        = defaultGrid;
+                grid        = defaultGrid;
                 
             elseif isnumeric(input)
-                obj.grid        = input;
-                
-            elseif ischar(input)
+                grid        = input;
+               
+            elseif ischar(input) % FIXME this is broken for almost sure at present
                 obj.pLoadFile   = input;
                 obj.loadDataFromFile(input);
             end
+            
+            obj.geomgr.setup(grid);
         end
         
 %___________________________________________________________________________________________________ getInitialConditions
 % Given simulation parameters filled out in a superclass, uses the superclass' calculateInitialConditions
 % function to get Q(x,0) fluid fields.
-        function [fluids, mag, statics, potentialField, selfGravity, run] = getInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity, iniSettings] = getInitialConditions(obj)
             if ~isempty(obj.pLoadFile)
                 mass    = obj.pFileData.mass;
                 mom     = obj.pFileData.mom;
@@ -225,24 +222,22 @@ classdef Initializer < handle
                 statics = StaticsInitializer();
                 potentialField = PotentialFieldInitializer();
                 selfGravity = SelfGravityInitializer();
-		fluids = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener);
+                fluids = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener);
 
                 ini  = load([path filesep 'ini_settings.mat']);
                 obj.populateValues(ini.ini);
 
             else
                 if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
-
-		[fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
-
+                [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
                 obj.minMass = max(mpi_allgather(obj.minMass));
             end
 
-% This is an ugly hack; slice determination is a FAIL since parallelization.
+% FIXME his is an ugly hack; slice determination is a FAIL since parallelization.
 %            if isempty(obj.slice)
-                obj.slice = ceil(size(fluids(1).mass)/2);
+                obj.slice = ceil(obj.geomgr.globalDomainRez/2);
 %            end
-            run = obj.getRunSettings();
+            iniSettings = obj.getRunSettings();
         end
 
         % These either dump ICs to a file or return them as a structure.
@@ -252,10 +247,11 @@ classdef Initializer < handle
              IC.magX = squish(mag(1,:,:,:));
              IC.magY = squish(mag(2,:,:,:));
              IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else IC.statics = statics; end
+             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else IC.potentialField = potentialField; end
+             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else IC.selfGravity = selfGravity; end
              IC.ini = ini;
+             IC.ini.geometry = obj.geomgr.serialize(); %#ok<STRNU> % FIXME: this ought to perhaps happen elsewhere?
 
              icfile = [tempname '.mat'];
              save(icfile, 'IC','-v7.3');
@@ -267,21 +263,25 @@ classdef Initializer < handle
              IC.magX = squish(mag(1,:,:,:));
              IC.magY = squish(mag(2,:,:,:));
              IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(); else IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else IC.statics = statics; end
+             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else IC.potentialField = potentialField; end
+             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else IC.selfGravity = selfGravity; end
              IC.ini = ini;
         end
 
 %___________________________________________________________________________________________________ getRunSettings
         function result = getRunSettings(obj)
+            % This function dumps the initializer class' members into a big fat dynamic structure for
+            % initializer.m to parse
 
             %--- Populate skips cell array ---%
             %       Specific fields are skipped from being included in the initialization structure.
             %       This includes any field that is named in all CAPITAL LETTERS.
             fields = fieldnames(obj);
-            skips  = {};
-            for i=1:length(fields)
+            nFields = length(fields);
+            
+            skips  = cell(nFields, 1);
+            for i=1:nFields;
                 if (strcmp(upper(fields{i}),fields{i}))
                     skips{length(skips) + 1} = fields{i};
                 end
@@ -323,8 +323,6 @@ classdef Initializer < handle
         function loadDataFromFile(obj, filePathToLoad)
             if isempty(filePathToLoad); return; end
             % filePathToLoad should contain the prefix only, i.e. '~/Results/Dec12/blah/3D_XYZ
-            
-            GIS = GlobalIndexSemantics();
 
             % Evaluate which of the savefiles is associated with my rank.
             aboot = savefileInfo(filePathToLoad);
@@ -332,6 +330,7 @@ classdef Initializer < handle
            
             path                        = fileparts(filePathToLoad); % path to directory with savedata
             data                        = load(myfile);
+            
             fields                      = fieldnames(data);
             obj.pFileData.mass          = data.(fields{1}).mass;
             obj.pFileData.ener          = data.(fields{1}).ener;
