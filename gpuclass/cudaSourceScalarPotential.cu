@@ -51,26 +51,43 @@ __constant__ __device__ double devLambda[7];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs!=10) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(rho, E, px, py, pz, phi, dt, d3x, rhomin, rho_fullg)\n");
+    if ((nrhs!=6) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(FluidManager, phi, dt, d3x, rhomin, rho_fullg)\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceScalarPotential") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceScalarPotential."); }
     
     // Get source array info and create destination arrays
-    MGArray fluid[6];
-    int worked = MGA_accessMatlabArrays(prhs, 0, 5, fluid);
+    MGArray fluid[5];
+    MGArray phi;
+    int worked = MGA_accessMatlabArrays(prhs, 1, 1, &phi);
     if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access input arrays."); }
 
     // Each partition uses the same common parameters
-    double dt = *mxGetPr(prhs[6]);
-    double *dx = mxGetPr(prhs[7]);    
-    double rhoMinimum = *mxGetPr(prhs[8]); /* minimum rho, rho_c */
-    double rhoFull    = *mxGetPr(prhs[9]); /* rho_g */
+    double dt = *mxGetPr(prhs[2]);
+    double *dx = mxGetPr(prhs[3]);
+    double rhoMinimum = *mxGetPr(prhs[4]); /* minimum rho, rho_c */
+    double rhoFull    = *mxGetPr(prhs[5]); /* rho_g */
 
-    worked = sourcefunction_ScalarPotential(&fluid[0], dt, dx, rhoMinimum, rhoFull);
+    int numFluids = mxGetNumberOfElements(prhs[0]);
+    int fluidct;
+// FIXME require separate rhomin/rho_fullg per fluid becuase they will generally have distinct characteristic scales of density.
+    for(fluidct = 0; fluidct < numFluids; fluidct++) {
+    	worked = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
+#if 0
+    	mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
+    	if(flprop != NULL) {
+    		rhoMinimum = *((double *)mxGetPr(flprop));
+    	} else {
+    		worked = ERROR_NULL_POINTER;
+    	}
+#endif
+    	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+    	worked = sourcefunction_ScalarPotential(&fluid[0], &phi, dt, dx, rhoMinimum, rhoFull);
+    	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+    }
 
 }
 
-int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double minRho, double rhoFullGravity)
+int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, double *dx, double minRho, double rhoFullGravity)
 {
     dim3 gridsize, blocksize;
     int3 arraysize;
@@ -118,14 +135,14 @@ int sourcefunction_ScalarPotential(MGArray *fluid, double dt, double *dx, double
             fluid[2].devicePtr[i],
             fluid[3].devicePtr[i],
             fluid[4].devicePtr[i],
-            fluid[5].devicePtr[i], arraysize);
+            phi->devicePtr[i], arraysize);
         } else {
         	cukern_applyScalarPotential_2D<<<gridsize, blocksize>>>(
         	            fluid[0].devicePtr[i],
         	            fluid[1].devicePtr[i],
         	            fluid[2].devicePtr[i],
         	            fluid[3].devicePtr[i],
-        	            fluid[5].devicePtr[i], arraysize);
+        	            phi->devicePtr[i], arraysize);
 
         }
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");

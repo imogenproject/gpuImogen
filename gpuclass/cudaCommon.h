@@ -24,6 +24,17 @@
 //                      = [g*(g-1)*(E-T) + (1-.5*g*(g-1))B^2] / rho
 #define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
 
+enum geometryType_t { SQUARE, CYLINDRICAL };
+
+typedef struct __GeometryParams {
+	geometryType_t shape;
+	double h[3]; // dx dy dz, or dr dphi dz
+	double x0, y0, z0;
+	double Rinner; // Only for cylindrical geometry
+
+	// TODO: add allocatable vectors here for variable spacing in the future
+} GeometryParams;
+
 typedef struct {
         double *fluidIn[5];
         double *fluidOut[5];
@@ -271,10 +282,11 @@ int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 
 // FIXME: This should go in a different file because it has nothing to do with CUDA per se...
 int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *fluid);
+GeometryParams accessMatlabGeometryClass(const mxArray *geoclass);
 
-mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB);
-double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB);
-void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N);
+mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB);
+double derefXdotAdotB_scalar(const mxArray *in, const char *fieldA, const char *fieldB);
+void derefXdotAdotB_vector(const mxArray *in, const char *fieldA, const char *fieldB, double *x, int N);
 
 void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim);
 

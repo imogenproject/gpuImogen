@@ -2,7 +2,7 @@
 
 include ../Make.config
 
-DEFINES = -DRECONSTRUCT_VELOCITY 
+DEFINES = -DRECONSTRUCT_VELOCITY -DUNIX
 #-DFLOATFLUX
 
 #NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
@@ -35,7 +35,7 @@ all: base fluids lambda
 base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
 	
 
-fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones 
+fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones cflTimestep
 	echo "Done building fluid kernels."
 
 magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
@@ -65,7 +65,7 @@ flux.o: flux.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux.cu -o flux.cpp
 	mex $(MEX_OPTS) -c flux.cpp
 
-iface.o: flux_ML_iface.cu
+iface.o: flux_ML_iface.cu cudaCommon.h
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux_ML_iface.cu -o iface.cpp
 	mex $(MEX_OPTS) -c iface.cpp
 
@@ -245,6 +245,13 @@ freezeAndPtot.o: freezeAndPtot.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda freezeAndPtot.cu -o freezeAndPtot.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c freezeAndPtot.cpp
 freezeAndPtot: cudaCommon.o ../mpi/mpi_common.o freezeAndPtot.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
+cflTimestep.o: cflTimestep.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cflTimestep.cu -o cflTimestep.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cflTimestep.cpp
+
+cflTimestep: cflTimestep.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 

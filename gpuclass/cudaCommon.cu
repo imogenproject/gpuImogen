@@ -2074,16 +2074,41 @@ int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *flui
     return SUCCESSFUL;
 }
 
+GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
+{
+	GeometryParams g;
+
+	double v[3];
+
+	g.Rinner = derefXdotAdotB_scalar(geoclass, "pInnerRadius", NULL);
+	derefXdotAdotB_vector(geoclass, "d3h", NULL, &g.h[0], 3);
+
+	int shapenum = derefXdotAdotB_scalar(geoclass, "pGeometryType", NULL);
+
+	switch(shapenum) {
+	case 1: g.shape = SQUARE; break;
+	case 2: g.shape = CYLINDRICAL; break;
+	// default: ?
+	}
+	derefXdotAdotB_vector(geoclass, "affine", NULL, &v[0], 3);
+	g.x0 = v[0];
+	g.y0 = v[1];
+	g.z0 = v[2];
+
+
+	return g;
+}
+
 /* A utility to ease access to Matlab structures/classes, fetches in.{fieldA}.{fieldB}
  * or in.{fieldA} if fieldB is blank and returns the resulting mxArray*. */
-mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
+mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB)
 {
 	if(fieldA == NULL) mexErrMsgTxt("In derefAdotBdotC: fieldA null!");
 
 	mxArray *A; mxArray *B;
 	mxClassID t0 = mxGetClassID(in);
 
-	int snum = strlen("Failed to read field fieldA in X.A.B") + strlen(fieldA) + strlen(fieldB) + 10;
+	int snum = strlen("Failed to read field fieldA in X.A.B") + (fieldA != NULL ? strlen(fieldA) : 5) + (fieldB != NULL ? strlen(fieldB) : 5) + 10;
 	char *estring = (char *)calloc(snum, sizeof(char));
 
 	if(t0 == mxSTRUCT_CLASS) { // Get structure field from A
@@ -2122,7 +2147,7 @@ mxArray *derefXdotAdotB(const mxArray *in, char *fieldA, char *fieldB)
 /* Fetches in.{fieldA}.{fieldB}, or in.{fieldA} if fieldB is NULL,
  * and returns the first double element of this.
  */
-double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
+double derefXdotAdotB_scalar(const mxArray *in, const char *fieldA, const char *fieldB)
 {
 	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
 
@@ -2136,7 +2161,7 @@ double derefXdotAdotB_scalar(const mxArray *in, char *fieldA, char *fieldB)
  * a valid double *, or writes NANs if we do not.
  * If the Matlab array has fewer than N elements, truncates the copy.
  */
-void derefXdotAdotB_vector(const mxArray *in, char *fieldA, char *fieldB, double *x, int N)
+void derefXdotAdotB_vector(const mxArray *in, const char *fieldA, const char *fieldB, double *x, int N)
 {
 	mxArray *u = derefXdotAdotB(in, fieldA, fieldB);
 
