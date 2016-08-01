@@ -9,16 +9,6 @@ function source(run, fluids, mag, tFraction)
 %>< ener        energy density                                                  FluidArray
 %>< mag         magnetic field density                                          FluidArray(3)
 
-%HACK HACK HACK
-mass = fluids(1).mass;
-ener = fluids(1).ener;
-mom = fluids(1).mom;
-
-GIS = GlobalIndexSemantics();
-
-% Allow operators to mark what variables need halo exchange after this
-dosync = zeros(5,3);
-
 % We observe that { radiation, self-gravity, other pure-mechanical forces } commute:
 % radiation acts only on internal energy,
 % while purely mechanical forces act only on kinetic energy + momentum
@@ -27,14 +17,15 @@ dosync = zeros(5,3);
 % We double the dtime here because one source step is sandwiched between two flux steps
 dTime = 2 * tFraction * run.time.dTime;
 
-if GIS.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    cudaSourceCylindricalTerms(fluids, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], GIS.pInnerRadius);
+if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+    cudaSourceCylindricalTerms(fluids, dTime, run.geometry);
 end
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
     if run.frameTracking.omega ~= 0
-        [xg yg] = GIS.ndgridVecs;
-        xyvector = GPU_Type([ run.DGRID{1}*(xg-run.frameTracking.rotateCenter(1)) run.DGRID{2}*(yg-run.frameTracking.rotateCenter(2)) ], 1); 
+        xg = run.geometry.localXposition;
+        yg = run.geometry.localYposition;
+        xyvector = GPU_Type([ (xg-run.frameTracking.rotateCenter(1)) (yg-run.frameTracking.rotateCenter(2)) ], 1); 
         cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
     end
 
@@ -44,16 +35,17 @@ end
         % Need to track star's
         % position (3D), momentum (3D), angular momentum (3D), mass (1D), radius (1D), vaccum_rho(1D), grav_rho(1D), vacccum_E(1D) = 14 doubles
         % Store [X Y Z R Px Py Pz Lx Ly Lz M rhoV rhoG EV] in full state vector:
-        lowleft = GIS.cornerIndices();
-        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass, mom(1), mom(2), mom(3), ener, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.DGRID{1}, dTime, GIS.topology.nproc) );
+        lowleft = run.geometry.cornerIndices();
+        mass = fluids(1).mass;
+        mom = fluids(1).mom;
+        ener = fluids(1).ener;
+        run.selfGravity.compactObjects{n}.incrementDelta( cudaAccretingStar(mass, mom(1), mom(2), mom(3), ener, run.selfGravity.compactObjects{n}.stateVector, lowleft, run.geometry.d3h(1), dTime, geometry.topology.nproc) );
     end
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(mass, ener, mom(1), mom(2), mom(3), run.potentialField.field, dTime, [run.DGRID{1} run.DGRID{2} run.DGRID{3}], run.fluid.MINMASS, run.fluid.MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
-        dosync(3:5,1:3) = 1;
+        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry.d3h, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
     end
-
     
     if run.frameTracking.omega ~= 0
         cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
@@ -65,11 +57,11 @@ end
     %       in both the momentum and energy equations must be appended as source terms.
 % Disabling this because SG is dead until further notice
 %    if run.selfGravity.ACTIVE
-%        enerSource = zeros(run.gridSize);
+%        enerSource = zeros(run.geometry.localDomainRez);
 %        for i=1:3
 %            momSource       = dTime*mass.thresholdArray ...
 %                                                    .* grav.calculate5PtDerivative(i,run.DGRID{i});
-%            enerSource      = enerSource + momSource .* mom(i).array ./ mass.array;
+%            enerSource      = enerSource + momSource .* mom(i).array ./ mass.array; % FIXME this fails to identically conserve energy
 %            mom(i).array    = mom(i).array - momSource;
 %        end
 %        ener.array          = ener.array - enerSource;
@@ -81,17 +73,22 @@ end
     %--- Radiation Sourcing ---%
     %       If radiation is active, subtract from internal energy
 % HACK HACK HACK does doesn't support multifluid
+%HACK HACK HACK
+mass = fluids(1).mass;
+ener = fluids(1).ener;
+mom = fluids(1).mom;
+
     if strcmp(run.radiation.type, ENUM.RADIATION_NONE) == false
         run.radiation.solve(run, mass, mom, ener, mag, dTime);
     end
 
-    if run.selfGravity.ACTIVE | run.potentialField.ACTIVE
+    if run.selfGravity.ACTIVE || run.potentialField.ACTIVE
         % Oh you better believe we need to synchronize up in dis house
-        GIS = GlobalIndexSemantics();
+        run.geometry = GlobalIndexSemantics();
         S = {mom(1), mom(2), mom(3), ener};
         for j = 1:4; for dir = 1:3
 %            iscirc = double([strcmp(S{j}.bcModes{1,dir},ENUM.BCMODE_CIRCULAR) strcmp(S{j}.bcModes{2,dir}, ENUM.BCMODE_CIRCULAR)]);
-            cudaHaloExchange(S{j}.gputag, dir, GIS.topology, GIS.edgeInterior(:,dir));
+            cudaHaloExchange(S{j}.gputag, dir, geometry.topology, geometry.edgeInterior(:,dir));
         end; end
     end
 
