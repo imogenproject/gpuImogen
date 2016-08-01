@@ -3,7 +3,7 @@ classdef ImageManager < handle
     
     %===================================================================================================
     properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
-        FIELDS = {'mass','ener','momX','momY','momZ','magX', ... % The possible image types
+        IMGTYPES = {'mass','ener','momX','momY','momZ','magX', ... % The possible image types
             'magY','magZ','grav','spen','pGas', 'pTot',...
             'mach','speed','velX','velY','velZ'};
     end%CONSTANT
@@ -28,7 +28,6 @@ classdef ImageManager < handle
 
         parallelUniformColors; % logical: Do or do not determine the color scaling based on global rather
                                % than local min/max values
-        
     end%PUBLIC
     
     %===================================================================================================
@@ -38,29 +37,25 @@ classdef ImageManager < handle
         pActive;		% active image saving slices
     end %PROTECTED
     
-    
-    
-    
-    
     %===================================================================================================
     methods %																	  G E T / S E T  [M]
     end%GET/SET
     
     %===================================================================================================
     methods (Access = public) %														P U B L I C  [M]
-        %___________________________________________________________________________________________________ ImageManager
+        %__________________________________________________________________________________ ImageManager
         % Creates a new ImageManager instance.
         function obj = ImageManager()
             obj.frame = 0;
-            for i=1:length(obj.FIELDS),     obj.(obj.FIELDS{i}) = false;    end
+            for i=1:length(obj.IMGTYPES),     obj.(obj.IMGTYPES{i}) = false;    end
         end
         
-        %___________________________________________________________________________________________________ initialize
+        %____________________________________________________________________________________ initialize
         % Preliminary actions setting up image saves for the run. Determines which image slices to save.
         function initialize(obj)
             obj.pActive = obj.parent.save.ACTIVE(4:6);
             if ~any(obj.pActive)
-                [minval, mindex] = min(obj.parent.gridSize); %#ok<ASGLU>
+                [minval, mindex] = min(obj.parent.geometry.globalDomainRez); %#ok<ASGLU>
                 switch mindex
                     case 1;		obj.pActive(3) = true;
                     case 2;		obj.pActive(2) = true;
@@ -69,14 +64,14 @@ classdef ImageManager < handle
             end
         end
         
-        %___________________________________________________________________________________________________ activate
+        %______________________________________________________________________________________ activate
         % Activates the ImageManager by determining if any images have been enabled for saving.
         function activate(obj)
             obj.ACTIVE = false;
-            for i=1:length(obj.FIELDS),	obj.ACTIVE = ( obj.ACTIVE || obj.(obj.FIELDS{i}) ); end
+            for i=1:length(obj.IMGTYPES),	obj.ACTIVE = ( obj.ACTIVE || obj.(obj.IMGTYPES{i}) ); end
         end
         
-        %___________________________________________________________________________________________________ getColormap
+        %___________________________________________________________________________________ getColormap
         function createColormap(obj, type, colordepth)
             obj.pColordepth = colordepth;
             switch (type)
@@ -88,17 +83,17 @@ classdef ImageManager < handle
             end
         end
         
-        %___________________________________________________________________________________________________ imageSaveHandler
+        %______________________________________________________________________________ imageSaveHandler
         % Handles saving of images to files.
         function imageSaveHandler(obj, mass, mom, ener, mag, grav)
             if ~( obj.ACTIVE && ~mod(obj.parent.time.iteration, obj.INTERVAL) ); return; end
             for i=4:6 % For each possible 2D slice
                 if ~obj.pActive(i-3), continue; end
                 
-                for j=1:length(ImageManager.FIELDS)
-                    if ~obj.(ImageManager.FIELDS{j}); continue; end
+                for j=1:length(ImageManager.IMGTYPES)
+                    if ~obj.(ImageManager.IMGTYPES{j}); continue; end
                     
-                    switch ImageManager.FIELDS{j}
+                    switch ImageManager.IMGTYPES{j}
                         case 'mass'
                             array = obj.parent.save.getSaveSlice(mass.array,i);
                         case 'momX'
@@ -150,12 +145,12 @@ classdef ImageManager < handle
                             
                     end
                     
-                    name = ImageManager.FIELDS{j};
+                    name = ImageManager.IMGTYPES{j};
                     
-                    if isfield(obj.logarithmic,ImageManager.FIELDS{j})
-                        logArray = ImageManager.findLog(array); % Convert array to natural log.
+                    if isfield(obj.logarithmic,ImageManager.IMGTYPES{j})
+                        logArray = ImageManager.findLog(array); % Convert to log w/value clamping
                         logArray = obj.parent.save.getSaveSlice(logArray,i);
-                        logName = sprintf('log_%s',ImageManager.FIELDS{j});                                  
+                        logName = sprintf('log_%s',ImageManager.IMGTYPES{j});                                  
                         obj.saveImage(logArray, logName, obj.parent.save.SLICELABELS{i});                
                     end
                     
@@ -172,14 +167,14 @@ classdef ImageManager < handle
     %===================================================================================================
     methods (Access = protected) %											P R O T E C T E D    [M]
         
-        %___________________________________________________________________________________________________ saveImage
+        %_____________________________________________________________________________________ saveImage
         %   This helper routine is responsible for saving image files. The default format here is an 8bit
         %   RGB png file.
         % array         array slice to write to an image file                           double  [nx ny]
         % name			name of the array for folder and file                           str     *
         % sliceType     slice type identifier to include in file name (eg. XY or YZ)    str     *
         function saveImage(obj, array, name, sliceType)
-            GIS = GlobalIndexSemantics();
+            parallels = ParallelGlobals(); % FIXME ugh this again
             minVal = min(min(array));
             maxVal = max(max(array));
 
@@ -192,7 +187,7 @@ classdef ImageManager < handle
             rescaledArray = obj.pColordepth * (array' - minVal) / (maxVal - minVal);
 
             iterStr = obj.parent.paths.iterationToString(obj.frame);
-            fileName = strcat(name,'_',sliceType,'_',sprintf('rank_%i_',GIS.context.rank),iterStr,'.png');
+            fileName = strcat(name,'_',sliceType,'_',sprintf('rank_%i_',parallels.context.rank),iterStr,'.png');
             filePathName = strcat(obj.parent.paths.image,filesep,name,filesep,fileName);
             imwrite(rescaledArray, obj.COLORMAP, filePathName, 'png', 'CreationTime', ...
                 datestr(clock,'HH:MM mm-dd-yyyy'));
@@ -204,7 +199,7 @@ classdef ImageManager < handle
     %===================================================================================================
     methods (Static = true) %													  S T A T I C    [M]
         
-        %___________________________________________________________________________________________________
+        %_______________________________________________________________________________________________
         % Find natural log of absolute value, replacing infinities with next greater finite minimum.
         function result = findLog(array)           
             newMin = min(log(abs(nonzeros(array))));

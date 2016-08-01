@@ -53,7 +53,7 @@ function initializeResultPaths(run, IC)
                                                 'save folder. Aborting operation.']);
             end
 
-            fields = ImageManager.FIELDS;
+            fields = ImageManager.IMGTYPES;
             for i=1:length(fields)
                     
                 if run.image.(fields{i})

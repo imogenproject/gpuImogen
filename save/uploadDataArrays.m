@@ -1,4 +1,4 @@
-function [fluid mag] = uploadDataArrays(FieldSource, run, statics)
+function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 % Utility function uploads input data arrays on CPU to GPU
 
     gm = GPUManager.getInstance();
@@ -16,7 +16,7 @@ function [fluid mag] = uploadDataArrays(FieldSource, run, statics)
     fieldnames={'magX','magY','magZ'};
     for i = 1:3;
         if run.pureHydro == 0
-            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, getfield(FieldSource, fieldnames{i}), run.magnet, statics);
+            mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, FieldSource.(fieldnames{i}), run.magnet, statics);
         else
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, [], run.magnet, statics);
         end

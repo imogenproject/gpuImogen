@@ -16,11 +16,10 @@ result.rhoL2 = [];
 f = S.nextFrame();
 
 rez = f.parallel.globalDims;
+geom = GeometryManager(rez);
+geom.geometrySquare(-floor(rez/2) + 0.5, [1 1 1]);
 
-GIS = GlobalIndexSemantics();
-GIS.setup(rez);
-
-[x y z] = GIS.ndgridSetXYZ(floor(rez/2), 1./rez);
+[x, y, z] = geom.ndgridSetXYZ('pos');
 R = x.^2+y.^2; if rez(3) > 1; R = R + z.^2; end
 
 R = sqrt(R);
@@ -40,13 +39,13 @@ radii = (0:nRadial)/nRadial;
 spatialDimension = 1 + 1*(rez(2) > 2) + 1*(rez(3) > 1);
 
 for N = 1:S.numFrames()
-    [rho vradial P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
+    [rho, vradial, P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);
 
     delta = f.mass - truerho;
 
-    if runParallel; delta = GIS.withoutHalo(delta); end
+    if runParallel; delta = geom.withoutHalo(delta); end
 
     result.time(end+1)  = sum(f.time.history);
     result.rhoL1(end+1) = mpi_sum(norm(delta(:),1)) / mpi_sum(numel(delta));

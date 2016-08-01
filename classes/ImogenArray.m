@@ -39,7 +39,7 @@ classdef ImogenArray < handle
         gridSize;       % Size of the data array.                                   int(3)
         array;          % Storage of the 3D array data: copied out of gpu memory on demand double(Nx,Ny,Nz)
         gputag;         % GPU tag of the array for passing to cuda
-	streamptr;      % .pArray.manager.cudaStreamsPtr
+        streamptr;      % .pArray.manager.cudaStreamsPtr
         idString;       % String form of the id cell array.                         str
         fades;          % The fade objects influencing the ImogenArray object.      cell{?}
     end %DEPENDENT
@@ -61,22 +61,22 @@ classdef ImogenArray < handle
         function result = get.gputag(obj)
             result = obj.pArray.GPU_MemPtr;
         end
-	function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
-
+        function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
+        
         function initialArray(obj, array)
             obj.pArray.array = array;
             if obj.pBCUninitialized;
                 % Make certain everyone is on board & shares the same view before setting up BCs
-		GIS = GlobalIndexSemantics();
-
-		% This reads the Matlab class's bcHaloShare and sets the bits in the MGArray structure
-		obj.pArray.makeBCHalos(obj.bcHaloShare);
-
-		% Make sure we have a globally coherent view before going any further
-                cudaHaloExchange(obj, 1, GIS.topology, obj.bcHaloShare); 
-                cudaHaloExchange(obj, 2, GIS.topology, obj.bcHaloShare); 
-                cudaHaloExchange(obj, 3, GIS.topology, obj.bcHaloShare); 
-
+                parallels = ParallelGlobals();
+                
+                % This reads the Matlab class's bcHaloShare and sets the bits in the MGArray structure
+                obj.pArray.makeBCHalos(obj.bcHaloShare);
+                
+                % Make sure we have a globally coherent view before going any further
+                cudaHaloExchange(obj, 1, parallels.topology, obj.bcHaloShare);
+                cudaHaloExchange(obj, 2, parallels.topology, obj.bcHaloShare);
+                cudaHaloExchange(obj, 3, parallels.topology, obj.bcHaloShare);
+                
                 obj.setupBoundaries();
                 obj.pBCUninitialized = false;
             else % Initialize if needed.
@@ -84,9 +84,9 @@ classdef ImogenArray < handle
             end
             
             for d = 1:3;
-               if obj.gridSize(d) > 3;
-                   obj.applyBoundaryConditions(d);
-               end
+                if obj.gridSize(d) > 3;
+                    obj.applyBoundaryConditions(d);
+                end
             end
         end
         
@@ -219,13 +219,13 @@ classdef ImogenArray < handle
         function setupBoundaries(obj)
             statics = obj.boundaryData.rawStatics;
             % Get "other" statics for this array, those not implied by boundary conditions
-            [SI SV SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
+            [SI, SV, SC] = statics.staticsForVariable(obj.id{1}, obj.component, statics.CELLVAR);
             
             % Compile them into 6 arrays of index/value/coefficient, one for each possible axes arrangement.
-            [SI SV SC] = staticsPrecompute(SI, SV, SC, statics.GIS.pLocalRez);
+            [SI, SV, SC] = staticsPrecompute(SI, SV, SC, statics.geometry.localDomainRez);
             
             % Collect boundary conditions for each of x, y and z fluxing; precompiled into 6 nice lists
-            boundaryConds = Edges(obj.bcModes, obj.pArray, 0);
+            boundaryConds = Edges(obj.bcModes, obj.pArray, 0, statics.geometry);
             
             % Merge these lists together with the "other" statics,
             % And compile the whole thing into one triplet of 1D arrays, plus indexing offsets

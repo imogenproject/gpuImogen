@@ -57,23 +57,23 @@ classdef SaveManager < LinkedListNode
             
 %____________________________________________________________________________________ GS: SLICEINDEX
     function set.SLICEINDEX(obj,value)
-                    if (ndims(value) < 3),        value = [value 1]; end
+        if (ndims(value) < 3),        value = [value 1]; end
         obj.SLICEINDEX = value;
-            end
+    end
 
-            function value = get.SLICEINDEX(obj); value = obj.SLICEINDEX; end
+    function value = get.SLICEINDEX(obj); value = obj.SLICEINDEX; end
     
 %_________________________________________________________________________________________ GS: FSAVE
-            function value = get.FSAVE(obj)
-                    value = obj.FSAVE;
-            end
+    function value = get.FSAVE(obj)
+        value = obj.FSAVE;
+    end
             
-            function set.FSAVE(obj, value)
-                    obj.FSAVE = value;
-                    if (~obj.FSAVE), disp('Saving is disabled. Results in workspace only.'); end
-            end
-    
-    end        
+    function set.FSAVE(obj, value)
+        obj.FSAVE = value;
+        if (~obj.FSAVE), disp('Saving is disabled. Results in workspace only.'); end
+    end
+            
+    end
     
     
 %===================================================================================================
@@ -82,22 +82,22 @@ classdef SaveManager < LinkedListNode
 % Creates a new SaveManager instance: Presumably only called by the ImogenManager constructor
     function obj = SaveManager()
         obj = obj@LinkedListNode(); % Initialize the LL to blank
-
+        
         obj.SLICE                   = cell(8,1);
         obj.SLICEINDEX              = ones(1,3);
         obj.ACTIVE                  = false(1,8);
-                    obj.previousUpdateTimes     = zeros(1,5);
+        obj.previousUpdateTimes     = zeros(1,5);
         obj.previousUpdateWallTimes = zeros(1,5);
-                    obj.saveData                = true;
-                    obj.save1DData              = true;
-                    obj.save2DData              = true;
-                    obj.save3DData              = true;
-                    obj.saveCustomData          = false;
-                    obj.done                    = false;
-
+        obj.saveData                = true;
+        obj.save1DData              = true;
+        obj.save2DData              = true;
+        obj.save3DData              = true;
+        obj.saveCustomData          = false;
+        obj.done                    = false;
+        
         obj.format = ENUM.FORMAT_NC;
     end
-
+    
 %_______________________________________________________________________________________ preliminary
 % Handles preliminary initialization of the SaveManager after all of the initialization settings 
 % have been set. This function is meant to be called by the ImogenManager only.
@@ -115,11 +115,10 @@ classdef SaveManager < LinkedListNode
 	saver.active = 1;
 	run.attachEvent(saver);
 	
-        
+    rez = obj.parent.geometry.globalDomainRez;
         %--- Analyze grid directions for auto-slices ---%
-        [~, indexMax] = max(obj.parent.gridSize);
-        [~, indexMin] = min(obj.parent.gridSize);
-       
+        [~, indexMax] = max(rez);
+        [~, indexMin] = min(rez);
         
         %--- Determine auto-slices ---%
         %           If no slices were specified by the user, the manager chooses the ones that
@@ -174,8 +173,8 @@ classdef SaveManager < LinkedListNode
 %________________________________________________________________________________ saveIniSettings
 % Saves the ini structure to disk so that it can be reused later to restart a run if necessary.
     function saveIniSettings(obj, ini)
-       GIS = GlobalIndexSemantics();
-       if obj.FSAVE && ~isempty(ini) && GIS.context.rank == 0 
+
+       if obj.FSAVE && ~isempty(ini) && mpi_amirank0()
            %--- Save ini Structure ---%
            %            Saves the entire ini structure to a mat file for later reloading and 
            %            reuse.
@@ -252,13 +251,15 @@ classdef SaveManager < LinkedListNode
     end
                             
 %_____________________________________________________________________________________ getSaveSlice
+    function result = getSaveSlice(obj,gpuarray,type)
 % This function returns the sliced data from the input array. If the array is codistributed, the 
 % slice is gathered to labindex 1 and returned only to that lab. All other labs see result = [].
 %>> array            Data array to be sliced.                                        double(?)
 %>> type            Type of slice to be made on the array (1-8).                    int
-%<< result            Resulting slice (exists only on labindex 1).                    double(?)
-    function result = getSaveSlice(obj,gpuarray,type)
-    
+%<< result            Resulting slice (exists only on labindex 1).                    double(?)    
+% FIXME: This needs to be parallel aware. It's so not
+% FIXME: This will probably require XY/XZ/YZ communicators
+
      N = size(gpuarray);         
         if length(N) < 3;   N = [N 1]; end
         
@@ -281,22 +282,22 @@ classdef SaveManager < LinkedListNode
     end%PUBLIC
     
 %===================================================================================================    
-    methods (Access = private) %                                               P R I V A T E    [M]
+methods (Access = private) %                                               P R I V A T E    [M]
 %_________________________________________________________________________________ scheduleSave
 % Tests save conditions and determines the state of the saveData property.
-            function scheduleSave(obj)
-                    obj.saveData = ( obj.save1DData || obj.save2DData || obj.save3DData ...
-                        || obj.saveCustomData || obj.done) && obj.FSAVE;
-            end
-            
-
+    function scheduleSave(obj)
+        obj.saveData = ( obj.save1DData || obj.save2DData || obj.save3DData ...
+            || obj.saveCustomData || obj.done) && obj.FSAVE;
+    end
+    
+    
 %______________________________________________________________________________ updateWallDataSaves
     function updateWallDataSaves(obj, time)
-                    obj.done    = (time.wallTime >= time.WALLMAX);
-                    wallUpdates = (time.wallPercent - 100*obj.previousUpdateWallTimes/time.WALLMAX) ...
-                        >= [obj.PERSLICE 10];
-                    
-                    obj.save1DData      = wallUpdates(1);
+        obj.done    = (time.wallTime >= time.WALLMAX);
+        wallUpdates = (time.wallPercent - 100*obj.previousUpdateWallTimes/time.WALLMAX) ...
+            >= [obj.PERSLICE 10];
+        
+        obj.save1DData      = wallUpdates(1);
         obj.save2DData      = wallUpdates(2);
         obj.save3DData      = wallUpdates(3);
         obj.saveCustomData        = wallUpdates(4);
@@ -311,12 +312,12 @@ classdef SaveManager < LinkedListNode
     end
     
 %_____________________________________________________________________________ updateTimeDataSaves
-            function updateTimeDataSaves(obj, time)
-                    obj.done    = (time.time >= time.TIMEMAX);
-                    timeUpdates = (time.timePercent - 100*obj.previousUpdateTimes/time.TIMEMAX) ...
-                        >= [obj.PERSLICE 10];
-                    
-                    obj.save1DData      = timeUpdates(1);
+    function updateTimeDataSaves(obj, time)
+        obj.done    = (time.time >= time.TIMEMAX);
+        timeUpdates = (time.timePercent - 100*obj.previousUpdateTimes/time.TIMEMAX) ...
+            >= [obj.PERSLICE 10];
+        
+        obj.save1DData      = timeUpdates(1);
         obj.save2DData      = timeUpdates(2);
         obj.save3DData      = timeUpdates(3);
         obj.saveCustomData        = timeUpdates(4);
@@ -328,19 +329,19 @@ classdef SaveManager < LinkedListNode
                 obj.previousUpdateWallTimes(i)  = time.wallTime;
             end
         end
-            end
-            
+    end
+    
 %_________________________________________________________________________ updateIterationDataSaves
-            function updateIterationDataSaves(obj, time)
-                    obj.done = (time.iteration >= time.ITERMAX);
-                    modVal = max(round(time.ITERMAX*([obj.PERSLICE/100 0.1])), 1);
-                    modVal = min(modVal, max(floor(time.ITERMAX/4),1)); % At least 4 saves if MAXITER >= 4.
-                    modVal = mod(time.iteration, modVal);               % Critical loop test.
-                    
-                    obj.save1DData                = ~logical(modVal(1));
-        obj.save2DData                = ~logical(modVal(2));                
+    function updateIterationDataSaves(obj, time)
+        obj.done = (time.iteration >= time.ITERMAX);
+        modVal = max(round(time.ITERMAX*([obj.PERSLICE/100 0.1])), 1);
+        modVal = min(modVal, max(floor(time.ITERMAX/4),1)); % At least 4 saves if MAXITER >= 4.
+        modVal = mod(time.iteration, modVal);               % Critical loop test.
+        
+        obj.save1DData                = ~logical(modVal(1));
+        obj.save2DData                = ~logical(modVal(2));
         obj.save3DData                = ~logical(modVal(3));
-        obj.saveCustomData        = ~logical(modVal(4)); 
+        obj.saveCustomData        = ~logical(modVal(4));
         obj.updateUI                = ~logical(modVal(5));
         
         for i=1:length(modVal)
@@ -349,9 +350,9 @@ classdef SaveManager < LinkedListNode
                 obj.previousUpdateWallTimes(i)  = time.wallTime;
             end
         end
-            end
+    end
     
-    end%PROTECTED
+end%PROTECTED
             
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]

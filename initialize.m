@@ -5,23 +5,24 @@ function run = initialize(ini)
 % separate variables for explicit use in the code.
 %
 %>> ini          structure containing run related variable information              struct
-%<< run          initialized results                                                ImogenManager  H
+%<< run          initialized results                                                ImogenManager
     
 %% ============================= BEGIN RUNVAL PROPERTY INITIALIZATION =========================== %
    
     %--- Clear all manager singletons from possible previous runs ---%
-    clear('ImogenManager','SaveManager','TimeManager','ImageManager','GravityManager', ...
-            'FluidManager', 'MagnetManager', 'ParallelManager', 'BCManager');
+    clear('ImogenManager','ImageManager','GravityManager', ...
+            'MagnetManager', 'BCManager');
     
     fclose all; % Prevent any lingering saves from disrupting run.
 
     run             = ImogenManager();
-    run.gridSize    = ini.grid;
     [run.version, run.detailedVersion]                        = versionInfo();
     [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
-
-run.setNumFluids(ini.numFluids);
+    run.geometry = GeometryManager(ini.geometry.globalDomainRez);
+    run.geometry.deserialize(ini.geometry);
+    
+    run.setNumFluids(ini.numFluids);
 
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
@@ -144,27 +145,6 @@ try
 catch MERR, loc_initializationError('iniinfo',MERR);
 end 
 
-%% .dGrid                       Grid cell dimensions
-
-try
-    if isempty(ini.dGrid)
-        run.setGridSpacing([1 1 1]);
-        run.appendWarning('No dGrid parameter specified. Defaulting to isotropic unity values.');
-    elseif isa(ini.dGrid,'double')
-        len = length(ini.dGrid);
-        switch (len)
-            case 1;     run.setGridSpacing(ini.dGrid * ones(1,3), run.gridSize);
-            case 2;     run.setGridSpacing([ini.dGrid, max(ini.dgrid)], run.gridSize);
-            case 3;     run.setGridSpacing(ini.dGrid, run.gridSize);
-            otherwise; error('Unable to parse ini.dGrid value.');
-        end
-    else
-        run.setGridSpacing(ini.dGrid, run.gridSize);
-    end
-    run.appendInfo('Grid spacing', ImogenRecord.valueToString(run.DGRID));
-catch MERR, loc_initializationError('dgrid',MERR);
-end
-
 %% .gamma                       Polytropic index for equation of state
 
 try
@@ -277,7 +257,7 @@ end
 
 try
 
-    fields = ImageManager.FIELDS;
+    fields = ImageManager.IMGTYPES;
     for i=1:length(fields)
         if isfield(ini.image,fields{i})
             run.image.(fields{i}) = ini.image.(fields{i});
@@ -305,7 +285,7 @@ try
         else                                  run.image.createColormap('jet',colordepth); 
         end
         
-        imageSaveState = 'Active';
+        imageSaveState = 'Active'; % FIXME: Wh... why is this a string? 
     else imageSaveState = 'Inactive';
     end
     run.appendInfo('Image saving is', imageSaveState);
