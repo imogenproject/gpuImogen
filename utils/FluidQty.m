@@ -31,7 +31,7 @@ elseif strcmpi(thing, 'compression') % = divergence(V)
 elseif strcmpi(thing, 'deldotb') % ought to be ZERO
     result = (circshift(f.magX,[-1 0 0]) - f.magX) ./ f.DGRID{1} + ...
              (circshift(f.magY,[0 -1 0]) - f.magY) ./ f.DGRID{2} + ...
-             *circshift(f.magZ,[0 0 -1]) - f.magZ) ./ f.DGRID{3};
+             (circshift(f.magZ,[0 0 -1]) - f.magZ) ./ f.DGRID{3};
 elseif strcmpi(thing, 'magpressure') % = B^2 / 2
     result = .5*(f.magX.^2+f.magY.^2+f.magZ.^2);
 elseif strcmpi(thing, 'plasmabeta') % = pgas / pmag

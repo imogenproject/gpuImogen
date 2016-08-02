@@ -1,4 +1,5 @@
 function prettyprintException(ME, nmax, extendedString)
+% prettyprintException(ME, nmax, extendedString)
 % > ME: A Matlab MException object
 % > nmax: If present, maximum number of stack entries to print
 % > extendedString: Displayed in line with the rest of the output if included.
