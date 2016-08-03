@@ -49,8 +49,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	 * FIXME: that seems the only reasonable way to avoid partitioning hell
 	 */
 	MGArray xyvec;
-	worked     = MGA_accessMatlabArrays(prhs, 6, 6, &xyvec);
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access X-Y vector."); }
+	int status = MGA_accessMatlabArrays(prhs, 6, 6, &xyvec);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access X-Y vector."); }
 
 	dim3 gridsize, blocksize;
 	int3 arraysize;
@@ -65,8 +65,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 
-		worked = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
-		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
+		status = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
 	}
 
 }

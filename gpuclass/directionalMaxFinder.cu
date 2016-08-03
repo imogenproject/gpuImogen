@@ -224,7 +224,7 @@ switch(direct) {
     myBaseaddr = myU + nx*ny*myV;
     for(; myBaseaddr < addrMax ; myBaseaddr += nx) { out[myBaseaddr] = maxSoFar; }
   } break;
-  case 3: { // Seeek maxima in the Z direction; U=x, V=y
+  case 3: { // Seek maxima in the Z direction; U=x, V=y
   if ((myU >= nx) || (myV >= ny)) return;
 
     myBaseaddr = myU + nx*myV;
