@@ -28,9 +28,10 @@ run.image.ener = true;
 
 %run.numericalICfile = '/home/erik/group_data/NASdata/ICGEN_ms5_ma0pt50_ang0/3D_XYZ_FINAL.mat';
 
+rez = run.geometry.globalDomainRez;
 run.alias       = sprintf('CORR_ms%i_ma0pt%2i_ang%i',run.sonicMach, run.alfvenMach*100,run.theta);
 run.info        = sprintf('Corrugation instability test [Th=%g, Ms=%g, Ma=%g] with grid [%g, %g, %g]', ...
-                          run.theta, run.sonicMach, run.alfvenMach, run.grid(1), run.grid(2), run.grid(3));
+                          run.theta, run.sonicMach, run.alfvenMach, rez(1), rez(2), rez(3));
 run.notes       = 'Toy run for purpose of calculating numerical initial conditions';
 
 run.treadmill = '';
