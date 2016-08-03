@@ -95,6 +95,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if(geom.shape == CYLINDRICAL) gt = 1;
     int ctype = spacedim + 3*(gt + 2*(meth-1)); // value in 0..17
 
+    int numBlocks[fluid->nGPUs];
+
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
     	CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -104,6 +106,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	cudaMemcpyToSymbol(geoParams, &geoarray[0], 5*sizeof(double), 0, cudaMemcpyHostToDevice);
     	if(CHECK_CUDA_ERROR("cfl const memcpy") != SUCCESSFUL) { mexErrMsgTxt("Dumping"); }
     	calcPartitionExtent(&fluid[0], i, &sub[0]);
+
+    	gridsize.x = ROUNDUPTO(fluid[0].partNumel[i], blocksize.x) / blocksize.x;
+    	if(gridsize.x > 32) gridsize.x = 32;
+
+    	numBlocks[i] = gridsize.x;
 
     	switch(ctype) {
     	case 0:  cukern_CFLtimestep<1, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
@@ -137,7 +144,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
     	cudaDeviceSynchronize();
-    	for(j = 0; j < hblockElements; j++) {
+    	for(j = 0; j < numBlocks[i]; j++) {
     		tmin = (tmin < blkA[i][j]) ? tmin : blkA[i][j];
     	}
     	cudaFreeHost(blkA[i]);
