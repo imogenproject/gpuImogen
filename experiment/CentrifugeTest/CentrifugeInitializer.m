@@ -68,7 +68,6 @@ classdef CentrifugeInitializer < Initializer
             obj.bcMode.x            = ENUM.BCMODE_CONST;
             obj.bcMode.y            = ENUM.BCMODE_CONST;
             obj.activeSlices.xy     = true;
-            obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             
             obj.edgeFraction        = .1;
             obj.omega0              = .5;
@@ -154,7 +153,7 @@ classdef CentrifugeInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            geo = GlobalIndexSemantics();
+            geo = obj.geomgr;
             rez = geo.globalDomainRez;
             
             obj.frameParameters.rotateCenter = [rez(1) rez(2)]/2 + .5;
@@ -162,11 +161,12 @@ classdef CentrifugeInitializer < Initializer
             mygrid = geo.localDomainRez;
 
             geo.makeBoxSize( (1+obj.pEdgeFraction)*2 );
+            geo.makeBoxOriginCoord(geo.globalDomainRez/2 + 0.5);
  
             mom     = geo.zerosXYZ(geo.VECTOR);
             
-            [Xv Yv] = geo.ndgridSetXY([obj.grid(1)/2 + .5, obj.grid(2)/2 + .5, 0], obj.dGrid);
-
+            [Xv, Yv] = geo.ndgridSetIJ('pos');
+            
             % Evaluate the \int r w(r)^2 dr curve 
             rads   = [0:.0001:1];
             igrand = @(r) r.*obj.pOmegaCurve(r).^2;
@@ -174,7 +174,7 @@ classdef CentrifugeInitializer < Initializer
             Rphi(end+1) = 0;
 
             % Compute density resulting from centrifuge potential
-            [rho Pgas] = obj.thermo(Rphi);
+            [rho, Pgas] = obj.thermo(Rphi);
 
 	    % Plug end values in to make sure the interpolator flatlines outside the rotating region
             rho(10001:10002) = obj.pRho0;

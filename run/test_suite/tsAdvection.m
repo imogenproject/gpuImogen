@@ -84,7 +84,7 @@ for D = 1:doublings;
     grid=grid*2;
     if grid(2) <= 2; grid(2) = 1; end % keep 1D from becoming 2D
     if grid(3) <= 2; grid(3) = 1; end; % keep 2D from becoming 3D
-    run.geometry.setup(grid);
+    run.geomgr.setup(grid);
 end
 
 if numel(B0) < 3; B0 = [1 1 1]*B0(1); end %Prevent descriptor sprintf from barfing

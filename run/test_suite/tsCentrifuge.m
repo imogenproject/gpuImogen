@@ -76,7 +76,7 @@ result.paths={};
 for N = 1:doublings
     % Run test
     disp(['Running at resolution: ',mat2str(grid)]);
-    run.geometry.setup(grid);
+    run.geomgr.setup(grid);
     icfile   = run.saveInitialCondsToFile();
     outdir   = imogen(icfile);
 

@@ -59,7 +59,7 @@ for N = 1:S.numFrames();
 backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*(0:.0001:.9999)), t);
 
     % Map this onto the full 3D space by referring to original phases
-    rhoAnalytic = interp1(2*pi*(0:.0001:.9999), backMap, mod(KdotX,2*pi),'cubic');
+    rhoAnalytic = interp1(2*pi*(0:.0001:.9999), backMap, mod(KdotX,2*pi),'pchip');
 
     % The moment of truth: calculate the 1- and 2-norms
     delta = rhoAnalytic - F.mass;

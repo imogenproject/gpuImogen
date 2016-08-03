@@ -19,7 +19,7 @@ run             = RiemannProblemInitializer(grid);
 run.timeMax     = .92*.5/((1+M)*sqrt(gamma));
 run.iterMax     = 19999;
 
-run.cfl 	= .4;
+run.cfl 	    = .75;
 
 run.setupEinfeldt(M, gamma)
 run.bcMode.x    = ENUM.BCMODE_CONST;
@@ -30,7 +30,7 @@ run.bcMode.x    = ENUM.BCMODE_CONST;
 
 run.alias       = '';
 run.info        = 'Einfeldt Strong Rarefaction test.';
-run.notes	= '';
+run.notes	    = '';
 run.ppSave.dim3 = 100;
 
 %fm = FlipMethod();
@@ -59,7 +59,7 @@ result.paths = {};
 for R = 1:doublings;
     % Set resolution and go
     grid(1) = N0 * 2^R;
-    run.geometry.setup(grid);
+    run.geomgr.setup(grid);
     icfile = run.saveInitialCondsToFile();
     dirout = imogen(icfile);
     enforceConsistentView(dirout);
@@ -74,13 +74,13 @@ for R = 1:doublings;
     % Generate analytic solution and compute metrics
     % NOTE: use run.geometry.localXposition?
     T = sum(f.time.history);
-    X = ((1:run.geometry.globalDomainRez(1))' + .5)/run.geometry.globalDomainRez(1) - .5;
+    X = ((1:run.geomgr.globalDomainRez(1))' + .5)/run.geomgr.globalDomainRez(1) - .5;
 
     [rho, v, P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
 
-    result.N(end+1) = run.geometry.globalDomainRez(1);
-    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.geometry.globalDomainRez(1);
-    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.geometry.globalDomainRez(1));
+    result.N(end+1) = run.geomgr.globalDomainRez(1);
+    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.geomgr.globalDomainRez(1);
+    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.geomgr.globalDomainRez(1));
 end
 
 

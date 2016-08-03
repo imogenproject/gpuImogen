@@ -230,16 +230,15 @@ classdef RiemannProblemInitializer < Initializer
             statics               = [];
             potentialField        = [];
             selfGravity           = [];
-            half                  = floor(obj.pCenterCoord.*obj.geomgr.globalDomainRez);
             
             geo = obj.geomgr;
+            geo.makeBoxSize(1);
+            geo.makeBoxOriginCoord(obj.pCenterCoord .* geo.globalDomainRez + 0.5);
+            
+            
              % FIXME: need to do proper geometry calcs & switch cylindrical vs square stuff here... 
             %--- Compute the conditions for the domains ---%
-            [X, Y, Z] = geo.ndgridSetIJK('coords');
-            
-            X=X-half(1) - .5;
-            Y=Y-half(2) - .5;
-            Z=Z-half(3) - .5;
+            [X, Y, Z] = geo.ndgridSetIJK('pos');
             
             r = obj.pOctantRotation(3);
             p = obj.pOctantRotation(2);

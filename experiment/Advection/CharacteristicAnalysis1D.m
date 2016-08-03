@@ -55,6 +55,6 @@ xmap = mod(x1, periodicity);
 [xmap ind] = sort(xmap);
 rho1 = rho1(ind);
 
-rho = interp1(xmap, rho1, x0,'cubic','extrap');
+rho = interp1(xmap, rho1, x0,'pchip','extrap');
 
 end

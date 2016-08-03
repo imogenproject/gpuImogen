@@ -167,10 +167,15 @@ classdef GeometryManager < handle
             % is is very strongly advised that angle be 2*pi / M, for M in \mathbb{Z} > 0.
             
             if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
+                originCoord = -obj.affine ./ obj.d3h;
+                
                 if numel(newsize) ~= 3; newsize = obj.globalDomainRez * newsize(1) / obj.globalDomainRez(1); end
                 obj.d3h = newsize ./ obj.globalDomainRez;
                 if obj.globalDomainRez(3) == 1; obj.d3h(3) = 1; end
                 if obj.globalDomainRez(2) == 1; obj.d3h(2) = 1; end
+                
+                % Restore the correct origin coordinate
+                obj.makeBoxOriginCoord(originCoord);
             end
             if obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                 if numel(newsize) ~= 3 % make the annulus (rin,rin+x) x (0,z=x) x (0,2pi)
@@ -184,6 +189,34 @@ classdef GeometryManager < handle
                 end
                 obj.d3h = [width ang height] ./ obj.globalDomainRez;
             end
+            obj.updateGridVecs();
+        end
+        
+        function makeBoxOriginCoord(obj, coord)
+            % geometry.makeBoxOriginCoord(i [j [k]])
+            % Sets the box's affine parameter such that cell center coordinate i
+            % corresponds to an X position of zero.
+            % The same is done for j and Y, and k and Z, if j and/or k are given.
+            
+            obj.affine(1) = (1-coord(1)).*obj.d3h(1);
+            if numel(coord) > 1
+                obj.affine(2) = (1-coord(2)).*obj.d3h(2);
+            end
+            if numel(coord) > 2
+                obj.affine(3) = (1-coord(3)).*obj.d3h(3);
+            end
+            
+            obj.updateGridVecs();
+        end
+        
+        function makeBoxLLPosition(self, position)
+            % geometry.makeBoxLLPosition(x [y [z]])
+            % directly sets the geometry.affine parameter
+            
+            obj.affine(1) = position(1);
+            if numel(position) > 1; obj.affine(2) = position(2); end
+            if numel(position) > 2; obj.affine(3) = position(3); end
+            
             obj.updateGridVecs();
         end
 
@@ -382,10 +415,12 @@ classdef GeometryManager < handle
         end
         
         function [x, y, z] = ndgridSetIJK(obj, form)
-            % [x y z] = ndgridsetIJK([form]) returns the part of
-            % ndgrid( 1:grid(1), ...) that lives on this node.
-            % If form is absent or 'coords', returns coordinates;
-            % If form is 'pos' returns physical positions
+            % [x y z] = ndgridsetIJK(['pos' | 'coords']) returns the part of
+            % the global domain that lives on this node.
+            % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
+            % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
+            % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
+            % If no argument, defaults to 'coords'.
             
             if nargin < 2; form = 'coords'; end
             
@@ -405,11 +440,14 @@ classdef GeometryManager < handle
         end
         
         function [x, y] = ndgridSetIJ(obj, form)
-            % See ndgridSetIJK doc; Returns [x y] arrays.
-            % Note that offset/scale, if vector, must be 3 elements or
-            % x(1)*[1 1 1] will be used instead
+            % [x, y] = ndgridsetIJ(['pos' | 'coords']) returns the part of
+            % the X-Y or R-Phi global domain that lives on this node.
+            % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
+            % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
+            % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
+            % If no argument, defaults to 'coords'.
             
-                        if nargin < 2; form = 'coords'; end
+            if nargin < 2; form = 'coords'; end
             
             if strcmp(form, 'coords')
                 [x, y] = ndgrid(obj.localIcoords, obj.localJcoords);
@@ -417,9 +455,9 @@ classdef GeometryManager < handle
             end
             if strcmp(form, 'pos')
                 if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
-                    [x, y] = ndgrid(obj.localXvector, obj.localYvector);
+                    [x, y] = ndgrid(obj.localXposition, obj.localYposition);
                 elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-                        [x, y] = ndgrid(obj.localRposition, obj.localPhiPosition);
+                    [x, y] = ndgrid(obj.localRposition, obj.localPhiPosition);
                 end
                 return;
             end
@@ -427,31 +465,54 @@ classdef GeometryManager < handle
         end
         
         function [y, z] = ndgridSetJK(obj, offset, scale)
-            % See ndgridSetIJK doc; Returns [y z] arrays. 
-            % Note that offset/scale, if vector, must be 3 elements or
-            % x(1)*[1 1 1] will be used instead
-            if nargin > 1;
-                if nargin < 3; scale  = [1 1]; end;
-                if nargin < 2; offset = [0 0]; end;
-                [u, v, w] = obj.toCoordinates(offset, obj.localIcoords, obj.localJcoords, obj.localKcoords, scale, [0 0 0]);
-                [y, z] = ndgrid(v, w);
-            else
+            % [y, z] = ndgridsetJK(['pos' | 'coords']) returns the part of
+            % the Y-Z or Phi-Z global domain that lives on this node.
+            % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
+            % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
+            % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
+            % If no argument, defaults to 'coords'.
+            
+            if nargin < 2; form = 'coords'; end
+            
+            if strcmp(form, 'coords')
                 [y, z] = ndgrid(obj.localJcoords, obj.localKcoords);
+                return;
             end
+            if strcmp(form, 'pos')
+                if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
+                    [y, z] = ndgrid(obj.localYposition, obj.localZposition);
+                elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+                    [y, z] = ndgrid(obj.localPhiPosition, obj.localZposition);
+                end
+                return;
+            end
+            
+            error('ndgridSetJK called but input argument was %s, not ''coords'', or ''pos''.\n', form);
         end
         
         function [x, z] = ndgridSetIK(obj, offset, scale)
-            % See ndgridSetIJK doc; Returns [x z] arrays. 
-            % Note that offset/scale, if vector, must be 3 elements or
-            % x(1)*[1 1 1] will be used instead            
-            if nargin > 1;
-                if nargin < 3; scale  = [1 1]; end;
-                if nargin < 2; offset = [0 0]; end;
-                [u, v, w] = obj.toCoordinates(offset, obj.localIcoords, obj.localJcoords, obj.localKcoords, scale, [0 0 0]);
-                [x, z] = ndgrid(u, w);
-            else
+            % [x, z] = ndgridsetIK(['pos' | 'coords']) returns the part of
+            % the X-Z or R-Z global domain that lives on this node.
+            % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
+            % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
+            % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
+            % If no argument, defaults to 'coords'.
+            if nargin < 2; form = 'coords'; end
+            
+            if strcmp(form, 'coords')
                 [x, z] = ndgrid(obj.localIcoords, obj.localKcoords);
+                return;
             end
+            if strcmp(form, 'pos')
+                if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
+                    [x, z] = ndgrid(obj.localXposition, obj.localZposition);
+                elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+                    [x, z] = ndgrid(obj.localRposition, obj.localZposition);
+                end
+                return;
+            end
+            
+            error('ndgridSetIK called but input argument was %s, not ''coords'', or ''pos''.\n', form);
         end
 
         % Generic function that the functions below talk to
