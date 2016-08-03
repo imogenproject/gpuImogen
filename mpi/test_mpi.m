@@ -14,7 +14,7 @@ pg = ParallelGlobals(context, topology); % yucky global from hell
 
 MYID = context.rank;
 
-GIS = GeometryManager(rez);
+geometry = GeometryManager(rez);
 
 x = ones([5 1])*MYID;
 xout = mpi_allgather(x);
@@ -131,7 +131,7 @@ end
 
 mpi_barrier();
 
-mpi_deleteDimcomm(GIS.topology);
+mpi_deleteDimcomm(geometry.topology);
 
 %mpi_finalize();
 
