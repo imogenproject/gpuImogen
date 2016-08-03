@@ -10,7 +10,7 @@ function result = getCompression(run, array, divideArray)
 
 
     %--- Initialization ---%
-	result = zeros(run.gridSize);
+	result = zeros(run.geometry.localDomainRez);
 	
 	%--- Calculate compression ---%
     for i=1:3

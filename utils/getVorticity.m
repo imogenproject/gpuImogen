@@ -9,7 +9,7 @@ function result = getVorticity(run, imoArray, divideArray)
 %<< return          Resulting vorticity result.                             double(3,Nx,(Ny),(Nz))
 
     %--- Initialization ---%
-    N = [3 run.gridSize];
+    N = [3 run.geometry.localDomainRez];
     result = zeros(N);
     
     aX = imoArray(1).dataClone();
