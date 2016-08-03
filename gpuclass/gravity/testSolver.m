@@ -1,12 +1,14 @@
 % This test script produces resolution/error outputs to test the potential solver's accuracy.
 run.time.iteration = 0;
-run.DGRID={1,1,1};
+run.geometry = GeometryManager();
 run.gravity.bconditionSource='full';
 run.gravity.tolerance = 1e-10;
 run.gravity.iterMax = 250;
 run.gravity.constant = 1;
 run.gravity.info='eh';
 run.gravity.mirrorZ = 0;
+
+% FIXME feh this thing is about 60% broken since the class properties it fakes have changed so much
 
 %R = [16 32 64 128 256];
 R = [48];
@@ -15,7 +17,7 @@ enorm = zeros(size(R));
 for a = 1:numel(R);
     u = R(a);
 
-    [X Y Z] = ndgrid(1:u,1:u,1:u);
+    [X, Y, Z] = ndgrid(1:u,1:u,1:u);
     X = X-u/2;
     Y = Y-u/2;
     Z = Z-u/2;

@@ -12,7 +12,7 @@ function phi = bicgstabPotentialSolver(run, mass, phi0)
     %       Poisson's equation.
     if run.time.iteration < 4; tic; end
 
-    bcsAndMass = calculateGravityEdge(mass, run.DGRID, run.selfGravity.mirrorZ, run.selfGravity.bconditionSource);
+    bcsAndMass = calculateGravityEdge(mass, run.geometry.d3h, run.selfGravity.mirrorZ, run.selfGravity.bconditionSource);
     if run.selfGravity.constant ~= 1
         bcsAndMass = run.selfGravity.constant*bcsAndMass;
     end

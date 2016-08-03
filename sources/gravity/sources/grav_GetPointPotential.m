@@ -36,7 +36,7 @@ if numel(DGRID{1}) > 1
     Z = Z - posapprox(3);
 else
     GIS = GlobalIndexSemantics();
-    [X Y Z] = GIS.ndgridSetXYZ();
+    [X, Y, Z] = GIS.ndgridSetXYZ();
     X = (X - pointpos(1))*DGRID{1};
     Y = (Y - pointpos(2))*DGRID{2};
     Z = (Z - pointpos(3))*DGRID{3};

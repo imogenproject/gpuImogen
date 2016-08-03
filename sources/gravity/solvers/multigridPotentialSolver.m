@@ -6,11 +6,13 @@ function result = multigridPotentialSolver(run, mass)
 %>< mass        Mass density                                                    FluidArray
 %<< result      Gravitational potential                                         GravityManager
 
+    geo = run.geometry;
+
     %--- Compute coarsenings ---%
     %       Utilize pre-stored top-level arrays. This speeds by ~20% on 256^3 tests.
-    [rhos poss] = massQuantization(mass.array, run.gridSize, run.DGRID, run.gravity.MG_TOPPOS);
-    a           = run.DGRID;
-    b           = run.gridSize;
+    [rhos poss] = massQuantization(mass.array, run.geometry.localDomainRez, run.DGRID, run.gravity.MG_TOPPOS);
+    a           = {geo.d3h(1), geo.d3h(2), geo.d3h(3)};
+    b           = geo.localDomainRez;
 
     % This is a set of parameters required by the compiled (mg_bc) routine that define the volume it computes potential over
     % The following values will be correct for constant dx (though not necessarily equal in all directions)

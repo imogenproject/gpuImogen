@@ -5,8 +5,8 @@ function multigridPotentialSolverIni(manager, mass)
 %>< run         Data manager                                                ImogenManager
 %>< mass        Mass density                                                FluidArray
 %>< grav        Gravitational potential                                     GravityArray
-
-    [rho, poss]           = massQuantization(mass.array, run.gridSize, run.DGRID);
+% FIXME broken in parallel oh lord so badly broken
+    [rho, poss]           = massQuantization(mass.array, run.geometry.localDomainRez, run.geometry.d3h);
     nlevels               = numel(poss);
     manager.MG_TOPPOS = poss{nlevels};
 end

@@ -31,7 +31,7 @@ classdef GravityArray < InitializedArray
         function obj = GravityArray(id, run, statics)
 			obj = obj@InitializedArray(ENUM.SCALAR, id, run, statics);
 			if isempty(id); return; end
-			obj.array = zeros(run.gridSize);
+			obj.array = zeros(run.geometry.localDomainRez);
 		end   
 		
 	end%PUBLIC
