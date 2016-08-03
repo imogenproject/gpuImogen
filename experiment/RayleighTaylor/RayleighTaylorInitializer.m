@@ -126,7 +126,7 @@ classdef RayleighTaylorInitializer < Initializer
         % If random perturbations are selected, it will impart random y-velocity to each column of the grid.
         % Otherwise, it will create a sinusoid of wavenumber Kx,Ky,Kz.
             if obj.randomPert == 0
-                if GIS.localDomainRez(3) == 1;
+                if geo.localDomainRez(3) == 1;
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5))/ 4;
                 else
                     mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5)) .* (1+cos(2*pi*obj.Kz*Z/.5))/ 8;

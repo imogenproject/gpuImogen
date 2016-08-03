@@ -13,7 +13,10 @@ tval =  [];
 l1val = [];
 l2val = [];
 
-GIS = GlobalIndexSemantics();
+initset = S.returnInitializer();
+
+geo = GeometryManager(initset.ini.geometry.globalDomainRez);
+
 
 for N = 2:S.numFrames();
     f = S.nextFrame();
@@ -21,7 +24,7 @@ for N = 2:S.numFrames();
     tval(end+1) = sum(f.time.history);
     delta = f.mass - equil.mass;
 
-    if runParallel; delta = GIS.withoutHalo(delta); end
+    if runParallel; delta = geo.withoutHalo(delta); end
 
     l1val(end+1) =      mpi_sum(norm(delta(:),1))   / mpi_sum(numel(delta)) ;
     l2val(end+1) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));

@@ -84,12 +84,12 @@ classdef CentrifugeInitializer < Initializer
         end
 
     function set.edgeFraction(self, f)
-%        fmin = 5/self.grid(1); 
-% FIXME: Not clear what to do because this can be called before grid resolution is set...
-fmin = 0;
+        %fmin = 5/self.grid(1);
+        % FIXME: Not clear what to do because this can be called before grid resolution is set...
+        fmin = 0;
         if f <= fmin;
             warning('Positive amount of edge required: Set to 5 cells');
-            f = fmin;            
+            f = fmin;
         end
         self.pEdgeFraction = f;
     end
@@ -154,18 +154,18 @@ fmin = 0;
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
-
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-            mygrid = GIS.localDomainRez;
-
-            obj.dGrid = (1+obj.pEdgeFraction)*2./obj.grid;
- 
-            mom     = GIS.zerosXYZ(GIS.VECTOR);
+            geo = GlobalIndexSemantics();
+            rez = geo.globalDomainRez;
             
-            [Xv Yv] = GIS.ndgridSetXY([obj.grid(1)/2 + .5, obj.grid(2)/2 + .5, 0], obj.dGrid);
+            obj.frameParameters.rotateCenter = [rez(1) rez(2)]/2 + .5;
+
+            mygrid = geo.localDomainRez;
+
+            geo.makeBoxSize( (1+obj.pEdgeFraction)*2 );
+ 
+            mom     = geo.zerosXYZ(geo.VECTOR);
+            
+            [Xv Yv] = geo.ndgridSetXY([obj.grid(1)/2 + .5, obj.grid(2)/2 + .5, 0], obj.dGrid);
 
             % Evaluate the \int r w(r)^2 dr curve 
             rads   = [0:.0001:1];

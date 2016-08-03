@@ -267,6 +267,8 @@ classdef Initializer < handle
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else IC.selfGravity = selfGravity; end
              IC.ini = ini;
+             IC.ini.geometry = obj.geomgr.serialize(); %#ok<STRNU> % FIXME: this ought to perhaps happen elsewhere?
+
         end
 
 %___________________________________________________________________________________________________ getRunSettings

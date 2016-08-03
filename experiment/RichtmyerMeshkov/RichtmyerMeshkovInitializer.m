@@ -6,9 +6,7 @@ classdef RichtmyerMeshkovInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
+
     end%CONSTANT
     
 %===================================================================================================
@@ -74,23 +72,21 @@ classdef RichtmyerMeshkovInitializer < Initializer
             statics             = [];
             potentialField      = [];
             selfGravity         = [];
-            GIS                 = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-           % GIS.makeDimNotCircular(1);
-           % GIS.makeDimNotCircular(2);
-
+            
+            geo                 = obj.geomgr;
+            geo.makeBoxSize([1 1 1]);
+            
             % Initialize Arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
-            result              = HDJumpSolver(obj.mach^(-1), 0, obj.gamma);
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
+            jumpConds              = HDJumpSolver(obj.mach^(-1), 0, obj.gamma);
 
             % Initialize parallelized vectors
             obj.dGrid           = 1./obj.grid;
-            [X Y Z]             = GIS.ndgridSetXYZ([0 0 0], obj.dGrid);
+            [X, Y, Z]             = geo.ndgridSetXYZ('pos');
 
             % Set various variables
             shockmargin         = 20*obj.dGrid(2); % Places the shock a short distance away from the peak of the sinusoid
-            vpostshock          = result.v(1,1)-result.v(1,2); % Corrects post-shock velocity to form a standing shock
+            vpostshock          = jumpConds.v(1,1)-jumpConds.v(1,2); % Corrects post-shock velocity to form a standing shock
             wavepos             = .7;        % Determines the position of the wave on the y-axis
             preshockcorrect     = .8;   % Makes a small correction to the whole grid to capture the jet
 
@@ -101,12 +97,12 @@ classdef RichtmyerMeshkovInitializer < Initializer
 
             % Set parameters for heavy fluid and subtract pre-shock velocity to maintain position on the grid
             mass(heavy)         = obj.massRatio;
-            mom(2,:,:,:)        = -result.v(1,2)*mass;
+            mom(2,:,:,:)        = -jumpConds.v(1,2)*mass;
 
             % Set parameters for the shocked region
-            mass(postshock)     = result.rho(2);
-            mom(2,postshock)    = vpostshock*result.rho(2);
-            ener(postshock)     = result.Pgas(2);
+            mass(postshock)     = jumpConds.rho(2);
+            mom(2,postshock)    = vpostshock*jumpConds.rho(2);
+            ener(postshock)     = jumpConds.Pgas(2);
 
             % Make a small correction to the entire grid to capture the jet before it flows off-grid
             mom(2,:,:,:)        = mom(2,:,:,:)*preshockcorrect;

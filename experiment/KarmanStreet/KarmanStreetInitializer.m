@@ -3,9 +3,7 @@ classdef KarmanStreetInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
+
     end%CONSTANT
     
 %===================================================================================================
@@ -62,25 +60,28 @@ classdef KarmanStreetInitializer < Initializer
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics = StaticsInitializer();
             potentialField = [];
             selfGravity = [];
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-            [X Y] = GIS.ndgridSetXY();
-            obj.dGrid = [1 1 1] / obj.grid(1);
+            
+            geo = obj.geomgr;
+            rez = geo.globalDomainRez;
+            
+            statics = StaticsInitializer(geo);
+            
+            [X, Y] = geo.ndgridSetIJ('coord');
+            
+            geo.makeBoxSize(1);
 
             % Initialize arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Set various variables
-            radius = max(obj.grid)/50;
+            radius = max(rez)/50;
             speed   = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0);
             mom(1,:,:,:) = speed*mass(:,:,:);
 
             % Form the cylindrical obstruction
-            ball = ((X-.25*obj.grid(2)).^2 + (Y-obj.grid(2)/2).^2) < radius^2;
+            ball = ((X-.25*rez(2)).^2 + (Y-rez(2)/2).^2) < radius^2;
 
             % Temporarily create syntactically clearer variables for statics
             momx = squish(mom(1,:,:,:));
@@ -106,7 +107,7 @@ classdef KarmanStreetInitializer < Initializer
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(1), statics.CELLVAR, 1, 2);
                 statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(2), statics.CELLVAR, 1, 3);
                 statics.associateStatics(ENUM.ENER, ENUM.SCALAR,    statics.CELLVAR, 1, 5);
-                if GIS.localDomainRez(3) > 1
+                if geo.localDomainRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
 

@@ -49,7 +49,7 @@ classdef BowShockInitializer < Initializer
     %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-        %_______________________________________________________________________________________________ BowShockInitializer
+        %_______________________________________________________________________ BowShockInitializer
         function obj = BowShockInitializer(input)
             obj = obj@Initializer();
             obj.gamma            = 5/3;
@@ -148,23 +148,24 @@ classdef BowShockInitializer < Initializer
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             % Returns the initial conditions for a bow shock simulation
             % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
-            GIS = GlobalIndexSemantics();
             potentialField = [];
             selfGravity = [];
-            
-            GIS.setup(obj.grid);
+           
+	    geo = obj.geomgr;
+
+            geo.makeBoxSize(obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1) );
 
             %--- Background Values ---%
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
-            momx = GIS.zerosXYZ(GIS.SCALAR);
-            momy = GIS.zerosXYZ(GIS.SCALAR);
-            momz = GIS.zerosXYZ(GIS.SCALAR);
+            momx = geo.zerosXYZ(geo.SCALAR);
+            momy = geo.zerosXYZ(geo.SCALAR);
+            momz = geo.zerosXYZ(geo.SCALAR);
             
             %--- Static Values ---%
-            statics = StaticsInitializer();
+            statics = StaticsInitializer(geo);
             
-            [X Y Z] = GIS.ndgridSetXYZ(obj.ballCenter, 1./obj.ballCells);
+            [X, Y, Z] = GIS.ndgridSetXYZ(obj.ballCenter, 1./obj.ballCells);
             Ledge = (X < (8-obj.ballCenter(1))/obj.ballCells(1)); % 8 leftmost cells - we establish plane flow here
             
             % The obstacle is an ellipsoid
@@ -215,7 +216,6 @@ classdef BowShockInitializer < Initializer
             ener = interpScalarRadialToGrid(ballRadii, ballFlow.press / (obj.gamma-1), [0 1.5*obj.pBallXRadius], X,Y,Z,ener);
             ener = ener + .5*squish(sum(mom.^2,1))./mass;
             
-            obj.dGrid = obj.pBallXRadius / obj.ballCells(1);
             % Set up statics if we're locking the obstacle in place
             
             statics.indexSet{1} = indexSet_fromLogical(ball); % ball

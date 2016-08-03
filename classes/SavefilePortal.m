@@ -107,32 +107,32 @@ classdef SavefilePortal < handle
         end
 
         % Next/previous/start/last to make raw setFrame() friendlier
-        function [F glitch] = nextFrame(self)
+        function [F, glitch] = nextFrame(self)
             % F = nextFrame() returns the next Imogen saveframe of the
             % currently selected type
             n = self.currentFrame(self.typeToLoad) + 1;
-            [F glitch] = self.setFrame(n);
+            [F, glitch] = self.setFrame(n);
         end
 
         function F = previousFrame(self)
             % F = previousFrame() returns the previous Imogen saveframe of
             % the current type
             n = self.currentFrame(self.typeToLoad)-1;
-            [F glitch] = self.setFrame(n);
+            [F, glitch] = self.setFrame(n);
         end
         
-        function [F glitch] = jumpToFirstFrame(self)
+        function [F, glitch] = jumpToFirstFrame(self)
             % Resets the current frame to the first
-                [F glitch] = self.setFrame(1);
+                [F, glitch] = self.setFrame(1);
         end
         
-        function [F glitch] = jumpToLastFrame(self)
+        function [F, glitch] = jumpToLastFrame(self)
            % Hop to the last frame available
            n = self.numFrames();
-           [F glitch] = self.setFrame(n);
+           [F, glitch] = self.setFrame(n);
         end
         
-        function [F glitch] = setFrame(self, f)
+        function [F, glitch] = setFrame(self, f)
             % F = setFrame(n) jumps to the indicated frame of the current
             % type; Automatically clamps to [1 ... #frames]
             glitch = 0; % assume no problem...

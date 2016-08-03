@@ -9,9 +9,6 @@ classdef KelvinHelmholtzInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
     end%CONSTANT
     
 %===================================================================================================
@@ -79,21 +76,18 @@ classdef KelvinHelmholtzInitializer < Initializer
             statics             = [];
             potentialField      = [];
             selfGravity         = [];
-            GIS                 = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
+            geo                 = GlobalIndexSemantics();
 
-           % GIS.makeDimNotCircular(1);
-           % GIS.makeDimNotCircular(2);
+            geo.makeBoxSize([1 1 1]);
 
             % Set various variables
             speed               = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0); % Gives the speed of the fluid in both directions
 
             % Initialize Arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Initialize parallelized vectors
-            obj.dGrid           = 1./obj.grid;
-            [X Y Z]             = GIS.ndgridSetXYZ([0 0 0], obj.dGrid);
+            [X, Y, Z]           = geo.ndgridSetIJK('pos');
 
             % Define the wave contact in parallel
             topwave             = .33 + obj.waveHeight*sin(obj.numWave*2*pi*X);

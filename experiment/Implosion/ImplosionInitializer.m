@@ -8,9 +8,7 @@ classdef ImplosionInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
+
     end%CONSTANT
     
 %===================================================================================================
@@ -72,25 +70,23 @@ classdef ImplosionInitializer < Initializer
             statics = [];
             potentialField = [];
             selfGravity = [];
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-           % GIS.makeDimNotCircular(1);
-           % GIS.makeDimNotCircular(2);
+            
+            geo = obj.geomgr;
+            geo.makeBoxSize([1 1 1]);
+            
+            rez = geo.globalDomainRez;
 
             % Ensure that the grid is square.
-            if obj.grid(1) ~= obj.grid(2)
-                warning(sprintf('WARNING: grid [%g %g %g] was not square. grid(2) set to grid(1).\n', obj.grid(1), obj.grid(2), obj.grid(3)));
-                obj.grid(2) = obj.grid(1);
+            if rez(1) ~= rez(2)
+                warning(sprintf('WARNING: grid [%g %g %g] was not square.\n', rez(1), rez(2), rez(3)));
             end
-            obj.dGrid = 0.3 / obj.grid(1);
-
+            
             % Initialize arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Setup parallel vectors and structures
-            [X Y] = GIS.ndgridSetXY();
-            corn = (X + Y < obj.grid(1)/2);
+            [X, Y] = geo.ndgridSetIJ();
+            corn = (X + Y < rez(1)/2);
 
             % Define the properties of the perturbed corner
             mass(corn) = obj.Mcorner;

@@ -6,9 +6,7 @@ classdef SphericalShockInitializer < Initializer
 
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'x';
-        Y = 'y';
-        Z = 'z';
+
     end%CONSTANT
     
 %===================================================================================================
@@ -66,14 +64,12 @@ classdef SphericalShockInitializer < Initializer
             statics = [];
             potentialField = [];
             selfGravity = [];
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
-
-           % GIS.makeDimNotCircular(1);
-           % GIS.makeDimNotCircular(2);
-
+            
+            geo = obj.geomgr;
+            rez = geo.globalDomainRez;
+            
             % Initialize arrays
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
             ener = .1*ener; % P = 0.1 by default
 
             % Define structure variables
@@ -81,8 +77,8 @@ classdef SphericalShockInitializer < Initializer
             radius = obj.grid(1)/5;
 
             % Initialize parallel vectors and logicals
-            [X Y Z] = GIS.ndgridSetXYZ();
-            sphere = (sqrt((X-round(obj.grid(1)/2)).^2+(Y-round(obj.grid(2)/2)).^2)<=radius);
+            [X, Y, Z] = geo.ndgridSetIJK('coords');
+            sphere = (sqrt((X-round(rez(1)/2)).^2+(Y-round(rez(2)/2)).^2)<=radius);
             ener(sphere) = Psphere;
 
             % Calculate energy density array

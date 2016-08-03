@@ -56,7 +56,7 @@ classdef RadiatingShockInitializer < Initializer
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-%___________________________________________________________________________________________________ CorrugationShockInitializer
+%_________________________________________________________________________ RadiatingShockInitializer
 % Creates an Iiitializer for corrugation shock simulations. Takes a single input argument that is
 % either the size of the grid, e.g. [300, 6, 6], or the full path to an existing results data file
 % to use in loading
@@ -116,7 +116,7 @@ classdef RadiatingShockInitializer < Initializer
 %===================================================================================================    
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
-%___________________________________________________________________________________________________ calculateInitialConditions
+%________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         % Returns the initial conditions for a corrugation shock wave according to the settings for
         % the initializer.
@@ -243,9 +243,7 @@ classdef RadiatingShockInitializer < Initializer
 %                    end
                      junk = obj.seedAmplitude*(rand(size(mass))-.5);
                      mass(Xsalt,:,:) = mass(Xsalt,:,:) + junk(Xsalt,:,:);
-
                 case RadiatingShockInitializer.COSINE
-%                   perturb = GIS.evaluateFunctionOnGrid(@(x,y,z) obj.seedAmplitude*
                     [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
                                     .*sin(pi*(X - 1)/(delta - 1));
@@ -275,7 +273,7 @@ classdef RadiatingShockInitializer < Initializer
             ener = ener/(obj.gamma-1) + ...
                .5*squish(sum(mom.^2,1))./mass + .5*squish(sum(mag.^2,1));
 
-            statics = StaticsInitializer(); 
+            statics = StaticsInitializer(geom); 
 
             %statics.setFluid_allConstantBC(mass, ener, mom, 1);
             %statics.setMag_allConstantBC(mag, 1);

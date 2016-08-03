@@ -24,11 +24,7 @@ classdef OrszagTangVortexInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-    end %PROTECTED
-    
-    
-    
-    
+    end %PROTECTED 
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
@@ -65,7 +61,7 @@ classdef OrszagTangVortexInitializer < Initializer
 %===================================================================================================    
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
-%___________________________________________________________________________________________________ calculateInitialConditions
+%_____________________________________________________________________ calculateInitialConditions
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
@@ -73,14 +69,13 @@ classdef OrszagTangVortexInitializer < Initializer
             potentialField  = [];
             selfGravity     = [];
 
-            GIS             = GlobalIndexSemantics();
+	    geo = obj.geomgr;
+	    geo.makeBoxSize([1 1 1]);
 
-            grid = GIS.domainResolution;
-
-            obj.dGrid       = 1./grid;
+            grid = GIS.globalDomainRez;
             mass            = 25/(36*pi)*GIS.onesSetXY();
 
-            [x, y]          = GIS.ndgridSetXY(); 
+            [x, y]          = GIS.ndgridSetIJ('coords'); 
             mom             = zeros([3 size(x,1) size(x,2) 1]);
             mom(1,:,:)      = - mass .* sin( 2*pi*y/(grid(2)-1) );
             mom(2,:,:)      =   mass .* sin( 2*pi*x/(grid(1)-1) );

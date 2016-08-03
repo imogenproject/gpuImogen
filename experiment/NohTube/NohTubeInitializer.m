@@ -1,16 +1,16 @@
 classdef NohTubeInitializer < Initializer
     %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-
+        
     end%CONSTANT
     
     %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         v0;    % Initial implosion speed
-	rho0;  % Initial density
-	r0;    % Radius of implosion
-
-	M0;    % Mach (large for analytical soln to work)
+        rho0;  % Initial density
+        r0;    % Radius of implosion
+        
+        M0;    % Mach (large for analytical soln to work)
     end %PUBLIC
     
     %===================================================================================================
@@ -88,12 +88,11 @@ classdef NohTubeInitializer < Initializer
             potentialField        = [];
             selfGravity           = [];
             
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
+            geo = GlobalIndexSemantics();
+            rez = geo.globalDomainRez;
             
-            
-            half = floor(obj.grid/2);
-            needDia = [2 2 2].*(obj.grid > 1);
+            half = floor(rez/2);
+            needDia = [2 2 2].*(rez > 1);
             
             % Use halfspaces if negative-edge boundaries are mirrors
             if strcmp(obj.bcMode.x{1}, ENUM.BCMODE_MIRROR); half(1) = 3; needDia(1) = 1; end
@@ -102,8 +101,8 @@ classdef NohTubeInitializer < Initializer
                 if strcmp(obj.bcMode.z{1}, ENUM.BCMODE_MIRROR); half(3) = 3; needDia(3)=1; end
             end
             
-            obj.dGrid = max(needDia./obj.grid);
-            [X Y Z] = GIS.ndgridSetXYZ(half + .5, obj.dGrid);
+            geo.makeBoxSize(needDia);
+            [X, Y, Z] = geo.ndgridSetXYZ(half + .5, obj.dGrid);
             
             spaceDim = 1;
             if obj.grid(2) > 1; spaceDim = spaceDim + 1; end
@@ -122,9 +121,9 @@ classdef NohTubeInitializer < Initializer
                 Rsolve = X;
             end
             
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
             
-            [rho vradial Pini] = generator.solve(spaceDim, Rsolve, obj.r0);
+            [rho, vradial, Pini] = generator.solve(spaceDim, Rsolve, obj.r0);
             
             Pini(rho< obj.minMass) = obj.minMass/(obj.gamma - 1);
             rho(rho < obj.minMass) = obj.minMass;

@@ -5,14 +5,11 @@ classdef ShuOsherTubeInitializer < Initializer
         
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        X = 'X';
-        Y = 'Y';
-        Z = 'Z';
     end%CONSTANT
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-           lambda;
+        lambda;
         mach;
         waveAmplitude;
     end %PUBLIC
@@ -66,24 +63,22 @@ classdef ShuOsherTubeInitializer < Initializer
         
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-
             %--- Initialization ---%
             statics             = []; % No statics used in this problem
             potentialField      = [];
             selfGravity         = [];
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
 
-            X = GIS.ndgridSetXY();
+	    geo = obj.geomgr;
+	    geo.makeBoxSize(1);
+
+            X = geo.ndgridSetIJ('pos');
 
             % Initialize parallel vectors and logicals
-            X = X/obj.grid(1);
             left = (X < 1/obj.lambda);
             right = (X >= 1/obj.lambda);
-            obj.dGrid = 1/obj.grid(1);
 
             %--- Set array values ---%
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Compute shockwave
             j                   = HDJumpSolver(obj.mach,0,obj.gamma);

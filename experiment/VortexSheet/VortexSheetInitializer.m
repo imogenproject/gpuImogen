@@ -61,7 +61,7 @@ classdef VortexSheetInitializer < Initializer
         function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
         
             %--- Initialization ---%
-            statics = StaticsInitializer();
+            statics = StaticsInitializer(obj.geomgr);
             potentialField = [];
             selfGravity = [];
 

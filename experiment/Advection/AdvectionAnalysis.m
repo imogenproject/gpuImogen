@@ -27,9 +27,11 @@ c0 = sqrt(IC.ini.gamma * IC.ini.pPressure / IC.ini.pDensity);
 
 % Calculate the initial phases we'll use to project the result onto the
 % full simulation grid
-G = GlobalIndexSemantics();
-G.setup(IC.ini.grid);
-[xv yv zv] = G.ndgridSetXYZ([1 1 1], IC.ini.dGrid);
+geo = GeometryManager(IC.ini.geometry.globalDomainRez);
+geo.makeBoxSize(1); % fixme hack we should get this from the savefile portal
+% not assume it
+
+[xv, yv, zv] = geo.ndgridSetIJK('pos');
 KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 
 % Calculate the linear factor in displacement
@@ -40,8 +42,6 @@ machPerp     = IC.ini.backgroundMach - Khat * machParallel;
 rhoerr_L1 = []; rhoerr_L2 = [];
 velerr_L1 = []; velerr_L2 = [];
 frameT = [];
-
-GIS = GlobalIndexSemantics(); 
 
 % Since we know the initial function is a sine, write down the critical
 % time
@@ -63,7 +63,7 @@ backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machPa
 
     % The moment of truth: calculate the 1- and 2-norms
     delta = rhoAnalytic - F.mass;
-    if runParallel; delta = GIS.withoutHalo(delta); end
+    if runParallel; delta = geo.withoutHalo(delta); end
 
     if sum(F.time.history) >= tCritical;
         disp(['At frame', S.tellFrame(), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])

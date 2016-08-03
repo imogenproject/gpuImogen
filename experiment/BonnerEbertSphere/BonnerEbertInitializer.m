@@ -19,7 +19,7 @@ classdef BonnerEbertInitializer < Initializer
     sphereK;        % ???                                                           ???
     sphereRmax;     % ???                                                           ???
     edgePadding     % Determines how much space to keep at the edge of the          ???
-                    %   grid at background density.
+                    % grid at background density.
     end %PUBLIC
 
 %===================================================================================================
@@ -55,13 +55,12 @@ classdef BonnerEbertInitializer < Initializer
             obj.bcMode.z            = 'fade';
 
             obj.activeSlices.xy     = true;
-            obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
 
             obj.pBgDensityCoeff     = 1e-3;
             
             obj.gravity.solver      = 'biconj';
 
-            obj.gamma               = 5/3; % Imogen gamma
+            obj.gamma               = 5/3; %
 
             obj.rho0                = .1;
             obj.sphereGAMMA         = 1;
@@ -78,7 +77,6 @@ classdef BonnerEbertInitializer < Initializer
         function value = get.BgDensity(obj)
             value = obj.rho0*obj.pBgDensityCoeff;
         end
-        %\ @private \%
         function set.BgDensity(obj, value)
             obj.pBgDensityCoeff = value/obj.rho0;
             obj.thresholdMass = obj.rho0 * obj.pBgDensityCoeff * 2;
@@ -88,7 +86,6 @@ classdef BonnerEbertInitializer < Initializer
         function value = get.BgDensityCoeff(obj)
             value = obj.pBgDensityCoeff;
         end
-        %\ @private \%
         function set.BgDensityCoeff(obj, value)
             obj.pBgDensityCoeff = value;
             obj.thresholdMass = obj.rho0 * obj.pBgDensityCoeff;
@@ -112,8 +109,8 @@ classdef BonnerEbertInitializer < Initializer
                 if (bitget(obj.grid(i),1) && obj.grid(i) > 1);  obj.grid(i) = obj.grid(i) + 1; end
             end
 
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
+            geo = obj.geomgr;
+
             
             % Numerically compute the hydrostatic density balance
             % Fine resolution appears important - 
@@ -122,23 +119,29 @@ classdef BonnerEbertInitializer < Initializer
                                             obj.sphereRmax, obj.sphereK, ...
                                             obj.rho0 * obj.pBgDensityCoeff);
 
-            obj.dGrid       = 2.4*max(R) ./ obj.grid;
+            sphrad = 1.2 * max(R);
+            geo.makeBoxSize(2*sphrad);
 
-            [X Y Z]         = GIS.ndgridSetXYZ(obj.grid/2, obj.dGrid);
+            [X, Y, Z]       = geo.ndgridSetIJK('pos');
+            X = X - sphrad;
+            Y = Y - sphrad;
+            Z = Z - sphrad;
 
             sphereRadii     = sqrt(X.^2 + Y.^2 + Z.^2);
             
             mass            = pchip(R, RHO, sphereRadii);
-            mom             = GIS.zerosXYZ(GIS.VECTOR);
+            mom             = geo.zerosXYZ(geo.VECTOR);
             ener            = pchip(R, E/(obj.gamma - 1), sphereRadii);
-            mag             = GIS.zerosXYZ(GIS.VECTOR);
+            mag             = geo.zerosXYZ(geo.VECTOR);
 
             obj.minMass     = obj.rho0 * obj.pBgDensityCoeff;
             
             ener            = ener + ... % internal already computed by initializer
                                 + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...   % kinetic energy
                                 + 0.5*squish(sum(mag .* mag, 1));              % magnetic energy                    
-                        
+      
+            fluid = obj.stateToFluid(mass, mom, ener);
+
             statics = [];
             potentialField = [];
         end

@@ -160,21 +160,21 @@ classdef AdvectionInitializer < Initializer
     %===============================================================================================
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-            statics  = StaticsInitializer();                           
             potentialField = [];
             selfGravity = [];
             
-            GIS = GlobalIndexSemantics();
-            GIS.setup(obj.grid);
+            geo = obj.geomgr;
             
-            obj.dGrid = 1 ./ obj.grid; % set the total grid length to be 1.
+            statics  = StaticsInitializer(geo);
             
-            [xGrid yGrid zGrid] = GIS.ndgridSetXYZ([1 1 1], obj.dGrid);
+            geo.makeBoxSize(1);
+            
+            [xGrid yGrid zGrid] = geo.ndgridSetIJK('pos');
             
             fluids = struct('mass',[],'momX',[],'momY',[],'momZ',[],'ener',[]);
 
             % Store equilibrium parameters
-            [mass mom mag ener] = GIS.basicFluidXYZ();
+            [mass mom mag ener] = geo.basicFluidXYZ();
             mass     = mass * obj.pDensity;
             ener     = ener*obj.pPressure / (obj.gamma-1);
             
@@ -183,7 +183,8 @@ classdef AdvectionInitializer < Initializer
 
             % omega = c_wave k
             % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
-            K     = 2*pi*obj.pWavenumber ./ [1 obj.grid(2)/obj.grid(1) obj.grid(3)/obj.grid(1)]; obj.pWaveK = K;
+            rez   = geo.globalDomainRez;
+            K     = 2*pi*obj.pWavenumber ./ [1 rez(2)/rez(1) rez(3)/rez(1)]; obj.pWaveK = K;
             KdotX = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
             
             % Calculate the background velocity
