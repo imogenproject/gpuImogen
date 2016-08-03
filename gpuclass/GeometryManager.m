@@ -69,7 +69,7 @@ classdef GeometryManager < handle
             obj.topology = parInfo.topology;
             
             if nargin < 1
-                warning('GeometryManager received no resolution: going with 512x512x1; Call GIS.setup([nx ny nz]) to change.');
+                warning('GeometryManager received no resolution: going with 512x512x1; Call geo.setup([nx ny nz]) to change.');
                 globalResolution = [512 512 1];
             end
 
@@ -78,8 +78,8 @@ classdef GeometryManager < handle
         end
 
         function package = serialize(self)
-            % Converts the GIS object into a structure which can reinitialize itself
-            % 'context',self.context, 'topology', self.topology, are excluded because they do not persist across invocations if restarting
+            % Converts the geo object into a structure which can reinitialize itself
+            % 'context' and 'topology' props are excluded because they do not persist across invocations if restarting
             package = struct('globalDomainRezPlusHalos', self.globalDomainRezPlusHalos, ...
                              'localDomainRez', self.localDomainRez, 'pLocalDomainOffset',self.pLocalDomainOffset, ...
                              'globalDomainRez', self.globalDomainRez, 'edgeInterior', self.edgeInterior, ...
@@ -94,6 +94,8 @@ classdef GeometryManager < handle
         end
         
         function deserialize(self, package)
+            % geo.deserialize(package) accepts a package structure as returned by package = geo.serialize()
+            % And overwrites this object's fields with the package's values verbatim.
             F = fields(package);
             for N = 1:numel(F)
                 self.(F{N}) = package.(F{N});
@@ -101,8 +103,9 @@ classdef GeometryManager < handle
         end
         
         function obj = setup(obj, global_size)
-            % setup(global_resolution) establishes a global resolution &
-            % runs the bookkeeping for it.
+            % geo.setup(global_resolution) establishes a global resolution &
+            % runs the bookkeeping for it, determining what set of I/J/K vectors out of the global grid that
+            % this node has.
             if numel(global_size) == 2; global_size(3) = 1; end
 
             dblhalo = 2*obj.haloAmt;
@@ -150,9 +153,24 @@ classdef GeometryManager < handle
         end
 
         function makeBoxSize(obj, newsize)
+            % geo.makeBoxSize([s])
+            % If geometry is square, geo.makeBoxSize([a b c]) sets grid spacing to [a/nx, b/ny, c/nz].
+            % If given other than a 3-element vector, [a a a] is used with 'a' the first element.
+            % If ny or nz = 1, the respective spacing is set to 1.
+            %
+            % If geometry is cylindrical,
+            % geo.makeBoxSize([width angle height]) sets grid spacing such that the cylindrical annulus
+            % spans (rin, rin+width) x (angle) x (0, height)
+            % If other than 3 element vector is given, a = x(1) and spacing is set for 
+            % width = height = a, and angle = 2*pi
+            % Note that for cylinrical geometry,
+            % is is very strongly advised that angle be 2*pi / M, for M in \mathbb{Z} > 0.
+            
             if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
                 if numel(newsize) ~= 3; newsize = obj.globalDomainRez * newsize(1) / obj.globalDomainRez(1); end
                 obj.d3h = newsize ./ obj.globalDomainRez;
+                if obj.globalDomainRez(3) == 1; obj.d3h(3) = 1; end
+                if obj.globalDomainRez(2) == 1; obj.d3h(2) = 1; end
             end
             if obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                 if numel(newsize) ~= 3 % make the annulus (rin,rin+x) x (0,z=x) x (0,2pi)
@@ -171,8 +189,10 @@ classdef GeometryManager < handle
 
         function geometrySquare(obj, zeropos, spacing)
             % geometrySquare([x0 y0 z0], [hx hy hz])
-            % sets the (1,1,1) cell to have center at [x0 y0 z0]
+            % sets the (1,1,1)-index cell to have center at [x0 y0 z0]
             % and grid spacing to [hx hy hz]
+            % If no spacing is given, defaults to [1 1 1]
+            % If no zero gauge is given, defaults to [0 0 0].
             obj.pGeometryType = ENUM.GEOMETRY_SQUARE;
             obj.pInnerRadius = 1.0; % ignored
 
@@ -210,7 +230,7 @@ classdef GeometryManager < handle
         end
         
         function [u, v, w] = toLocalIndices(obj, x, y, z)
-            % [u v w] = GIS.toLocalIndices(x, y, z) converts a global set of coordinates to 
+            % [u v w] = geo.toLocalIndices(x, y, z) converts a global set of coordinates to 
             % local coordinates, and keeps only those in the local domain
             u = []; v = []; w = [];
             if (nargin == 2) && (size(x,2) == 3);
@@ -253,9 +273,13 @@ classdef GeometryManager < handle
         end
 
         function Y = evaluateFunctionOnGrid(obj, afunc)
-        % Y = evaluateFunctionOnGrid(@func) calls afunc(x,y,z) using the
-        % [x y z] returned by obj.ndgridSetIJK.
-            [x, y, z] = obj.ndgridSetIJK();
+        % If geometry is set to square,
+        % F = evaluateFunctionOnGrid(@func) returns func(x, y, z) using the
+        % x/y/z positions of every cell center
+        % If geometry is set to cylindrical,
+        % F = evaluateFunctionOnGrid(@func) returns func(r, phi, z) using the
+        % r/phi/z positions of every cell center.
+            [x, y, z] = obj.ndgridSetIJK('pos');
             Y = afunc(x, y, z);
         end
         
@@ -291,7 +315,7 @@ classdef GeometryManager < handle
         end
 
         function updateGridVecs(obj)
-            % GIS.updateGridVecs(). Utility - upon change in global dims, recomputes x/y/z index
+            % geo.updateGridVecs(). Utility - upon change in global dims, recomputes x/y/z index
             % vectors
             ndim = numel(obj.globalDomainRezPlusHalos);
 
@@ -339,7 +363,7 @@ classdef GeometryManager < handle
         end
 
         function [u, v, w] = ndgridVecs(obj)
-            % [u v w] = GIS.ndgridVecs() returns the x-, y- and z- index vectors
+            % [u v w] = geo.ndgridVecs() returns the x-, y- and z- index vectors
             u = obj.localIcoords; v = obj.localJcoords; w = obj.localKcoords;
         end
 
@@ -370,10 +394,10 @@ classdef GeometryManager < handle
                 return;
             end
             if strcmp(form, 'pos')
-                if obj.pGeometryType == ENUM.SQUARE
-                    [x, y, z] = ndgrid(obj.localXvector, obj.localYvector, obj.localZvector);
+                if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
+                    [x, y, z] = ndgrid(obj.localXposition, obj.localYposition, obj.localZposition);
                 elseif obj.pGeometryType == ENUM.CYLINDRICAL
-                        [x, y, z] = ndgrid(obj.localRvector, obj.localPhivector, obj.localZvector);
+                        [x, y, z] = ndgrid(obj.localRposition, obj.localPhiPosition, obj.localZposition);
                 end
                 return;
             end
@@ -459,13 +483,15 @@ classdef GeometryManager < handle
         function O = zerosYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 0); end
         function O = zerosXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 0); end
 
-        % Or of ones
+        % These generate a set of ones of the size of the part of the global grid residing on this node
         function O = onesXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 1); end
         function O = onesXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 1); end
         function O = onesYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 1); end
         function O = onesXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 1); end
         
         function [rho, mom, mag, ener] = basicFluidXYZ(obj)
+            % Returns a single fluid [rho, mom, mag, ener] with
+            % rho = 1, mom = [0 0 0], B = [0 0 0] and ener = 1 (pressure = gamma-1)
             rho = ones(obj.localDomainRez);
             mom = zeros([3 obj.localDomainRez]);
             mag = zeros([3 obj.localDomainRez]);
@@ -483,13 +509,13 @@ classdef GeometryManager < handle
             G(i0) = 0:(numel(G)-1);
         end
 
-        % This is the only function in GIS that references any part of the topology execpt .nproc or .coord
+        % This is the only function in geo that references any part of the topology execpt .nproc or .coord
         function index = getMyNodeIndex(obj)
             index = double(mod(obj.topology.neighbor_left+1, obj.topology.nproc));
         end
 
         function slim = withoutHalo(obj, array)
-            % slim = GIS.withoutHalo(fat), when passed an array of size equal to the node's
+            % slim = geo.withoutHalo(fat), when passed an array of size equal to the node's
             % array size, returns the array with halos removed.
 
             cantdo = 0;
@@ -506,7 +532,10 @@ classdef GeometryManager < handle
             slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
         end
 
+        
         function DEBUG_setTopoSize(obj, n)
+            % This function is only for debugging: It allows the topology's .nproc parameter to
+            % be overwritten
             obj.topology.nproc = n;
 
             c = obj.circularBCs;
@@ -514,6 +543,8 @@ classdef GeometryManager < handle
             for x = 1:n; if c(x) == 0; obj.makeDimNotCircular(x); end; end
         end
         function DEBUG_setTopoCoord(obj,c)
+            % This fucntion is only for debugging: It allows the topology's .coord parameter to
+            % be overwritten
             obj.topology.coord = c;
             c = obj.circularBCs;
             obj.setup(obj.globalDomainRez);
