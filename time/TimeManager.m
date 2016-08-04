@@ -117,7 +117,7 @@ classdef TimeManager < handle
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
                 newTime = obj.TIMEMAX;
             end
-            obj.timePercent = 100*newTime/obj.TIMEMAX;
+            
         end
         
         %__________________________________________________________________________________ updateUI
@@ -195,11 +195,12 @@ classdef TimeManager < handle
         % Increments the iteration variable by one for the next loop.
         function step(obj)
             obj.iteration   = obj.iteration + 1;
-            obj.updateUI();
-            obj.time = obj.time + 2*obj.dTime;
+            obj.time        = obj.time + 2*obj.dTime;
+            obj.timePercent = 100*obj.time/obj.TIMEMAX;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
-            obj.appendHistory();
             
+            obj.updateUI();
+            obj.appendHistory();
         end
         
         %__________________________________________________________________________________ toStruct

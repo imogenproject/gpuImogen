@@ -41,7 +41,6 @@ classdef SaveManager < LinkedListNode
                  %        4: % between Custom data saves.
             
         ACTIVE;          % Specifies which slices should be saved.                  logical(8,1)
-        SLICE;           % Slice strings for each slice (e.g. ":,:,:")                 Cell(8,1)
 
         SLICEINDEX;      % The indices at which to slice the grid for slice saves.      int(3,1)
         parent;          % parent manager                                          ImogenManager
@@ -83,7 +82,6 @@ classdef SaveManager < LinkedListNode
     function obj = SaveManager()
         obj = obj@LinkedListNode(); % Initialize the LL to blank
         
-        obj.SLICE                   = cell(8,1);
         obj.SLICEINDEX              = ones(1,3);
         obj.ACTIVE                  = false(1,8);
         obj.previousUpdateTimes     = zeros(1,5);
@@ -314,18 +312,25 @@ methods (Access = private) %                                               P R I
 %_____________________________________________________________________________ updateTimeDataSaves
     function updateTimeDataSaves(obj, time)
         obj.done    = (time.time >= time.TIMEMAX);
-        timeUpdates = (time.timePercent - 100*obj.previousUpdateTimes/time.TIMEMAX) ...
-            >= [obj.PERSLICE 10];
+        % What fraction of time to pass has thus far elapsed
+        currentFraction = time.time / time.TIMEMAX - obj.previousUpdateTimes;
+        % yes/no on whether we've passed the fraction to trigger a save for this slice
+        timeUpdates = 100*currentFraction >= [obj.PERSLICE 10];
+        
+        vomit = 100 ./ [obj.PERSLICE 10];
         
         obj.save1DData      = timeUpdates(1);
         obj.save2DData      = timeUpdates(2);
         obj.save3DData      = timeUpdates(3);
-        obj.saveCustomData        = timeUpdates(4);
+        obj.saveCustomData  = timeUpdates(4);
         obj.updateUI        = timeUpdates(5);
         
         for i=1:length(timeUpdates)
             if timeUpdates(i)
-                obj.previousUpdateTimes(i)      = time.time;
+                % Time to elapse between saves
+                timePerSave = floor(time.time*vomit(i)/time.TIMEMAX) / vomit(i);
+                
+                obj.previousUpdateTimes(i)      = timePerSave;
                 obj.previousUpdateWallTimes(i)  = time.wallTime;
             end
         end

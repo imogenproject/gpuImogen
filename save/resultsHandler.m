@@ -21,7 +21,8 @@ function resultsHandler(saveEvent, run, fluids, mag)
     end
     
     if ~run.save.FSAVE; return; end
-    
+
+
     iteration = run.time.iteration;
     saveState = 1*(iteration == 0) +2*(run.save.done == true);
 
@@ -34,7 +35,7 @@ ener = fluids(1).ener;
     % Save Data to File
     %------------------
     if run.save.saveData
-        % Just use the ****ing numeric suffix, FFS...       
+
         fileSuffix         = run.paths.iterationToString(iteration);
 
         run.save.firstSave = false; % Update for later saves.
@@ -45,7 +46,7 @@ ener = fluids(1).ener;
         sl.ver    = run.version;
         sl.iter   = iteration;
             
-        for i=1:size(run.save.SLICE,1) % For each slice type
+        for i = find(run.save.ACTIVE)
             switch (i)
                 case {1 2 3};    % 1D Slices
                     if ( ~run.save.save1DData ); continue;        else sliceDim = '1D';     end
@@ -58,7 +59,7 @@ ener = fluids(1).ener;
             end
 
             %--- Save slice if active ---%
-            if (run.save.ACTIVE(i)) % Check if active
+            if (run.save.ACTIVE(i)) % Iff saving this slice type,
                 sl.mass = run.save.getSaveSlice(mass.array, i);
                 sl.momX = run.save.getSaveSlice(mom(1).array, i);
                 sl.momY = run.save.getSaveSlice(mom(2).array, i);
@@ -119,9 +120,9 @@ ener = fluids(1).ener;
                     MERR.message
                     MERR.cause
                 end
-            end
-        end
-    end
+            end % end if(active) {save}
+        end % end loop over slices
+    end % end function
 
     %-----------------------------------------------------------------------------------------------
     % Save Info File
