@@ -84,6 +84,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 
             geom = obj.geomgr;
             geom.makeBoxSize([1 1 1]);
+	    geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
             
             %--- Initialization ---%
             statics         = [];
@@ -106,8 +107,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             end
 
             %--- Calculate Radial Distance ---%
-            [X, Y, Z] = geom.ndgridSetIJK(floor(obj.geomgr.globalDomainRez/2));
-            distance  = sqrt(X.*X + Y.*Y + Z.*Z);
+            [X, Y, Z] = geom.ndgridSetIJK('pos');
+            distance  = sqrt(X.*X/(geom.d3h(1)^2) + Y.*Y/(geom.d3h(2)^2) + Z.*Z/(geom.d3h(3)^2));
 
             %--- Find the correct energy density Ec = Eblast / (# deposit cells) ---%
             % FIXME: Note that this is still 'wrong' in that it fails to integral average
