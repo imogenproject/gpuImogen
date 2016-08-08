@@ -232,13 +232,20 @@ classdef RiemannProblemInitializer < Initializer
             selfGravity           = [];
             
             geo = obj.geomgr;
-            geo.makeBoxSize(1);
-            geo.makeBoxOriginCoord(obj.pCenterCoord .* geo.globalDomainRez + 0.5);
-            
+            if geo.pGeometryType == ENUM.GEOMETRY_SQUARE
+                geo.makeBoxSize(1);
+                geo.makeBoxOriginCoord(obj.pCenterCoord .* geo.globalDomainRez + 0.5);
+            end
             
              % FIXME: need to do proper geometry calcs & switch cylindrical vs square stuff here... 
             %--- Compute the conditions for the domains ---%
             [X, Y, Z] = geo.ndgridSetIJK('pos');
+            
+            if geo.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+               midrad = (geo.affine(1)*2 + geo.d3h(1)*geo.globalDomainRez(1)) / 2; 
+               X = X - midrad;
+               Y = Y - pi;
+            end
             
             r = obj.pOctantRotation(3);
             p = obj.pOctantRotation(2);
