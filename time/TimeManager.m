@@ -21,7 +21,9 @@ classdef TimeManager < handle
         wallPercent; % Percent complete based on wall time.                          double
         running;     % Specifies if the simulation should continue running.          logical
         dtAverage;   % The accumulated mean timestep                                 double
-        
+
+        stepsPerChkpt; % Number of steps between in-memory checkpoint dumps
+
         firstWallclockValue;
     end%PUBLIC
     
@@ -58,6 +60,7 @@ classdef TimeManager < handle
             obj.timePercent = 0;
             obj.wallPercent = 0;
             obj.dtAverage   = 0;
+	    obj.stepsPerChkpt=25;
         end
         
         function recordWallclock(obj)
