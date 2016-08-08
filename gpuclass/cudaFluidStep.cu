@@ -125,6 +125,8 @@ __constant__ __device__ int    arrayParams[4];
 #define DEV_NZ arrayParams[2]
 #define DEV_SLABSIZE arrayParams[3]
 
+cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3 gridsize, dim3 blocksize, double *fluidBase, double *tempmem, double dt);
+
 #ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
@@ -401,14 +403,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				case FLUX_X: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
 				case FLUX_Y: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
 				case FLUX_Z: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_RADIAL:
-				case FLUX_THETA_213:
-				case FLUX_THETA_231:
-					PRINT_FAULT_HEADER;
-					printf("Fatal problem: The XinJin flux algorithm (1st order) has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
-					PRINT_FAULT_FOOTER;
-					returnCode = ERROR_INVALID_ARGS;
-					return returnCode;
+				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -449,18 +446,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				gridsize = makeDim3(ROUNDUPTO(arraysize.x,blocksize.x - 4)/(blocksize.x - 4), arraysize.z, 1);
 
 				cudaSetDevice(fluid->deviceID[i]);
+
 				switch(stepdirect) {
 				case FLUX_X: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
 				case FLUX_Y: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
 				case FLUX_Z: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_RADIAL:
-				case FLUX_THETA_213:
-				case FLUX_THETA_231:
-					PRINT_FAULT_HEADER;
-					printf("Fatal problem: The XinJin flux algorithm (2nd order) kernel has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
-					PRINT_FAULT_FOOTER;
-					returnCode = ERROR_INVALID_ARGS;
-					return returnCode;
+				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -496,28 +489,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-					switch(stepdirect) {
-					case FLUX_X: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-					case FLUX_Y: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-					case FLUX_Z: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-					case FLUX_RADIAL:
-					case FLUX_THETA_213:
-					case FLUX_THETA_231:
-						PRINT_FAULT_HEADER;
-						printf("Fatal problem: The HLL scheme has not been extended to support cylindrical coordinates.\nCrashing Imogen...\n");
-						PRINT_FAULT_FOOTER;
-						returnCode = ERROR_INVALID_ARGS;
-						return returnCode;
-					}
-				} else switch(stepdirect) {
-				case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case FLUX_Z: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case FLUX_RADIAL: cukern_HLLC_1storder<FLUX_RADIAL><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
-				case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], .5*lambda); break;
+
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], 0.5*lambda);
+					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_1storder");
+				} else { // hllc
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], 0.5*lambda);
+					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 				}
-				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
+
 				if(returnCode != SUCCESSFUL) return returnCode;
 
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
@@ -534,29 +513,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-					switch(stepdirect) {
-					case FLUX_X: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
-					case FLUX_Y: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
-					case FLUX_Z: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], wStepValues[i], lambda); break;
-					case FLUX_RADIAL:
-					case FLUX_THETA_213:
-					case FLUX_THETA_231:
-						PRINT_FAULT_HEADER;
-						printf("Fatal problem: The HLL solver (2nd order) has not been extended to support cylindrical coordinates\nCrashing Imogen...\n");
-						PRINT_FAULT_FOOTER;
-						returnCode = ERROR_INVALID_ARGS;
-						return returnCode;
-					}
 
-				} else switch(stepdirect) {
-				case FLUX_X: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
-				case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231><<<gridsize, blocksize>>>(wStepValues[i], fluid[0].devicePtr[i], lambda); break;
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
+					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_2ndorder");
+				} else { // hllc
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
+					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_2ndorder");
 				}
-				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_step correction step");
+
 				if(returnCode != SUCCESSFUL) return returnCode;
 #ifdef DBG_SECONDORDER
 				returnDebugArray(fluid, 6, wStepValues, dbOutput);
@@ -625,6 +589,54 @@ int releaseTemporaryMemory(double **m, MGArray *ref)
 	return returnCode;
 
 }
+
+cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3 gridsize, dim3 blocksize, double *fluidBase, double *tempmem, double dt)
+{
+	if(algo == METHOD_HLL) {
+		if(order == 1) {
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLL_step<RK_PREDICT+0><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Y: cukern_HLL_step<RK_PREDICT+2><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Z: cukern_HLL_step<RK_PREDICT+4><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_RADIAL: cukern_HLL_step<RK_PREDICT+6><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_213: cukern_HLL_step<RK_PREDICT+8><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_231: cukern_HLL_step<RK_PREDICT+10><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			}
+		} else {
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLL_step<RK_CORRECT+0><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Y: cukern_HLL_step<RK_CORRECT+2><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Z: cukern_HLL_step<RK_CORRECT+4><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_RADIAL: cukern_HLL_step<RK_CORRECT+6><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_213: cukern_HLL_step<RK_CORRECT+8><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_231: cukern_HLL_step<RK_CORRECT+10><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			}
+		}
+	}
+	if(algo == METHOD_HLLC) {
+		if(order == 1) {
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Z: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_1storder<FLUX_RADIAL><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			}
+		} else {
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			}
+		}
+	}
+	return cudaSuccess;
+}
+
 // Sometimes nsight gets stupid about parsing the nVidia headers and I'm tired of this
 // crap about how __syncthreads is "undeclared."
 extern __device__ __device_builtin__ void                   __syncthreads(void);
@@ -670,7 +682,7 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS_FO*BLOCKLENP4];
 	double *shptr = &shblk[IC];
 	double A, B, C, D, E, F, G, H;
-	float cylgeomA, cylgeomB, cylgeomC;
+	double cylgeomA, cylgeomB, cylgeomC;
 #endif
 	/* My x index: thread + blocksize block, wrapped circularly */
 	//int thisThreadPonders  = (threadIdx.x > 0) && (threadIdx.x < blockDim.x-1);
@@ -916,7 +928,7 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 
 		__syncthreads();
 		// All fluxes are now uploaded to shmem:
-		// shptr[BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz
+		// shptr[BOS0, 1, 2, 3, 4] = flux of [rho, E, px, py, pz]
 
 #ifdef DBG_FIRSTORDER
 	DBGSAVE(4, shptr[BOS2]); // px flux
@@ -965,9 +977,9 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]);
 				break;
 			case FLUX_RADIAL:
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS2])
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * (  (double)(cylgeomB*shptr[BOS2])
 																		-(double)(cylgeomA*shblk[IL+BOS2])
-																		);//- cylgeomC*E); // (P dt / r) source term
+																		- cylgeomC*E); // (P dt / r) source term
 				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS3])-(double)(cylgeomA*shblk[IL+BOS3]));
 				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)(cylgeomB*shptr[BOS4])-(double)(cylgeomA*shblk[IL+BOS4]));
 				break;
@@ -1037,7 +1049,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		cylgeomA = (A - .5*CYLGEO_DR) / (A);
 		cylgeomB = (A + .5*CYLGEO_DR) / (A);
 		cylgeomC = 0.5 * CYLGEO_DR / A; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
-		                    // At the fluxer stage to recover the average from the left/right values
+										// At the fluxer stage to recover the average from the left/right values
 	}
 	// The kern will step through r, so we have to add to R and compute 1.0/R
 	if(fluxDirection == FLUX_THETA_213) {
@@ -1048,7 +1060,6 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 	if(fluxDirection == FLUX_THETA_231) {
 		lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
 	}
-
 
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
@@ -1342,9 +1353,9 @@ DBGSAVE(1, E);
 			case FLUX_RADIAL:
 				Qout[2*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS6]
 				                                 -cylgeomA*(double)shblk[IL+BOS6]
-				                                 );//-cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // Note from earlier in fcn,
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+				                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
+				Qout[3*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8]); // Note from earlier in fcn,
+				Qout[4*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
 				break;
 			case FLUX_THETA_213:
 				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6])/cylgeomA; // FIXME sub rho vr vtheta dt / r
@@ -1427,28 +1438,27 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 	if(x0 < 0) x0 += DEV_NX; // left wraps to right edge
 	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
 	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
-/*
-	if(0) {
-		double cylgeomA, cylgeomB, cylgeomC;
-		/* If doing cylindrical geometry...
-		// Compute multiple scale factors for radial direction fluxes
-		if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
-			A = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
-			cylgeomA = (A - .5*CYLGEO_DR) / (A);
-			cylgeomB = (A + .5*CYLGEO_DR) / (A);
-			cylgeomC = 0.5 * CYLGEO_DR / A; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
-			// At the fluxer stage to recover the average from the left/right values
-		}
-		// The kern will step through r, so we have to add to R and compute 1.0/R
-		if(fluxDirection == FLUX_THETA_213) {
-			cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
-		}
-		// The kerns will step through z so R is fixed and we compute it once
-		// We just scale lambda ( = dt / dtheta) by 1/r_c
-		if(fluxDirection == FLUX_THETA_231) {
-			lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
-		}
-	} */
+
+	double cylgeomA, cylgeomB, cylgeomC;
+	// If doing cylindrical geometry...
+	// Compute multiple scale factors for radial direction fluxes
+	int fluxDirection = (PCswitch / 2) + 1; // will be evaluted away @ compile time
+
+	if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
+		Fa = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
+		cylgeomA = (Fa - .5*CYLGEO_DR) / (Fa);
+		cylgeomB = (Fa + .5*CYLGEO_DR) / (Fa);
+		cylgeomC = CYLGEO_DR / Fa;
+	}
+	// The kern will step through r, so we have to add to R and compute 1.0/R
+	if(fluxDirection == FLUX_THETA_213) {
+		cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
+	}
+	// The kerns will step through z so R is fixed and we compute it once
+	// We just scale lambda ( = dt / dtheta) by 1/r_c
+	if(fluxDirection == FLUX_THETA_231) {
+		lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
+	}
 
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
@@ -1460,10 +1470,15 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			/* If making prediction use simple 0th order "reconstruction." */
 			Ale = Are = Qin[0*DEV_SLABSIZE + x0]; /* load rho */
 
-			switch(PCswitch & 6) {
-			case HLLTEMPLATE_XDIR: Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
-			case HLLTEMPLATE_YDIR: Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
-			case HLLTEMPLATE_ZDIR: Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_RADIAL: Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+
+			case FLUX_Y:
+			case FLUX_THETA_213:
+			case FLUX_THETA_231: Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+
+			case FLUX_Z: Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
 			}
 
 			// We calculated the gas pressure into temp array # 6 before calling
@@ -1473,10 +1488,15 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
 			Ale = Qstore[x0 + 0*DEV_SLABSIZE]; /* load rho */
-			switch(PCswitch & 6) {
-			case HLLTEMPLATE_XDIR: Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
-			case HLLTEMPLATE_YDIR: Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
-			case HLLTEMPLATE_ZDIR: Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_RADIAL: Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
+
+			case FLUX_Y:
+			case FLUX_THETA_213:
+			case FLUX_THETA_231: Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
+
+			case FLUX_Z: Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
 			}
 
 			Cle = Qstore[x0 + 5*DEV_SLABSIZE]; /* load pressure */
@@ -1553,7 +1573,7 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 		shblk[IC + BOS0] = Fa;
 		shblk[IC + BOS2] = Fb;
 
-		shblk[IC + BOS6] = Ble*Fa; // Raw (convective) momentum flux, also to be used for pressure calculation
+		shblk[IC + BOS6] = Ble*Fa; // convective  momentum flux, also to be used for pressure calculation
 		shblk[IC + BOS7] = Bre*Fb;
 
 		/* Determine where our flux originates from (Uleft, Uhll, or Uright) */
@@ -1584,19 +1604,63 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
                    therefore Ale = Acentered. */
 		if(thisThreadDelivers) {
 			if((PCswitch & 1) == RK_PREDICT) {
-				                       Qstore[x0 + 0*DEV_SLABSIZE] = Ale + lambda * shblk[IC + BOS2];
+				switch(fluxDirection) {
+				case FLUX_X:
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_Y:
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_Z:
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_RADIAL:
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda*(cylgeomB*(double)shblk[IC+BOS1] - cylgeomA*(double)shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa  - lambda*( cylgeomB*(double)shblk[IC+BOS3]
+					                                            -cylgeomA*(double)shblk[IL+BOS3]
+					                                            -Cle*cylgeomC); break;
+				case FLUX_THETA_213:
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda*((double)shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda*((double)shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA; break;
+				}
+				/*                     Qstore[x0 + 0*DEV_SLABSIZE] = Ale + lambda * shblk[IC + BOS2];
 				switch(PCswitch & 6) {
 				case HLLTEMPLATE_XDIR: Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
 				case HLLTEMPLATE_YDIR: Qstore[x0 + 3*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
 				case HLLTEMPLATE_ZDIR: Qstore[x0 + 4*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
-				}
+				}*/
 			} else {
+				switch(fluxDirection) {
+				case FLUX_X:
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_Y:
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_Z:
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
+				case FLUX_RADIAL:
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda*(cylgeomB*(double)shblk[IC+BOS1] - cylgeomA*(double)shblk[IL+BOS1]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(  cylgeomB*(double)shblk[IC+BOS3]
+					                                    - cylgeomA*(double)shblk[IL+BOS3]
+					                                    - Qstore[x0 + 5*DEV_SLABSIZE]*cylgeomC); break;
+				case FLUX_THETA_213:
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda*((double)shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda*((double)shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA; break;
+				}/*
 				                       Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
 				switch(PCswitch & 6) {
 				case HLLTEMPLATE_XDIR: Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
 				case HLLTEMPLATE_YDIR: Qin[x0 + 3*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
 				case HLLTEMPLATE_ZDIR: Qin[x0 + 4*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
-				}
+				} */
 			}
 		}
 
@@ -1604,29 +1668,35 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 		// 55 registers
 		if((PCswitch & 1) == RK_PREDICT) {
 			/* If making prediction use simple 0th order "reconstruction." */
-			switch(PCswitch & 6) {
-			case HLLTEMPLATE_XDIR:
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_RADIAL:
 				Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
 				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case HLLTEMPLATE_YDIR:
+			case FLUX_Y:
+			case FLUX_THETA_213:
+			case FLUX_THETA_231:
 				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
 				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case HLLTEMPLATE_ZDIR:
+			case FLUX_Z:
 				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
 				Utilde = Qin[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
 			}
 		} else {
 			/* If making correction, perform 1st order MUSCL reconstruction */
-			switch(PCswitch & 6) {
-						case HLLTEMPLATE_XDIR:
-							Fa     = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
-							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-						case HLLTEMPLATE_YDIR:
-							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-							Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-						case HLLTEMPLATE_ZDIR:
-							Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-							Utilde = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_RADIAL:
+				Fa     = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
+				Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case FLUX_Y:
+			case FLUX_THETA_213:
+			case FLUX_THETA_231:
+				Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
+			case FLUX_Z:
+				Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
+				Utilde = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
 			}
 
 			shblk[IC + BOS0] = Fa;
@@ -1672,26 +1742,54 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
 
 		switch(HLL_FluxMode) {
-		case HLL_LEFT:  shblk[IC + BOS2] = Fa * Ble; /* py flux */
-		shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
-		shblk[IC + BOS4] = Ble * (shblk[IC + BOS6] + FLUID_GOVERGM1*Cle);
-		break; /* E flux */
-		case HLL_HLL:   shblk[IC + BOS2] = (Sright*(Fa*Ble) - Sleft*(Fb*Bre) + Sleft*Sright*(Fb-Fa))*shblk[IC + BOS5];
-		shblk[IC + BOS3] = (Sright*(Utilde*Ble) - Sleft*(Atilde*Bre) + Sleft*Sright*(Atilde-Utilde)) * shblk[IC + BOS5];
-		shblk[IC + BOS4] = (Sright*Ble*(shblk[IC + BOS6] + FLUID_GOVERGM1*Cle) - Sleft*Bre*(shblk[IC + BOS7] + FLUID_GOVERGM1*Cre) + Sleft*Sright*(shblk[IC + BOS7] + 1.5*Cre - shblk[IC + BOS6] - 1.5*Cle))*shblk[IC + BOS5];
-		break;
-		case HLL_RIGHT:	shblk[IC + BOS2] = Fb * Bre;
-		shblk[IC + BOS3] = Atilde * Bre;
-		shblk[IC + BOS4] = Bre * (shblk[IC + BOS7] + FLUID_GOVERGM1*Cre);
-		break;
-
+		case HLL_LEFT:
+			shblk[IC + BOS2] = Fa * Ble; /* py flux */
+			shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
+			shblk[IC + BOS4] = Ble * (shblk[IC + BOS6] + FLUID_GOVERGM1*Cle);
+			break; /* E flux */
+		case HLL_HLL:
+			shblk[IC + BOS2] = (Sright*(Fa*Ble) - Sleft*(Fb*Bre) + Sleft*Sright*(Fb-Fa))*shblk[IC + BOS5];
+			shblk[IC + BOS3] = (Sright*(Utilde*Ble) - Sleft*(Atilde*Bre) + Sleft*Sright*(Atilde-Utilde)) * shblk[IC + BOS5];
+			shblk[IC + BOS4] = (Sright*Ble*(shblk[IC + BOS6] + FLUID_GOVERGM1*Cle) - Sleft*Bre*(shblk[IC + BOS7] + FLUID_GOVERGM1*Cre) + Sleft*Sright*(shblk[IC + BOS7] + 1.5*Cre - shblk[IC + BOS6] - 1.5*Cle))*shblk[IC + BOS5];
+			break;
+		case HLL_RIGHT:
+			shblk[IC + BOS2] = Fb * Bre;
+			shblk[IC + BOS3] = Atilde * Bre;
+			shblk[IC + BOS4] = Bre * (shblk[IC + BOS7] + FLUID_GOVERGM1*Cre);
+			break;
 		}
 
 		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
 
 		if(thisThreadDelivers) {
 			if((PCswitch & 1) == RK_PREDICT) {
-				Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				switch(fluxDirection) {
+				case FLUX_X:
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_Y:
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_Z:
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_RADIAL:
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shblk[IC+BOS4]- cylgeomA*(double)shblk[IL+BOS4]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Fa     - lambda*(cylgeomB*shblk[IC+BOS2]-cylgeomA*shblk[IL+BOS2]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(cylgeomB*shblk[IC+BOS3]-cylgeomA*shblk[IL+BOS3]); break;
+				case FLUX_THETA_213:
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]) / cylgeomA;
+					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]) / cylgeomA;
+					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]) / cylgeomA; break;
+				}
+				/*Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
 				switch(PCswitch & 6) {
 				case HLLTEMPLATE_XDIR:
 					Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
@@ -1702,9 +1800,36 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 				case HLLTEMPLATE_ZDIR:
 					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
 					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				}
+				}*/
 			} else {
-				Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
+				switch(fluxDirection) {
+				case FLUX_X:
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_Y:
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_Z:
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+				case FLUX_RADIAL:
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shblk[IC+BOS4]- cylgeomA*(double)shblk[IL+BOS4]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS2]-cylgeomA*shblk[IL+BOS2]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS3]-cylgeomA*shblk[IL+BOS3]); break;
+				case FLUX_THETA_213:
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]) / cylgeomA;
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]) / cylgeomA;
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]) / cylgeomA; break;
+				}
+
+				/*Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
 				switch(PCswitch & 6) {
 				case HLLTEMPLATE_XDIR:
 					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
@@ -1715,11 +1840,15 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 				case HLLTEMPLATE_ZDIR:
 					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
 					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				}
+				}*/
 			}
 		}
 
 		x0 += blockDim.y*DEV_NX;
+		// Move the r_center coordinate out as the y-aligned blocks march in x (=r)
+		if(fluxDirection == FLUX_THETA_213) {
+			cylgeomA += YBLOCKS*CYLGEO_DR;
+		}
 		__syncthreads();
 	}
 
@@ -1731,7 +1860,6 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 template <unsigned int PCswitch>
 __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *Cfreeze, double lambda)
 {
-
 	if(threadIdx.y >= DEV_NY) return;
 
 	// Create center, rotate-left and rotate-right indexes
@@ -1759,6 +1887,29 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 	if(x0 > (DEV_NX+1)) return; // More than 2 past right returns
 	if(x0 > (DEV_NX-1)) { x0 -= DEV_NX; thisThreadDelivers = 0; } // past right must wrap around to left
 
+	double cylgeomA, cylgeomB, cylgeomC;
+
+	/* If doing cylindrical geometry... */
+	// Compute multiple scale factors for radial direction fluxes
+	int fluxDirection = (PCswitch / 2) + 1; // Will be optimized away during template compilation
+
+	if(fluxDirection == FLUX_RADIAL) { // cylindrical, R direction
+		P = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
+		cylgeomA = (P - .5*CYLGEO_DR) / (P);
+		cylgeomB = (P + .5*CYLGEO_DR) / (P);
+		cylgeomC = CYLGEO_DR / P; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
+		// At the fluxer stage to recover the average from the left/right values
+	}
+	// The kern will step through r, so we have to add to R and compute 1.0/R
+	if(fluxDirection == FLUX_THETA_213) {
+		cylgeomA = threadIdx.y*CYLGEO_DR + CYLGEO_RINI;
+	}
+	// The kerns will step through z so R is fixed and we compute it once
+	// We just scale lambda ( = dt / dtheta) by 1/r_c
+	if(fluxDirection == FLUX_THETA_231) {
+		lambda /= (blockIdx.y*CYLGEO_DR + CYLGEO_RINI);
+	}
+
 	/* Do some index calculations */
 	x0 += DEV_NX*(DEV_NY*blockIdx.y + threadIdx.y); /* This block is now positioned to start at its given (x,z) coordinate */
 	int j = threadIdx.y;
@@ -1783,10 +1934,14 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 		}
 
 		P  = FLUID_GM1 * (Q[1] - .5*(Q[4]*Q[4]+Q[3]*Q[3]+Q[2]*Q[2])/Q[0]);
-		switch(PCswitch & 6) {
-		case 0: vx = Q[2] / Q[0]; break;
-		case 2: vx = Q[3] / Q[0]; break;
-		case 4: vx = Q[4] / Q[0]; break;
+
+		switch(fluxDirection) {
+		case FLUX_X: case FLUX_RADIAL:
+			vx = Q[2] / Q[0]; break;
+		case FLUX_Y: case FLUX_THETA_213: case FLUX_THETA_231:
+			vx = Q[3] / Q[0]; break;
+		case FLUX_Z:
+			vx = Q[4] / Q[0]; break;
 		}
 
 		for(i = 0; i < 5; i++) {
@@ -1794,8 +1949,9 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			/* Permute which things we use to calculate the fluxes here 
 			in order to avoid having to rearrange the memory loads which
 			causes problems when this loop iterates over the memory slabs in order. */
-			switch(PCswitch & 6) {
-			case 0:
+			switch(fluxDirection) {
+			case FLUX_X:
+			case FLUX_RADIAL:
 			switch(i) {
 			case 0: w = Q[2];          break;
 			case 1: w = vx*(Q[1] + P); break;
@@ -1803,7 +1959,9 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			case 3: w = vx*Q[3];       break;
 			case 4: w = vx*Q[4];       break;
 			} break;
-			case 2:
+			case FLUX_Y:
+			case FLUX_THETA_213:
+			case FLUX_THETA_231:
 			switch(i) {
 			case 0: w = Q[3];          break;
 			case 1: w = vx*(Q[1] + P); break;
@@ -1811,7 +1969,7 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 			case 3: w = vx*Q[3] + P;   break;
 			case 4: w = vx*Q[4];       break;
 			} break;
-			case 4:
+			case FLUX_Z:
 			switch(i) {
 			case 0: w = Q[4];          break;
 			case 1: w = vx*(Q[1] + P); break;
@@ -1832,18 +1990,58 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 				__syncthreads();
 
 				/* Impose TVD limiter */
-				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
-				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]);
+				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]); // leftgoing flux @ left edge
+				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]); // rightgoin flux @ rite edge
 				__syncthreads();
 			}
 
 			if(thisThreadDelivers) {
 				if((PCswitch & 1) == RK_PREDICT) {
-					prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
-							shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					switch(fluxDirection) {
+					case FLUX_X:
+					case FLUX_Y:
+					case FLUX_Z:
+					case FLUX_THETA_231: // This looks the same but we rescaled lambda = dt/dtheta by 1/r above
+						prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+								shblk[IR+BOS0]+ shblk[IC+BOS0]); break;
+					case FLUX_RADIAL:
+						prop[i] = Q[i] - lambda * ( cylgeomA*shblk[IC+BOS1]  // rightgoing
+						                          - cylgeomA*shblk[IL+BOS1]
+						                          - cylgeomB*shblk[IR+BOS0]  // leftgoing
+						                          + cylgeomB*shblk[IC+BOS0]);
+						if(i == 2) prop[i] += lambda*cylgeomC*P;
+						break;
+					case FLUX_THETA_213:
+						prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+								shblk[IR+BOS0]+ shblk[IC+BOS0])/cylgeomA;
+						break;
+					}
 				} else {
-					prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
-							shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					switch(fluxDirection) {
+					case FLUX_X:
+					case FLUX_Y:
+					case FLUX_Z:
+					case FLUX_THETA_231: // This looks the same but we rescaled lambda = dt/dtheta by 1/r above
+						prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+								shblk[IR+BOS0]+ shblk[IC+BOS0]); break;
+					case FLUX_RADIAL:
+						// ABAB - err = +15e-3
+						// ABBA - err = +1e-3
+						// BAAB - err = +6e-3
+						// BABA - err = -6e-3
+						// BBAA - err = +6e-3
+						// AABB
+						prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( cylgeomA*shblk[IC+BOS1]
+						                                                - cylgeomA*shblk[IL+BOS1]
+						                                                - cylgeomB*shblk[IR+BOS0]
+						                                                + cylgeomB*shblk[IC+BOS0]);
+						if(i == 2) prop[i] += lambda*cylgeomC*P;
+						break;
+					case FLUX_THETA_213:
+						prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
+								shblk[IR+BOS0]+ shblk[IC+BOS0])/cylgeomA;
+						break;
+					}
 				}
 			}
 
@@ -1876,6 +2074,11 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 		}
 
 		x0 += YBLOCKS*DEV_NX;
+		// Move the r_center coordinate out as the y-aligned blocks march in x (=r)
+		if(fluxDirection == FLUX_THETA_213) {
+			cylgeomA += YBLOCKS*CYLGEO_DR;
+		}
+
 		__syncthreads();
 	}
 
