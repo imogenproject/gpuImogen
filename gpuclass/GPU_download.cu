@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h
+#include <stdarg.h>
 #ifdef UNIX
 #include <stdint.h>
 #include <unistd.h>
@@ -25,7 +25,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray m;
 	
 	int worked = MGA_accessMatlabArrays(prhs, 0, 0, &m);
-	if(CHECK_IOGEN_ERROR(worked) != SUCCESSFUL) {
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		mexErrMsgTxt("GPU_download was not able to access GPU array.\n");
 		return;
 	}
@@ -34,7 +34,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int nd = 3;
 	if(m.dim[2] == 1) {
 		nd = 2;
-		if9m.dim[1] == 1) {
+		if(m.dim[1] == 1) {
 			nd = 1;
 		}
 	}
