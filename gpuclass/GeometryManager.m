@@ -431,7 +431,7 @@ classdef GeometryManager < handle
             if strcmp(form, 'pos')
                 if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
                     [x, y, z] = ndgrid(obj.localXposition, obj.localYposition, obj.localZposition);
-                elseif obj.pGeometryType == ENUM.CYLINDRICAL
+                elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                         [x, y, z] = ndgrid(obj.localRposition, obj.localPhiPosition, obj.localZposition);
                 end
                 return;
