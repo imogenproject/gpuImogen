@@ -102,7 +102,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         run.time.update(run.fluid, mag);
 
 %        if mod(run.time.iteration, run.time.stepsPerChkpt) == run.time.stepsPerChkpt-1
-%         if mod(run.time.iteration, 15) == 14
+%        if mod(run.time.iteration, 15) == 14
 %	    backupData = dumpCheckpoint(run);
 %	end
 
@@ -113,7 +113,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         %flux(run, run.fluid, mag, -1);
 
 %        if checkPhysicality(run.fluid)
-%            restoreCheckpoint(run, backupData);
+%           restoreCheckpoint(run, backupData);
 %	end
 
         run.time.step();
