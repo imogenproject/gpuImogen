@@ -89,19 +89,18 @@ classdef CPAlfvenWave < Initializer
         % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
         potentialField = [];
         selfGravity = [];        
-        GIS = GlobalIndexSemantics();
-        GIS.setup(obj.grid);
+        geo = obj.geomgr;
 
-        obj.dGrid = [3 1.5 1.5] ./ obj.grid;
+        geo.makeBoxSize([3 1.5 1.5]);
 
         P0 = .1;
 
         %--- Create and populate data arrays ---%
-        [mass mom mag ener] = GIS.basicFluidXYZ();
+        [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
         ener = ener * P0 / (obj.gamma-1);
         
-        [x0 y0 z0] = obj.ndgridSetXYZ();
+        [x0 y0 z0] = obj.ndgridSetIJK('pos');
 
         cosa = 1; sina = 0;
         cosb = sqrt(1/5); sinb = sqrt(4/5);
