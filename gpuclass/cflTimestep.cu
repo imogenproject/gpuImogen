@@ -273,11 +273,11 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 	__syncthreads();
 
 	// We have one halfwarp (16 threads) remaining, proceed synchronously
-	if(dtLimit[tix+16] > dtLimit[tix]) { dtLimit[tix] = dtLimit[tix+16]; } if(tix >= 8) return;
-	if(dtLimit[tix+8] > dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+8 ]; } if(tix >= 4) return;
-	if(dtLimit[tix+4] > dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+4 ]; } if(tix >= 2) return;
-	if(dtLimit[tix+2] > dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+2 ]; } if(tix) return;
+	if(dtLimit[tix+16] < dtLimit[tix]) { dtLimit[tix] = dtLimit[tix+16]; } if(tix >= 8) return;
+	if(dtLimit[tix+8] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+8 ]; } if(tix >= 4) return;
+	if(dtLimit[tix+4] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+4 ]; } if(tix >= 2) return;
+	if(dtLimit[tix+2] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+2 ]; } if(tix) return;
 
-	out[blockIdx.x] = (dtLimit[1] > dtLimit[0]) ? dtLimit[1] : dtLimit[0];
+	out[blockIdx.x] = (dtLimit[1] < dtLimit[0]) ? dtLimit[1] : dtLimit[0];
 
 }
