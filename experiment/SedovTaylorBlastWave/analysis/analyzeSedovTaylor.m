@@ -19,7 +19,7 @@ rez = f.parallel.globalDims;
 geom = GeometryManager(rez);
 geom.geometrySquare(-floor(rez/2) + 0.5, [1 1 1]);
 
-[x, y, z] = geom.ndgridSetXYZ('pos');
+[x, y, z] = geom.ndgridSetIJK('pos');
 R = x.^2+y.^2; if rez(3) > 1; R = R + z.^2; end
 
 R = sqrt(R);
