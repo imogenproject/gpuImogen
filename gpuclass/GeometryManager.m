@@ -209,7 +209,7 @@ classdef GeometryManager < handle
             obj.updateGridVecs();
         end
         
-        function makeBoxLLPosition(self, position)
+        function makeBoxLLPosition(obj, position)
             % geometry.makeBoxLLPosition(x [y [z]])
             % directly sets the geometry.affine parameter
             
@@ -414,13 +414,17 @@ classdef GeometryManager < handle
            end
         end
         
-        function [x, y, z] = ndgridSetIJK(obj, form)
-            % [x y z] = ndgridsetIJK(['pos' | 'coords']) returns the part of
+        function [x, y, z] = ndgridSetIJK(obj, form, geotype)
+            % [x y z] = ndgridsetIJK(['pos' | 'coords'], ['square','cyl']) returns the part of
             % the global domain that lives on this node.
-            % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
+            % If the 1st argument is 'pos' returns the ndgrid() of the "physical" positions that the code
             % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
             % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
             % If no argument, defaults to 'coords'.
+            % If computing positions & the 2nd argument is 'square', the returned positions
+            % will be in cartesian form (cylindrical will be converted)
+            % If computing positions & the 2nd argument is 'cyl', the returned position
+            % will be in polar form (square will be converted).
             
             if nargin < 2; form = 'coords'; end
             
@@ -431,8 +435,21 @@ classdef GeometryManager < handle
             if strcmp(form, 'pos')
                 if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
                     [x, y, z] = ndgrid(obj.localXposition, obj.localYposition, obj.localZposition);
+                    if (nargin == 3) && strcmp(geotype, 'cyl') % cvt output to cylindrical
+                        a = x; b = y;
+                        x = sqrt(a.^2+b.^2);
+                        y = atan2(b,a);
+                        y = y + 2*pi*(y<0); % go from 0 to 2pi, not -pi to pi
+                    end
                 elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-                        [x, y, z] = ndgrid(obj.localRposition, obj.localPhiPosition, obj.localZposition);
+                    [x, y, z] = ndgrid(obj.localRposition, obj.localPhiPosition, obj.localZposition);
+                    if (nargin == 3) && strcmp(geotype, 'square') % cvt output to square
+                        r = x; phi = y;
+                        x = r.*cos(phi);
+                        y = r.*sin(phi);
+                    end
+                else
+                    error('FATAL: Geometry type is invalid!!!');
                 end
                 return;
             end

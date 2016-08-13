@@ -56,10 +56,9 @@ classdef KojimaDiskInitializer < Initializer
             obj.mode.magnet         = false;
             obj.mode.gravity        = true;
             obj.iterMax             = 300;
-            obj.bcMode.x            = ENUM.BCMODE_FADE;
-            obj.bcMode.y            = ENUM.BCMODE_FADE;
+            obj.bcMode.x            = ENUM.BCMODE_CONST;
+            obj.bcMode.y            = ENUM.BCMODE_CONST;
             obj.activeSlices.xy     = true;
-            obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             obj.bgDensityCoeff      = 1e-5;
             
             obj.gravity.constant        = 1;
@@ -111,34 +110,80 @@ classdef KojimaDiskInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-%            if (obj.grid(3) > 1)
-%                if obj.useZMirror == 1
-%                    obj.bcMode.z    = ENUM.BCMODE_FLIP;
-%                else
-%                    obj.bcMode.z    = ENUM.BCMODE_FADE; 
-%                end
-%            else
-%                obj.bcMode.z    = ENUM.BCMODE_CONST;
-%            end
+            obj.bcMode.x = ENUM.BCMODE_CONST;
+	    if obj.useZMirror == 1
+	        if obj.grid(3) > 1
+                    obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONST };
+                else
+                    if mpi_amirank0(); warning('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n'); end
+                end
+            end
 
 %            obj.frameParameters.omega = 1;
 %            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
 
             geo = obj.geomgr;
-            geo.setup(obj.grid);
+
+	    diskInfo = kojimaDiskParams(obj.q, obj.radiusRatio, obj.gamma);
+
+            nz = geo.globalDomainRez(3);
+
+	    switch geo.pGeometryType;
+	    case ENUM.GEOMETRY_SQUARE;
+	        boxsize = 2*(1+obj.edgePadding)*diskInfo.rout * [1 1 1];
+
+		if nz > 1
+		    needheight = diskInfo.height * (1+obj.edgePadding) * (2 - obj.useZMirror);
+		    gotheight  = boxsize * geo.globalDomainRez(3) / geo.globalDomainRez(1);
+		
+		    if needheight > gotheight
+		        warning('NOTE: dz = dx will not be tall enough to hold disk; Raising dz.');
+			boxsize(3) = needheight
+		    else
+		        boxsize(3) = gotheight;
+	            end
+		        
+		end
+
+		geo.makeBoxSize(boxsize);
+		geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
+	    case ENUM.GEOMETRY_CYLINDRICAL;
+		dr = (1+2*obj.edgePadding) * (diskInfo.rout - diskInfo.rin) / geo.globalDomainRez(1);
+		Rminus = diskInfo.rin * (1 - obj.edgePadding);
+
+		if nz > 1
+		    nz = geo.globalDomainRez(3);
+		    availz = dr * nz;
+		    needz = round(.5*(2 - obj.useZMirror) * diskInfo.rout * (1+obj.edgePadding) * diskInfo.aspRatio);
+
+		    if availz < needz
+		        dz = dr * needz / availz;
+
+			if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
+		    else
+		        dz = dr;
+		    end
+
+		    if obj.useZMirror
+		        z0 = -4*dz
+		    else
+			z0 = -round(nz/2)*dz;
+		    end
+		else
+		    z0 = 0;
+		    dz = 1;
+		end
+
+		geo.geometryCylindrical(Rminus, 1, dr, z0, dz)
+	    end
+
 
             mom     = geo.zerosXYZ(geo.VECTOR);
-            
-            [mass, mom(1,:,:,:), mom(2,:,:,:), dGrid] = kojimaDisc1(obj.q, obj.gamma, ...
-                            obj.radiusRatio, obj.grid, 1, obj.edgePadding, obj.pointRadius, ...
-                            obj.bgDensityCoeff, obj.diskMomDist, obj.useZMirror);
 
-            obj.appendInfo(sprintf('Automatically set dGrid uniformly to %d', dGrid));
-            obj.dGrid = dGrid*ones(1,3);
-           
-            tempd = cell(1,3);
-            tempd{1} = obj.dGrid(1); tempd{2} = obj.dGrid(2); tempd{3} = obj.dGrid(3);
- 
+	    [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
+
+	    [mass, mom(1,:,:,:), mom(2,:,:,:)] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
+
             obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
 
             mass    = max(mass, obj.minMass);
@@ -154,22 +199,20 @@ classdef KojimaDiskInitializer < Initializer
                         + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
                         + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
-statics = [];%StaticsInitializer(obj.grid);
+            statics = [];%StaticsInitializer(obj.grid);
 
-%statics.setFluid_allConstantBC(mass, ener, mom, 1);
-%statics.setMag_allFadeBC(mag, 1, 25);
-
-%statics.setFluid_allConstantBC(mass, ener, mom, 2);
-%statics.setMag_allFadeBC(mag, 2, 25);           
-            starX = (obj.grid+1)*dGrid/2;
-
-            selfGravity = SelfGravityInitializer();
-            selfGravity.compactObjectStates = [1 obj.pointRadius starX(1) starX(2) starX(3) 0 0 0 0 0 0];
+            selfGravity = [];
+            %starX = (obj.grid+1)*dGrid/2;
+            %selfGravity = SelfGravityInitializer();
+            %selfGravity.compactObjectStates = [1 obj.pointRadius starX(1) starX(2) starX(3) 0 0 0 0 0 0];
                                            % [m R x y z vx vy vz lx ly lz]
 
-            potentialField = [];%PotentialFieldInitializer();
+            potentialField = PotentialFieldInitializer();
 
             fluids = obj.stateToFluid(mass, mom, ener);
+
+            sphericalR = sqrt(radpts.^2 + zpts.^2);
+	    potentialField.field = -1./sphericalR;
 
 %            if obj.useZMirror == 1
 %                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
