@@ -44,7 +44,7 @@ end
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry.d3h, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
     end
     
     if run.frameTracking.omega ~= 0
@@ -84,11 +84,10 @@ mom = fluids(1).mom;
 
     if run.selfGravity.ACTIVE || run.potentialField.ACTIVE
         % Oh you better believe we need to synchronize up in dis house
-        run.geometry = GlobalIndexSemantics();
+        geo = run.geometry;
         S = {mom(1), mom(2), mom(3), ener};
         for j = 1:4; for dir = 1:3
-%            iscirc = double([strcmp(S{j}.bcModes{1,dir},ENUM.BCMODE_CIRCULAR) strcmp(S{j}.bcModes{2,dir}, ENUM.BCMODE_CIRCULAR)]);
-            cudaHaloExchange(S{j}.gputag, dir, geometry.topology, geometry.edgeInterior(:,dir));
+            cudaHaloExchange(S{j}.gputag, dir, geo.topology, geo.edgeInterior(:,dir));
         end; end
     end
 
