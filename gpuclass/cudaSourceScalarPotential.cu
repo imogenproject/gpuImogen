@@ -16,12 +16,14 @@
 #define BLOCKDIMX 18
 #define BLOCKDIMY 18
 
+template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential(double *rho, double *E, double *px, double *py, double *pz, double *phi, int3 arraysize);
 /*mass.gputag, mom(1).gputag, mom(2).gputag, mom(3).gputag, ener.gputag, run.potentialField.gputag, 2*run.time.dTime);*/
 
+template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *px, double *py, double *phi, int3 arraysize);
 
-__constant__ __device__ double devLambda[7];
+__constant__ __device__ double devLambda[9];
 
 #define LAMX devLambda[0]
 #define LAMY devLambda[1]
@@ -47,11 +49,14 @@ __constant__ __device__ double devLambda[7];
 #define G1 devLambda[5]
 // rho_c / (rho_g - rho_c)
 #define G2 devLambda[6]
+#define RINNER devLambda[7]
+#define DELTAR devLambda[8]
+
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs!=6) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(FluidManager, phi, dt, d3x, rhomin, rho_fullg)\n");
+    if ((nrhs!=6) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(FluidManager, phi, dt, GeometryManager, rhomin, rho_fullg)\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceScalarPotential") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceScalarPotential."); }
     
@@ -63,7 +68,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     // Each partition uses the same common parameters
     double dt = *mxGetPr(prhs[2]);
-    double *dx = mxGetPr(prhs[3]);
+    GeometryParams geom = accessMatlabGeometryClass(prhs[3]);
     double rhoMinimum = *mxGetPr(prhs[4]); /* minimum rho, rho_c */
     double rhoFull    = *mxGetPr(prhs[5]); /* rho_g */
 
@@ -81,20 +86,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     	}
 #endif
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
-    	worked = sourcefunction_ScalarPotential(&fluid[0], &phi, dt, dx, rhoMinimum, rhoFull);
+    	worked = sourcefunction_ScalarPotential(&fluid[0], &phi, dt, geom, rhoMinimum, rhoFull);
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
     }
 
 }
 
-int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, double *dx, double minRho, double rhoFullGravity)
+int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, GeometryParams geom, double minRho, double rhoFullGravity)
 {
+    double *dx = &geom.h[0];
+
     dim3 gridsize, blocksize;
     int3 arraysize;
     int i, sub[6];
     int worked;
 
-    double lambda[8];
+    double lambda[9];
     lambda[0] = dt/(2.0*dx[0]);
     lambda[1] = dt/(2.0*dx[1]);
     lambda[2] = dt/(2.0*dx[2]);
@@ -104,9 +111,12 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, doub
     lambda[5] = 1.0/(lambda[4] - lambda[3]); /* 1/(rho_g - rho_c) */
     lambda[6] = lambda[3]*lambda[5];
 
+    lambda[7] = geom.Rinner;
+    lambda[8] = dx[1];
+
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
-    	cudaMemcpyToSymbol(devLambda, lambda, 7*sizeof(double), 0, cudaMemcpyHostToDevice);
+    	cudaMemcpyToSymbol(devLambda, lambda, 9*sizeof(double), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
     }
@@ -129,20 +139,42 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, doub
         gridsize.z = 1;
 
         if(isThreeD) {
-        cukern_applyScalarPotential<<<gridsize, blocksize>>>(
+	if(geom.shape == SQUARE) { 
+        cukern_applyScalarPotential<SQUARE><<<gridsize, blocksize>>>(
             fluid[0].devicePtr[i],
             fluid[1].devicePtr[i],
             fluid[2].devicePtr[i],
             fluid[3].devicePtr[i],
             fluid[4].devicePtr[i],
             phi->devicePtr[i], arraysize);
+	    }
+	    if(geom.shape == CYLINDRICAL) {
+        cukern_applyScalarPotential<CYLINDRICAL><<<gridsize, blocksize>>>(
+            fluid[0].devicePtr[i],
+            fluid[1].devicePtr[i],
+            fluid[2].devicePtr[i],
+            fluid[3].devicePtr[i],
+            fluid[4].devicePtr[i],
+            phi->devicePtr[i], arraysize);
+}
         } else {
-        	cukern_applyScalarPotential_2D<<<gridsize, blocksize>>>(
+	if(geom.shape == SQUARE) {
+        	cukern_applyScalarPotential_2D<SQUARE><<<gridsize, blocksize>>>(
         	            fluid[0].devicePtr[i],
         	            fluid[1].devicePtr[i],
         	            fluid[2].devicePtr[i],
         	            fluid[3].devicePtr[i],
         	            phi->devicePtr[i], arraysize);
+			    }
+			    if(geom.shape == CYLINDRICAL) {
+        	cukern_applyScalarPotential_2D<CYLINDRICAL><<<gridsize, blocksize>>>(
+        	            fluid[0].devicePtr[i],
+        	            fluid[1].devicePtr[i],
+        	            fluid[2].devicePtr[i],
+        	            fluid[3].devicePtr[i],
+        	            phi->devicePtr[i], arraysize);
+
+			    }
 
         }
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "scalar potential kernel");
@@ -157,6 +189,7 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, doub
  * dP = -rho grad(phi) dt
  * dE = -rho v \cdot grad(phi) dt
  */
+template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential(double *rho, double *E, double *px, double *py, double *pz, double *phi, int3 arraysize)
 {
 
@@ -207,7 +240,7 @@ for(z = 0; z < arraysize.z; z++) {
   __syncthreads();
 
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
-    deltaphi         = devLambda[0]*(V[myLocAddr+1]-V[myLocAddr-1]);
+    deltaphi         = LAMX*(V[myLocAddr+1]-V[myLocAddr-1]);
     if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
     ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * px * dphi/dx
     px[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store px <- px - dt * rho dphi/dx;
@@ -216,7 +249,13 @@ for(z = 0; z < arraysize.z; z++) {
   W[myLocAddr] = py[globAddr]; // load py(z) -> phiC
   __syncthreads();
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
-    deltaphi         = devLambda[1]*(V[myLocAddr+BLOCKDIMX]-V[myLocAddr-BLOCKDIMX]);
+  if(coords == SQUARE) {
+    deltaphi         = LAMY*(V[myLocAddr+BLOCKDIMX]-V[myLocAddr-BLOCKDIMX]);
+    }
+    if(coords == CYLINDRICAL) {
+    // In cylindrical coords, use dt/dphi * (delta-phi) / r to get d/dy
+    deltaphi         = LAMY*(V[myLocAddr+BLOCKDIMX]-V[myLocAddr-BLOCKDIMX]) / (RINNER + DELTAR*myX);
+    }
    if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
     ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * py * dphi/dy
     py[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store py <- py - rho dphi/dy;
@@ -224,7 +263,7 @@ for(z = 0; z < arraysize.z; z++) {
 
   W[myLocAddr]       = phi[globAddr + deltaz]; // load phi(z+1) -> phiC
   __syncthreads();
-  deltaphi           = devLambda[2]*(W[myLocAddr] - U[myLocAddr]);
+  deltaphi           = LAMZ*(W[myLocAddr] - U[myLocAddr]);
   if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
   __syncthreads();
 
@@ -249,6 +288,7 @@ for(z = 0; z < arraysize.z; z++) {
  * dP = -rho grad(phi) dt
  * dE = -rho v \cdot grad(phi) dt
  */
+template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *px, double *py, double *phi, int3 arraysize)
 {
 
@@ -285,7 +325,7 @@ __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *
 	// coupling is exactly zero if rho <= rhomin
 	if(IWrite && (rhoLoc[myLocAddr] > rhomin)) {
 		// compute dt * (dphi/dx)
-		deltaphi         = devLambda[0]*(phiLoc[myLocAddr+1]-phiLoc[myLocAddr-1]);
+		deltaphi         = LAMX*(phiLoc[myLocAddr+1]-phiLoc[myLocAddr-1]);
 		// reduce coupling for low densities
 		if(rhoLoc[myLocAddr] < RHOGRAV) { deltaphi *= (rhoLoc[myLocAddr]*G1 - G2); }
 		// Load px
@@ -295,7 +335,14 @@ __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *
 		// Update X momentum
 		px[globAddr]     = tmpMom - deltaphi*rhoLoc[myLocAddr]; // store px <- px - dt * rho dphi/dx;
 		// Calculate dt*(dphi/dy)
-		deltaphi         = devLambda[1]*(phiLoc[myLocAddr+BLOCKDIMX]-phiLoc[myLocAddr-BLOCKDIMX]);
+		if(coords == SQUARE) {
+		deltaphi         = LAMY*(phiLoc[myLocAddr+BLOCKDIMX]-phiLoc[myLocAddr-BLOCKDIMX]);
+		}
+		if(coords == CYLINDRICAL) {
+		// Converts d/dphi into physical distance based on R
+		deltaphi         = LAMY*(phiLoc[myLocAddr+BLOCKDIMX]-phiLoc[myLocAddr-BLOCKDIMX]) / (RINNER + myX*DELTAR);
+		}
+		
 		// reduce G for low density
 		if(rhoLoc[myLocAddr] < RHOGRAV) { deltaphi *= (rhoLoc[myLocAddr]*G1 - G2); }
 		// Load py
