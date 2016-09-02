@@ -40,36 +40,73 @@ classdef FluidManager < handle
     methods (Access = public) %                                                     P U B L I C  [M]
 %___________________________________________________________________________________________________ FluidManager
 % Creates a new FluidManager instance.
-        function obj = FluidManager() 
-            obj.viscosity    = ArtificialViscosity();
-            obj.fluidName    = 'some_gas';
+        function self = FluidManager() 
+            self.viscosity    = ArtificialViscosity();
+            self.fluidName    = 'some_gas';
             % Set defaults
-            % Note that isDust being false will result in use of complex fluid riemann solver
-            obj.checkCFL     = 1;
-            obj.isDust       = 0;
+            self.checkCFL     = 1;
+            self.isDust       = 0;
+        end
+        
+       
+        function attachBoundaryConditions(self, element)
+            if ~isempty(self.parent)
+                self.parent.bc.attachBoundaryConditions(element);
+            else
+                %warning('DANGER: No parent run associated with this FluidManager; Assuming I am being used for simpleminded debugging; Forging boundary conditions...');
+                for a = 1:2; for b = 1:3; element.bcModes{a,b} = ENUM.BCMODE_CIRCULAR; end; end
+                element.bcHaloShare = zeros(2,3);
+            end
         end
 
-        function attachBoundaryConditions(obj, element)
-            obj.parent.bc.attachBoundaryConditions(element);
+        function attachFluid(self, holder, mass, ener, mom)
+            self.DataHolder = holder;
+
+            self.mass = mass;
+            self.ener = ener;
+            self.mom = mom;
         end
 
-        function attachFluid(obj, holder, mass, ener, mom)
-            obj.DataHolder = holder;
-
-            obj.mass = mass;
-            obj.ener = ener;
-            obj.mom = mom;
+        function processFluidDetails(self, details)
+            if isfield(details,'isDust');   self.isDust   = details.isDust;   end
+            if isfield(details,'checkCFL'); self.checkCFL = details.checkCFL; end
         end
+        
+        function DEBUG_uploadData(self, rho, E, px, py, pz)
+            % HACK HACK HACK this is a butchered copypasta from uploadDataArrays
+            % that function should be abstracted so it can simply be called from here instead.
+            self.MASS_THRESHOLD = 0;
+            self.MINMASS        = 0;
+            self.parent         = [];
+            
+            DH = GPU_Type(rho);
+            DH.createSlabs(5);
+            
+            GM = GeometryManager(size(rho));
+            SI = StaticsInitializer(GM);
+            
+            a = GPU_getslab(DH, 0);
+            dens = FluidArray(ENUM.SCALAR, ENUM.MASS, a, self, SI);
+            
+            a = GPU_setslab(DH, 1, E);
+            etotal = FluidArray(ENUM.SCALAR, ENUM.ENER, a, self, SI);
+            
+            momentum  = FluidArray.empty(3,0);
+            
+            a = GPU_setslab(DH, 2, px);
+            momentum(1) = FluidArray(ENUM.VECTOR(1), ENUM.MOM, a, self, SI);
+            a = GPU_setslab(DH, 3, py);
+            momentum(2) = FluidArray(ENUM.VECTOR(2), ENUM.MOM, a, self, SI);
+            a = GPU_setslab(DH, 4, pz);
+            momentum(3) = FluidArray(ENUM.VECTOR(3), ENUM.MOM, a, self, SI);
 
-        function processFluidDetails(obj, details)
-            if isfield(details,'isDust');   obj.isDust   = details.isDust;   end
-            if isfield(details,'checkCFL'); obj.checkCFL = details.checkCFL; end
+            self.attachFluid(DH, dens, etotal, momentum);
         end
 
 %___________________________________________________________________________________________________ initialize
-        function initialize(obj)
-            for i = 1:numel(obj)
-                obj(i).viscosity.preliminary();
+        function initialize(self)
+            for i = 1:numel(self)
+                self(i).viscosity.preliminary();
             end
         end
         

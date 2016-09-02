@@ -49,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	 * FIXME: that seems the only reasonable way to avoid partitioning hell
 	 */
 	MGArray xyvec;
-	int status = MGA_accessMatlabArrays(prhs, 6, 6, &xyvec);
+	int status = MGA_accessMatlabArrays(prhs, 3, 3, &xyvec);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access X-Y vector."); }
 
 	dim3 gridsize, blocksize;

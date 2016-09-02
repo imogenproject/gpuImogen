@@ -282,16 +282,17 @@ for(z = 0; z < arraysize.z; z++) {
 }
 
 
-
-
 /*
  * dP = -rho grad(phi) dt
  * dE = -rho v \cdot grad(phi) dt
+ * 
+ * Exact integrals at fixed position:
+ * P2 = P1 - rho grad(phi) t
+ * E2 = E1 - P1 \cdot grad(phi) t + .5 rho grad(phi) \cdot grad(phi) t^2
  */
 template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *px, double *py, double *phi, int3 arraysize)
 {
-
 	int myLocAddr = threadIdx.x + BLOCKDIMX*threadIdx.y;
 
 	int myX = threadIdx.x + (BLOCKDIMX-2)*blockIdx.x - 1;
@@ -320,8 +321,6 @@ __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *
 
 	__syncthreads(); // Make sure loaded phi is visible
 
-
-
 	// coupling is exactly zero if rho <= rhomin
 	if(IWrite && (rhoLoc[myLocAddr] > rhomin)) {
 		// compute dt * (dphi/dx)
@@ -331,7 +330,7 @@ __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *
 		// Load px
 		tmpMom = px[globAddr];
 		// Store delta-E due to change in x momentum: ener -= (dt * dphi/dx) * (px = rho vx) -= rho delta-phi
-		enerLoc -= deltaphi*tmpMom;
+		enerLoc -= deltaphi*(tmpMom - .5*rhoLoc[myLocAddr]*deltaphi);
 		// Update X momentum
 		px[globAddr]     = tmpMom - deltaphi*rhoLoc[myLocAddr]; // store px <- px - dt * rho dphi/dx;
 		// Calculate dt*(dphi/dy)
@@ -348,7 +347,7 @@ __global__ void  cukern_applyScalarPotential_2D(double *rho, double *E, double *
 		// Load py
 		tmpMom = py[globAddr];
 		// Update global energy array with this & previous delta-E values
-		E[globAddr] += enerLoc - deltaphi*tmpMom; // ener -= dt * py * dphi/dy
+		E[globAddr] += enerLoc - deltaphi*(tmpMom - .5*rhoLoc[myLocAddr]*deltaphi); // ener -= dt * py * dphi/dy
 		// Update Y momentum array
 		py[globAddr]     = tmpMom - deltaphi*rhoLoc[myLocAddr]; // store py <- py - rho dphi/dy;
 	}

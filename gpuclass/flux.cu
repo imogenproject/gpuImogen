@@ -18,15 +18,15 @@ int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidS
 int sweep, flag_1D = 0;
 
 // Choose our sweep number depending on whether we are 1- or 2-dimensional
-if(fluid[0].dim[2] > 1) { // if nz > 1, three-dimensional
+//if(fluid[0].dim[2] > 1) { // if nz > 1, three-dimensional
 	sweep = (stepNumber + 3*(order > 0)) % 6;
-} else {
-	if(fluid[0].dim[1] > 3) { // if ny > 3, two dimensional
-		sweep = (stepNumber + (order < 0)) % 2;
-	} else {
-		flag_1D = 1;
-	}
-}
+//} else {
+//	if(fluid[0].dim[1] > 3) { // if ny > 3, two dimensional
+//		sweep = (stepNumber + (order < 0)) % 2;
+//	} else {
+//		flag_1D = 1;
+//	}
+//}
 
 int preperm[6] = {0, 2, 0, 2, 3, 3};
 
@@ -58,7 +58,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 	for(n = 0; n < 3; n++) {
 		nowDir = fluxcall[n][sweep];
-		if(fluid->dim[nowDir-1] > 3) {
+		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
@@ -82,7 +82,7 @@ if(order > 0) { /* If we are doing forward sweep */
 		nowDir = fluxcall[n][sweep];
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		if(fluid->dim[nowDir-1] > 3) {
+		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);

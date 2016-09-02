@@ -457,6 +457,7 @@ fail = -1;
 w = rand(1);
 px = rand(res);
 py = rand(res);
+pz = rand(res);
 x = 1:res(1);
 y = 1:res(2);
 z = 1:res(3);
@@ -467,12 +468,8 @@ E = rand(res) + .5 * rho .* ((vx).^2 + (vy).^2);
 [x,y] = ndgrid(x,y,z);
 dt = .01;
 
-pxD = GPU_Type(px);
-pyD = GPU_Type(py);
-xD = GPU_Type(x);
-yD = GPU_Type(y);
-rhoD = GPU_Type(rho);
-ED = GPU_Type(E);
+FM = FluidManager();
+FM.DEBUG_uploadData(rho, E, px, py, pz);
 
 dvx = (2 * w * vy + w^2 * x)*(dt/2);
 dvy = (-2 * w * vx + w^2 * y)*(dt/2);
@@ -505,12 +502,12 @@ py = py + dpy1;
 gm = GPUManager.getInstance();
 gm.pushParameters();
 gm.partitionDir = 1;
-cudaSourceRotatingFrame(rhoD, ED, pxD, pyD, w, dt, GPU_Type([1:res(1) 1:res(2)], 1));
+cudaSourceRotatingFrame(FM, w, dt, GPU_Type([1:res(1) 1:res(2)], 1));
 gm.popParameters();
 
-a = max(px(:) - pxD.array(:));
-b = max(py(:) - pyD.array(:));
-c = max(E(:) - ED.array(:));
+a = max(px(:) - FM.mom(1).array(:));
+b = max(py(:) - FM.mom(2).array(:));
+c = max(E(:) - FM.ener.array(:));
 
 n = [a, b, c];
 if max(abs(n)) < 1e-10;
@@ -522,23 +519,26 @@ end
 function fail = testCudaSourceScalarPotential(res)
 fail = 0;
 
+%res = [25 25 1];
 rho = rand(res);
 px = rand(res);
 py = rand(res);
 pz = rand(res);
 E = rand(1) + .5*(px.^2 + py.^2 +pz.^2) ./ rho;
 phi = rand(res);
+%phi(4:10,4) = 1:7;
+%phi(4:10,5) = 1:7;
+%phi(4:10,6) = 1:7;
+
+FM = FluidManager();
+FM.DEBUG_uploadData(rho, E, px, py, pz);
+
 beta = ones(res);
 dt = .01; % small timestep
 d3x = [.01, .01, .01]; % small volume
 rho_c = .01; % density for min effect of grav
 rho_g = .1; % density for full effect of grav
 
-rhoD = GPU_Type(rho);
-pxD = GPU_Type(px);
-pyD = GPU_Type(py);
-pzD = GPU_Type(pz);
-ED = GPU_Type(E);
 phiD = GPU_Type(phi);
 
 beta(rho_g < rho) = 1;
@@ -553,16 +553,21 @@ Fx = -beta .* rho .* grad_phiX;
 Fy = -beta .* rho .* grad_phiY;
 Fz = -beta .* rho .* grad_phiZ;
 
-E = E - beta .* (px .* grad_phiX + py .* grad_phiY + pz .* grad_phiZ)*dt;
+e0 = E; px0 = px; py0 = py;
+E = E - beta .* (px .* grad_phiX + py .* grad_phiY + pz .* grad_phiZ)*dt ...
+      + .5*rho.*beta.*beta.*(grad_phiX.^2+grad_phiY.^2+grad_phiZ.^2)*dt*dt;
 px = px + Fx * dt;
 py = py + Fy * dt;
 pz = pz + Fz * dt;
 
-cudaSourceScalarPotential(rhoD, ED, pxD, pyD, pzD, phiD, dt, d3x, rho_c, rho_g);
-a = max(px(:) - pxD.array(:));
-b = max(py(:) - pyD.array(:));
-c = max(pz(:) - pzD.array(:));
-d = max(E(:) - ED.array(:));
+GM = GeometryManager(res);
+GM.makeBoxSize(.01*res);
+
+cudaSourceScalarPotential(FM, phiD, dt, GM, rho_c, rho_g);
+a = max(px(:) - FM.mom(1).array(:));
+b = max(py(:) - FM.mom(2).array(:));
+c = max(pz(:) - FM.mom(3).array(:));
+d = max(E(:) - FM.ener.array(:));
 
 n = [a, b, c, d];
 if max(abs(n)) < 1e-10;

@@ -1919,7 +1919,14 @@ for(j = 0; j < ndims; j++) {
 	if(arraydims[j] != g->dim[j]) failed = 1;
 }
 
-if(failed) return ERROR_INVALID_ARGS;
+if(failed) {
+	PRINT_FAULT_HEADER;
+	printf("Matlab array was %i dimensional, dims [", ndims);
+	for(j = 0; j < ndims; j++) { printf("%i ", arraydims[j]); }
+	printf("].\nGPU_Type target array was of size [%i %i %i] which is not the same. Not happy :(.\n", g->dim[0], g->dim[1], g->dim[2]);
+	PRINT_FAULT_FOOTER;
+	return ERROR_INVALID_ARGS;
+	}
 
 return CHECK_IMOGEN_ERROR(MGA_uploadArrayToGPU(mxGetPr(m), g, partitionTo));
 

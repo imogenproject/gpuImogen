@@ -20,6 +20,8 @@
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
 
+#define USE_SSPRK
+
 // Only uncomment this if you plan to debug this file.
 // Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
@@ -110,7 +112,7 @@ __constant__ __device__ double fluidQtys[12];
 #define FLUID_GM1     fluidQtys[1]
 #define FLUID_GG1     fluidQtys[2]
 #define FLUID_MINMASS fluidQtys[3]
-#define FLUID_MINEINT fluidQtys[4]
+#define FLUID_MINTEMP fluidQtys[4]
 #define MHD_PRESS_B   fluidQtys[5]
 #define MHD_CS_B      fluidQtys[6]
 #define FLUID_GOVERGM1 fluidQtys[7]
@@ -490,7 +492,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], 0.5*lambda);
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
 					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_1storder");
 				} else { // hllc
 					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], 0.5*lambda);
@@ -766,7 +768,7 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 		E -= shblk[IR+BOS4];
 
 		C = C*C+D*D+E*E; /* velocity jump, squared */
-
+ if(0) {
 		A = shptr[BOS0]; /* rho_le */
 		B = shblk[IR+BOS0]; /* rho_re */
 #ifdef FLOATFLUX
@@ -803,7 +805,47 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 
 		F = F + 2.0*E;
 		D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+ }
+ if(1) {
+		A = shptr[BOS0];  // rho_le, sqrts of density for Roe weighting
+		B = shblk[IR+BOS0]; /* rho_re */
+#ifdef FLOATFLUX
+		A = sqrtf(A);
+		B = sqrtf(B);
+#else
+		A = sqrt(A);
+		B = sqrt(B);
+#endif
+		F = FLUID_GM1*A*B*C/(2*(A+B)*(A+B)); // first part of roe cs^2
+		F = F + FLUID_GG1 * (B*shblk[IR+BOS1] + A*shptr[BOS1]) / (A*B*(A+B)); // c_roe^2
 
+		C = shptr[BOS1]/shptr[BOS0]; /* Pl/rhol = csq_l / gamma */
+		D = shblk[IR+BOS1]/B; /* Pr/rhor = csq_r / gamma */
+
+#ifdef FLOATFLUX
+		F = sqrtf(F);
+		C = sqrtf(FLUID_GAMMA * C); // left c_s
+		D = sqrtf(FLUID_GAMMA * D); // right c_s
+#else
+		F = sqrt(F); /* Batten \overline{c} */
+		C = sqrt(FLUID_GAMMA * C); // left c_s
+		D = sqrt(FLUID_GAMMA * D); // right c_s
+#endif
+		E = (A*shptr[BOS2] + B*shblk[IR+BOS2])/(A+B); // u_roe
+		A = shptr[BOS2]; /* vx_le */
+		B = shblk[IR+BOS2]; /* vx_re */
+
+		C = A - C; // left min eigval
+		D = B + D; // right max eigval
+
+		F = E - F; // min roe eigval
+		C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
+
+		F = -F + 2*E; // max roe eigval
+		D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+/// Past here we only require that c and d contain the upper/lower bounds, the rest of the vars are overwritten
+
+ }
 		#ifdef DBG_FIRSTORDER
 			DBGSAVE(0, C); DBGSAVE(2, D);
 		#endif
@@ -1172,45 +1214,86 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 
 		C = C*C+D*D+E*E; /* velocity jump, squared */
 
-		A = shptr[BOS1]; /* rho_le */
-		B = shblk[IR+BOS0]; /* rho_re */
+		if(0) {
+			A = shptr[BOS1]; /* rho_le */
+			B = shblk[IR+BOS0]; /* rho_re */
 #ifdef FLOATFLUX
-		F = sqrtf(B/A); /* = batten et al's R */
+			F = sqrtf(B/A); /* = batten et al's R */
 #else
-		F = sqrt(B/A); /* = batten et al's R */
+			F = sqrt(B/A); /* = batten et al's R */
 #endif
 
-		A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
+			A = .5*C*F*FLUID_GM1/((1.0+F)*(1.0+F)); // A now contains velocity jump term from Batten eqn 51 (\overline{c}^2)
 
-		C = shptr[BOS3]/shptr[BOS1]; /* Pl/rhol = csq_l / gamma */
-		D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
+			C = shptr[BOS3]/shptr[BOS1]; /* Pl/rhol = csq_l / gamma */
+			D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
 
-		E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
+			E = FLUID_GAMMA * (C + F*D) / (1.0+F) + A; /* Batten eqn 51 implemented */
 
 #ifdef FLOATFLUX
-		E = sqrtf(E); /* Batten \overline{c} */
-		C = sqrtf(FLUID_GAMMA * C); // left c_s
-		D = sqrtf(FLUID_GAMMA * D); // right c_s
+			E = sqrtf(E); /* Batten \overline{c} */
+			C = sqrtf(FLUID_GAMMA * C); // left c_s
+			D = sqrtf(FLUID_GAMMA * D); // right c_s
 #else
-		E = sqrt(E); /* Batten \overline{c} */
-		C = sqrt(FLUID_GAMMA * C); // left c_s
-		D = sqrt(FLUID_GAMMA * D); // right c_s
+			E = sqrt(E); /* Batten \overline{c} */
+			C = sqrt(FLUID_GAMMA * C); // left c_s
+			D = sqrt(FLUID_GAMMA * D); // right c_s
 #endif
 
-		A = shptr[BOS5]; /* vx_le */
-		B = shblk[IR+BOS4]; /* vx_re */
+			A = shptr[BOS5]; /* vx_le */
+			B = shblk[IR+BOS4]; /* vx_re */
 
-		F = (A + F*B)/(1.0+F); /* vx_tilde */
+			F = (A + F*B)/(1.0+F); /* vx_tilde */
 
-		C = A - C; // (vx-cs)_le
-		D = B + D; // (vx+cs)_re
+			C = A - C; // (vx-cs)_le
+			D = B + D; // (vx+cs)_re
 
-		F -= E;    // (vbar - cbar)
-		C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
+			F -= E;    // (vbar - cbar)
+			C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
 
-		F = F + 2.0*E; // (vbar + cbar)
-		D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+			F = F + 2.0*E; // (vbar + cbar)
+			D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+		}
+		if(1) {
+			A = shptr[BOS1];  // rho_le, sqrts of density for Roe weighting
+			B = shblk[IR+BOS0]; /* rho_re */
+	#ifdef FLOATFLUX
+			A = sqrtf(A);
+			B = sqrtf(B);
+	#else
+			A = sqrt(A);
+			B = sqrt(B);
+	#endif
+			F = FLUID_GM1*A*B*C/(2*(A+B)*(A+B)); // first part of roe cs^2
+			F = F + FLUID_GG1 * (B*shblk[IR+BOS2] + A*shptr[BOS3]) / (A*B*(A+B)); // c_roe^2
 
+			C = shptr[BOS3]/shptr[BOS1]; /* Pl/rhol = csq_l / gamma */
+			D = shblk[IR+BOS2]/shblk[IR+BOS0]; /* Pr/rhor = csq_r / gamma */
+
+	#ifdef FLOATFLUX
+			F = sqrtf(F);
+			C = sqrtf(FLUID_GAMMA * C); // left c_s
+			D = sqrtf(FLUID_GAMMA * D); // right c_s
+	#else
+			F = sqrt(F); /* Batten \overline{c} */
+			C = sqrt(FLUID_GAMMA * C); // left c_s
+			D = sqrt(FLUID_GAMMA * D); // right c_s
+	#endif
+			E = (A*shptr[BOS2] + B*shblk[IR+BOS2])/(A+B); // u_roe
+			A = shptr[BOS5]; /* vx_le */
+			B = shblk[IR+BOS4]; /* vx_re */
+
+			C = A - C; // left min eigval
+			D = B + D; // right max eigval
+
+			F = E - F; // min roe eigval
+			C = (C < F) ? C : F; /* left bound: min[u_l - c_l, u_roe - c_roe] */
+
+			F = -F + 2*E; // max roe eigval
+			D = (D > F) ? D : F; /* right bound: max[u_r + c_r, u_roe + c_roe] */
+	/// Past here we only require that c and d contain the upper/lower bounds, the rest of the vars are overwritten
+
+		}
 #ifdef DBG_SECONDORDER
 DBGSAVE(0, C);
 DBGSAVE(2, D);
@@ -1425,8 +1508,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 
 	/* Declare variable arrays */
 	__shared__ double shblk[YBLOCKS*N_SHMEM_BLOCKS*BLOCKLENP4];
-	double Ale, Ble, Cle;
-	double Are, Bre, Cre;
+	double Ale, Ble, Cle, Dle, Ele;
+	double Are, Bre, Cre, Dre, Ere;
 	int HLL_FluxMode;
 	double Sleft, Sright, Utilde, Atilde;
 	double Fa, Fb; /* temp vars */
@@ -1472,376 +1555,453 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 
 			switch(fluxDirection) {
 			case FLUX_X:
-			case FLUX_RADIAL: Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
-
+			case FLUX_RADIAL:
+				Bre = Qin[2*DEV_SLABSIZE + x0]; /* load px as px */
+				Dre = Qin[3*DEV_SLABSIZE + x0]; // py = py
+				Ere = Qin[4*DEV_SLABSIZE + x0]; // pz = pz
+				break;
 			case FLUX_Y:
 			case FLUX_THETA_213:
-			case FLUX_THETA_231: Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
-
-			case FLUX_Z: Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			case FLUX_THETA_231:
+				Bre = Qin[3*DEV_SLABSIZE + x0]; /* load py as px */
+				Dre = Qin[2*DEV_SLABSIZE + x0]; // px = py
+				Ere = Qin[4*DEV_SLABSIZE + x0]; // pz = pz
+				break;
+			case FLUX_Z:
+				Bre = Qin[4*DEV_SLABSIZE + x0]; /* load pz as px */
+				Dre = Qin[2*DEV_SLABSIZE + x0]; // py = px
+				Ere = Qin[3*DEV_SLABSIZE + x0]; // pz = py;
+				break;
 			}
 
 			// We calculated the gas pressure into temp array # 6 before calling
 			Cle = Cre = Qstore[5*DEV_SLABSIZE + x0]; /* load gas pressure */
 			Ble = Bre / Ale; /* Calculate vx */
-			Bre = Ble;
+			Dle = Dre / Ale; // vy
+			Ele = Ere / Ale; // vz
+
+#ifndef USE_SSPRK
+			Bre = Ble; // naive 0th order construction
+			Dre = Dle;
+			Ere = Ele;
+#else
+			// SSPRK methods requires that every time derivative calculation be equally spatially accurate
+			// So we must use slope limited reconstruction here
+			shblk[IC + BOS0] = Ale;
+			shblk[IC + BOS1] = Ble;
+			shblk[IC + BOS2] = Cle;
+			shblk[IC + BOS3] = Dle;
+			shblk[IC + BOS4] = Ele;
+			__syncthreads();
+
+			/*************** BEGIN SECTION 2 compute backward differences */
+			Are = Ale - shblk[IL + BOS0];
+			Bre = Ble - shblk[IL + BOS1];
+			Cre = Cle - shblk[IL + BOS2];
+			Dre = Dle - shblk[IL + BOS3];
+			Ere = Ele - shblk[IL + BOS4];
+			__syncthreads();
+
+			/*************** BEGIN SECTION 3 upload backward differences */
+			shblk[IC + BOS0] = Are;
+			shblk[IC + BOS1] = Bre;
+			shblk[IC + BOS2] = Cre;
+			shblk[IC + BOS3] = Dre;
+			shblk[IC + BOS4] = Ere;
+			__syncthreads();
+
+			/*************** BEGIN SECTION 4 compute slope using my BD & right's BD */
+			Fa = SLOPEFUNC(Are, shblk[IR + BOS0]);
+			Are = Ale + Fa;
+			Ale -= Fa;
+
+			Fa = SLOPEFUNC(Bre, shblk[IR + BOS1]);
+			Bre = Ble + Fa;
+			Ble -= Fa;
+
+			Fa = SLOPEFUNC(Cre, shblk[IR + BOS2]);
+			Cre = Cle + Fa;
+			Cle -= Fa;
+
+			Fa = SLOPEFUNC(Dre, shblk[IR + BOS3]);
+			Dre = Dle + Fa;
+			Dle -= Fa;
+
+			Fa = SLOPEFUNC(Ere, shblk[IR + BOS4]);
+			Ere = Ele + Fa;
+			Ele -= Fa;
+
+#endif
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
 			Ale = Qstore[x0 + 0*DEV_SLABSIZE]; /* load rho */
 			switch(fluxDirection) {
 			case FLUX_X:
-			case FLUX_RADIAL: Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */ break;
-
+			case FLUX_RADIAL:
+				Bre = Qstore[2*DEV_SLABSIZE + x0]; /* load px as px */
+				Dre = Qstore[3*DEV_SLABSIZE + x0]; // py = py
+				Ere = Qstore[4*DEV_SLABSIZE + x0]; // pz = pz
+				break;
 			case FLUX_Y:
 			case FLUX_THETA_213:
-			case FLUX_THETA_231: Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */ break;
-
-			case FLUX_Z: Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */ break;
+			case FLUX_THETA_231:
+				Bre = Qstore[3*DEV_SLABSIZE + x0]; /* load py as px */
+				Dre = Qstore[2*DEV_SLABSIZE + x0]; // px = py
+				Ere = Qstore[4*DEV_SLABSIZE + x0]; // pz = pz
+				break;
+			case FLUX_Z:
+				Bre = Qstore[4*DEV_SLABSIZE + x0]; /* load pz as px */
+				Dre = Qstore[2*DEV_SLABSIZE + x0]; // py = px
+				Ere = Qstore[3*DEV_SLABSIZE + x0]; // pz = py;
+				break;
 			}
 
 			Cle = Qstore[x0 + 5*DEV_SLABSIZE]; /* load pressure */
 			Ble = Bre / Ale; /* Calculate vx */
+			Dle = Dre / Ale;
+			Ele = Ere / Ale;
 
 			shblk[IC + BOS0] = Ale;
 			shblk[IC + BOS1] = Ble;
 			shblk[IC + BOS2] = Cle;
+			shblk[IC + BOS3] = Dle;
+			shblk[IC + BOS4] = Ele;
 			__syncthreads();
 
-			/*************** BEGIN SECTION 2 */
+			/*************** BEGIN SECTION 2 compute backward differences */
 			Are = Ale - shblk[IL + BOS0];
 			Bre = Ble - shblk[IL + BOS1];
 			Cre = Cle - shblk[IL + BOS2];
+			Dre = Dle - shblk[IL + BOS3];
+			Ere = Ele - shblk[IL + BOS4];
 			__syncthreads();
 
-			/*************** BEGIN SECTION 3 */
+			/*************** BEGIN SECTION 3 upload backward differences */
 			shblk[IC + BOS0] = Are;
 			shblk[IC + BOS1] = Bre;
 			shblk[IC + BOS2] = Cre;
+			shblk[IC + BOS3] = Dre;
+			shblk[IC + BOS4] = Ere;
 			__syncthreads();
 
-			/*************** BEGIN SECTION 4 */
+			/*************** BEGIN SECTION 4 compute slope using my BD & right's BD */
 			Fa = SLOPEFUNC(Are, shblk[IR + BOS0]);
 			Are = Ale + Fa;
 			Ale -= Fa;
+
 			Fa = SLOPEFUNC(Bre, shblk[IR + BOS1]);
 			Bre = Ble + Fa;
 			Ble -= Fa;
+
 			Fa = SLOPEFUNC(Cre, shblk[IR + BOS2]);
 			Cre = Cle + Fa;
 			Cle -= Fa;
+
+			Fa = SLOPEFUNC(Dre, shblk[IR + BOS3]);
+			Dre = Dle + Fa;
+			Dle -= Fa;
+
+			Fa = SLOPEFUNC(Ere, shblk[IR + BOS4]);
+			Ere = Ele + Fa;
+			Ele -= Fa;
 		}
-		// up to here uses 40 regs
+
 		__syncthreads();
 		/* Rotate the [le_i-1 re_i-1][le_i re_i][le_i+1 re_i+1] variables one left
 		 * so that each cell stores [re_i le_i+1]
 		 * and thus each thread deals with F_i+1/2 */
 		shblk[IC + BOS0] = Ale;
-		shblk[IC + BOS1] = Are;
-		shblk[IC + BOS2] = Ble;
-		shblk[IC + BOS4] = Cle;
+		shblk[IC + BOS1] = Ble;
+		shblk[IC + BOS2] = Cle;
+		shblk[IC + BOS3] = Dle;
+		shblk[IC + BOS4] = Ele;
 
 		__syncthreads();
 
-		Ale = sqrt(Are); Are = sqrt(shblk[IR + BOS0]);
-		Ble = Bre; Bre = shblk[IR + BOS2];
-		Cle = Cre; Cre = shblk[IR + BOS4];
+		Ale = Are; Are = shblk[IR + BOS0];
+		shblk[IC + BOS5] = Ale; // store this for later...
+		Ble = Bre; Bre = shblk[IR + BOS1];
+		Cle = Cre; Cre = shblk[IR + BOS2];
+		Dle = Dre; Dre = shblk[IR + BOS3];
+		Ele = Ere; Ere = shblk[IR + BOS4];
+
 		/* Calculation may now proceed based only on register variables! */
+		/* calculate enthalpy */
+		Sleft = .5*(Ble*Ble+Dle*Dle+Ele*Ele);
+		Sright= .5*(Bre*Bre+Dre*Dre+Ere*Ere); // specific KE
 
-		//48 registers
-		/* Get Roe-average particle x speed */
+		double hleft = FLUID_GOVERGM1 * Cle/Ale + Sleft;
+		double hright= FLUID_GOVERGM1 * Cre/Are + Sright;
+
+		// Prepare for Roe weighting ...
+		Ale = sqrt(Ale); Are = sqrt(Are);
+
+		/* Get Roe-average speeds */
 		Utilde = (Ale*Ble + Are*Bre)/(Ale+Are);
+		Sleft  = (Ale*Dle + Are*Dre)/(Ale+Are);
+		Sright = (Ale*Ele + Are*Ere)/(Ale+Are);
+		// Compute roe-avg v^2
+		Utilde *= Utilde;
+		Sleft *= Sleft;
+		Sright *= Sright;
 
-		/* Get Roe-average sonic speed and take our S_+- estimate for HLL */
-		Sleft  = sqrt(FLUID_GAMMA*Cle);
-		Sright = sqrt(FLUID_GAMMA*Cre);
-		Atilde = (Sleft+Sright)/(Ale+Are);
-		Sleft  = Utilde - Atilde;
-		Sright = Utilde + Atilde;
-		// 48 regs
+		Atilde = (Ale*hleft + Are*hright)/(Ale+Are) - .5*(Utilde + Sleft + Sright);
+		Atilde = sqrt(FLUID_GM1 * Atilde); // Roe-avg sound speed
 
-		/* We always divide by 1/2a for flux mode HLL_HLL so save some calculations from here out */
-		Atilde = .5/Atilde;
+		/* now finally compute the gottverdammt Sleft/Sright values */
+		Utilde = (Ale*Ble + Are*Bre)/(Ale+Are) - Atilde;
 
-		// Load non-square-rooted density back up down here after using Ale/Are as scratch
-		Ale = shblk[IC + BOS1]; Are = shblk[IR + BOS0];
+		// Reload density (not square rooted)
+		Ale = shblk[IC + BOS5]; Are = shblk[IR + BOS0];
+
+		Sleft = Ble - sqrt(FLUID_GAMMA*Cle/Ale); // vleft - cleft
+		Sleft = (Utilde < Sleft) ? Utilde : Sleft;
+
+		Sright= Bre + sqrt(FLUID_GAMMA*Cre/Are); // vright + cright
+		Utilde += 2* Atilde; // (vroe-croe)+2*croe = vroe+croe
+
+		Sright= (Utilde > Sright) ? Utilde : Sright;
+
+		/* Compute the rcp used by the HLL flux mode in advance */
+		Atilde = 1/(Sright - Sleft);
+
 		/* Accumulate 2*kinetic energy */
 		__syncthreads();
 
 		Fa = Ale*Ble; // Raw mass flux
 		Fb = Are*Bre;
 
-		shblk[IC + BOS0] = Fa;
-		shblk[IC + BOS2] = Fb;
-
-		shblk[IC + BOS6] = Ble*Fa; // convective  momentum flux, also to be used for pressure calculation
-		shblk[IC + BOS7] = Bre*Fb;
-
 		/* Determine where our flux originates from (Uleft, Uhll, or Uright) */
 		HLL_FluxMode = HLL_HLL;
 		if(Sleft > 0) HLL_FluxMode = HLL_LEFT;
 		if(Sright< 0) HLL_FluxMode = HLL_RIGHT;
-		// 50 regs
 
 		/* Calculate the mass and momentum fluxes */
 		switch(HLL_FluxMode) {
-		case HLL_LEFT:  shblk[IC + BOS1] = Fa;
-		shblk[IC + BOS3] = Fa*Ble + Cle; break;
-		case HLL_HLL:   shblk[IC + BOS1] = (Sright*Fa - Sleft*Fb + Sleft*Sright*(Are-Ale))*Atilde;
-		shblk[IC + BOS3] = (Sright*(Ble*Fa+Cle) - Sleft*(Bre*Fb+Cre) + Sleft*Sright*(Fb-Fa))*Atilde; break;
-		case HLL_RIGHT: shblk[IC + BOS1] = Fb;
-		shblk[IC + BOS3] = Fb*Bre + Cre; break;
-		}
-		// 52 registers
-		/* Transfer Atilde to shmem, freeing Utilde/Atilde as Ule/Ure pair */
-		shblk[IC + BOS5] = Atilde;
-
-		__syncthreads();
-
-		shblk[IC + BOS2] = (shblk[IL + BOS1]-shblk[IC + BOS1]);
-		shblk[IC + BOS4] = (shblk[IL + BOS3]-shblk[IC + BOS3]);
-
-		/* Flux density and momentum... for prediction we explicitly did not use MUSCL and
-                   therefore Ale = Acentered. */
-		if(thisThreadDelivers) {
-			if((PCswitch & 1) == RK_PREDICT) {
-				switch(fluxDirection) {
-				case FLUX_X:
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_Y:
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_Z:
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_RADIAL:
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda*(cylgeomB*(double)shblk[IC+BOS1] - cylgeomA*(double)shblk[IL+BOS1]);
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa  - lambda*( cylgeomB*(double)shblk[IC+BOS3]
-					                                            -cylgeomA*(double)shblk[IL+BOS3]
-					                                            -Cle*cylgeomC); break;
-				case FLUX_THETA_213:
-					Qstore[x0 + 0*DEV_SLABSIZE] = Ale - lambda*((double)shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa  - lambda*((double)shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA; break;
-				}
-				/*                     Qstore[x0 + 0*DEV_SLABSIZE] = Ale + lambda * shblk[IC + BOS2];
-				switch(PCswitch & 6) {
-				case HLLTEMPLATE_XDIR: Qstore[x0 + 2*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
-				case HLLTEMPLATE_YDIR: Qstore[x0 + 3*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
-				case HLLTEMPLATE_ZDIR: Qstore[x0 + 4*DEV_SLABSIZE] = Fa  + lambda * shblk[IC + BOS4]; break;
-				}*/
-			} else {
-				switch(fluxDirection) {
-				case FLUX_X:
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_Y:
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_Z:
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]); break;
-				case FLUX_RADIAL:
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda*(cylgeomB*(double)shblk[IC+BOS1] - cylgeomA*(double)shblk[IL+BOS1]);
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(  cylgeomB*(double)shblk[IC+BOS3]
-					                                    - cylgeomA*(double)shblk[IL+BOS3]
-					                                    - Qstore[x0 + 5*DEV_SLABSIZE]*cylgeomC); break;
-				case FLUX_THETA_213:
-					Qin[x0 + 0*DEV_SLABSIZE] -= lambda*((double)shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda*((double)shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA; break;
-				}/*
-				                       Qin[x0 + 0*DEV_SLABSIZE] += lambda * shblk[IC + BOS2];
-				switch(PCswitch & 6) {
-				case HLLTEMPLATE_XDIR: Qin[x0 + 2*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
-				case HLLTEMPLATE_YDIR: Qin[x0 + 3*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
-				case HLLTEMPLATE_ZDIR: Qin[x0 + 4*DEV_SLABSIZE] += lambda * shblk[IC + BOS4]; break;
-				} */
-			}
-		}
-
-		__syncthreads();
-		// 55 registers
-		if((PCswitch & 1) == RK_PREDICT) {
-			/* If making prediction use simple 0th order "reconstruction." */
-			switch(fluxDirection) {
-			case FLUX_X:
-			case FLUX_RADIAL:
-				Fa     = Qin[x0 + 3*DEV_SLABSIZE]; /* load py */
-				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case FLUX_Y:
-			case FLUX_THETA_213:
-			case FLUX_THETA_231:
-				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-				Utilde = Qin[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case FLUX_Z:
-				Fa     = Qin[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-				Utilde = Qin[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
-			}
-		} else {
-			/* If making correction, perform 1st order MUSCL reconstruction */
-			switch(fluxDirection) {
-			case FLUX_X:
-			case FLUX_RADIAL:
-				Fa     = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py */
-				Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case FLUX_Y:
-			case FLUX_THETA_213:
-			case FLUX_THETA_231:
-				Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-				Utilde = Qstore[x0 + 4*DEV_SLABSIZE]; /* load pz */ break;
-			case FLUX_Z:
-				Fa     = Qstore[x0 + 2*DEV_SLABSIZE]; /* load px as py */
-				Utilde = Qstore[x0 + 3*DEV_SLABSIZE]; /* load py as pz */ break;
-			}
-
-			shblk[IC + BOS0] = Fa;
-			shblk[IC + BOS2] = Utilde;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 2 */
-			Fb = Fa - shblk[IL + BOS0];
-			Atilde = Utilde - shblk[IL + BOS2];
-			__syncthreads();
-
-			/*************** BEGIN SECTION 3 */
-
-			shblk[IC + BOS0] = Fb;
-			shblk[IC + BOS2] = Atilde;
-			__syncthreads();
-
-			/*************** BEGIN SECTION 4 */
-			/* Take the speed hit and use shmem #4 to avoid eating more registers */
-			shblk[IC + BOS4] = SLOPEFUNC(Fb, shblk[IR + BOS0]);
-			Fb = Fa + shblk[IC + BOS4];
-			Fa -= shblk[IC + BOS4];
-			shblk[IC + BOS4] = SLOPEFUNC(Atilde, shblk[IR + BOS2]);
-			Atilde = Utilde + shblk[IC + BOS4];
-			Utilde -= shblk[IC + BOS4];
-		}
-		/* Rotate py and pz to the left so cell i has L/R values of interface i+1/2 */
-		__syncthreads();
-		//55 registers
-		shblk[IC + BOS0] = Fa;
-		shblk[IC + BOS1] = Utilde;
-
-		__syncthreads();
-		if((PCswitch & 1) == RK_PREDICT) {
-			Fb = shblk[IR + BOS0];
-			Atilde = shblk[IR + BOS1];
-		} else {
-			Fa = Fb; Fb = shblk[IR + BOS0];
-			Utilde = Atilde; Atilde = shblk[IR + BOS1];
-		}
-
-		shblk[IC + BOS6] = .5*(shblk[IC + BOS6] + (Fa*Fa + Utilde*Utilde)/Ale);
-		shblk[IC + BOS7] = .5*(shblk[IC + BOS7] + (Fb*Fb + Atilde*Atilde)/Are);
-
-		switch(HLL_FluxMode) {
 		case HLL_LEFT:
-			shblk[IC + BOS2] = Fa * Ble; /* py flux */
-			shblk[IC + BOS3] = Utilde * Ble; /* pz flux */
-			shblk[IC + BOS4] = Ble * (shblk[IC + BOS6] + FLUID_GOVERGM1*Cle);
-			break; /* E flux */
+			shblk[IC + BOS0] = Fa; // mass flux
+			shblk[IC + BOS1] = Ble * (FLUID_GOVERGM1*Cle + .5*Ale*(Ble*Ble+Dle*Dle+Ele*Ele)); // ener flux
+			shblk[IC + BOS2] = Fa*Ble + Cle; // px flux
+			shblk[IC + BOS3] = Fa*Dle; // py flux
+			shblk[IC + BOS4] = Fa*Ele; // pz flux
+			break;
 		case HLL_HLL:
-			shblk[IC + BOS2] = (Sright*(Fa*Ble) - Sleft*(Fb*Bre) + Sleft*Sright*(Fb-Fa))*shblk[IC + BOS5];
-			shblk[IC + BOS3] = (Sright*(Utilde*Ble) - Sleft*(Atilde*Bre) + Sleft*Sright*(Atilde-Utilde)) * shblk[IC + BOS5];
-			shblk[IC + BOS4] = (Sright*Ble*(shblk[IC + BOS6] + FLUID_GOVERGM1*Cle) - Sleft*Bre*(shblk[IC + BOS7] + FLUID_GOVERGM1*Cre) + Sleft*Sright*(shblk[IC + BOS7] + 1.5*Cre - shblk[IC + BOS6] - 1.5*Cle))*shblk[IC + BOS5];
+			shblk[IC + BOS0] = (Sright*Fa - Sleft*Fb + Sleft*Sright*(Are-Ale))*Atilde; // mass flux
+			shblk[IC + BOS2] = (Sright*(Ble*Fa+Cle) - Sleft*(Bre*Fb+Cre) + Sleft*Sright*(Fb-Fa))*Atilde;
+			shblk[IC + BOS3] = (Sright*(Dle*Fa) - Sleft*(Dre*Fb) + Sleft*Sright*(Are*Dre-Ale*Dle))*Atilde;
+			shblk[IC + BOS4] = (Sright*(Ele*Fa) - Sleft*(Ere*Fb) + Sleft*Sright*(Are*Ere-Ale*Ele))*Atilde;
+			// Compute the other fluxes before trashing the Fa & Fb variables
+			Fa = .5*Ale*(Ble*Ble+Dle*Dle+Ele*Ele); // KE densities
+			Fb = .5*Are*(Bre*Bre+Dre*Dre+Ere*Ere);
+			shblk[IC + BOS1] = (Sright*Ble*Fa - Sleft*Bre*Fb + Sleft*Sright*(Fb-Fa)); // HLL KE flux
+			shblk[IC + BOS1] = (shblk[IC + BOS1] + (FLUID_GOVERGM1*(Sright*Cle*Ble-Sleft*Cre*Bre) + Sleft*Sright*(Cre-Cle)/FLUID_GM1))*Atilde;
 			break;
 		case HLL_RIGHT:
-			shblk[IC + BOS2] = Fb * Bre;
-			shblk[IC + BOS3] = Atilde * Bre;
-			shblk[IC + BOS4] = Bre * (shblk[IC + BOS7] + FLUID_GOVERGM1*Cre);
+			shblk[IC + BOS0] = Fb; // rho flux
+			shblk[IC + BOS1] = Bre * (FLUID_GOVERGM1*Cre + .5*Are*(Bre*Bre+Dre*Dre+Ere*Ere)); // ener flu
+			shblk[IC + BOS2] = Fb*Bre + Cre; // px flux
+			shblk[IC + BOS3] = Fb*Dre; // py flux
+			shblk[IC + BOS4] = Fb*Ere; // pz flux
 			break;
 		}
 
-		__syncthreads(); /* shmem 2: py flux, shmem3: pz flux, shmem 4: E flux */
+		__syncthreads();
 
 		if(thisThreadDelivers) {
 			if((PCswitch & 1) == RK_PREDICT) {
 				switch(fluxDirection) {
 				case FLUX_X:
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]             - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Ble              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Dle              - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ele              - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_Y:
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]             - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Ble              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Dle              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ele              - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_Z:
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]             - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ble              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Dle              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS3]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Ele              - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]             - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Ble              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Dle              - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ele              - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_RADIAL:
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shblk[IC+BOS4]- cylgeomA*(double)shblk[IL+BOS4]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa     - lambda*(cylgeomB*shblk[IC+BOS2]-cylgeomA*shblk[IL+BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(cylgeomB*shblk[IC+BOS3]-cylgeomA*shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]                - lambda * (cylgeomB*shblk[IC+BOS0] - cylgeomA*shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE]   - lambda * (cylgeomB*shblk[IC+BOS1] - cylgeomA*shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (cylgeomB*shblk[IC+BOS2] - cylgeomA*shblk[IL+BOS2]
+					                                                                - Qstore[x0+5*DEV_SLABSIZE]*cylgeomC);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (cylgeomB*shblk[IC+BOS3] - cylgeomA*shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (cylgeomB*shblk[IC+BOS4] - cylgeomA*shblk[IL+BOS4]);
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (cylgeomB*shblk[IC+BOS0] - cylgeomA*shblk[IL+BOS0]);
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (cylgeomB*shblk[IC+BOS1] - cylgeomA*shblk[IL+BOS1]);
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Ble              - lambda * ( cylgeomB*shblk[IC+BOS2]
+					                                                              - cylgeomA*shblk[IL+BOS2]
+					                                                              - Cle*cylgeomC);
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Dle              - lambda * (cylgeomB*shblk[IC+BOS3] - cylgeomA*shblk[IL+BOS3]);
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ele              - lambda * (cylgeomB*shblk[IC+BOS4] - cylgeomA*shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_THETA_213:
-					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]) / cylgeomA;
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa     - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]) / cylgeomA;
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]) / cylgeomA; break;
+#ifdef USE_SSPRK
+					Qstore[x0 + 0*DEV_SLABSIZE] = Qin[x0]             - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]) / cylgeomA;
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
+					Qstore[x0 + 3*DEV_SLABSIZE] = Qin[x0+3*DEV_SLABSIZE] - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]) / cylgeomA;
+					Qstore[x0 + 2*DEV_SLABSIZE] = Qin[x0+2*DEV_SLABSIZE] - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA;
+					Qstore[x0 + 4*DEV_SLABSIZE] = Qin[x0+4*DEV_SLABSIZE] - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]) / cylgeomA;
+#else
+					Qstore[x0 + 0*DEV_SLABSIZE] = Ale                  - lambda * (shblk[IC+BOS0] - shblk[IL+BOS0]) / cylgeomA;
+					Qstore[x0 + 1*DEV_SLABSIZE] = Qin[x0+DEV_SLABSIZE] - lambda * (shblk[IC+BOS1] - shblk[IL+BOS1]) / cylgeomA;
+					Qstore[x0 + 3*DEV_SLABSIZE] = Ale*Ble              - lambda * (shblk[IC+BOS2] - shblk[IL+BOS2]) / cylgeomA;
+					Qstore[x0 + 2*DEV_SLABSIZE] = Ale*Dle              - lambda * (shblk[IC+BOS3] - shblk[IL+BOS3]) / cylgeomA;
+					Qstore[x0 + 4*DEV_SLABSIZE] = Ale*Ele              - lambda * (shblk[IC+BOS4] - shblk[IL+BOS4]) / cylgeomA;
+#endif
+					break;
 				}
-				/*Qstore[x0 +   DEV_SLABSIZE] = Qin[x0 + 1*DEV_SLABSIZE] + lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				switch(PCswitch & 6) {
-				case HLLTEMPLATE_XDIR:
-					Qstore[x0 + 3*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				case HLLTEMPLATE_YDIR:
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qstore[x0 + 4*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				case HLLTEMPLATE_ZDIR:
-					Qstore[x0 + 2*DEV_SLABSIZE] = Fa                   + lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qstore[x0 + 3*DEV_SLABSIZE] = Utilde               + lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				}*/
 			} else {
 				switch(fluxDirection) {
 				case FLUX_X:
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(shblk[IC+BOS0]-shblk[IL+BOS0])); // SSPRK2
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(shblk[IC+BOS1]-shblk[IL+BOS1])); // SSPRK2
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2])); // SSPRK2
+					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3])); // SSPRK2
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(shblk[IC+BOS4]-shblk[IL+BOS4])); // SSPRK2
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS0]- shblk[IL+BOS0]);
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]- shblk[IL+BOS2]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_Y:
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(shblk[IC+BOS0]-shblk[IL+BOS0])); // SSPRK2
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(shblk[IC+BOS1]-shblk[IL+BOS1])); // SSPRK2
+					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2])); // SSPRK2
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3])); // SSPRK2
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(shblk[IC+BOS4]-shblk[IL+BOS4])); // SSPRK2
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS0]- shblk[IL+BOS0]);
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]- shblk[IL+BOS2]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_Z:
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(shblk[IC+BOS0]-shblk[IL+BOS0])); // SSPRK2
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(shblk[IC+BOS1]-shblk[IL+BOS1])); // SSPRK2
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2])); // SSPRK2
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3])); // SSPRK2
+					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(shblk[IC+BOS4]-shblk[IL+BOS4])); // SSPRK2
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS0]- shblk[IL+BOS0]);
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]- shblk[IL+BOS2]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]); break;
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(shblk[IC+BOS0]-shblk[IL+BOS0])); // SSPRK2
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(shblk[IC+BOS1]-shblk[IL+BOS1])); // SSPRK2
+					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2])); // SSPRK2
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3])); // SSPRK2
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(shblk[IC+BOS4]-shblk[IL+BOS4])); // SSPRK2
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS0]- shblk[IL+BOS0]);
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]- shblk[IL+BOS2]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]);
+#endif
+					break;
 				case FLUX_RADIAL:
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shblk[IC+BOS4]- cylgeomA*(double)shblk[IL+BOS4]);
-					Qin[x0 + 3*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS2]-cylgeomA*shblk[IL+BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS3]-cylgeomA*shblk[IL+BOS3]); break;
-				case FLUX_THETA_213:
-					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]) / cylgeomA;
-					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]) / cylgeomA;
-					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]) / cylgeomA; break;
-				}
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(cylgeomB*shblk[IC+BOS0] - cylgeomA*shblk[IL+BOS0]));
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(cylgeomB*shblk[IC+BOS1] - cylgeomA*shblk[IL+BOS1]));
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(cylgeomB*shblk[IC+BOS2] - cylgeomA*shblk[IL+BOS2]
+					                                                                      - Qstore[x0 + 5*DEV_SLABSIZE]*cylgeomC));
+ 					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(cylgeomB*shblk[IC+BOS3] - cylgeomA*shblk[IL+BOS3]));
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(cylgeomB*shblk[IC+BOS4] - cylgeomA*shblk[IL+BOS4]));
 
-				/*Qin[x0 + 1*DEV_SLABSIZE] += lambda*(shblk[IL + BOS4]-shblk[IC + BOS4]);
-				switch(PCswitch & 6) {
-				case HLLTEMPLATE_XDIR:
-					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				case HLLTEMPLATE_YDIR:
-					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qin[x0 + 4*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				case HLLTEMPLATE_ZDIR:
-					Qin[x0 + 2*DEV_SLABSIZE] += lambda*(shblk[IL + BOS2]-shblk[IC + BOS2]);
-					Qin[x0 + 3*DEV_SLABSIZE] += lambda*(shblk[IL + BOS3]-shblk[IC + BOS3]); break;
-				}*/
-			}
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS0] - cylgeomA*shblk[IL+BOS0]);
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS1] - cylgeomA*shblk[IL+BOS1]);
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda*(  cylgeomB*shblk[IC+BOS2]
+					                                    - cylgeomA*shblk[IL+BOS2]
+					                                    - Qstore[x0 + 5*DEV_SLABSIZE]*cylgeomC);
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS3] - cylgeomA*shblk[IL+BOS3]);
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda*(cylgeomB*shblk[IC+BOS4] - cylgeomA*shblk[IL+BOS4]);
+#endif
+					break;
+				case FLUX_THETA_213:
+#ifdef USE_SSPRK
+					Qin[x0 + 0*DEV_SLABSIZE] = .5*(Qin[x0 + 0*DEV_SLABSIZE] + Qstore[x0 + 0*DEV_SLABSIZE] - lambda*(shblk[IC+BOS0]-shblk[IL+BOS0]) / cylgeomA); // SSPRK2
+					Qin[x0 + 1*DEV_SLABSIZE] = .5*(Qin[x0 + 1*DEV_SLABSIZE] + Qstore[x0 + 1*DEV_SLABSIZE] - lambda*(shblk[IC+BOS1]-shblk[IL+BOS1]) / cylgeomA); // SSPRK2
+					Qin[x0 + 3*DEV_SLABSIZE] = .5*(Qin[x0 + 3*DEV_SLABSIZE] + Qstore[x0 + 3*DEV_SLABSIZE] - lambda*(shblk[IC+BOS2]-shblk[IL+BOS2]) / cylgeomA); // SSPRK2
+					Qin[x0 + 2*DEV_SLABSIZE] = .5*(Qin[x0 + 2*DEV_SLABSIZE] + Qstore[x0 + 2*DEV_SLABSIZE] - lambda*(shblk[IC+BOS3]-shblk[IL+BOS3]) / cylgeomA); // SSPRK2
+					Qin[x0 + 4*DEV_SLABSIZE] = .5*(Qin[x0 + 4*DEV_SLABSIZE] + Qstore[x0 + 4*DEV_SLABSIZE] - lambda*(shblk[IC+BOS4]-shblk[IL+BOS4]) / cylgeomA); // SSPRK2
+#else
+					Qin[x0 + 0*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS0]- shblk[IL+BOS0]) / cylgeomA;
+					Qin[x0 + 1*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS1]- shblk[IL+BOS1]) / cylgeomA;
+					Qin[x0 + 3*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS2]- shblk[IL+BOS2]) / cylgeomA;
+					Qin[x0 + 2*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS3]- shblk[IL+BOS3]) / cylgeomA;
+					Qin[x0 + 4*DEV_SLABSIZE] -= lambda * (shblk[IC+BOS4]- shblk[IL+BOS4]) / cylgeomA;
+#endif
+					break;
+				} // end switch
+			} // end predict/correct step
 		}
 
 		x0 += blockDim.y*DEV_NX;
@@ -2054,8 +2214,8 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 
 			// Calculate kinetic energy density and enforce minimum pressure
 			w = .5*(prop[2]*prop[2] + prop[3]*prop[3] + prop[4]*prop[4])/prop[0];
-			if((prop[1] - w) < prop[0]*FLUID_MINEINT) {
-				prop[1] = w + prop[0]*FLUID_MINEINT;
+			if((prop[1] - w) < prop[0]*FLUID_MINTEMP) {
+				prop[1] = w + prop[0]*FLUID_MINTEMP;
 			}
 
 			if((PCswitch & 1) == RK_PREDICT) {
@@ -2210,8 +2370,8 @@ __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag
 
 			// Calculate kinetic+magnetic energy density and enforce minimum pressure
 			w = .5*(prop[2]*prop[2] + prop[3]*prop[3] + prop[4]*prop[4])/prop[0] + .5*(B[0]*B[0] + B[1]*B[1] + B[2]*B[2]);
-			if((prop[1] - w) < prop[0]*FLUID_MINEINT) {
-				prop[1] = w + prop[0]*FLUID_MINEINT;
+			if((prop[1] - w) < prop[0]*FLUID_MINTEMP) {
+				prop[1] = w + prop[0]*FLUID_MINTEMP;
 			}
 
 			if(PCswitch == RK_PREDICT) {
@@ -2260,7 +2420,18 @@ __global__ void cukern_PressureSolverHydro(double *state, double *gasPressure)
 		z   = state[x+4*DEV_SLABSIZE];
 		momsq += z*z;
 		P = FLUID_GM1 * (E - .5*momsq/rho);
-		gasPressure[x] = P;
+
+		// If negative pressure happens because it's reached Mach 1000, just inflate
+		// the goddamn pressure a little bit
+		// I'm done fighting this bullshit
+		if(P < rho * FLUID_MINTEMP) {
+			P = FLUID_MINTEMP*rho;
+			state[x+DEV_SLABSIZE] = (.5*momsq/rho) + P / FLUID_GM1;
+			gasPressure[x] = P;
+		} else {
+			gasPressure[x] = P;
+		}
+
 		x += hx;
 	}
 

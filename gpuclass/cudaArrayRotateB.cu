@@ -22,6 +22,10 @@ __global__ void cukern_ArrayExchangeYZ(double *src,  double *dst, int nx, int ny
 __global__ void cukern_ArrayRotateRight(double *src, double *dst, int nx, int ny, int nz);
 __global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny, int nz);
 
+int actuallyNeedToReorder(int *dims, int code);
+int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode);
+
+
 #define BDIM 16
 
 #ifdef STANDALONE_MEX_FUNCTION
@@ -103,95 +107,34 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 	int j;
 	for(j = 0; j < nArrays; j++) {
-		trans = *phi;
 
-		is3d = (phi->dim[2] > 3);
-		// These choices assure that the 3D transformation semantics reduce properly for 2D
-		if(is3d == 0) {
-			if((exchangeCode == 3) || (exchangeCode == 4)) {
-				// Identity operation:
-				if(newArrays != NULL) {
-					// If returning new, build deep copy
-					MGArray *tp = NULL;
-					returnCode = MGA_duplicateArray(&tp, phi);
-					psi[0] = *tp;
-					free(tp);
+		if(actuallyNeedToReorder(&phi->dim[0], exchangeCode) == 0) {
 
-					if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) break;
-				}   // Otherwise do nothing
-				phi++;
-				continue;
+			// Identity operation:
+			if(newArrays != NULL) {
+				// If returning new, build deep copy
+				MGArray *tp = NULL;
+				returnCode = MGA_duplicateArray(&tp, phi);
+				psi[0] = *tp;
+				free(tp);
+				// Then rewrite its metadata
+				alterArrayMetadata(phi, psi, exchangeCode);
+				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) break;
+			} else {
+				// If not, just rewrite input metadata
+				alterArrayMetadata(phi, phi, exchangeCode);
 			}
 
-			if(exchangeCode == 5) exchangeCode = 2; // Index rotate becomes XY transpose
-			if(exchangeCode == 6) exchangeCode = 2;
+			phi++;
+			if(psi != NULL) psi++;
+			continue;
 		}
 
-		switch(exchangeCode) {
-		case 2: /* Transform XYZ -> YXZ */
-			trans.dim[0] = phi->dim[1];
-			trans.dim[1] = phi->dim[0];
+		// Oh, it looks like we got actual work to do. Womp-womp-woooomp.
+		trans = *phi;
+		alterArrayMetadata(phi, &trans, exchangeCode);
 
-			trans.currentPermutation[0] = phi->currentPermutation[1];
-			trans.currentPermutation[1] = phi->currentPermutation[0];
-
-			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
-			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
-  			break;
-		case 3: /* Transform XYZ to ZYX */
-			trans.dim[0] = phi->dim[2];
-			trans.dim[2] = phi->dim[0];
-
-			trans.currentPermutation[0] = phi->currentPermutation[2];
-			trans.currentPermutation[2] = phi->currentPermutation[0];
-
-			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
-			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
-			break;
-		case 4: /* Transform XYZ to XZY */
-			trans.dim[1] = phi->dim[2];
-			trans.dim[2] = phi->dim[1];
-
-			trans.currentPermutation[1] = phi->currentPermutation[2];
-			trans.currentPermutation[2] = phi->currentPermutation[1];
-
-			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
-			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
-			break;
-		case 5: /* Rotate left, XYZ to YZX */
-			for(i = 0; i < 3; i++) trans.dim[i] = phi->dim[(i+1)%3];
-
-			for(i = 0; i < 3; i++) trans.currentPermutation[i] = phi->currentPermutation[(i+1)%3];
-
-			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Z; }
-			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_X; }
-			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_Y; }
-			break;
-		case 6: /* Rotate right, XYZ to ZXY */
-			for(i = 0; i < 3; i++) trans.dim[i] = phi->dim[(i+2)%3];
-
-			for(i = 0; i < 3; i++) trans.currentPermutation[i] = phi->currentPermutation[(i+2)%3];
-
-			if(phi->partitionDir == PARTITION_X) { trans.partitionDir = PARTITION_Y; }
-			if(phi->partitionDir == PARTITION_Y) { trans.partitionDir = PARTITION_Z; }
-			if(phi->partitionDir == PARTITION_Z) { trans.partitionDir = PARTITION_X; }
-			break;
-		default:
-			PRINT_FAULT_HEADER;
-			printf("Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
-			PRINT_FAULT_FOOTER;
-			fflush(stdout);
-			return ERROR_INVALID_ARGS;
-		}
-
-		trans.permtag = MGA_numsToPermtag(&trans.currentPermutation[0]);
-
-		// Recalculate the partition sizes
-		// FIXME: This... remains the same, n'est ce pas?
-		for(i = 0; i < trans.nGPUs; i++) {
-			calcPartitionExtent(&trans, i, sub);
-			trans.partNumel[i] = sub[3]*sub[4]*sub[5];
-		}
+		is3d = (phi->dim[2] > 3);
 
 		MGArray *nuClone;
 		if((exchangeCode != -1) || (psi != NULL)) {
@@ -293,6 +236,112 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
 	return returnCode;
 }
+
+// Identifies cases of index exchanging which do not result in any change of
+// actual in-memory ordering: These cases return 0;
+int actuallyNeedToReorder(int *dims, int code)
+{
+	switch(code) {
+	case 2: // flip XY
+		if((dims[0] == 1) || (dims[1] == 1)) return 0;
+		break;
+	case 3: // flip XZ
+		if(dims[1] == 1) {
+			if((dims[0] == 1) || (dims[2] == 1)) return 0;
+		}
+		break;
+	case 4: // flip YZ
+		if((dims[1] == 1) || (dims[2] == 1)) return 0;
+		break;
+	case 5: // rotate left
+		if((dims[0] == 1) && (dims[1] == 1)) return 0;
+		if((dims[1] == 1) && (dims[2] == 1)) return 0;
+		if((dims[0] == 1) && (dims[2] == 1)) return 0;
+		break;
+	case 6: // rotate right
+		if((dims[0] == 1) && (dims[1] == 1)) return 0;
+		if((dims[1] == 1) && (dims[2] == 1)) return 0;
+		if((dims[0] == 1) && (dims[2] == 1)) return 0;
+		break;
+	}
+	return 1; // All other cases return true, we do reorder.
+}
+
+int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode)
+{
+	MGArray origsrc = src[0]; // in event (dst == src)
+	int sub[6]; int i;
+
+	switch(exchangeCode) {
+	case 2: /* Transform XYZ -> YXZ */
+		dst->dim[0] = origsrc.dim[1];
+		dst->dim[1] = origsrc.dim[0];
+
+		dst->currentPermutation[0] = origsrc.currentPermutation[1];
+		dst->currentPermutation[1] = origsrc.currentPermutation[0];
+
+		if(origsrc.partitionDir == PARTITION_X) { dst->partitionDir = PARTITION_Y; }
+		if(origsrc.partitionDir == PARTITION_Y) { dst->partitionDir = PARTITION_X; }
+			break;
+	case 3: /* Transform XYZ to ZYX */
+		dst->dim[0] = origsrc.dim[2];
+		dst->dim[2] = origsrc.dim[0];
+
+		dst->currentPermutation[0] = origsrc.currentPermutation[2];
+		dst->currentPermutation[2] = origsrc.currentPermutation[0];
+
+		if(origsrc.partitionDir == PARTITION_X) { dst->partitionDir = PARTITION_Z; }
+		if(origsrc.partitionDir == PARTITION_Z) { dst->partitionDir = PARTITION_X; }
+		break;
+	case 4: /* Transform XYZ to XZY */
+		dst->dim[1] = origsrc.dim[2];
+		dst->dim[2] = origsrc.dim[1];
+
+		dst->currentPermutation[1] = origsrc.currentPermutation[2];
+		dst->currentPermutation[2] = origsrc.currentPermutation[1];
+
+		if(origsrc.partitionDir == PARTITION_Y) { dst->partitionDir = PARTITION_Z; }
+		if(origsrc.partitionDir == PARTITION_Z) { dst->partitionDir = PARTITION_Y; }
+		break;
+	case 5: /* Rotate left, XYZ to YZX */
+		for(i = 0; i < 3; i++) dst->dim[i] = origsrc.dim[(i+1)%3];
+
+		for(i = 0; i < 3; i++) dst->currentPermutation[i] = origsrc.currentPermutation[(i+1)%3];
+
+		if(origsrc.partitionDir == PARTITION_X) { dst->partitionDir = PARTITION_Z; }
+		if(origsrc.partitionDir == PARTITION_Y) { dst->partitionDir = PARTITION_X; }
+		if(origsrc.partitionDir == PARTITION_Z) { dst->partitionDir = PARTITION_Y; }
+		break;
+	case 6: /* Rotate right, XYZ to ZXY */
+		for(i = 0; i < 3; i++) dst->dim[i] = origsrc.dim[(i+2)%3];
+
+		for(i = 0; i < 3; i++) dst->currentPermutation[i] = origsrc.currentPermutation[(i+2)%3];
+
+		if(origsrc.partitionDir == PARTITION_X) { dst->partitionDir = PARTITION_Y; }
+		if(origsrc.partitionDir == PARTITION_Y) { dst->partitionDir = PARTITION_Z; }
+		if(origsrc.partitionDir == PARTITION_Z) { dst->partitionDir = PARTITION_X; }
+		break;
+	default:
+		PRINT_FAULT_HEADER;
+		printf("Index to exchange is invalid: %i is not in 2-6 inclusive.\n", exchangeCode);
+		PRINT_FAULT_FOOTER;
+		fflush(stdout);
+		return ERROR_INVALID_ARGS;
+	}
+
+	dst->permtag = MGA_numsToPermtag(&dst->currentPermutation[0]);
+
+	// Recalculate the partition sizes
+
+
+	for(i = 0; i < dst->nGPUs; i++) {
+		calcPartitionExtent(dst, i, sub);
+		dst->partNumel[i] = sub[3]*sub[4]*sub[5];
+	}
+
+	return SUCCESSFUL;
+}
+
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
 {
