@@ -30,6 +30,7 @@ c0 = sqrt(IC.ini.gamma * IC.ini.pPressure / IC.ini.pDensity);
 geo = GeometryManager(IC.ini.geometry.globalDomainRez);
 geo.makeBoxSize(1); % fixme hack we should get this from the savefile portal
 % not assume it
+geo.makeBoxOriginCoord([-.5 -.5 -.5]);
 
 [xv, yv, zv] = geo.ndgridSetIJK('pos');
 KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
@@ -66,7 +67,7 @@ backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machPa
     if runParallel; delta = geo.withoutHalo(delta); end
 
     if sum(F.time.history) >= tCritical;
-        disp(['At frame', S.tellFrame(), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
+        disp(['At frame', num2str(S.tellFrame()), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
         break;
     end
     

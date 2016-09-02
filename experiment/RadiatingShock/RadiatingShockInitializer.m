@@ -124,7 +124,7 @@ classdef RadiatingShockInitializer < Initializer
         potentialField = [];
         selfGravity = [];        
         geom = obj.geomgr;
-        geom.makeBoxSize(1); % Box length
+        
 
         geom.makeDimNotCircular(1);
 
@@ -165,18 +165,22 @@ classdef RadiatingShockInitializer < Initializer
 
         fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
 
-        obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
+        geom.makeBoxSize(flowEndpoint / fracFlow); % Box length
+        
+        
+       % obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
 
         [vecX, vecY, vecZ] = geom.ndgridVecs();
 
+        rez = geom.globalDomainRez;
         % Identify the preshock, radiating and cold gas layers.
-        preshock =  (vecX < obj.grid(1)*obj.fractionPreshock);
-        postshock = (vecX >= obj.grid(1)*obj.fractionPreshock);
-        postshock = postshock & (vecX < obj.grid(1)*(1-obj.fractionCold));
-        coldlayer = (vecX >= obj.grid(1)*(1-obj.fractionCold));
+        preshock =  (vecX < rez(1)*obj.fractionPreshock);
+        postshock = (vecX >= rez(1)*obj.fractionPreshock);
+        postshock = postshock & (vecX < rez(1)*(1-obj.fractionCold));
+        coldlayer = (vecX >= rez(1)*(1-obj.fractionCold));
 
-        numPre = obj.grid(1)*obj.fractionPreshock;
-        Xshock = obj.dGrid(1)*numPre;
+        numPre = rez(1)*obj.fractionPreshock;
+        Xshock = geom.d3h(1)*numPre;
 
         % Generate blank slates
         [mass, mom, mag, ener] = geom.basicFluidXYZ();
@@ -192,7 +196,7 @@ classdef RadiatingShockInitializer < Initializer
 
         % Get interpolated values for the flow
         flowValues(:,1) = flowValues(:,1) + Xshock;
-        xinterps = vecX*obj.dGrid(1);
+        xinterps = vecX*geom.d3h(1);
         minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
         %px is exactly constant
         pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
@@ -225,7 +229,7 @@ classdef RadiatingShockInitializer < Initializer
         %----------- SALT TO SEED INSTABILITIES -----------%
 	% Salt everything from half the preshock region to half the cooling region.
 	fracRadiate = 1.0-obj.fractionPreshock-obj.fractionCold;
-	Xsalt = (vecX >= (.5*obj.grid(1)*obj.fractionPreshock)) & (vecX < obj.grid(1)*(obj.fractionPreshock + .5*fracRadiate));
+	Xsalt = (vecX >= (.5*rez(1)*obj.fractionPreshock)) & (vecX < rez(1)*(obj.fractionPreshock + .5*fracRadiate));
 
             switch (obj.perturbationType)
                 % RANDOM Seeds ____________________________________________________________________

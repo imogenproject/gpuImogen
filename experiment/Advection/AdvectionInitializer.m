@@ -168,6 +168,7 @@ classdef AdvectionInitializer < Initializer
             statics  = StaticsInitializer(geo);
             
             geo.makeBoxSize(1);
+            geo.makeBoxOriginCoord([-.5 -.5 -.5]);
             
             [xGrid yGrid zGrid] = geo.ndgridSetIJK('pos');
             

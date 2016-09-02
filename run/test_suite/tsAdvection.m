@@ -44,6 +44,7 @@ run.wavenumber = N0;
 % run for only 1/3 because this will decrease by factor of 3 at 3x the wavenumber
 
 run.forCriticalTimes(.95);
+%run.cycles = 4;
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
 
 if prettyPictures

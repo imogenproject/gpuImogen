@@ -4,7 +4,7 @@ grid = [1024 1 1];
 %--- Initialize test ---%
 run             = DoubleBlastInitializer(grid);
 run.timeMax     = 0.038;
-run.iterMax     = 5000;
+run.iterMax     = 50000;
 
 run.alias       = '';
 run.info        = '2D Double Blast Wave test.';
@@ -16,14 +16,21 @@ run.pMid        = .01;
 
 run.ppSave.dim2 = 5;
 
+run.cfl = 0.7;
+
 % Generate realtime output of simulation results.
 rp = RealtimePlotter();
   rp.plotmode = 1;
   rp.plotDifference = 0;
   rp.insertPause = 0;
+  rp.forceRedraw = 1;
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
 run.peripherals{end+1} = rp;
+
+fm = FlipMethod();
+fm.iniMethod = 1; % hll
+run.peripherals{end+1} = fm;
 
 %--- Run tests ---%
 if (true)

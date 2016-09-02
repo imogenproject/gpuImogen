@@ -81,9 +81,9 @@ classdef RiemannProblemInitializer < Initializer
             b = 1.206045378311055;
             c = 0.137992831541219;
             self.setupRiemann2D([1.5 0 0 0 1.5], ...
-                [a   b 0 0 0.3], ...
-                [a   0 b 0 0.3], ...
-                [c   b b 0 0.029032258064516]);
+                                [a   b 0 0 0.3], ...
+                                [a   0 b 0 0.3], ...
+                                [c   b b 0 0.029032258064516]);
             self.gamma = 1.4;
             self.center([0.8 0.8 0.5]);
             self.orientate([0 0 0]);
@@ -100,34 +100,51 @@ classdef RiemannProblemInitializer < Initializer
         end
         
         function demo_SodTube(self)
-            % Sets up the classical Sod tube problem
+            % Sets up the classic Sod tube problem
             self.center([0.5 0.5 0.5]);
             self.orientate(0,0,0);
             self.gamma = 1.4;
-            self.half(2, [1 0 0 0 1]);
-            self.half(1, [0.125 0 0 0 0.1]);
             self.timeMax = 0.2;
+
+	    self.setupRiemann1D([1 0 0 0 1], [0.125 0 0 0 .1]);
         end
 
         function setupEinfeldt(self, mach, gam)
             self.center([0.5 0.5 0.5]);
             self.orientate(0,0,0);
-            self.gamma = gam;
 
-            c0 = sqrt(gam);
-            left = [1 -c0*mach(1) 0 0 1];
-            right= [1  c0*mach(1) 0 0 1];
-            if numel(mach) >= 2;
-                left(3) = mach(2)*c0;
-                right(3)= mach(2)*c0;
-            end
-            if numel(mach) >= 3
-                left(4) = mach(3)*c0;
-                right(4)= mach(3)*c0;
-            end
+            if (numel(mach) == 4) && (numel(gam) == 4)
+	        % Use the Einfeldt [rho,m,n,e] formula to specify ICs
+	        self.gamma = 1.4;
+                el = mach; er = gam;
+
+		left = [el(1) el(2) el(3) 0 0];
+		right = [er(1) er(2) er(3) 0 0];
+		% Calculate P
+		left(5) = (el(4) - el(1)*(el(2)^2+el(3)^2)) / (self.gamma-1);
+		right(5) = (er(4) - er(1)*(er(2)^2+er(3)^2)) / (self.gamma-1);
+		if (left(5) < 0) || (right(5) < 0)
+		    fprintf('Fatal problem: Einfeldt test initial conditions specify negative pressure.\n');
+                    mpi_errortest(1);
+		else
+		    mpi_errortest(0);
+		end
+	    else
+                self.gamma = gam;
+                c0 = sqrt(gam);
+                left = [1 -c0*mach(1) 0 0 1];
+                right= [1  c0*mach(1) 0 0 1];
+                if numel(mach) >= 2;
+                    left(3) = mach(2)*c0;
+                    right(3)= mach(2)*c0;
+                end
+                if numel(mach) >= 3
+                    left(4) = mach(3)*c0;
+                    right(4)= mach(3)*c0;
+                end
+	    end
         
-            self.half(1, right);
-            self.half(2, left);
+	    self.setupRiemann1D(left, right);
         end
 
         function setupRiemann1D(self, Uleft, Uright)

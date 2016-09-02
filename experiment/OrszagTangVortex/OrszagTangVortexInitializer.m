@@ -72,18 +72,18 @@ classdef OrszagTangVortexInitializer < Initializer
 	    geo = obj.geomgr;
 	    geo.makeBoxSize([1 1 1]);
 
-            grid = GIS.globalDomainRez;
-            mass            = 25/(36*pi)*GIS.onesSetXY();
+            rez = geo.globalDomainRez;
+            mass            = 25/(36*pi)*geo.onesSetXY();
 
-            [x, y]          = GIS.ndgridSetIJ('coords'); 
+            [x, y]          = geo.ndrezSetIJ('coords'); 
             mom             = zeros([3 size(x,1) size(x,2) 1]);
-            mom(1,:,:)      = - mass .* sin( 2*pi*y/(grid(2)-1) );
-            mom(2,:,:)      =   mass .* sin( 2*pi*x/(grid(1)-1) );
+            mom(1,:,:)      = - mass .* sin( 2*pi*y/(rez(2)-1) );
+            mom(2,:,:)      =   mass .* sin( 2*pi*x/(rez(1)-1) );
 
             mag0            = 1/sqrt(4*pi);
             mag             = zeros([3 size(x,1) size(x,2) 1]);
-            mag(1,:,:)      = - mag0*sin( 2*pi*y/(grid(2)-1) );
-            mag(2,:,:)      =   mag0*sin( 4*pi*x/(grid(1)-1) );
+            mag(1,:,:)      = - mag0*sin( 2*pi*y/(rez(2)-1) );
+            mag(2,:,:)      =   mag0*sin( 4*pi*x/(rez(1)-1) );
 
             ener        = 5/(12*pi)/(obj.gamma - 1) ...                % internal
                             + 0.5*squish(sum(mom.*mom,1)) ./ mass ...  % kinetic

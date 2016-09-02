@@ -29,6 +29,7 @@ rp = RealtimePlotter();
   rp.insertPause = 1;
   rp.iterationsPerCall = 25;
   rp.firstCallIteration = 1;
+rp.forceRedraw = 1;
 run.peripherals{end+1} = rp;
 
 
