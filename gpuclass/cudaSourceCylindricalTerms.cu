@@ -116,7 +116,7 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 
 	int delta = ARRAY_NR * ARRAY_NPHI;
 
-	double rho, u, v, w, E, P;
+	double rho, u, v, w, E, oldP, newP, newpr, newpphi;
 	double diffmom;
 	double r = ARRAY_RIN + x*ARRAY_DR;
 
@@ -125,11 +125,21 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 		E   = base[  ARRAY_SLABSIZE];
 		u   = base[2*ARRAY_SLABSIZE];
 		v   = base[3*ARRAY_SLABSIZE];
+		w   = base[4*ARRAY_SLABSIZE];
 
 		diffmom = dt * v / (r * rho);
 
-		base[2*ARRAY_SLABSIZE] = u + v * diffmom;
-		base[3*ARRAY_SLABSIZE] = v - u * diffmom;
+		newpr   = u + v * diffmom; // pr
+		newpphi = v - u * diffmom; // pphi
+
+		newP = E - .5*(newpr*newpr+newpphi*newpphi+w*w)/rho;
+
+		if(newP <= 0.0) {
+			oldP = E - .5*(u*u + v*v + w*w)/rho;
+			base[ARRAY_SLABSIZE] = .5*(newpr*newpr + newpphi*newpphi + w*w)/rho + oldP;
+		}
+		base[2*ARRAY_SLABSIZE] = newpr;
+		base[3*ARRAY_SLABSIZE] = newpphi;
 
 		z += 1; base += delta;
 	}
