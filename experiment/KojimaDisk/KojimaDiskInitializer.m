@@ -148,8 +148,11 @@ classdef KojimaDiskInitializer < Initializer
 		geo.makeBoxSize(boxsize);
 		geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
 	    case ENUM.GEOMETRY_CYLINDRICAL;
-		dr = (1+2*obj.edgePadding) * (diskInfo.rout - diskInfo.rin) / geo.globalDomainRez(1);
-		Rminus = diskInfo.rin * (1 - obj.edgePadding);
+	        width = diskInfo.rout - diskInfo.rin;
+		inside = diskInfo.rin - obj.edgePadding * width;
+		outside = diskInfo.rout + obj.edgePadding * width;
+
+		dr = (outside - inside) / geo.globalDomainRez(1);
 
 		if nz > 1
 		    nz = geo.globalDomainRez(3);
@@ -174,7 +177,7 @@ classdef KojimaDiskInitializer < Initializer
 		    dz = 1;
 		end
 
-		geo.geometryCylindrical(Rminus, 1, dr, z0, dz)
+		geo.geometryCylindrical(inside, 1, dr, z0, dz)
 	    end
 
 
@@ -182,7 +185,7 @@ classdef KojimaDiskInitializer < Initializer
 
 	    [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
 
-	    [mass, mom(1,:,:,:), mom(2,:,:,:)] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
+	    [mass, momA, momB] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
 
             obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
 
@@ -196,9 +199,11 @@ classdef KojimaDiskInitializer < Initializer
             end
             
             ener    = (max(mass, minDiskMass).^obj.gamma)/(obj.gamma - 1) ...   % internal energy
-                        + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...           % kinetic energy
-                        + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
+                        + 0.5*(momA.^2+momB.^2) ./ mass;% ...           % kinetic energy
+                        %+ 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
+            mom(1,:,:,:) = momA;
+            mom(2,:,:,:) = momB;
             statics = [];%StaticsInitializer(obj.grid);
 
             selfGravity = [];
