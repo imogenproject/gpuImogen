@@ -20,10 +20,16 @@ int result;
 
 fail = (d == 0) ? 0 : 1;
 
+if(fail) {
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	printf("Rank %i has an error: All ranks will now throw a mex error.\n", rank);
+	}
+
 MPI_Allreduce(&fail, &result, 1, MPI_INT, MPI_MAX, commune);
 
 if(result != 0) {
-	mexErrMsgTxt("At least one rank passed an error. Causing interpreter error.");	
+	mexErrMsgTxt("At least one rank passed an error. All ranks throwing interpreter error.");
 }
 
 }
