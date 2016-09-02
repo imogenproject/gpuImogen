@@ -13,7 +13,7 @@ else
     % 3D vector arrays as as size [3 nx ny nz] array
     % Just.. ugh.
         uno = (d > 1);
-        d = d(uno | (cumprod(d) > 1))
+        d = d(uno | (cumprod(d) > 1));
     end
     if strcmp(behavior,'all')
         d = d(d>1);
