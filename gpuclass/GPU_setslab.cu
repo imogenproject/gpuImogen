@@ -23,7 +23,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray m;
 
-	MGA_accessMatlabArrays(prhs, 0, 0, &m);
+	int worked;
+
+	worked = MGA_accessMatlabArrays(prhs, 0, 0, &m);
+	if(worked != SUCCESSFUL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to access the GPU_Type input. Oh dear...\n");
+		PRINT_FAULT_FOOTER;
+		DROP_MEX_ERROR("Yup this is bad. Crashin' interpreter.\n");
+		}
 
 	int x = (int)*mxGetPr(prhs[1]);
 	int sub[6];
@@ -46,7 +54,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	mxClassID dtype = mxGetClassID(prhs[2]);
         if(dtype == mxDOUBLE_CLASS) {
-		MGA_uploadMatlabArrayToGPU(prhs[2], &slab, -1);
+		worked = MGA_uploadMatlabArrayToGPU(prhs[2], &slab, -1);
+		if(worked != SUCCESSFUL) {
+			CHECK_IMOGEN_ERROR(worked);
+			DROP_MEX_ERROR("Slab access succeeded, but data upload barfed.");
+		}
 	} else {
 		MGArray src;
 		MGA_accessMatlabArrays(prhs, 2, 2, &src);
