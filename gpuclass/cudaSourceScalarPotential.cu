@@ -188,6 +188,11 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, Geom
 /*
  * dP = -rho grad(phi) dt
  * dE = -rho v \cdot grad(phi) dt
+ * 
+ * Exact integrals at fixed position:
+ * P2 = P1 - rho grad(phi) t
+ * E2 = E1 - P1 \cdot grad(phi) t + .5 rho grad(phi) \cdot grad(phi) t^2
+ *    = E1 - dt grad(phi) \cdot ( P1 - .5 * rho * grad(phi) )
  */
 template <geometryType_t coords>
 __global__ void  cukern_applyScalarPotential(double *rho, double *E, double *px, double *py, double *pz, double *phi, int3 arraysize)
@@ -242,7 +247,7 @@ for(z = 0; z < arraysize.z; z++) {
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
     deltaphi         = LAMX*(V[myLocAddr+1]-V[myLocAddr-1]);
     if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
-    ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * px * dphi/dx
+    ener[myLocAddr] -= deltaphi*(W[myLocAddr]-.5*locrho[myLocAddr]*deltaphi); // exact energy 
     px[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store px <- px - dt * rho dphi/dx;
   }
 
@@ -257,7 +262,7 @@ for(z = 0; z < arraysize.z; z++) {
     deltaphi         = LAMY*(V[myLocAddr+BLOCKDIMX]-V[myLocAddr-BLOCKDIMX]) / (RINNER + DELTAR*myX);
     }
    if(locrho[myLocAddr] < RHOGRAV) { deltaphi *= (locrho[myLocAddr]*G1 - G2); } // reduce G for low density
-    ener[myLocAddr] -= deltaphi*W[myLocAddr]; // ener -= dt * py * dphi/dy
+    ener[myLocAddr] -= deltaphi*(W[myLocAddr]-.5*locrho[myLocAddr]*deltaphi); // ener -= dt * py * dphi/dy
     py[globAddr]     = W[myLocAddr] - deltaphi*locrho[myLocAddr]; // store py <- py - rho dphi/dy;
   }
 
@@ -270,7 +275,7 @@ for(z = 0; z < arraysize.z; z++) {
   U[myLocAddr]       = pz[globAddr]; // load pz(z) -> phiA
   __syncthreads();
   if(IWrite && (locrho[myLocAddr] > rhomin)) {
-    E[globAddr]     += ener[myLocAddr] - deltaphi*U[myLocAddr]; // Store E[x] <- ener - dt *pz * dphi/dz
+    E[globAddr]     += ener[myLocAddr] - deltaphi*(U[myLocAddr]-.5*locrho[myLocAddr]*deltaphi); // Store E[x] <- ener - dt *pz * dphi/dz
     pz[globAddr]     = U[myLocAddr] - deltaphi*locrho[myLocAddr]; // store pz <- pz - rho dphi/dz;
   }
 
