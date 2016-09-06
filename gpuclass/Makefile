@@ -305,7 +305,7 @@ cudaSourceRotatingFrame: cudaCommon.o cudaSourceRotatingFrame.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaSourceCylindricalTerms.o: cudaSourceCylindricalTerms.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCLA) $(NVCC_INCL) -cuda cudaSourceCylindricalTerms.cu -o cudaSourceCylindricalTerms.cpp
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceCylindricalTerms.cu -o cudaSourceCylindricalTerms.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceCylindricalTerms.cpp
 cudaSourceCylindricalTerms: cudaCommon.o cudaSourceCylindricalTerms.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
