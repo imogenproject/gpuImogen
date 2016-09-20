@@ -23,7 +23,7 @@
    phi[I] = (1-C)*phi[I] + C[i]*V[i],
    causing phi[I] to fade to V[i] at an exponential rate.
 
-   It is also able to set mirror boundary conditions (FIXME: Not fully tested!)
+   It is also able to set mirror boundary conditions
  */
 
 /* FIXME: rewrite this crap with template<>s */
@@ -60,6 +60,10 @@ __global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny,
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
+int setOutflowCondition(MGArray *fluid, int rightside, int memdir);
+template <int direct>
+__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normdir);
+
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
 #ifdef STANDALONE_MEX_FUNCTION
@@ -72,6 +76,134 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	setBoundaryConditions(NULL, prhs[0], (int)*mxGetPr(prhs[2]));
 }
 #endif
+
+int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, int direction)
+{
+	CHECK_CUDA_ERROR("entering setBoundaryConditions");
+
+	MGArray phi, statics;
+	int worked;
+	if(fluid == NULL) {
+		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
+		BAIL_ON_FAIL(worked)
+	} else {
+		worked = (fluid->matlabClassHandle == matlabhandle) ? SUCCESSFUL : ERROR_CRASH;
+		if(worked != SUCCESSFUL) {
+			PRINT_FAULT_HEADER;
+			printf("setBoundaryConditions permits both the MGArray and its Matlab handle to be passed because the MGA may have been internally modified without the handle having been, but the MGArray must name that Matlab handle as its originator.\n");
+			PRINT_FAULT_FOOTER;
+			BAIL_ON_FAIL(worked);
+		}
+		phi = fluid[0];
+	}
+
+	/* Grabs the whole boundaryData struct from the ImogenArray class */
+	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
+	if(boundaryData == NULL) {
+		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
+		return ERROR_INVALID_ARGS;
+	}
+
+	// fixme: we can't do this in this function yet. Oh boy
+	/* The statics describe "solid" structures which we force the grid to have */
+	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
+	if(gpuStatics == NULL) {
+		printf("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
+	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
+	BAIL_ON_FAIL(worked)
+
+	int *perm = &phi.currentPermutation[0];
+	int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
+
+	/* The offset array describes the index offsets for the data in the gpuStatics array */
+	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
+	if(offsets == NULL) {
+		printf("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
+	double *offsetcount = mxGetPr(offsets);
+	long int staticsOffset = (long int)offsetcount[2*offsetidx];
+	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
+
+	/* Parameter describes what block size to launch with... */
+	int blockdim = 8;
+
+	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
+	if(griddim.x > 32768) {
+		griddim.x = 32768;
+		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
+	}
+
+	/* Every call results in applying specials */
+	if(staticsNumel > 0) {
+		PAR_WARN(phi);
+		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
+		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
+		if(worked != SUCCESSFUL) return worked;
+	}
+
+	/* Indicates which part of a 3-vector this array is (0 = scalar, 123=XYZ) */
+	mxArray *comp = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "component");
+	int vectorComponent;
+	if(comp != NULL) {
+		vectorComponent = (int)(*mxGetPr(comp));
+	} else {
+		printf("Failed to fetch 'component' field of class: Not an ImogenArray? Bailing.\n");
+		return ERROR_INVALID_ARGS;
+	}
+
+	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
+	if(bcModes == NULL) {
+		printf("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
+		return ERROR_INVALID_ARGS;
+	}
+
+
+	if((direction < 1) || (direction > 3)) {
+		PRINT_FAULT_HEADER;
+		printf("Direction passed to cudaStatics was %i which is not one of 1 (X/R) 2 (Y/theta) 3 (Z)", direction);
+		PRINT_FAULT_FOOTER;
+		return ERROR_INVALID_ARGS;
+	}
+
+	int memoryDirection = MGA_dir2memdir(perm, direction);
+
+	/* So this is kinda^Wutterly goddamn brain-damaged, but the boundary condition modes are stored in the form
+       { 'type minus x', 'type minus y', 'type minus z';
+	 'type plus  x', 'type plus y',  'type plus z'};
+       Yes, strings in a cell array. */
+	/* Okay, that's not kinda, it's straight-up stupid. */
+
+	mxArray *bcstr; char *bs;
+
+	// FIXME: okay here's the shitty way we're doing this,
+	// FIXME: If the density array says 'outflow', we call setOutflowCondition once.
+	// FIXME: If not, we loop
+
+	int d; // coordinate face: 0 = negative, 1 = positive
+	for(d = 0; d < 2; d++) {
+		bcstr = mxGetCell(bcModes, 2*(direction-1) + d);
+		bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
+		mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
+
+		if(strcmp(bs,"outflow") == 0) {
+			worked = setOutflowCondition(&phi, d, direction);
+		} else {
+			int i;
+			for(i = 0; i < 5; i++) {
+				worked = setBoundaryConditions(fluid+i, fluid[i].matlabClassHandle, direction);
+				if(worked != SUCCESSFUL) break;
+			}
+		}
+
+	}
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+
+	return SUCCESSFUL;
+}
+
 
 /* FIXME: This is terrible.
  * FIXME: MGArray needs to provision carrying its own boundary condition metadata around somehow.
@@ -164,7 +296,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 	int j;
 	for(j = 0; j < numDirections; j++) {
 		if(direction == 0) continue; /* Skips edge BCs if desired. */
-		int memoryDirection = perm[direction-1];
+		int memoryDirection = MGA_dir2memdir(perm, direction);
 
 		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
@@ -197,7 +329,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 			if(strcmp(bs, "wall") == 0) {
 				printf("Wall BC is not implemented!\n");
 				return ERROR_INVALID_ARGS;
-			} 
+			}
 
 		}
 		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
@@ -205,6 +337,118 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 
 	return SUCCESSFUL;
 }
+
+/* Sets boundary condition as follows:
+ * boundary = (v_normal > 0) ? constant : mirror
+ * This must be passed ONLY the density array (FIXME: awful testing hack)
+ */
+int setOutflowCondition(MGArray *fluid, int rightside, int direction)
+{
+	dim3 blockdim, griddim;
+	int i;
+	int sub[6];
+
+	int status;
+
+	int memdir = MGA_dir2memdir(&fluid->currentPermutation[0], direction);
+
+	switch(memdir) {
+	case 1: // x
+		blockdim.x = 3; blockdim.y = blockdim.z = 16;
+
+		for(i = 0; i < fluid->nGPUs; i++) {
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+
+			griddim.x = ROUNDUPTO(sub[4], 16)/16;
+			griddim.y = ROUNDUPTO(sub[5], 16)/16;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i] + sub[3] - 4;
+				cukern_SetOutflowX<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			} else {
+				double *base = fluid->devicePtr[i] + 3;
+				cukern_SetOutflowX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			}
+			// FIXME: check launch error here
+		}
+		break;
+	case 2: // y
+		PRINT_FAULT_HEADER; printf("Outflow condition has not been implemented for Y direction. Soz.\n");
+		PRINT_FAULT_FOOTER; return ERROR_INVALID_ARGS;
+		break;
+	case 3: // z
+		PRINT_FAULT_HEADER; printf("Outflow condition has not been implemented for Z direction. Soz.\n");
+		PRINT_FAULT_FOOTER; return ERROR_INVALID_ARGS;
+		break;
+	}
+
+
+
+
+return SUCCESSFUL;
+}
+
+// Assume we are passed &rho(3,0,0) if direct == 0
+// assume we are passed &rho(nx-4,0,0) if direct == 1
+// Launch an 3xAxB block with an NxM grid such that AN >= ny and BM >= nz
+template <int direct>
+__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normdir) // FIXME slabNumel should be int64 type
+{
+int tix = threadIdx.x;
+
+int y = threadIdx.y + blockDim.y*blockIdx.x;
+int z = threadIdx.z + blockDim.z*blockIdx.y;
+if((y >= ny) || (z >= nz)) return;
+
+// Y-Z translate
+base += nx*(y+ny*z);
+
+double a;
+
+a = base[(1+normdir)*slabNumel];
+
+if(a*direct > 0) {
+	// boundary normal momentum positive: constant extrap
+	if(direct == 1) { // +x: base = &rho[nx-4, 0 0]
+		tix++;
+		a = base[0]; base[tix] = a; base += slabNumel;
+		a = base[0]; base[tix] = a; base += slabNumel;
+		a = base[0]; base[tix] = a; base += slabNumel;
+		a = base[0]; base[tix] = a; base += slabNumel;
+		a = base[0]; base[tix] = a; base += slabNumel;
+	} else { // -x: base = &rho[3,0,0]
+		base = base - 3; // move back to zer0
+		a = base[3]; base[tix] = a; base += slabNumel;
+		a = base[3]; base[tix] = a; base += slabNumel;
+		a = base[3]; base[tix] = a; base += slabNumel;
+		a = base[3]; base[tix] = a; base += slabNumel;
+		a = base[3]; base[tix] = a; base += slabNumel;
+	}
+} else {
+	// boundary normal momentum negative: mirror BC
+	if(direct == 1) { // +x
+		base = base - 3;
+		a = base[tix]; base[6-tix] = a; base += slabNumel; // rho
+		a = base[tix]; base[6-tix] = a; base += slabNumel; // E
+		a = base[tix]; base[6-tix] = (normdir == 1) ? -a : a; base += slabNumel; // px
+		a = base[tix]; base[6-tix] = (normdir == 2) ? -a : a; base += slabNumel;// py
+		a = base[tix]; base[6-tix] = (normdir == 3) ? -a : a; base += slabNumel;// pz
+	} else { // -x
+		base = base - 3;
+		a = base[tix+4]; base[2-tix] = a; base += slabNumel;
+		a = base[tix+4]; base[2-tix] = a; base += slabNumel;
+		a = base[tix+4]; base[2-tix] = (normdir == 1) ? -a : a; base += slabNumel;
+		a = base[tix+4]; base[2-tix] = (normdir == 2) ? -a : a; base += slabNumel;
+		a = base[tix+4]; base[2-tix] = (normdir == 3) ? -a : a; base += slabNumel;
+	}
+
+}
+
+
+}
+
+
 
 /* Sets the given array+AMD's boundary in the following manner:
    side      -> 0 = negative edge  1 = positive edge

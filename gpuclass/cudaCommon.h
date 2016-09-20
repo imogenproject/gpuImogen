@@ -174,6 +174,7 @@ bool     sanityCheckTag(const mxArray *tag);     // sanity
 
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
 
+int MGA_dir2memdir(int *perm, int dir);
 void MGA_permtagToNums(int permtag, int *p);
 int MGA_numsToPermtag(int *nums);
 

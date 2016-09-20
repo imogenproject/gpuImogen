@@ -46,7 +46,7 @@ if(flag_1D) {
 
 	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-	returnCode = setFluidBoundaries(fluid, 5, nowDir);
+	returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 	return CHECK_IMOGEN_ERROR(returnCode);
@@ -63,7 +63,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundaries(fluid, 5, nowDir);
+			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -87,7 +87,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundaries(fluid, 5, nowDir);
+			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -103,15 +103,5 @@ return CHECK_IMOGEN_ERROR(returnCode);
 /* Fluid half-step completed 
  * If order > 0, next call sourcing terms
  * If order < 0, next call fluid with order > 0 */
-}
-
-int setFluidBoundaries(MGArray *x, int nArrays, int dir)
-{
-	int i;
-	for(i = 0; i < nArrays; i++) {
-		setBoundaryConditions(x+i, x[i].matlabClassHandle, dir);
-	}
-	return SUCCESSFUL;
-
 }
 

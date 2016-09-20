@@ -350,6 +350,17 @@ int MGA_numsToPermtag(int *nums)
 return 0;
 }
 
+int MGA_dir2memdir(int *perm, int dir)
+{
+	if(perm == NULL) return -1;
+
+	if(perm[0] == dir) return 1;
+	if(perm[1] == dir) return 2;
+	if(perm[2] == dir) return 3;
+
+	return -1;
+}
+
 /* Facilitates access to MGArrays stored in Imogen's Matlab structures:
  * the mxArray pointers prhs[i] for i spanning idxFrom to idxTo inclusive
  * are decoded into mg[i - idxFrom]. Such that if the Matlab call is
