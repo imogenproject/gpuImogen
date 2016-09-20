@@ -10,7 +10,7 @@ run         = CPAlfvenWave(grid);
 %run.sonicMach   = 5;
 %run.alfvenMach  = .5;
 
-%run.bcMode.x = ENUM.BCMODE_CONST;
+%run.bcMode.x = ENUM.BCMODE_CONSTANT;
 
 %run.ppSave.dim2 = 5;
 %run.ppSave.dim3 = 100;
