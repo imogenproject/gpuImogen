@@ -44,13 +44,15 @@ end
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF);
+        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF*.3);
     end
     
     if run.frameTracking.omega ~= 0
         cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
         clear xyvector;
     end
+
+    cudaSourceVTO(fluids, [dTime 6.28 0.0 fluids(1).MINMASS]);
 
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms

@@ -5,11 +5,11 @@ include ../Make.config
 DEFINES = -DRECONSTRUCT_VELOCITY -DUNIX
 #-DFLOATFLUX
 
-#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
 # Debuggable code
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
+#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
 # If you enjoy verbose assembler output
-#NVCC_OPTS = $(NVCC_OPTS) -Xptxas="-v"
+#-Xptxas="-v"
 
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include -I../mpi
 
@@ -41,7 +41,7 @@ fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot f
 magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
 	echo "Done building MHD kernels"
 
-lambda: cudaSourceCylindricalTerms cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar
+lambda: cudaSourceCylindricalTerms cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceVTO
 	echo "Done building source/sink term kernels"
 
 thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidStep
@@ -322,6 +322,12 @@ cudaAccretingStar.o: cudaAccretingStar.cu
 cudaAccretingStar: cudaCommon.o cudaAccretingStar.o
 	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@
 
+cudaSourceVTO.o: cudaSourceVTO.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceVTO.cu -o cudaSourceVTO.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaSourceVTO.cpp
+
+cudaSourceVTO: cudaCommon.o cudaSourceVTO.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 clean:
 	rm -f *mexa64 *cpp *o
