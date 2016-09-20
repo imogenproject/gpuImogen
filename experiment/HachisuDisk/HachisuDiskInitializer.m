@@ -120,13 +120,13 @@ classdef HachisuDiskInitializer < Initializer
             if obj.useUpperMirror == true
                 diskres             = [obj.grid(1)/2 obj.grid(3)*2];
                 obj.gravity.mirrorZ = true;
-                obj.bcMode.z        = ENUM.BCMODE_CONST;
+                obj.bcMode.z        = ENUM.BCMODE_CONSTANT;
             end
             if obj.useRightMirror == true
                 diskres             = [obj.grid(1)/2 obj.grid(2)];
                 obj.gravity.mirrorZ = true;
                 obj.bcMode.z        = ENUM.BCMODE_WORMHOLE;
-%		obj.bcMode.flux.z = ENUM.BCMODE_CONST;
+%		obj.bcMode.flux.z = ENUM.BCMODE_CONSTANT;
             end
             if (obj.useUpperMirror == false) && (obj.useRightMirror == false)
                 diskres             = [obj.grid(1)/2 obj.grid(3)];

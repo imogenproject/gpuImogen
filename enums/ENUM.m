@@ -25,10 +25,11 @@ classdef ENUM
         %--- Boundary Condition Modes  ---%
         % These are implemented and work as advertised
         BCMODE_CIRCULAR     = 'circ';       % Circular/periodic BC at edge
-        BCMODE_CONST        = 'const';      % Constant-value extrapolation; Appropriate for supersonic in/outflow
+        BCMODE_CONSTANT     = 'const';      % Constant-value extrapolation; Appropriate for supersonic in/outflow
         BCMODE_LINEAR       = 'linear';     % Linear extrapolation; Dangerous, prone to backflow instability
         BCMODE_MIRROR       = 'mirror';     % Mirror BC (scalars, vector parallel = symmetry, vector perp = antisymmetry)
         BCMODE_STATIC       = 'bcstatic';   % Read values at t=0 and reset to this value at every step
+        BCMODE_OUTFLOW      = 'outflow';
 
         % These not so much
         BCMODE_FADE         = 'fade';       % Fade arrays out to ICs at edges.

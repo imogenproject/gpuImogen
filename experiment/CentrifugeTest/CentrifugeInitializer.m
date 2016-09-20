@@ -65,8 +65,8 @@ classdef CentrifugeInitializer < Initializer
             obj.mode.magnet         = false;
             obj.mode.gravity        = true;
             obj.iterMax             = 300;
-            obj.bcMode.x            = ENUM.BCMODE_CONST;
-            obj.bcMode.y            = ENUM.BCMODE_CONST;
+            obj.bcMode.x            = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.y            = ENUM.BCMODE_CONSTANT;
             obj.activeSlices.xyz    = true;
             
             obj.edgeFraction        = .1;

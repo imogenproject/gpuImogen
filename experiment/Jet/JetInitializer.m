@@ -58,8 +58,8 @@ classdef JetInitializer < Initializer
             obj.mode.gravity     = false;
             obj.cfl              = 0.4;
             obj.iterMax          = 250;
-            obj.bcMode.x         = ENUM.BCMODE_CONST;
-            obj.bcMode.y         = ENUM.BCMODE_CONST;
+            obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.y         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 10;

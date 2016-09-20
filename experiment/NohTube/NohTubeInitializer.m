@@ -40,9 +40,9 @@ classdef NohTubeInitializer < Initializer
             
             obj.operateOnInput(input, [1024, 1, 1]);
 
-            obj.bcMode.x         = ENUM.BCMODE_CONST;
-            obj.bcMode.y         = ENUM.BCMODE_CONST;
-            obj.bcMode.z         = ENUM.BCMODE_CONST;
+            obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.y         = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.z         = ENUM.BCMODE_CONSTANT;
 	    obj.useHalfspace([0 0 0]);
             
             obj.pureHydro = 1;
