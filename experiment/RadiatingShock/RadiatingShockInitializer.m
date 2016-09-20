@@ -76,7 +76,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.treadmill        = false;
             obj.cfl              = 0.5;
             obj.iterMax          = 10;
-            obj.bcMode.x         = ENUM.BCMODE_CONST;
+            obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
             obj.activeSlices.xy  = true;
@@ -156,7 +156,7 @@ classdef RadiatingShockInitializer < Initializer
         L_c = radflow.coolingLength(jump.v(1,2));
         T_c = radflow.coolingTime(jump.v(1,2));
 
-        radflow.setCutoff('thermal',1.1);
+        radflow.setCutoff('thermal',obj.Tcutoff);
 
         flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
         flowValues   = radflow.solutionTable();
