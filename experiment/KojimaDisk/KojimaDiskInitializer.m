@@ -56,8 +56,8 @@ classdef KojimaDiskInitializer < Initializer
             obj.mode.magnet         = false;
             obj.mode.gravity        = true;
             obj.iterMax             = 300;
-            obj.bcMode.x            = ENUM.BCMODE_CONST;
-            obj.bcMode.y            = ENUM.BCMODE_CONST;
+            obj.bcMode.x            = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.y            = ENUM.BCMODE_CONSTANT;
             obj.activeSlices.xy     = true;
             obj.bgDensityCoeff      = 1e-5;
             
@@ -110,10 +110,10 @@ classdef KojimaDiskInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
-            obj.bcMode.x = ENUM.BCMODE_CONST;
+ %           obj.bcMode.x = ENUM.BCMODE_CONSTANT;
 	    if obj.useZMirror == 1
 	        if obj.grid(3) > 1
-                    obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONST };
+                    obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT };
                 else
                     if mpi_amirank0(); warning('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n'); end
                 end
@@ -185,7 +185,7 @@ classdef KojimaDiskInitializer < Initializer
 
 	    [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
 
-	    [mass, momA, momB] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
+	    [mass, momA, momB, Eint] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
 
             obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
 
@@ -198,7 +198,7 @@ classdef KojimaDiskInitializer < Initializer
                 minDiskMass = obj.minMass;
             end
             
-            ener    = (max(mass, minDiskMass).^obj.gamma)/(obj.gamma - 1) ...   % internal energy
+            ener    = Eint ...   % internal energy
                         + 0.5*(momA.^2+momB.^2) ./ mass;% ...           % kinetic energy
                         %+ 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
