@@ -22,7 +22,7 @@ run.iterMax     = 19999;
 run.cfl 	    = .75;
 
 run.setupEinfeldt(M, gamma)
-run.bcMode.x    = ENUM.BCMODE_CONST;
+run.bcMode.x    = ENUM.BCMODE_CONSTANT;
 
 %run.useInSituAnalysis = 0;
 %run.stepsPerInSitu = 10;

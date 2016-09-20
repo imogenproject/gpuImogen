@@ -20,7 +20,7 @@ run.notes       = 'Simple axis aligned shock tube test';
 
 run.ppSave.dim2 = 100;
 
-run.bcMode.x    = ENUM.BCMODE_CONST;
+run.bcMode.x    = ENUM.BCMODE_CONSTANT;
 
 if prettyPictures
     rp = RealtimePlotter();

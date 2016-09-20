@@ -32,8 +32,8 @@ run.image.mass      = true;
 run.activeSlices.xyz = true;
 run.ppSave.dim3 = 5;
 
-run.bcMode.x        = ENUM.BCMODE_CONST;
-run.bcMode.y        = ENUM.BCMODE_CONST;
+run.bcMode.x        = ENUM.BCMODE_CONSTANT;
+run.bcMode.y        = ENUM.BCMODE_CONSTANT;
 run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
 
 run.edgeFraction    = 1; % Sets the radius of the simulation to
