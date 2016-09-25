@@ -19,7 +19,7 @@ classdef ImogenManager < handle
         info;           % Information generated during initialization and run.          cell(?,2)
         iniInfo;        % Information regarding data initial condition settings.        str
         DEBUG;          % Specifies if Imogen is run in debug mode.                     logical    
-        GAMMA;          % Polytropic index for the run.                                 double
+        defaultGamma    % Polytropic index for the run.                                 double
         PROFILE;        % Specifies state of profiler for the run.                      logical
         paths;          % Contains various paths needed for saving data.                Paths
         fades;          %
@@ -37,7 +37,7 @@ classdef ImogenManager < handle
         %--- Core operations: Timestep control, conservative CFD/MHD
         time;           % Manages temporal actions.                                 TimeManager
         fluid;          % Manages fluid routines.                                   FluidManager
-        radiation;      % Manage radiation behaviors                                Radiation
+	% radiation removed: This is a per-fluid property
         magnet;         % Manages magnetic routines.                                MagnetManager
         geometry;       % Parallel behavior/semantics/global geometry handler       GeometryManager
 
@@ -120,7 +120,6 @@ classdef ImogenManager < handle
             obj.selfGravity = GravityManager();             obj.selfGravity.parent  = obj;
             % uploadDataArrays() builds & assigns an array of these now
             %obj.fluid      = FluidManager();               obj.fluid.parent        = obj;
-            obj.radiation   = Radiation();
             obj.magnet      = MagnetManager();              obj.magnet.parent       = obj;
 
             obj.attachPeripheral(obj.save); % temporary?
@@ -159,15 +158,13 @@ classdef ImogenManager < handle
 
 % FIXME: All these should take just 'f' as their fluid state arg
 % FIXME: All these should be peripherals subsumed under the above loop, not bespoke "special" things Imogen does.
-                      obj.image.initialize();
+            obj.image.initialize();
                       for n = 1:numel(f)
-                          f(n).initialize();
+                          f(n).initialize(mag);
                       end
-                    % FIXME why does this work fur the radiation call didn't?
-                  obj.radiation.initialize(obj, f(1).mass, f(1).mom, f(1).ener, mag);
-                obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
-             obj.potentialField.initialize(IC.potentialField);
-              obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);
+            obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
+            obj.potentialField.initialize(IC.potentialField);
+            obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);
         end
         
 %_____________________________________________________________________________________ postliminary

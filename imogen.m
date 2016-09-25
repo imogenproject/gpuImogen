@@ -95,27 +95,24 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
 
     run.time.recordWallclock();
-%    backupdata = [];
+    backupData = dumpCheckpoint(run);
                                
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
+        %if mod(run.time.iteration, 25) == 24
+        %    backupData = dumpCheckpoint(run);
+        %end
 
-%        if mod(run.time.iteration, run.time.stepsPerChkpt) == run.time.stepsPerChkpt-1
-%        if mod(run.time.iteration, 15) == 14
-%	    backupData = dumpCheckpoint(run);
-%	end
-
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA 1 run.time.iteration run.cfdMethod], run.geometry);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, 1);
         source(run, run.fluid, mag, 1);
-        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 run.GAMMA -1 run.time.iteration run.cfdMethod], run.geometry);
+        fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
 
-%        if checkPhysicality(run.fluid)
-%           restoreCheckpoint(run, backupData);
-%	end
-
+        if checkPhysicality(run.fluid)
+            restoreCheckpoint(run, backupData);
+        end
         run.time.step();
         run.pollEventList(run.fluid, mag);
     end

@@ -40,7 +40,7 @@ ener = fluids(1).ener;
 
         run.save.firstSave = false; % Update for later saves.
 
-        sl.gamma  = run.GAMMA;
+        sl.gamma  = run.defaultGamma;
         sl.time   = run.time.toStruct();
         sl.about  = run.about;
         sl.ver    = run.version;

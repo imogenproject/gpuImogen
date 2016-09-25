@@ -14,9 +14,12 @@ classdef FluidManager < handle
         thresholds;               % Threshold values for gravitational fluxing.         struct
         viscosity;                % Artificial viscosity object.                        ArtificialViscosity
         limiter;                  % Flux limiters to use for each flux direction.       cell(3)
+
+        radiation;                % Radiative emission properties for this fluid        Radiation
     
         checkCFL;
         isDust; 
+        gamma;
     end%PUBLIC
    
     properties (SetAccess = public, GetAccess = public)
@@ -42,13 +45,40 @@ classdef FluidManager < handle
 % Creates a new FluidManager instance.
         function self = FluidManager() 
             self.viscosity    = ArtificialViscosity();
+            self.radiation    = Radiation();
             self.fluidName    = 'some_gas';
             % Set defaults
             self.checkCFL     = 1;
             self.isDust       = 0;
         end
+      
+        function setBoundaries(self, direction, what)
+	    if nargin < 3; what = [1 1 1 1 1 ]; else
+	        if numel(what) ~= 5; error('shit!'); end
+            end
+
+	    if what(1); self.mass.applyBoundaryConditions(direction); end
+            if what(2); self.ener.applyBoundaryConditions(direction); end
+            if what(3); self.mom(1).applyBoundaryConditions(direction); end
+            if what(4); self.mom(2).applyBoundaryConditions(direction); end
+            if what(5); self.mom(3).applyBoundaryConditions(direction); end
+	end
+
+	function synchronizeHalos(self, direction, what)
+	    if nargin < 3; what = [1 1 1 1 1 ]; else
+	        if numel(what) ~= 5; error('shit!'); end
+            end
+
+            geo = self.parent.geometry;
+
+	    if what(1); cudaHaloExchange(self.mass,   direction, geo.topology, geo.edgeInterior(:,direction)); end
+	    if what(2); cudaHaloExchange(self.mom(1), direction, geo.topology, geo.edgeInterior(:,direction)); end
+	    if what(3); cudaHaloExchange(self.mom(2), direction, geo.topology, geo.edgeInterior(:,direction)); end
+	    if what(4); cudaHaloExchange(self.mom(3), direction, geo.topology, geo.edgeInterior(:,direction)); end
+	    if what(5); cudaHaloExchange(self.ener,   direction, geo.topology, geo.edgeInterior(:,direction)); end
+
+	end
         
-       
         function attachBoundaryConditions(self, element)
             if ~isempty(self.parent)
                 self.parent.bc.attachBoundaryConditions(element);
@@ -60,6 +90,8 @@ classdef FluidManager < handle
         end
 
         function attachFluid(self, holder, mass, ener, mom)
+            % Takes the { DataHolder, mass, ener, mom } objects returned in uploadFluidData()
+            % and sets the FluidManager's like-named properties.
             self.DataHolder = holder;
 
             self.mass = mass;
@@ -68,13 +100,22 @@ classdef FluidManager < handle
         end
 
         function processFluidDetails(self, details)
+            % This is called in uploadDataArrays with the ini.fluid(:).details structure
+            % It sets all per-fluid properties, including adiabatic index and radiation
+            % properties
             if isfield(details,'isDust');   self.isDust   = details.isDust;   end
             if isfield(details,'checkCFL'); self.checkCFL = details.checkCFL; end
+            if isfield(details,'gamma');     self.gamma = details.gamma; end
+            if isfield(details,'radiation');
+                self.radiation.readSubInitializer(self, details.radiation);
+            end
         end
         
         function DEBUG_uploadData(self, rho, E, px, py, pz)
-            % HACK HACK HACK this is a butchered copypasta from uploadDataArrays
-            % that function should be abstracted so it can simply be called from here instead.
+            % DEBUG_uploadData(rho, E, px, py, pz) permits forging a working FluidManager
+            % instance for test purposes, including the unitTest()
+            % FIXME HACK HACK HACK this is a butchered copypasta from uploadDataArrays
+            % FIXME that function should be abstracted so it can simply be called from here instead.
             self.MASS_THRESHOLD = 0;
             self.MINMASS        = 0;
             self.parent         = [];
@@ -103,8 +144,15 @@ classdef FluidManager < handle
             self.attachFluid(DH, dens, etotal, momentum);
         end
 
+	function P = calcPressureOnCPU(self)
+            P = (self.gamma - 1) * (self.ener.array - .5*(self.mom(1).array.^2+self.mom(2).array.^2+self.mom(3).array.^2)./self.mass.array);
+	end
+
 %___________________________________________________________________________________________________ initialize
-        function initialize(self)
+        function initialize(self, mag)
+            self.viscosity.preliminary();
+            self.radiation.initialize(self.parent, self, mag);
+
             for i = 1:numel(self)
                 self(i).viscosity.preliminary();
             end

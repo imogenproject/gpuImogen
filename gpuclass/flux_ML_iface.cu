@@ -35,7 +35,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 #ifdef DEBUGMODE
 	wanted_nlhs = 1;
 #endif
-	if ((nrhs!= 6) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need flux_ML_iface(fluid, bx, by, bz, [dt, purehydro?, fluid gamma, order, step #, step method], run.geometry)\n");
+	if ((nrhs!= 6) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need flux_ML_iface(fluid, bx, by, bz, [dt, purehydro?, order, step #, step method], run.geometry)\n");
 
 	MGArray fluid[5];
 
@@ -46,17 +46,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	double *scalars = mxGetPr(prhs[idxpost]);
 
-	if(mxGetNumberOfElements(prhs[idxpost]) != 6) {
-		DROP_MEX_ERROR("Must rx 8 parameters in params vector: [dt, purehydro?, fluid gamma, rhomin, order, step #, step method, geomtype, Rin]");
+	if(mxGetNumberOfElements(prhs[idxpost]) != 5) {
+		DROP_MEX_ERROR("Must rx 5 parameters in params vector: [dt, purehydro?, order, step #, step method]");
 	}
 
 	double dt     = scalars[0]; /* Access lambda (dt / dx) */
 	int ishydro   = scalars[1]; /* determine if purely hydrodynamic */
-	double gamma  = scalars[2]; /* Adiabatic index of fluid */
-
-	int sweepDirect = (int)scalars[3]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
-	int stepNum     = (int)scalars[4]; /* step number (used to pick the permutation of the fluid propagators) */
-	int stepMethod  = (int)scalars[5]; /* 1=HLL, 2=HLLC, 3=Xin/Jin */
+	int sweepDirect = (int)scalars[2]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
+	int stepNum     = (int)scalars[3]; /* step number (used to pick the permutation of the fluid propagators) */
+	int stepMethod  = (int)scalars[4]; /* 1=HLL, 2=HLLC, 3=Xin/Jin */
 
 	/* Access topology structure */
 	ParallelTopology topo;
@@ -72,7 +70,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	fsp.onlyHydro = ishydro;
 	fsp.stepDirection = sweepDirect;
 	fsp.stepMethod = mlmethodToEnum(stepMethod);
-	fsp.thermoGamma = gamma;
 
 	int numFluids = mxGetNumberOfElements(prhs[0]);
 	int fluidct;
@@ -88,7 +85,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		if(flprop != NULL) {
 			rhoMin = *((double *)mxGetPr(flprop));
 		} else {
+			PRINT_FAULT_HEADER;
+			printf("Unable to access fluid(%i).MINMASS property.\n", fluidct);
+			PRINT_FAULT_FOOTER;
 			status = ERROR_NULL_POINTER;
+			break;
+		}
+
+		flprop = mxGetProperty(prhs[0], fluidct, "gamma");
+		if(flprop != NULL) {
+			fsp.thermoGamma = *mxGetPr(flprop);
+		} else {
+			PRINT_FAULT_HEADER;
+			printf("Unable to access fluid(%i).gamma!\n", fluidct);
+			PRINT_FAULT_FOOTER;
+			status = ERROR_NULL_POINTER;
+			break;
 		}
 		fsp.minimumRho = rhoMin;
 		performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect);

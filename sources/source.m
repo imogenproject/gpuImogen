@@ -28,6 +28,7 @@ end
         xyvector = GPU_Type([ (xg-run.frameTracking.rotateCenter(1)) (yg-run.frameTracking.rotateCenter(2)) ], 1); 
         cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
     end
+% FIXME does cudaSourceRotatingFrame actually know what to do with multiple fluids?
 
     for n = 1:numel(run.selfGravity.compactObjects)
         % Applies gravitational sourcing from all compact objects to my domain,
@@ -44,7 +45,7 @@ end
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
     if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*ENUM.GRAV_FEELGRAV_COEFF*.3);
+        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS/10);
     end
     
     if run.frameTracking.omega ~= 0
@@ -52,8 +53,7 @@ end
         clear xyvector;
     end
 
-    cudaSourceVTO(fluids, [dTime 6.28 0.0 fluids(1).MINMASS]);
-
+    cudaSourceVTO(fluids, [dTime 6.28 6.28 fluids(1).MINMASS]);
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.
@@ -68,35 +68,25 @@ end
 %        end
 %        ener.array          = ener.array - enerSource;
 %    end
-    
 
     % The mechanical routines above are written to exactly conserve internal energy so that
     % they commute with things which act purely on internal energy (e.g. radiation)
     %--- Radiation Sourcing ---%
     %       If radiation is active, subtract from internal energy
-% HACK HACK HACK does doesn't support multifluid
-%HACK HACK HACK
-mass = fluids(1).mass;
-ener = fluids(1).ener;
-mom = fluids(1).mom;
-
-    if strcmp(run.radiation.type, ENUM.RADIATION_NONE) == false
-        run.radiation.solve(run, mass, mom, ener, mag, dTime);
+    for N = 1:numel(fluids)
+        fluids(N).radiation.solve(fluids(N), mag, dTime);
     end
 
     if run.selfGravity.ACTIVE || run.potentialField.ACTIVE
-        % Oh you better believe we need to synchronize up in dis house
-        geo = run.geometry;
-        S = {mom(1), mom(2), mom(3), ener};
-        for j = 1:4; for dir = 1:3
-            cudaHaloExchange(S{j}.gputag, dir, geo.topology, geo.edgeInterior(:,dir));
-        end; end
+        for N = 1:numel(fluids);
+	    fluids(N).synchronizeHalos(1, [0 1 1 1 1]);
+	    fluids(N).synchronizeHalos(2, [0 1 1 1 1]);
+	    fluids(N).synchronizeHalos(3, [0 1 1 1 1]);
+	end
     end
 
-mass.applyBoundaryConditions(0);
-ener.applyBoundaryConditions(0);
-mom(1).applyBoundaryConditions(0);
-mom(2).applyBoundaryConditions(0);
-mom(3).applyBoundaryConditions(0);
-
+% can we keep track of what of these we actually need FIXME
+    for N = 1:numel(fluids)
+        fluids(N).setBoundaries(0);
+    end
 end

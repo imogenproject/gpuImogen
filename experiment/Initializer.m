@@ -34,7 +34,6 @@ classdef Initializer < handle
         timeMax;        % Maximum simulation time before run exits.         double
         treadmill;      % Treadmilling direction, inactive if empty.        string
         viscosity;      % Viscosity sub initializer object.                 ViscositySubInitializer
-        radiation;      % Radiation sub initializer objet.                  RadiationSubInitializer
         logProperties;  % List of class properties to include in run.log    cell
         fluxLimiter;    % Specifies the flux limiter(s) to use.             struct
 
@@ -100,8 +99,6 @@ classdef Initializer < handle
             obj.wallMax              = 1e5;
             obj.treadmill            = 0;
             obj.gravity              = SelfGravityInitializer();
-            obj.viscosity            = ViscositySubInitializer();
-            obj.radiation            = RadiationSubInitializer();
             obj.fluxLimiter          = struct();
 
             obj.useInSituAnalysis    = 0;
@@ -230,6 +227,15 @@ classdef Initializer < handle
             else
                 if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
+
+                % Fill in gamma values for fluids which did not have them set
+		% This also permits the simple use of 'run.gammma' to continue w/o major rewriting
+                for z = 1:numel(fluids)
+		    if isfield(fluids(z).details, 'gamma') == 0
+		        fluids(z).details.gamma = obj.gamma;
+		    end
+		end
+
                 obj.minMass = max(mpi_allgather(obj.minMass));
             end
 

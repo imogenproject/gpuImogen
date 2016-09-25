@@ -23,6 +23,7 @@ classdef TimeManager < handle
         dtAverage;   % The accumulated mean timestep                                 double
 
         stepsPerChkpt; % Number of steps between in-memory checkpoint dumps
+        stepsSinceIncident;
 
         firstWallclockValue;
     end%PUBLIC
@@ -60,7 +61,9 @@ classdef TimeManager < handle
             obj.timePercent = 0;
             obj.wallPercent = 0;
             obj.dtAverage   = 0;
-	    obj.stepsPerChkpt=25;
+            
+            obj.stepsPerChkpt=25;
+            obj.stepsSinceIncident = inf;
         end
         
         function recordWallclock(obj)
@@ -89,10 +92,10 @@ classdef TimeManager < handle
                 %--- Find max velocity ---%
                 %           Find the maximum fluid velocity in the grid and its vector direction.
                 if obj.parent.pureHydro == 1
-                    soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), obj.parent.GAMMA);
+                    soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), fluids(f).gamma);
                 else
                     soundSpeed = cudaSoundspeed(mass, ener, mom(1), mom(2), mom(3), ...
-                        mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, obj.parent.GAMMA);
+                        mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, fluids(f).gamma);
                 end
                 
                 %[cmax, gridIndex] = directionalMaxFinder(mass, soundSpeed, mom(1), mom(2), mom(3));
@@ -114,6 +117,13 @@ classdef TimeManager < handle
             %           Using Courant-Freidrichs-Levy (CFL) condition determine safe step size
             %           accounting for maximum simulation time.
             obj.dTime = obj.CFL*dtMin;
+            
+	    % I've used this in "unreliable" settings to (slowly) recover CFL is something
+	    % makes the checkpoint restorer set a ridiculously small coefficient;
+	    % usually that situation just means the simulation is hopeless though
+            %if obj.CFL < 0.5
+            %    obj.CFL = obj.CFL + .001 * (.5 - obj.CFL);
+            %end
             
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
