@@ -3,6 +3,8 @@
 
 TestResults.name = 'Imogen Master Test Suite';
 
+TestResultFilename = '~/Sep19test_hllc.mat';
+
 %--- Override: Run ALL the tests! ---%
 doALLTheTests = 1;
 realtimePictures = 0;
@@ -199,7 +201,7 @@ end
 % USE CENTRIFUGE TEST
 
 if mpi_amirank0()
-    save('~/FullTestSuiteResults_SERIAL_2GPUs.mat','TestResult');
+    save(TestResultFilename,'TestResult');
 end
 
 
