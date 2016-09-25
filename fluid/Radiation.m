@@ -17,6 +17,8 @@ classdef Radiation < handle
         strengthMethod;
         setStrength;
         solve;          % Handle to raditaion function for simulation.              @func
+
+	pureHydro; % copy from run.pureHydro
     end%PUBLIC
     
 %===================================================================================================
@@ -38,8 +40,16 @@ classdef Radiation < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
+        function readSubInitializer(obj, fluid, SI)
+	    obj.type                 = SI.type;
+	    obj.exponent             = SI.exponent;
+	    obj.initialMaximum       = SI.initialMaximum;
+	    obj.coolLength           = SI.coolLength;
+	    obj.strengthMethod       = SI.strengthMethod;
+	    obj.setStrength          = SI.setStrength;
+	end
 
-        function initialize(obj, run, mass, mom, ener, mag)
+        function initialize(obj, run, fluid, mag)
 %___________________________________________________________________________________________________ 
 % Initialize the radiation solver parameters.
             switch (obj.type)
@@ -65,21 +75,23 @@ classdef Radiation < handle
             end
 
             if strcmp(obj.strengthMethod, 'inimax')         
-                unscaledRadiation = GPU_Type(cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, run.GAMMA, obj.exponent, 1));
+                unscaledRadiation = GPU_Type(cudaFreeRadiation(fluid.mass, fluid.mom(1), fluid.mom(2), ...
+                    fluid.mom(3), fluid.ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, fluid.gamma, obj.exponent, 1));
             
-                kineticEnergy     = 0.5*(mom(1).array .* mom(1).array + mom(2).array .* mom(2).array ...
-                                        + mom(3).array .* mom(3).array) ./ mass.array;
-                magneticEnergy    = 0.5*(mag(1).array .* mag(1).array + mag(2).array .* mag(2).array ...
-                                        + mag(3).array .* mag(3).array);
+                KE  = 0.5*(mom(1).array.^2 + mom(2).array.^2 + mom(3).array.^2)./ mass.array;
+                Bsq = 0.5*(mag(1).array.^2 + mag(2).array.^2 + mag(3).array.^2);
             
-                obj.strength      = obj.initialMaximum* ...
-                   minFinderND( (ener.array - kineticEnergy - magneticEnergy) ./ unscaledRadiation.array );
+	        % compute the strength so as to radiate (initialMaximum) of Eint away after t=1
+                obj.strength   = (ener.array - KE - Bsq) ./ unscaledRadiation.array;
+                obj.strength   = obj.initialMaximum * mpi_max(max(obj.strength(:)));
 
-fprintf('Radiation strength: %f\n', obj.strength);
+                if mpi_amirank0(); fprintf('Radiation strength: %f\n', obj.strength); end
             end
 
             if strcmp(obj.strengthMethod,'coollen')
-                vpre = mom(1).array(1,1) / mass.array(1,1); % preshock vx
+	        forceStop_ParallelIncompatible();
+                % FIXME: must have *global* psi(1,0,0) available.
+                vpre = mom(1).array(1,1,1) / mass.array(1,1,1); % preshock vx
 
                 ppost = .75*.5*vpre^2; % strong shock approximation
                 rhopost = 4;
@@ -87,22 +99,25 @@ fprintf('Radiation strength: %f\n', obj.strength);
 
 fprintf('Radiation strength: %f\n', obj.strength);
             end
+
+	    obj.pureHydro = run.pureHydro;
         end
         
 %___________________________________________________________________________________________________ noRadiationSolver
 % Empty solver for non-radiating cases. 
-        function result = noRadiationSolver(obj, run, mass, mom, ener, mag)
+        function result = noRadiationSolver(obj, fluid, mag, dTime)
             result = 0;
         end
         
 %___________________________________________________________________________________________________ opticallyThinSolver
 % Solver for free radiation.
-        function result = opticallyThinSolver(obj, run, mass, mom, ener, mag, dTime)
-            cudaFreeRadiation(mass, mom(1), mom(2), mom(3), ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.GAMMA obj.exponent obj.strength * dTime 1.05 run.pureHydro]);
+% FIXME remove hard-coded T=1.05*T_0 temperature cutoff, yuck... 
+        function result = opticallyThinSolver(obj, fluid, mag, dTime)
+            cudaFreeRadiation(fluid.mass, fluid.mom(1), fluid.mom(2), fluid.mom(3), fluid.ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [fluid.gamma obj.exponent obj.strength * dTime 1.05 obj.pureHydro]);
         end
         
     end%PUBLIC
-    
+
     
 %===================================================================================================    
     methods (Access = private) %                                                P R I V A T E    [M]        

@@ -6,23 +6,23 @@ function run = initialize(ini)
 %
 %>> ini          structure containing run related variable information              struct
 %<< run          initialized results                                                ImogenManager
-    
+
 %% ============================= BEGIN RUNVAL PROPERTY INITIALIZATION =========================== %
-   
-    %--- Clear all manager singletons from possible previous runs ---%
-    clear('ImogenManager','ImageManager','GravityManager', ...
-            'MagnetManager', 'BCManager');
-    
-    fclose all; % Prevent any lingering saves from disrupting run.
 
-    run             = ImogenManager();
-    [run.version, run.detailedVersion]                        = versionInfo();
-    [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
+%--- Clear all manager singletons from possible previous runs ---%
+clear('ImogenManager','ImageManager','GravityManager', ...
+    'MagnetManager', 'BCManager');
 
-    run.geometry = GeometryManager(ini.geometry.globalDomainRez);
-    run.geometry.deserialize(ini.geometry);
-    
-    run.setNumFluids(ini.numFluids);
+fclose all; % Prevent any lingering saves from disrupting run.
+
+run             = ImogenManager();
+[run.version, run.detailedVersion]                        = versionInfo();
+[run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
+
+run.geometry = GeometryManager(ini.geometry.globalDomainRez);
+run.geometry.deserialize(ini.geometry);
+
+run.setNumFluids(ini.numFluids);
 
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
@@ -46,14 +46,14 @@ try
         modes.x = ini.bcMode; modes.y = ini.bcMode; modes.z = ini.bcMode;
         run.bc.modes = modes;
     else
-        error(['BoundaryConditionError: Boundary condition field of type %s is not recognized.' ... 
+        error(['BoundaryConditionError: Boundary condition field of type %s is not recognized.' ...
             ' bcMode recognizes string or structure input. Run aborted.'],class(ini.bcMode));
     end
     run.appendInfo('Boundary Conditions', run.bc.modes);
 catch MERR, loc_initializationError('bcMode',MERR);
 end
 
-%% .cfl                         CFL prefactor 
+%% .cfl                         CFL prefactor
 try
     run.time.CFL = ini.cfl;
     run.appendInfo('CFL Prefactor', run.time.CFL);
@@ -71,7 +71,7 @@ end
 
 %% .minMass                     Minimum allowed mass density value
 
-%try 
+%try
 %    run.fluid.MINMASS = ini.minMass;
 %    run.appendInfo('Minimum mass density', run.fluid.MINMASS);
 %catch MERR, loc_initializationError('minmass',MERR);
@@ -79,7 +79,7 @@ end
 
 %% .profile                     Enable the profiler to record execution information
 
-try 
+try
     run.PROFILE = ini.profile;
     if (run.PROFILE); run.appendWarning('MATLAB profiler will be active for this run.'); end
     run.appendInfo('Profiler', run.PROFILE);
@@ -134,26 +134,26 @@ end
 %% .notes                       Add notes (user generated)
 
 try
-    run.notes = ini.notes;    
+    run.notes = ini.notes;
 catch MERR, loc_initializationError('notes',MERR);
-end 
+end
 
 %% .iniInfo                     Add initialization information (procedurally generated)
 
 try
-    run.iniInfo = ini.iniInfo;     
+    run.iniInfo = ini.iniInfo;
 catch MERR, loc_initializationError('iniinfo',MERR);
-end 
+end
 
 %% .gamma                       Polytropic index for equation of state
 
 try
-    run.GAMMA = ini.gamma;
-    run.appendInfo('Gamma', run.GAMMA);
+    run.defaultGamma = ini.gamma;
+    run.appendInfo('Default gamma value was ', run.defaultGamma);
 catch MERR, loc_initializationError('gamma',MERR);
 end
 
-%% .debug                       Run the code in debug mode 
+%% .debug                       Run the code in debug mode
 
 try
     run.DEBUG = ini.debug;
@@ -186,7 +186,7 @@ end
 
 %% .slice                       Index Locations for slice and image save files
 
-try       
+try
     run.save.SLICEINDEX = ini.slice;
     run.appendInfo('Slices will be saved at',run.save.SLICEINDEX);
 catch MERR, loc_initializationError('slice',MERR);
@@ -198,7 +198,7 @@ try
     slLabels = {'x','y','z','xy','xz','yz','xyz','cust'};
     for i=1:8
         if ~isfield(ini.activeSlices,slLabels{i}); run.save.ACTIVE(i) = false;
-        else run.save.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i})); 
+        else run.save.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i}));
         end
         if run.save.ACTIVE(i)
             run.appendInfo('Saving slice', upper(slLabels{i}));
@@ -209,13 +209,13 @@ end
 
 %% .customSave                  Custom saving properties
 
-try 
+try
     saveStr = '''slTime'',''slAbout'',''version'',''slGamma'',''sldGrid''';
-        
+    
     custom = ini.customSave;
     if isstruct(custom)
         if (isfield(custom,'mass')  && custom.mass),    saveStr = [saveStr ',''slMass''']; end
-        if (isfield(custom,'mom')   && custom.mom),     saveStr = [saveStr ',''slMom'''];  end 
+        if (isfield(custom,'mom')   && custom.mom),     saveStr = [saveStr ',''slMom'''];  end
         if (isfield(custom,'ener')  && custom.ener),    saveStr = [saveStr ',''slEner''']; end
         if (isfield(custom,'mag')   && custom.mag),     saveStr = [saveStr ',''slMag'''];  end
         run.save.customSaveStr = saveStr;
@@ -236,15 +236,15 @@ try
         run.appendInfo('Special save points 3D', run.save.specialSaves3D);
     else
         if isfield(ini.specSaves,'dim1')
-            run.save.specialSaves1D = ini.specSaves.dim1; 
+            run.save.specialSaves1D = ini.specSaves.dim1;
             run.appendInfo('Special save points 1D', run.save.specialSaves1D);
         end
-
+        
         if isfield(ini.specSaves,'dim2')
             run.save.specialSaves2D = ini.specSaves.dim2;
             run.appendInfo('Special save points 2D', run.save.specialSaves2D);
         end
-
+        
         if isfield(ini.specSaves,'dim3')
             run.save.specialSaves3D = ini.specSaves.dim3;
             run.appendInfo('Special save points 3D', run.save.specialSaves3D);
@@ -256,7 +256,7 @@ end
 %% .image                       Image saving properties
 
 try
-
+    
     fields = ImageManager.IMGTYPES;
     for i=1:length(fields)
         if isfield(ini.image,fields{i})
@@ -269,30 +269,30 @@ try
     run.image.activate();
     
     if run.image.ACTIVE
-    
+        
         if isfield(ini.image,'interval')
-            run.image.INTERVAL = max(1,ini.image.interval); 
+            run.image.INTERVAL = max(1,ini.image.interval);
         else
             run.image.INTERVAL = 1;
             run.appendWarning('Image saving interval set to every step.');
         end
-
+        
         if isfield(ini.image,'colordepth');    colordepth = ini.image.colordepth;
         else                                    colordepth = 256;
         end
-
+        
         if isfield(ini.image,'colormap'); run.image.createColormap(ini.image.colormap, colordepth);
-        else                                  run.image.createColormap('jet',colordepth); 
+        else                                  run.image.createColormap('jet',colordepth);
         end
         
-        imageSaveState = 'Active'; % FIXME: Wh... why is this a string? 
+        imageSaveState = 'Active'; % FIXME: Wh... why is this a string?
     else imageSaveState = 'Inactive';
     end
     run.appendInfo('Image saving is', imageSaveState);
-
+    
     if isfield(ini.image,'parallelUniformColors');
         run.image.parallelUniformColors = ini.image.parallelUniformColors; end
-
+    
 catch MERR, loc_initializationError('image',MERR);
 end
 
@@ -305,9 +305,6 @@ end
 % fixme: this is overwritten up the state uploader...
 if 0;
     for F = 1:ini.numFluids; % HACK HACK HACK
-        
-        run.fluid(F) = FluidManager();
-        
         %% .viscosity                   Artificial viscosity settings
         try
             run.fluid(F).viscosity.type                      = ini.viscosity.type;
@@ -315,20 +312,8 @@ if 0;
             run.fluid(F).viscosity.quadraticViscousStrength  = ini.viscosity.quadratic;
         catch MERR, loc_initializationError('viscosity', MERR);
         end
-    end        
+    end
 end
-% .radiation                   Radiation settings
-        try
-            run.radiation.type                 = ini.radiation.type;
-            run.radiation.exponent             = ini.radiation.exponent;
-            run.radiation.initialMaximum       = ini.radiation.initialMaximum;
-            run.radiation.coolLength           = ini.radiation.coolLength;
-            run.radiation.strengthMethod       = ini.radiation.strengthMethod;
-            run.radiation.setStrength          = ini.radiation.setStrength;
-            
-        catch MERR, loc_initializationError('radiation', MERR);
-        end
-        
 
 end
 
@@ -340,5 +325,6 @@ function loc_initializationError(property, caughtError)
 
 
     fprintf('\n\n--- Unable to parse property %s. Run aborted. ---\n', property);
-    rethrow(caughtError);
+    rethrow(caghtError);
 end
+

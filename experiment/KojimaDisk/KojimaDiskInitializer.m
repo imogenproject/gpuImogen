@@ -187,7 +187,7 @@ classdef KojimaDiskInitializer < Initializer
 
 	    [mass, momA, momB, Eint] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
 
-            obj.minMass = maxFinderND(mass) * obj.bgDensityCoeff;
+            obj.minMass = mpi_max(max(mass(:))) * obj.bgDensityCoeff;
 
             mass    = max(mass, obj.minMass);
             mag     = geo.zerosXYZ(geo.VECTOR);
