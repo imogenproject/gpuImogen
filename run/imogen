@@ -58,7 +58,7 @@ if [ ${1} = "serial" ]; then
     echo ">>> WARNING: defaulting to GPUs = [0]"
   fi
 
-  echo "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodisplay -nojvm >> $redirectStr & 
+  echo "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}',$gpuno);" | nohup nice matlab -nodesktop >> $redirectStr & 
   exit 0
 fi
 
