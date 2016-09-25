@@ -198,20 +198,20 @@ classdef GeometryManager < handle
             % corresponds to an X position of zero.
             % The same is done for j and Y, and k and Z, if j and/or k are given.
             
-            obj.affine(1) = (1-coord(1)).*obj.d3h(1);
-            if numel(coord) > 1
-                obj.affine(2) = (1-coord(2)).*obj.d3h(2);
-            end
-            if numel(coord) > 2
-                obj.affine(3) = (1-coord(3)).*obj.d3h(3);
-            end
-            
-            obj.updateGridVecs();
+            obj.makeBoxLLPosition(1-coord, 'incells');
         end
         
-        function makeBoxLLPosition(obj, position)
-            % geometry.makeBoxLLPosition(x [y [z]])
-            % directly sets the geometry.affine parameter
+        function makeBoxLLPosition(obj, position, normalization)
+            % geometry.makeBoxLLPosition(x [y [z]], ['incells'])
+            % directly sets the geometry.affine parameter such that cell
+            % (1,1,1) has this position. If given 'incells', position is
+            % taken as being measured in cells.
+            
+            if nargin == 3
+               if strcmp(normalization, 'incells') == 1
+                  b = numel(position); position(1:b) = position(1:b) .* obj.d3h(1:b); 
+               end
+            end
             
             obj.affine(1) = position(1);
             if numel(position) > 1; obj.affine(2) = position(2); end
