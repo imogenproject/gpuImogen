@@ -21,20 +21,21 @@ classdef AdvectionInitializer < Initializer
     %===============================================================================================
     properties (SetAccess = protected, GetAccess = public) %                   P R O T E C T E D [P]
         %Controlling values that define the simulation
-        pBackgroundMach;      % The background fluid's velocity in multiples of infinitesmal c_s (3x1 dbl)
+        pBackgroundMach;      % The background fluid's velocity in units of c_s (1x1 or 3x1 dbl)
         pWavenumber;
         pAmplitude;
         pPhase; % FIXME: Not implemented yet because lazy
-        pCycles;          % The number of periods to run for (i.e. number of times to advect it through the box)
+	% pCycles: The number of self rest frame oscillations of a travelling wave
+	%          or lab rest frame cycles of a entropy wave, to run
+        pCycles;
         pWaveK;               % 'Physical' K used to calculate <k|x>
         
         pDensity;
         pPressure;
 
-        pBeLinear; % If true, uses infinitesmal wave eigenvectors; If false, uses exact characteristics
-        pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the exact translational velocity
-        % to keep the wave exactly stationary
-
+        pBeLinear; % If true, uses linear wave eigenvectors; If false, uses exact characteristic
+        pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the
+	% background speed such that <p|x> = exactly zero
         pTwoFluidMode;
     end %PROTECTED
     
@@ -172,8 +173,6 @@ classdef AdvectionInitializer < Initializer
             
             [xGrid yGrid zGrid] = geo.ndgridSetIJK('pos');
             
-            fluids = struct('mass',[],'momX',[],'momY',[],'momZ',[],'ener',[]);
-
             % Store equilibrium parameters
             [mass mom mag ener] = geo.basicFluidXYZ();
             mass     = mass * obj.pDensity;
@@ -236,21 +235,15 @@ classdef AdvectionInitializer < Initializer
             end
             
             if obj.pTwoFluidMode
-                fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
-                fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
-                fluids(1).ener = ener;
-		fluids(1).details = [];
+	        fluids(1) = obj.stateToFluid(mass, mom, ener);
+%		fluids(1).details.gamma = 
 
-                fluids(2).mass = mass; fluids(2).momX = -squish(mom(1,:,:,:));
-                fluids(2).momY = -squish(mom(2,:,:,:)); fluids(2).momZ = -squish(mom(3,:,:,:));
-                fluids(2).ener = ener;
-		fluids(2).details = [];
+		fluids(2) = obj.stateToFluid(mass, -mom, ener);
+%		fluids(2).details.gamma =
                 fprintf('WARNING: Experimental two-fluid mode: Generating 2nd fluid with reversed momentum!\n');
+		fprintf('WARNING: Experimental two-fluid mode: Allowing both fluids to be assigned default gamma value.\n');
             else
-                fluids(1).mass = mass; fluids(1).momX = squish(mom(1,:,:,:));
-                fluids(1).momY = squish(mom(2,:,:,:)); fluids(1).momZ = squish(mom(3,:,:,:));
-                fluids(1).ener = ener;
-		fluids(1).details = [];
+	        fluids(1) = obj.stateToFluid(mass, mom, ener);
             end
 
             if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end
