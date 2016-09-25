@@ -1388,7 +1388,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 
 				// At first glance full-circular here isn't a problem (after all, the MPI exchange will just overwrite
 				// this, right?). However, IF cudaHaloExchange is involved, then outside-MGA things (i.e.
-				// Matlab) will be aware of the halo because it was added by GIS, not MGA.
+				// Matlab) will be aware of the halo because it was added by GeometryManager, not MGA.
 				// Then our use of the halo here will corrupt visible data.
 
 				// In particular, it will corrupt the calculation of boundary conditions!

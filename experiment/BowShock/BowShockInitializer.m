@@ -8,7 +8,7 @@ classdef BowShockInitializer < Initializer
     
     %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
-        PRIMAY_MODE = 'primary'; % Statics are applied to array classes.
+        PRIMARY_MODE = 'primary'; % Statics are applied to array classes.
         FLUX_MODE   = 'flux';    % Statics are applied to fluxes.
         FLUX_LR_MODE = 'fluxlr'; % Statics are applied to the left and right TVD fluxes only.
     end%CONSTANT
@@ -70,7 +70,7 @@ classdef BowShockInitializer < Initializer
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
             
-            obj.staticType       = BowShockInitializer.PRIMAY_MODE;
+            obj.staticType       = BowShockInitializer.PRIMARY_MODE;
             obj.stencil          = 'SmallSphere_800x256.mat';
             
             obj.ballCells        = [32 32 32];
@@ -154,6 +154,7 @@ classdef BowShockInitializer < Initializer
 	    geo = obj.geomgr;
 
             geo.makeBoxSize(obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1) );
+            geo.makeBoxOriginCoord(ceil(geo.globalDomainRez/2));
 
             %--- Background Values ---%
             [mass, mom, mag, ener] = geo.basicFluidXYZ();
@@ -165,7 +166,7 @@ classdef BowShockInitializer < Initializer
             %--- Static Values ---%
             statics = StaticsInitializer(geo);
             
-            [X, Y, Z] = GIS.ndgridSetXYZ(obj.ballCenter, 1./obj.ballCells);
+            [X, Y, Z] = geo.ndgridSetIJK('pos');
             Ledge = (X < (8-obj.ballCenter(1))/obj.ballCells(1)); % 8 leftmost cells - we establish plane flow here
             
             % The obstacle is an ellipsoid
@@ -173,12 +174,13 @@ classdef BowShockInitializer < Initializer
             ball = (norm <= 1.0);
             
             % Set minimum mass; Solve the hydro jump for the incoming blast
+	    % FIXME no no no, hardcoded parameters BAD
             obj.minMass = min(obj.pPreshockRho, obj.pBallRho) / 10000;
             
             blast = HDJumpSolver(obj.pBlastMach, 0, obj.gamma);
             xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
-            postshockX = GIS.toLocalIndices(1:xedge);
-            preshockX = GIS.toLocalIndices((xedge+1):obj.grid(1));
+            postshockX = geo.toLocalIndices(1:xedge);
+            preshockX = geo.toLocalIndices((xedge+1):geo.globalDomainRez(1));
             
             % Density distribution of background fluid
             mass(postshockX,:,:) = obj.pPreshockRho*blast.rho(2);
@@ -235,7 +237,7 @@ classdef BowShockInitializer < Initializer
                 %    statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(1), statics.CELLVAR, 1, 10);
                 %    statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(2), statics.CELLVAR, 1, 11);
                 %end
-                if GIS.localDomainRez(3) > 1
+                if geo.localDomainRez(3) > 1
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                     %if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 1, 1); end;
                 end

@@ -101,7 +101,7 @@ typedef struct {
      * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
      * at the exterior interfaces:
      *
-     * When there is only 1 node in our partitioning direction, GIS will NOT supply halo cells and it is
+     * When there is only 1 node in our partitioning direction, GeometryManager will NOT supply halo cells and it is
      * necessary that we do. When there is more than 1, the higher-level partitioning will supply
      * halo cells at the outside boundaries so we should not add them.
      * Ergo, this value is TRUE iff there is exactly one rank in the partition direction.

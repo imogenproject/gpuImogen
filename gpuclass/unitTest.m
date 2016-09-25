@@ -657,8 +657,8 @@ function fail = testFreezeAndPtot(res)
     BxD = GPU_Type(Bx); ByD = GPU_Type(By); BzD = GPU_Type(Bz);
 
     % Call GPU routine
-    GIS = GeometryManager(res);
-    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, GIS.topology);
+    geo = GeometryManager(res);
+    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, geo.topology);
 
     pd = GPU_Type(pdev);
     cf = GPU_Type(cdev);
