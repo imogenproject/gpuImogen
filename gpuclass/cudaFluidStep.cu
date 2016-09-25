@@ -492,19 +492,23 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				if(sub[4] < YBLOCKS) {
 					blocksize.y = sub[4];
 				}
-
+#ifdef USE_SSPRK
+#define TSFACTOR 1.0
+#else
+#define TSFACTOR 0.5
+#endif
 				// Fire off the fluid update step
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
 					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_1storder");
 				} else { // hllc
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], 0.5*lambda);
+					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
 					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 				}
-
+#undef TSFACTOR
 				if(returnCode != SUCCESSFUL) return returnCode;
 
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
@@ -623,6 +627,16 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 	}
 	if(algo == METHOD_HLLC) {
 		if(order == 1) {
+#ifdef USE_SSPRK
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			}
+#else
 			switch(stepdirect) {
 			case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
 			case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
@@ -631,15 +645,27 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 			case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
 			case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
 			}
-		} else {
+#endif
+		} else { // corrector
+#ifdef USE_SSPRK
 			switch(stepdirect) {
-			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
-			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
-			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
-			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
-			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
-			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
 			}
+#else
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			}
+#endif
 		}
 	}
 	return cudaSuccess;
@@ -980,9 +1006,14 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 // Second-order HLLC uses 10 blocks
 #define N_SHMEM_BLOCKS_SO 10
 
-template <unsigned int fluxDirection>
+
+
+template <unsigned int fluxScheme>
 __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 {
+	// These are built off templated vars, they'll be optimized away
+	unsigned int fluxDirection = fluxScheme & 7; // 1-6 = x/y/z/r/theta213/theta231
+
 	// Create center, look-left and look-right indexes
 	int IC = threadIdx.x;
 	int IL = threadIdx.x - 1;
@@ -1274,57 +1305,144 @@ DBGSAVE(1, E);
 #endif
 
 		if(thisThreadDelivers) {
-			// Update mass and total energy densities: Scalar equations
-			switch(fluxDirection) {
-			case FLUX_X:
-			case FLUX_Y:
-			case FLUX_Z:
-			case FLUX_THETA_231: // This looks unaltered but lambda (= dt/dtheta) was actually rescaled with different 1/r_c's at start
-				Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
-				Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
-				break;
-			case FLUX_RADIAL:
-				Qout[0]              -= lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]);
-				Qout[DEV_SLABSIZE]   -= lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]);
-				break;
-			case FLUX_THETA_213:
-				Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
-				Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
-				break;
-			}
-			switch(fluxDirection) {
-			case FLUX_X:
-				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
-				break;
-			case FLUX_Y:
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
-				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
-				break;
-			case FLUX_Z:
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
-				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
-				break;
-			case FLUX_RADIAL:
-				Qout[2*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS6]
-								 -cylgeomA*(double)shblk[IL+BOS6]
-								 -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
-				Qout[3*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8]); // Note from earlier in fcn,
-				Qout[4*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
-				break;
-			case FLUX_THETA_213:
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6])/cylgeomA; // FIXME sub rho vr vtheta dt / r
-				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8])/cylgeomA; // FIXME add rho vtheta^2 dt / r
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9])/cylgeomA;
-				break;
-			case FLUX_THETA_231: // NOTE in this case lambda was rescaled to lambda / r_center
-				Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
-				Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
-				Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
-				break;
+			switch(fluxScheme) {
+			case FLUX_X + TIMESCHEME_RK2:
+			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_Y + TIMESCHEME_RK2:
+			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_Z + TIMESCHEME_RK2:
+			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_RADIAL + TIMESCHEME_RK2:
+			Qout[0]              -= lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]);
+			Qout[2*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS6]
+			                                 -cylgeomA*(double)shblk[IL+BOS6]
+			                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
+			Qout[3*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8]); // Note from earlier in fcn,
+			Qout[4*DEV_SLABSIZE] -= lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+			break;
+			case FLUX_THETA_213 + TIMESCHEME_RK2:
+			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
+			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA; // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA; // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA;
+			break;
+			case FLUX_THETA_231 + TIMESCHEME_RK2: // NOTE in this case lambda was rescaled to lambda / r_center
+			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			// SSPRK PREDICTOR TIME SCHEME (out = in + tau f'(in))
+			case FLUX_X + TIMESCHEME_SSPRK_A:
+			Qout[0]              = Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_Y + TIMESCHEME_SSPRK_A:
+			Qout[0]              = Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_Z + TIMESCHEME_SSPRK_A:
+			Qout[0]              = Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			case FLUX_RADIAL + TIMESCHEME_SSPRK_A:
+			Qout[0]              = Qin[0]             -lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]  -lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]);
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * (cylgeomB*(double)shptr[BOS6]
+			                                                    -cylgeomA*(double)shblk[IL+BOS6]
+			                                                    -cylgeomC*(shptr[BOS2]+shptr[BOS3])); // (P dt / r) source term);
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8]); // Note from earlier in fcn,
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9]); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+			break;
+			case FLUX_THETA_213 + TIMESCHEME_SSPRK_A:
+			Qout[0]              = Qin[0]             -lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA; // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA; // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA;
+			break;
+			case FLUX_THETA_231 + TIMESCHEME_SSPRK_A: // NOTE in this case lambda was rescaled to lambda / r_center
+			Qout[0]              = Qin[0]             -lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
+			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
+			break;
+			// SSPRK CORRECTOR TIME SCHEME (out = .5*[in + out + tau*f'(in)] )
+			case FLUX_X + TIMESCHEME_SSPRK_B:
+			Qout[0]              = .5*(Qin[0]              + Qout[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]   + Qout[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qout[2*DEV_SLABSIZE] = .5*(Qin[2*DEV_SLABSIZE] + Qout[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qout[3*DEV_SLABSIZE] = .5*(Qin[3*DEV_SLABSIZE] + Qout[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qout[4*DEV_SLABSIZE] = .5*(Qin[4*DEV_SLABSIZE] + Qout[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+			case FLUX_Y + TIMESCHEME_SSPRK_B:
+			Qout[0]              = .5*(Qin[0]              + Qout[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]   + Qout[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qout[3*DEV_SLABSIZE] = .5*(Qin[3*DEV_SLABSIZE] + Qout[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qout[2*DEV_SLABSIZE] = .5*(Qin[2*DEV_SLABSIZE] + Qout[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qout[4*DEV_SLABSIZE] = .5*(Qin[4*DEV_SLABSIZE] + Qout[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+
+			break;
+			case FLUX_Z + TIMESCHEME_SSPRK_B:
+			Qout[0]              = .5*(Qin[0]              + Qout[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]   + Qout[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qout[4*DEV_SLABSIZE] = .5*(Qin[4*DEV_SLABSIZE] + Qout[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qout[3*DEV_SLABSIZE] = .5*(Qin[3*DEV_SLABSIZE] + Qout[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qout[2*DEV_SLABSIZE] = .5*(Qin[2*DEV_SLABSIZE] + Qout[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+			// Because we use qin to calc derivs, we must write qin = .5(qin + qout + f'(qin))
+			case FLUX_RADIAL + TIMESCHEME_SSPRK_B:
+			Qout[0]              = .5*(Qin[0]            + Qout[0]             - lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]));
+			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]  +Qout[DEV_SLABSIZE]  - lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]));
+			Qout[2*DEV_SLABSIZE] = .5*(Qin[2*DEV_SLABSIZE]+Qout[2*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS6]
+			                                 -cylgeomA*(double)shblk[IL+BOS6]
+			                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3]))); // (P dt / r) source term);
+			Qout[3*DEV_SLABSIZE] = .5*(Qin[3*DEV_SLABSIZE]+Qout[3*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8])); // Note from earlier in fcn,
+			Qout[4*DEV_SLABSIZE] = .5*(Qin[4*DEV_SLABSIZE]+Qout[4*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9])); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+			break;
+			case FLUX_THETA_213 + TIMESCHEME_SSPRK_B:
+			Qout[0]              = .5*(Qout[0]            + Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA);
+			Qout[DEV_SLABSIZE]   = .5*(Qout[DEV_SLABSIZE] + Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA);
+			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA); // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA); // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] = .5*(Qout[4*DEV_SLABSIZE]+Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA);
+			break;
+			case FLUX_THETA_231 + TIMESCHEME_SSPRK_B: // NOTE in this case lambda was rescaled to lambda / r_center
+			Qout[0]              = .5*(Qout[0]            + Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qout[DEV_SLABSIZE]   = .5*(Qout[DEV_SLABSIZE]  +Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6])); // FIXME sub rho vr vtheta dt / r
+			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8])); // FIXME add rho vtheta^2 dt / r
+			Qout[4*DEV_SLABSIZE] = .5*(Qout[4*DEV_SLABSIZE]+Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+
 			}
 		}
 

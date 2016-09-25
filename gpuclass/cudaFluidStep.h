@@ -31,6 +31,10 @@ typedef struct __FluidStepParams {
 #define FLUX_THETA_213 5
 #define FLUX_THETA_231 6
 
+#define TIMESCHEME_RK2 0
+#define TIMESCHEME_SSPRK_A 8
+#define TIMESCHEME_SSPRK_B 16
+
 #ifdef DEBUGMODE
 int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, mxArray **dbOutput);
 #else
