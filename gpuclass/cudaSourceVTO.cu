@@ -24,7 +24,7 @@ __device__ __constant__ int arrayparams[4];
 #define ARRAY_NUMEL arrayparams[0]
 #define ARRAY_SLABSIZE arrayparams[1]
 
-__global__ void cukern_SourceVacuumTaffyOperator(double *base, double dt, double alpha, double beta, double rhoCrit);
+__global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin);
 
 /* Calculate the whimsically named "vacuum taffy operator",
  *            [\rho  ]   [0                                                            ]
@@ -102,7 +102,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 			if(gridsize.x < 1) gridsize.x = 1;
 		}
 
-		cukern_SourceVacuumTaffyOperator<<<gridsize, blocksize>>>(fluid->devicePtr[i], dt, alpha, beta, criticalDensity);
+		cukern_SourceVacuumTaffyOperator<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, .1*criticalDensity);
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Applying cylindrical source term: i=device#\n");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	}
@@ -110,7 +110,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 	return returnCode;
 }
 
-__global__ void cukern_SourceVacuumTaffyOperator(double *base, double dt, double alpha, double beta, double rhoCrit)
+__global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -120,7 +120,6 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double dt, double
 	int delta = blockDim.x*gridDim.x;
 
 	double rho, u, v, w, E, P, v0, f0;
-	f0 = exp(-alpha*dt); // FIXME: just pass this & exp(-beta dt) instead of alpha/beta/dt... DERP
 
 	while(x < ARRAY_NUMEL) {
 		rho = base[0];
@@ -133,19 +132,33 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double dt, double
 			w   = base[4*ARRAY_SLABSIZE];
 
 			// compute squared momentum & decay factor
-			v0 = u*u+v*v+w*w;
-			f0 = exp(-alpha*dt);
+			v0 = (u*u+v*v+w*w)/(rho*rho); // velocity^2
 
-			// decay momentum
-			u=u*f0;
-			v=v*f0;
-			w=w*f0;
+			// decay velocity away
+			u=u*momfactor;
+			v=v*momfactor;
+			w=w*momfactor;
 
-			// apply same change to Uinternal as well
-			P = E - .5*v0/rho; // internal energy in P
-			E = .5*v0*f0*f0/rho + P; // new Etotal
+			// Compute original Einternal
+			P = E - .5*v0*rho; // internal energy in P
+
+			// decay away density?
+			f0 = rho*rhofactor;
+
+			if(f0 > rhoMin) {
+				// exponentially so.
+				E = P*rhofactor;
+				rho = f0;
+			} else {
+				// only to the limit...
+				E = P*rhoMin/rho;
+				rho = rhoMin;
+			}
+			// Add new kinetic energy to Etotal
+			E += .5*v0*momfactor*momfactor*rho;
 
 			// write vars back out
+			base[0]                = rho;
 			base[  ARRAY_SLABSIZE] = E;
 			base[2*ARRAY_SLABSIZE] = u;
 			base[3*ARRAY_SLABSIZE] = v;
