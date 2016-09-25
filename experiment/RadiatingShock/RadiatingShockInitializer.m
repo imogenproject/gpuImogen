@@ -128,13 +128,15 @@ classdef RadiatingShockInitializer < Initializer
 
         geom.makeDimNotCircular(1);
 
-        obj.radiation.type                      = ENUM.RADIATION_OPTICALLY_THIN;
-        obj.radiation.exponent                  = obj.radTheta;
+	rad = RadiationSubInitializer();
 
-        obj.radiation.initialMaximum            = 1; % We do not use these, instead
-        obj.radiation.coolLength                = 1; % We let the cooling function define dx
-        obj.radiation.strengthMethod            = 'preset';
-        obj.radiation.setStrength               = obj.radBeta;
+        rad.type                      = ENUM.RADIATION_OPTICALLY_THIN;
+        rad.exponent                  = obj.radTheta;
+
+        rad.initialMaximum            = 1; % We do not use these, instead
+        rad.coolLength                = 1; % We let the cooling function define dx
+        rad.strengthMethod            = 'preset';
+        rad.setStrength               = obj.radBeta;
 
         statics = []; % We'll set this eventually...
 
@@ -287,6 +289,8 @@ classdef RadiatingShockInitializer < Initializer
 
 
             fluids = obj.stateToFluid(mass, mom, ener);
+
+	    fluids(1).details.radiation = rad;
         end
 
 
