@@ -6,8 +6,8 @@ run             = RiemannProblemInitializer(grid);
 run.timeMax     = 0.1; % about .08 is better for high Mach (M > 10) conditions
 run.iterMax     = round(5*run.timeMax*grid(1)); % This will give steps max ~ 1.2x required
 
-run.cfl         = .75;
-run.bcMode.x    = ENUM.BCMODE_CONST;
+run.cfl         = .75; % Note - HLLC may still barf if this > .5 or so at M >~ 12
+run.bcMode.x    = ENUM.BCMODE_CONSTANT;
 
 if 1;
     % uses a Mach-based formula

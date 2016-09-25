@@ -9,7 +9,7 @@ run.theta       = 0;
 run.sonicMach   = 10;
 run.alfvenMach  = .5;
 
-run.bcMode.x = ENUM.BCMODE_CONST;
+run.bcMode.x = ENUM.BCMODE_CONSTANT;
 
 run.ppSave.dim2 = 5;
 run.ppSave.dim3 = 100;

@@ -1,13 +1,13 @@
 %   Run 3D Corrugation instability shock test.
 
 %--- Initialize test ---%
-grid = [1280 1 1];
+grid = [512 1 1];
 run         = RadiatingShockInitializer(grid);
 
 run.iterMax     = 20000;
 run.theta       = 0;
-run.sonicMach   = 7;
-run.cfl = 0.7;
+run.sonicMach   = 2;
+run.cfl = 0.6;
 % This sets the radiation prefactor in the parameterized equation
 %        \Gamma = -beta rho^2 T^theta
 % It's irrelevant outside of changing output units because this parameter has a fixed relation 
@@ -23,8 +23,8 @@ run.radTheta = .0;
 % preshock & cold gas layers; Default values are .25 and .1 respectively
 % Low-theta (~ <.2) shocks undergo large-amplitude breathing modes and require a large cold gas
 % layer to let the large-amplitude downstream waves propagate away
-run.fractionPreshock = 0.25;
-run.fractionCold     = 0.5;
+run.fractionPreshock = 0.1;
+run.fractionCold     = 0.7;
 
 % This sets the temperature relative to the preshock temperature at which radiation rate is clamped
 % to zero. Physically, the value makes little sense if < 1 (since the equilibrium generator assumes
@@ -32,7 +32,7 @@ run.fractionCold     = 0.5;
 % cutoff at the radiating-cold point becomes numerically unhappy. Default 1.05
 %run.Tcutoff = 1.05
 
-run.bcMode.x = ENUM.BCMODE_CONST;
+run.bcMode.x = ENUM.BCMODE_CONSTANT;
 
 run.ppSave.dim2 = 5;
 run.ppSave.dim3 = 100;
@@ -46,13 +46,13 @@ run.image.mass = true;
 rp = RealtimePlotter();
   rp.plotmode = 7;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
-  rp.firstCallIteration = 1;
-  rp.iterationsPerCall = 100;
+  rp.insertPause = 1;
+  rp.firstCallIteration =1;
+  rp.iterationsPerCall = 10;
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 2; % hllc
+fm.iniMethod = 1; % hll
 run.peripherals{end+1}=fm;
 
 rez = run.geomgr.globalDomainRez;
