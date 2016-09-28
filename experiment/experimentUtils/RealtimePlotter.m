@@ -12,7 +12,7 @@ classdef RealtimePlotter <  LinkedListNode
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         q0;
         cut;
-        subsets;
+        indSubs;
 
         plotDifference;
         insertPause;
@@ -36,10 +36,14 @@ classdef RealtimePlotter <  LinkedListNode
         pResolution; % copied for reference by cut setter function
 
         pSubsX; pSubsY; pSubsZ;
+        pCoords;
 
         pGUIFigureNumber;
         pGUISelectedPlotnum;
         pGUIPauseSpin;
+        pGUIPlotsNeedRedraw;
+
+        pGeometryMgrHandle;
     end %PROTECTED
     
     %===================================================================================================
@@ -59,7 +63,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.firstCallIteration = 1;
 
             self.cut = -[1 1 1];
-            self.subsets = -[1 1 1;1 1 1;1 1 1];
+            self.indSubs = -[1 1 1;1 1 1;1 1 1];
 
             self.generateTeletextPlots = 0; % FIXME: set this depending on availability of graphics
             self.forceRedraw           = 0;
@@ -71,6 +75,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUIPauseSpin       = 0;
 
             self.pGUISelectedPlotnum = 1;
+            self.pGUIPlotsNeedRedraw = 0;
 
             self.plotmode = 1; % default to one plot
         end
@@ -96,10 +101,12 @@ classdef RealtimePlotter <  LinkedListNode
             for i=1:3;
                 if self.cut(i) < 0; self.cut(i) = ceil(size(self.q0{1},i)/2); end
 
-                if self.subsets(i,1) < 0; self.subsets(i,1) = 1; end % start
-                if self.subsets(i,2) < 0; self.subsets(i,2) = 1; end % step
-                if self.subsets(i,3) < 0; self.subsets(i,3) = self.pResolution(i); end % end
+                if self.indSubs(i,1) < 0; self.indSubs(i,1) = 1; end % start
+                if self.indSubs(i,2) < 0; self.indSubs(i,2) = 1; end % step
+                if self.indSubs(i,3) < 0; self.indSubs(i,3) = self.pResolution(i); end % end
             end
+
+            self.pGeometryMgrHandle = run.geometry;
             self.updateSubsets();
             
             ticker = ImogenEvent([], self.firstCallIteration, [], @self.FrameAnalyzer);
@@ -122,7 +129,7 @@ classdef RealtimePlotter <  LinkedListNode
             switch(self.plotmode); case 1; ap = 1; case 2; ap = 2; case 3; ap = 2; case 4; ap = 4; end
 
             fprintf('%s.plotmode = %i;\n', rpn, int32(self.plotmode));
-	    fprintf('%s.cut = %s\n%s.subsets = %s\n', mat2str(self.cut), mat2str(self.subsets));
+            fprintf('%s.cut = %s\n%s.indSubs = %s\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
 
             fieldnames={'fluidnum','what','logscale','slice','plottype','grid','cbar'};
             for pltno = 1:ap
@@ -134,11 +141,8 @@ classdef RealtimePlotter <  LinkedListNode
             end
         end
 
-        function FrameAnalyzer(self, p, run, fluids, ~)
+        function drawGfx(self, run, fluids)
             fig = figure(1);
-            
-            c = self.cut;
-            run.time.iteration
 
             nplots = 1;
             switch(self.plotmode) % one/two horizontal/two vertical/2x2 matrix 
@@ -166,10 +170,11 @@ classdef RealtimePlotter <  LinkedListNode
             fig.Name = ['Output at iteration ' num2str(run.time.iteration) ', time ' num2str(sum(run.time.history))];
             if self.forceRedraw; drawnow; end
 
-            % Rearm myself
-            p.iter = p.iter + self.iterationsPerCall;
-            p.active = 1;
-
+        end
+        
+        function FrameAnalyzer(self, p, run, fluids, ~)
+            self.drawGfx(run, fluids);
+            
             if self.insertPause;
                 if self.spawnGUI
                     % spin in a dummy loop so the GUI can respond
@@ -179,6 +184,10 @@ classdef RealtimePlotter <  LinkedListNode
 
                     while self.pGUIPauseSpin;
                         pause(.33);
+                        if self.pGUIPlotsNeedRedraw
+                            self.drawGfx(run, fluids)
+                            self.pGUIPlotsNeedRedraw = 0;
+                        end
                         ct = ct + 1;
 
                         if mod(ct,2)
@@ -193,13 +202,16 @@ classdef RealtimePlotter <  LinkedListNode
                     input('Enter to continue: ');
                 end
             end
+
+            % Rearm myself
+            p.iter = p.iter + self.iterationsPerCall;
+            p.active = 1;
+
         end
 
         function Q = fetchPlotQty(self, fluid, sliceID, what)
             u = []; v = []; w = [];
             
-            dim = fluid.mass.gridSize;
-
             switch sliceID
                 case 1; u = self.pSubsX; v = self.cut(2); w = self.cut(3); % x
                 case 2; u = self.cut(1); v = self.pSubsY; w = self.cut(3); % y
@@ -221,11 +233,11 @@ classdef RealtimePlotter <  LinkedListNode
             case 7; Q = fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w); %vz
             case 8; Q = fluid.ener.array(u,v,w); %etotal
             case 9; % pressure
-	        Q = fluid.calcPressureOnCPU();
-		Q = Q(u,v,w);
+                Q = fluid.calcPressureOnCPU();
+                Q = Q(u,v,w);
             case 10;% temperature
-	        Q = fluid.calcPressureOnCPU();
-		Q = Q(u,v,w)./fluid.mass.array(u,v,w);
+                Q = fluid.calcPressureOnCPU();
+                Q = Q(u,v,w)./fluid.mass.array(u,v,w);
             end
 
             Q = squish(Q); % flatten for return
@@ -238,9 +250,9 @@ classdef RealtimePlotter <  LinkedListNode
             case 1; % one plot
                 subplot(1,1,1);
             case 2; % 2 left-right plots
-                if plotnumber == 1; subplot(1,2,1); else; subplot(1,2,2); end
+                if plotnumber == 1; subplot(1,2,1); else subplot(1,2,2); end
             case 3; % 2 vertical plots
-                if plotnumber == 1; subplot(2,1,1); else; subplot(2,1,2); end
+                if plotnumber == 1; subplot(2,1,1); else subplot(2,1,2); end
             case 4; % 2x2 matrix of plots
                 subplot(2,2,plotnumber);
             end
@@ -248,20 +260,28 @@ classdef RealtimePlotter <  LinkedListNode
 
         function drawPlot(self, q, decor)
             if decor.slice < 4; % x/y/z cut: one dimensional: do plot()
+                axval = self.pCoords{decor.slice};
                 if decor.logscale
-                    semilogy(q)
+                    semilogy(axval, q)
                 else
-                    plot(q);
+                    plot(axval, q);
                 end
                 if decor.grid; grid on; end
                 if decor.cbar; colorbar; end
             else % plottype: 1 -> imagesc, 2 -> surf
                 if decor.logscale; q = log10(q); end
 
+                axh = []; axv = [];
+                switch(decor.slice)
+                    case 4; axh = self.pCoords{2}; axv = self.pCoords{1};
+                    case 5; axh = self.pCoords{3}; axv = self.pCoords{1};
+                    case 6; axh = self.pCoords{3}; axv = self.pCoords{2};
+                end
+
                 if decor.plottype == 1
-                    imagesc(q);
+                    imagesc(axh, axv, q);
                 else
-                    surf(q,'linestyle','none');
+                    surf(axh, axv, q,'linestyle','none');
                 end
 
                 if decor.cbar; colorbar; end
@@ -326,6 +346,10 @@ classdef RealtimePlotter <  LinkedListNode
         end
         
         function finalize(self, run, fluids, mag)
+            if self.spawnGUI; % close the gui control window
+                f = findobj('tag','ImogenRTP_GUIWindow');
+                if ~isempty(f); close(f); end
+            end
             run.save.logPrint('Realtime Plotter finalized.\n');
         end
 
@@ -385,6 +409,7 @@ classdef RealtimePlotter <  LinkedListNode
                 case 3; src.String = '2 plots above eachother';
                 case 4; src.String = '2x2 matrix of plots';
             end
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbSetPlotFluidsrc(self, src, data) % called by the --/++ arrows by 'FLUID: N'
             F = self.plotProps(self.pGUISelectedPlotnum).fluidnum;
@@ -400,9 +425,11 @@ classdef RealtimePlotter <  LinkedListNode
 
             obj = findobj('tag','fluidnumbertxt');
             obj.String = ['Fluid: ' num2str(F)];
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbChoosePlotQuantity(self, src, data) % called by listplot of qtys to plot
             self.plotProps(self.pGUISelectedPlotnum).what = src.Value;
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbCyclePlotSelection(self, src, data)
             plotsActive = 1;
@@ -425,6 +452,7 @@ classdef RealtimePlotter <  LinkedListNode
             labno = self.plotProps(plotno).plottype;
             if self.plotProps(plotno).slice < 4; labno = 3; end
             obj.String = labels{labno};
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbCyclePlotmode(self, src, data)
             M = mod(self.plotProps(self.pGUISelectedPlotnum).plottype, 2) + 1;
@@ -436,6 +464,7 @@ classdef RealtimePlotter <  LinkedListNode
                 src.String = labels{M};
                 self.plotProps(self.pGUISelectedPlotnum).plottype = M;
             end
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbToggleColorbar(self, src, data) 
             if src.Value == 1; L = 1; else; L = 0; end
@@ -445,6 +474,7 @@ classdef RealtimePlotter <  LinkedListNode
             else
                 src.BackgroundColor = [94 94 94]/100;
             end
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbToggleGrid(self, src, data)
             if src.Value == 1; G = 1; else; G = 0; end
@@ -455,6 +485,7 @@ classdef RealtimePlotter <  LinkedListNode
             else
                 src.BackgroundColor = [94 94 94]/100;
             end
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbToggleLogScale(self, src, data)
             if src.Value == 1; L = 1; else; L = 0; end
@@ -467,6 +498,7 @@ classdef RealtimePlotter <  LinkedListNode
                 src.String = 'linear';
                 src.BackgroundColor = [94 94 94]/100;
             end
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbSetSlice(self, src, data) % queue on src.String
             tagnames={'xSliceButton','ySliceButton','zSliceButton','xySliceButton','xzSliceButton','yzSliceButton'};
@@ -487,35 +519,37 @@ classdef RealtimePlotter <  LinkedListNode
                 labels = {'imagesc','surf'};
                 obj.String = labels{self.plotProps(self.pGUISelectedPlotnum).plottype};
             end
-
+            self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbSetCuts(self, src, data) % queue on src.value to determine what to set in self.cuts()
             % FIXME this needs to be teh implemented
 
-            N = str2num(src.Tag(8:9)); % quick'n'dirty
-            val = str2num(src.String);
-
+            N = str2double(src.Tag(8:9)); % quick'n'dirty
+         
+            val = str2double(src.String);
+            if (isfinite(val) == 0) || (isreal(val) == 0); src.String=':('; return; end;
             val = round(val); if val < 1; val = 1; end % true for all inputs
 
             switch N
                 case 11; if val > self.pResolution(3); val = self.pResolution(3); end; self.cut(3) = val; % z cut
-                case 12; if val > self.pResolution(3); val = self.pResolution(3); end; if val > self.subsets(3,3); self.subsets(3,3) = val; end; self.subsets(3,1) = val; 
-                case 13; self.subsets(3,2) = val;
-                case 14; if val > self.pResolution(3); val = self.pResolution(3); end; if val < self.subsets(3,1); self.subsets(3,1) = val; end; self.subsets(3,3) = val;
+                case 12; if val > self.pResolution(3); val = self.pResolution(3); end; if val > self.indSubs(3,3); self.indSubs(3,3) = val; end; self.indSubs(3,1) = val; 
+                case 13; self.indSubs(3,2) = val;
+                case 14; if val > self.pResolution(3); val = self.pResolution(3); end; if val < self.indSubs(3,1); self.indSubs(3,1) = val; end; self.indSubs(3,3) = val;
 
                 case 21; if val > self.pResolution(2); val = self.pResolution(2); end; self.cut(2) = val; % y cut
-                case 22; if val > self.pResolution(2); val = self.pResolution(2); end; if val > self.subsets(2,3); self.subsets(2,3) = val; end; self.subsets(2,1) = val;
-                case 23; self.subsets(2,2) = val;
-                case 24; if val > self.pResolution(2); val = self.pResolution(2); end; if val < self.subsets(2,1); self.subsets(2,1) = val; end; self.subsets(2,3) = val;
+                case 22; if val > self.pResolution(2); val = self.pResolution(2); end; if val > self.indSubs(2,3); self.indSubs(2,3) = val; end; self.indSubs(2,1) = val;
+                case 23; self.indSubs(2,2) = val;
+                case 24; if val > self.pResolution(2); val = self.pResolution(2); end; if val < self.indSubs(2,1); self.indSubs(2,1) = val; end; self.indSubs(2,3) = val;
                 
                 case 31; if val > self.pResolution(1); val = self.pResolution(1); end; self.cut(1) = val; % x cut
-                case 32; if val > self.pResolution(1); val = self.pResolution(1); end; if val > self.subsets(1,3); self.subsets(1,3) = val; end; self.subsets(1,1) = val;
-                case 33; self.subsets(1,2) = val;
-                case 34; if val > self.pResolution(1); val = self.pResolution(1); end; if val < self.subsets(1,1); self.subsets(1,1) = val; end; self.subsets(1,3) = val;
+                case 32; if val > self.pResolution(1); val = self.pResolution(1); end; if val > self.indSubs(1,3); self.indSubs(1,3) = val; end; self.indSubs(1,1) = val;
+                case 33; self.indSubs(1,2) = val;
+                case 34; if val > self.pResolution(1); val = self.pResolution(1); end; if val < self.indSubs(1,1); self.indSubs(1,1) = val; end; self.indSubs(1,3) = val;
                 otherwise; error('Oh wow, much bad, self.gcbSetCuts called with invalid src.Tag: lolwut?');
             end
             self.updateSubsets();
             src.String = num2str(val);
+            self.pGUIPlotsNeedRedraw = 1;
         end
 
     end%PUBLIC
@@ -523,9 +557,18 @@ classdef RealtimePlotter <  LinkedListNode
     %===================================================================================================
     methods (Access = protected) %                                      P R O T E C T E D    [M]
         function updateSubsets(self)
-            self.pSubsX = self.subsets(1,1):self.subsets(1,2):self.subsets(1,3);
-            self.pSubsY = self.subsets(2,1):self.subsets(2,2):self.subsets(2,3);
-            self.pSubsZ = self.subsets(3,1):self.subsets(3,2):self.subsets(3,3);
+            self.pSubsX = self.indSubs(1,1):self.indSubs(1,2):self.indSubs(1,3);
+            self.pSubsY = self.indSubs(2,1):self.indSubs(2,2):self.indSubs(2,3);
+            self.pSubsZ = self.indSubs(3,1):self.indSubs(3,2):self.indSubs(3,3);
+
+            if self.pGeometryMgrHandle.pGeometryType == ENUM.GEOMETRY_SQUARE
+                self.pCoords{1} = self.pGeometryMgrHandle.localXposition(self.pSubsX);
+                self.pCoords{2} = self.pGeometryMgrHandle.localYposition(self.pSubsY);
+            else
+                self.pCoords{1} = self.pGeometryMgrHandle.localRposition(self.pSubsX);
+                self.pCoords{2} = self.pGeometryMgrHandle.localPhiPosition(self.pSubsY);
+            end
+            self.pCoords{3} = self.pGeometryMgrHandle.localZposition(self.pSubsZ);
         end
 
         function mkimage(self, data)

@@ -103,13 +103,14 @@ slicePanel = uipanel(fig,'title','Slicing control','units','pixels','position',[
     % FIXME: these need to plug the existing default values into the text windows on startup... bleh.
     % NOTE: this should be run regardless of whether the window is new or not
     % 3x4 matrix of text areas: [cut   a:b:c] entries for each dimension
-    for xn = 1:4;
-        for yn = 1:3;
-	    val = xn + 10*yn;
-	    tag = ['editcut' num2str(val)];
-	    area = uicontrol(slicePanel,'Style','edit','String','#','value',val,'tag',tag,'position',[(40*xn + 5*(xn>1)) (25*yn-10) 30 20],'callback',@RTP.gcbSetCuts);
-	    if xn == 1; area.String = num2str(RTP.cut(yn)); end
-	end
+    for yn = 1:3;
+        for xn = 4:-1:1;
+            
+            val = xn + 10*yn;
+            tag = ['editcut' num2str(val)];
+            area = uicontrol(slicePanel,'Style','edit','String','#','value',val,'tag',tag,'position',[(40*xn + 5*(xn>1)) (25*yn-10) 30 20],'callback',@RTP.gcbSetCuts);
+            if xn == 1; area.String = num2str(RTP.cut(yn)); end
+        end
     end
 
 
