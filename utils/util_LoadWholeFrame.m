@@ -17,6 +17,13 @@ frame = util_LoadFrameSegment(basename, padding, 0, framenum); % We need one for
 massiveFrame = frame;
 globalRes = frame.parallel.globalDims;
 
+beCarefulWithRZ = 0;
+if (globalRes(3) > 1) && (globalRes(2) == 1)
+    beCarefulWithRZ = 1;
+    % I'm not sure if it's my export or NetCDF that effs this up,
+    % but we have to be careful with this case
+end
+
 massiveFrame.myOffset = [0 0 0];
 
 massiveFrame.mass = zeros(globalRes, precise);
@@ -41,6 +48,14 @@ bset     = {'magX','magY','magZ'};
 u = 1;
 
 while u <= numel(ranks)
+    fs = size(frame.mass);
+    if beCarefulWithRZ;
+        for N = 1:5; frame.(fieldset{N}) = reshape(frame.(fieldset{N}),[fs(1) 1 fs(2)]); end
+        if numel(frame.magX) > 1
+            for N = 1:3; frame.(bset{N}) = reshape(frame.(bset{N}),[fs(1) 1 fs(2)]); end
+        end
+    end
+    
     fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
     rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
     frmsize = fs - 6*(rs > 1);

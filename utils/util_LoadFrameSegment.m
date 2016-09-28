@@ -16,7 +16,7 @@ end
     f1 = sprintf('%s_rank%i_%0*i.nc', basename,rank, padsize, frameno);
     if exist(f1, 'file') == 0;
         f2 = sprintf('%s_rank%i_%0*i.mat',basename,rank, padsize, frameno);
-	if exist(f2, 'file') 
+        if exist(f2, 'file')
             % load .mat
             fname = f2;
             act = 2;
@@ -31,7 +31,7 @@ end
     f1 = sprintf('%s_rank%i_START.nc', basename,rank);
     if exist(f1, 'file') == 0;
         f2 = sprintf('%s_rank%i_START.mat',basename,rank);
-	if exist(f2, 'file') 
+        if exist(f2, 'file')
             % load .mat
             fname = f2;
             act = 2;
@@ -43,7 +43,7 @@ end
     end
     end
 
-    if (act < 0) && (frame > 0)
+    if (act < 0) && (frame > 0) % One last guess...
         % try end
         f3 = sprintf('%s_rank%i_FINAL.nc', basename,rank);
         f4 = sprintf('%s_rank%i_FINAL.mat', basename,rank);
@@ -60,7 +60,7 @@ end
         end
     end
 
-    if act < 0; error('No .mat or .nc with basename %s, rank %i, frame %i findable in pwd=''%s''\n', basename, rank, frameno, pwd()); end
+    if act < 0; error('No .mat or .nc with basename %s, rank %i, frame #%i findable in pwd=''%s''\n', basename, rank, frameno, pwd()); end
 
     % Load the next frame into workspace
     try
