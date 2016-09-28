@@ -457,11 +457,13 @@ classdef GeometryManager < handle
         end
         
         function [x, y] = ndgridSetIJ(obj, form)
-            % [x, y] = ndgridsetIJ(['pos' | 'coords']) returns the part of
+            % [x, y] = ndgridsetIJ(['pos' | 'coords'], ['square' | 'cyl']) returns the part of
             % the X-Y or R-Phi global domain that lives on this node.
             % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
             % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
             % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
+	    % If 'pos' is followed by 'square' or 'cyl', output will be in XY or R-Theta coordinates
+	    % even if the geometry is cylindrical or square, respectively.
             % If no argument, defaults to 'coords'.
             
             if nargin < 2; form = 'coords'; end
@@ -473,8 +475,18 @@ classdef GeometryManager < handle
             if strcmp(form, 'pos')
                 if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
                     [x, y] = ndgrid(obj.localXposition, obj.localYposition);
+		    if (nargin == 3) && strcmp(geotype, 'cyl') % convert xy to r-theta
+			a = x; b = y;
+			x = sqrt(a.^2+b.^2);
+			y = 2*pi*(y<0) + atan2(b,a);
+		    end
                 elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                     [x, y] = ndgrid(obj.localRposition, obj.localPhiPosition);
+		    if (nargin == 3) && strcmp(geotype,'square')
+		        r = x; phi = y;
+		        x = r .* cos(phi);
+		        y = r .* sin(phi);
+		    end
                 end
                 return;
             end
