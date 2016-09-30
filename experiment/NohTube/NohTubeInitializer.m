@@ -9,8 +9,11 @@ classdef NohTubeInitializer < Initializer
         v0;    % Initial implosion speed
         rho0;  % Initial density
         r0;    % Radius of implosion
+	       % For 1D, r0 < 0 = prior to wall impact
         
-        M0;    % Mach (large for analytical soln to work)
+        M0;    % Mach (large for analytical soln to work:
+
+	halfspace;
     end %PUBLIC
     
     %===================================================================================================
@@ -43,7 +46,7 @@ classdef NohTubeInitializer < Initializer
             obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.y         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.z         = ENUM.BCMODE_CONSTANT;
-	    obj.useHalfspace([0 0 0]);
+            obj.useHalfspace([0 0 0]);
             
             obj.pureHydro = 1;
         end
@@ -54,26 +57,33 @@ classdef NohTubeInitializer < Initializer
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function useHalfspace(self, direct)
-	    if numel(direct) == 1; direct = [1 1 1]*direct; end
+            if numel(direct) == 1; direct = [1 1 1]*direct; end
 
-	    if direct(1)
-		self.bcMode.x = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
-	    else
-	        self.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
-	    end
-	    if direct(2) && (self.grid(2) > 1)
-		self.bcMode.y = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
-	    else
-	        self.bcMode.y = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
-	    end
-	    if self.grid(3) > 1
-		if direct(3)
-		    self.bcMode.z = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
-		else
-		    self.bcMode.z = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
-		end
-	    else; self.bcMode.z = {ENUM.BCMODE_CIRCULAR, ENUM.BCMODE_CIRCULAR}; end
+	    self.halfspace = direct;
 	end
+
+	function setupHalfspaces(self)
+            if numel(self.halfspace) == 1; self.halfspace = [1 1 1]*self.halfspace; end
+            rez = self.geomgr.globalDomainRez;
+            
+            if self.halfspace(1)
+                self.bcMode.x = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+            else
+                self.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+            end
+            if self.halfspace(2) && (rez(2) > 1)
+                self.bcMode.y = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+            else
+                self.bcMode.y = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+            end
+            if rez(3) > 1
+                if self.halfspace(3)
+                    self.bcMode.z = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+                else
+                    self.bcMode.z = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+                end
+            else; self.bcMode.z = {ENUM.BCMODE_CIRCULAR, ENUM.BCMODE_CIRCULAR}; end
+        end
     end%PUBLIC
     
     %===================================================================================================
@@ -88,29 +98,33 @@ classdef NohTubeInitializer < Initializer
             potentialField        = [];
             selfGravity           = [];
             
-            geo = GlobalIndexSemantics();
+            geo = obj.geomgr;
             rez = geo.globalDomainRez;
             
+            obj.setupHalfspaces();
+
             half = floor(rez/2);
             needDia = [2 2 2].*(rez > 1);
             
             % Use halfspaces if negative-edge boundaries are mirrors
             if strcmp(obj.bcMode.x{1}, ENUM.BCMODE_MIRROR); half(1) = 3; needDia(1) = 1; end
             if strcmp(obj.bcMode.y{1}, ENUM.BCMODE_MIRROR); half(2) = 3; needDia(2) = 1; end
-            if obj.grid(3) > 1;
+            if rez(3) > 1;
                 if strcmp(obj.bcMode.z{1}, ENUM.BCMODE_MIRROR); half(3) = 3; needDia(3)=1; end
             end
             
             geo.makeBoxSize(needDia);
-            [X, Y, Z] = geo.ndgridSetXYZ(half + .5, obj.dGrid);
+            geo.makeBoxOriginCoord(half);
+            [X, Y, Z] = geo.ndgridSetIJK('pos');
             
             spaceDim = 1;
-            if obj.grid(2) > 1; spaceDim = spaceDim + 1; end
-            if obj.grid(3) > 1; spaceDim = spaceDim + 1; end
+            if rez(2) > 1; spaceDim = spaceDim + 1; end
+            if rez(3) > 1; spaceDim = spaceDim + 1; end
             
             if spaceDim > 1
                 generator = NohTubeColdGeneral(obj.rho0, 1, obj.M0);
                 % 1 = p0 (init pressure) is IGNORED for multi-dim problem
+		% I do not know the solution/ICs for d > 1
                 R = sqrt(X.^2+Y.^2+Z.^2);
                 Rmax = max(R(:));
                 Rmin = 0;
@@ -125,6 +139,7 @@ classdef NohTubeInitializer < Initializer
             
             [rho, vradial, Pini] = generator.solve(spaceDim, Rsolve, obj.r0);
             
+	    % fixme - is setting T = 1 appropriate?
             Pini(rho< obj.minMass) = obj.minMass/(obj.gamma - 1);
             rho(rho < obj.minMass) = obj.minMass;
             

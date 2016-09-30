@@ -39,16 +39,16 @@ classdef NohTubeExactPlanar < handle
             c0 = sqrt(self.gamma*self.P0/self.rho0);
             vsh0 = self.pMach * c0;
 
-	    d0 = size(R);
+            d0 = size(R);
             rho = zeros(d0); v = zeros(d0); P = zeros(d0);
 
-	    hplane = sign(R);
-	    R      = abs(R);
+            hplane = sign(R);
+            R      = abs(R);
 
             % Calculate how long until the 1st shock hits the wall
-	    
+            
             if r0 < 0 % 1st shock has not hit wall
-	            r0 = -r0; % correct sign bit
+                r0 = -r0; % correct sign bit
 
                 a = (R <  r0);
                 b = (R >= r0);
@@ -82,20 +82,19 @@ classdef NohTubeExactPlanar < handle
                 Vsh  = c*((3-g)*m + sqrt(16 + gp1*gp1*m*m))/4;
                 P2   = P1 + rho1*m*c^2*(m*gp1 - sqrt(16 + gp1*gp1*m*m))/4;
 
-                self.r0 = Vsh * t0;
+                %self.r0 = Vsh * t0;
 
                 a = (R <  r0);
                 b = (R >= r0);
 
                 rho(a) = rho2;
-		rho(b) = rho1;
+                rho(b) = rho1;
 
                 v(a) = 0.0;
-		v(b) = vin.*hplane(b);
+                v(b) = vin.*hplane(b);
 
                 P(a) = P2;
-		P(b) = P1;
-
+                P(b) = P1;
             end
 
             % Remember that cell values are integral volume averages:

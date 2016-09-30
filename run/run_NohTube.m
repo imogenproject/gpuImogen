@@ -1,20 +1,17 @@
-% Run Sod shock tube test.
+% Run a Noh shock tube test.
 
 %--- Initialize test ---%
-grid = [512 512 1];
-run             = NohTubeInitializer(grid);
+grid = [512 1 1];
+run  = NohTubeInitializer(grid);
 
 run.rho0 = 1;
-run.r0 = 0.2;
-run.t0 = -1; % positive time solution
+run.r0 = -0.8;
 run.v0 = -1;
-run.M0 = 8;
+run.M0 = 3;
 
-run.cfl = .35;
+run.cfl = .8;
 run.timeMax = 1;
 run.iterMax     = 3*run.timeMax*grid(1)/run.cfl; % This will give steps max ~ 1.2x required
-
-run.bcMode = ENUM.BCMODE_STATIC;
 
 run.alias       = '';
 run.info        = 'Sod shock tube test.';
@@ -25,13 +22,14 @@ run.ppSave.dim3 = 100;
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.firstCallIteration = 1;
   rp.iterationsPerCall = 20;
+  rp.spawnGUI = 1;
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+fm.iniMethod = 2; % hll
 run.peripherals{end+1} = fm;
 
 run.saveFormat = ENUM.FORMAT_MAT;
