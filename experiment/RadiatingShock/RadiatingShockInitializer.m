@@ -198,7 +198,7 @@ classdef RadiatingShockInitializer < Initializer
 
         % Get interpolated values for the flow
         flowValues(:,1) = flowValues(:,1) + Xshock;
-        xinterps = vecX*geom.d3h(1);
+        xinterps = (vecX-.5)*geom.d3h(1);
         minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
         %px is exactly constant
         pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
