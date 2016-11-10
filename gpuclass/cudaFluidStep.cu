@@ -26,6 +26,12 @@
 // Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
 
+// FUNCTION PLACES
+// HLLC 1st order step: L.700
+// HLLC 2nd order step: L.1000
+// HLL step:            L.1500
+// XinJin step:         L.2000
+
 /* THIS FUNCTION
 This function calculates a f
 irst order accurate upwind step of the conserved transport part of the
@@ -106,9 +112,9 @@ __constant__ __device__ double fluidQtys[12];
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
-#define SLOPEFUNC slopeLimiter_Osher
+//#define SLOPEFUNC slopeLimiter_Osher
 //#define SLOPEFUNC slopeLimiter_Zero
-//#define SLOPEFUNC slopeLimiter_minmod
+#define SLOPEFUNC slopeLimiter_minmod
 //#define SLOPEFUNC slopeLimiter_VanLeer
 
 #define FLUID_GAMMA   fluidQtys[0]
@@ -1471,30 +1477,49 @@ DBGSAVE(1, E);
 
 __device__ SpeedBounds computeEinfeldtBounds(double rhoL, double vL, double PL, double rhoR, double vR, double PR, double deltaVsq)
 {
-double csql = FLUID_GAMMA*PL/rhoL;
-double csqr = FLUID_GAMMA*PR/rhoR;
+	if(1) {
+		// The intended, optimized, manifestly Galilean invariant formulation
+		double csql = FLUID_GAMMA*PL/rhoL;
+		double csqr = FLUID_GAMMA*PR/rhoR;
 
-	// Prepare for Roe weighting ...
-	double Fa = SQRTFUNC(rhoR/rhoL);
-	double Fb = 1.0/(1.0+Fa);
+		// Compute roe coefficients once
+		double Fa = SQRTFUNC(rhoR/rhoL);
+		double Fb = 1.0/(1.0+Fa);
 
-	/* roe soundspeed^2 */
-	double Croe = ((csql + Fa*csqr) + .5*FLUID_GM1*deltaVsq*Fa*Fb)*Fb;
+		double Croe = ((csql + Fa*csqr) + .5*FLUID_GM1*deltaVsq*Fa*Fb)*Fb;
 
-	SpeedBounds sb;
+		SpeedBounds sb;
 
-	double Vroe = (vL + Fa*vR)*Fb;
-	Croe = Vroe-SQRTFUNC(Croe); // Roe-avg sound speed finally
+		double Vroe = (vL + Fa*vR)*Fb;
+		Croe = Vroe-SQRTFUNC(Croe); // Roe-avg sound speed finally
 
-	sb.Vleft = vL - SQRTFUNC(csql); // sonic speeds
-	sb.Vright = vR + SQRTFUNC(csqr);
+		sb.Vleft = vL - SQRTFUNC(csql); // sonic speeds
+		sb.Vright = vR + SQRTFUNC(csqr);
 
-	sb.Vleft = (Croe < sb.Vleft) ? Croe : sb.Vleft;
+		sb.Vleft = (Croe < sb.Vleft) ? Croe : sb.Vleft;
 
-	Croe = 2*Vroe - Croe;
+		Croe = 2*Vroe - Croe;
 
-	sb.Vright = (Croe > sb.Vright) ? Croe : sb.Vright;
-	return sb;
+		sb.Vright = (Croe > sb.Vright) ? Croe : sb.Vright;
+		return sb;
+	} else {
+		// This is a completely naive implementation of the Einfeldt bound
+		double hl = .5*vL*vL + FLUID_GOVERGM1 * PL / rhoL;
+		double hr = .5*vR*vR + FLUID_GOVERGM1 * PR / rhoR;
+
+		double hbar = (sqrt(rhoL)*hl + sqrt(rhoR)*hr)/(sqrt(rhoL)+sqrt(rhoR));
+		double vbar = (sqrt(rhoL)*vL + sqrt(rhoR)*vR)/(sqrt(rhoL)+sqrt(rhoR));
+
+		double cbar = vbar - FLUID_GM1 * (hbar - .5*vbar*vbar);
+		SpeedBounds sb;
+
+		sb.Vleft = vL - sqrt(FLUID_GAMMA*PL/rhoL);
+		sb.Vleft = (sb.Vleft < cbar) ? sb.Vleft : cbar;
+		cbar = -cbar + 2*vbar;
+		sb.Vright= vR + sqrt(FLUID_GAMMA*PR/rhoR);
+		sb.Vright = (sb.Vright > cbar) ? sb.Vright : cbar;
+		return sb;
+	}
 }
 
 template <unsigned int PCswitch>
@@ -1752,8 +1777,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 
 		/* Determine where our flux originates from (left, HLL, or right regions) */
 		HLL_FluxMode = HLL_HLL;
-		if(Sleft > 0) HLL_FluxMode = HLL_LEFT;
-		if(Sright< 0) HLL_FluxMode = HLL_RIGHT;
+		if(Sleft >= 0) HLL_FluxMode = HLL_LEFT;
+		if(Sright<= 0) HLL_FluxMode = HLL_RIGHT;
 
 		/* Calculate the mass and momentum fluxes */
 		switch(HLL_FluxMode) {
@@ -1770,7 +1795,7 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			shblk[IC + BOS2] = (Sright*(Ble-Sleft)*Fa      - Sleft*(Bre-Sright)*Fb + Sright*Cle - Sleft*Cre)*Atilde;
 			shblk[IC + BOS3] = (Sright*(Ble-Sleft)*Ale*Dle - Sleft*(Bre-Sright)*Are*Dre)*Atilde;
 			shblk[IC + BOS4] = (Sright*(Ble-Sleft)*Ale*Ele - Sleft*(Bre-Sright)*Are*Ere)*Atilde;
-			// Compute the other fluxes before trashing the Fa & Fb variables
+			// Compute the other fluxes first, now we can trash Fa and Fb
 			Fa = .5*Ale*(Ble*Ble+Dle*Dle+Ele*Ele); // KE densities
 			Fb = .5*Are*(Bre*Bre+Dre*Dre+Ere*Ere);
 			shblk[IC + BOS1] = (Sright*(Ble-Sleft)*Fa - Sleft*(Bre-Sright)*Fb); // HLL KE flux
@@ -2038,8 +2063,10 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 		P = CYLGEO_RINI + x0 * CYLGEO_DR; // r_center
 		cylgeomA = (P - .5*CYLGEO_DR) / (P);
 		cylgeomB = (P + .5*CYLGEO_DR) / (P);
-		cylgeomC = CYLGEO_DR / P; // NOTE: We use 0.5 here instead of 1.0 because we are inserting P = Pleft + Pright
-		// At the fluxer stage to recover the average from the left/right values
+		cylgeomC = 2.0*CYLGEO_DR / P;
+		// NOTE: We scale cylgeomC by a factor of 2 because the fluxes, to avoid a divide-by-2,
+		// are all computed too large by a factor of 2, and to compensate the CPU scales lambda by 0.5,
+		// Thus we must double the P dt / r coefficient to maintain proper ratio.
 	}
 	// The kern will step through r, so we have to add to R and compute 1.0/R
 	if(fluxDirection == FLUX_THETA_213) {
@@ -2126,13 +2153,13 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 
 			if((PCswitch & 1) == RK_CORRECT) {
 				/* Entertain two flux corrections */
-				shblk[IC + BOS2] = 0.5*(shblk[IC + BOS0] - shblk[IL + BOS0]); /* Deriv of leftgoing flux */
-				shblk[IC + BOS3] = 0.5*(shblk[IC + BOS1] - shblk[IL + BOS1]); /* Deriv of ritegoing flux */
+				shblk[IC + BOS2] = 0.5*(shblk[IC + BOS0] - shblk[IL + BOS0]); /* Bkwd deriv of leftgoing flux */
+				shblk[IC + BOS3] = 0.5*(shblk[IC + BOS1] - shblk[IL + BOS1]); /* Bkwd deriv of ritegoing flux */
 				__syncthreads();
 
 				/* Impose TVD limiter */
-				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]); // leftgoing flux @ left edge
-				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]); // rightgoin flux @ rite edge
+				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]); // leftgoing flux extrap'd to left edge
+				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]); // ritegoing flux extrap'd to rite edge
 				__syncthreads();
 			}
 
@@ -2146,10 +2173,10 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 						prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
 								shblk[IR+BOS0]+ shblk[IC+BOS0]); break;
 					case FLUX_RADIAL:
-						prop[i] = Q[i] - lambda * ( cylgeomA*shblk[IC+BOS1]  // rightgoing
+						prop[i] = Q[i] - lambda * ( cylgeomB*shblk[IC+BOS1]  // rightgoing
 						                          - cylgeomA*shblk[IL+BOS1]
 						                          - cylgeomB*shblk[IR+BOS0]  // leftgoing
-						                          + cylgeomB*shblk[IC+BOS0]);
+						                          + cylgeomA*shblk[IC+BOS0]);
 						if(i == 2) prop[i] += lambda*cylgeomC*P;
 						break;
 					case FLUX_THETA_213:
@@ -2171,11 +2198,11 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 						// BAAB - err = +6e-3
 						// BABA - err = -6e-3
 						// BBAA - err = +6e-3
-						// AABB
-						prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( cylgeomA*shblk[IC+BOS1]
+						// AABB - err = +6e-3
+						prop[i] = Qbase[x0 + i*DEV_SLABSIZE] - lambda * ( cylgeomB*shblk[IC+BOS1]
 						                                                - cylgeomA*shblk[IL+BOS1]
 						                                                - cylgeomB*shblk[IR+BOS0]
-						                                                + cylgeomB*shblk[IC+BOS0]);
+						                                                + cylgeomA*shblk[IC+BOS0]);
 						if(i == 2) prop[i] += lambda*cylgeomC*P;
 						break;
 					case FLUX_THETA_213:
