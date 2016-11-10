@@ -42,7 +42,7 @@ classdef RealtimePlotter <  LinkedListNode
         pGUISelectedPlotnum;
         pGUIPauseSpin;
         pGUIPlotsNeedRedraw;
-
+        
         pGeometryMgrHandle;
     end %PROTECTED
     
@@ -68,7 +68,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.generateTeletextPlots = 0; % FIXME: set this depending on availability of graphics
             self.forceRedraw           = 0;
         
-            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0);
+            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0,'axmode',0);
             self.plotProps(2:4) = self.plotProps(1);
 
             self.spawnGUI           = 0;
@@ -116,10 +116,17 @@ classdef RealtimePlotter <  LinkedListNode
             % Throw up a window that lets the user interactive muck with a run's visualization
             if self.spawnGUI; self.pGUIFigureNumber = RealtimePlotterGUI(self); end
         end
-        
+
+        function destroy(self)
+            self.closeGUI();
+        end
+
         function activateGUI(self, fignum)
             self.pGUIFigureNumber = fignum;
             % FIXME: set some gui element refs here for callbacks to play games with
+        end
+        function closeGUI(self)
+            close(32);
         end
 
         function printCurrentPlotConfig(self)
@@ -261,11 +268,16 @@ classdef RealtimePlotter <  LinkedListNode
         function drawPlot(self, q, decor)
             if decor.slice < 4; % x/y/z cut: one dimensional: do plot()
                 axval = self.pCoords{decor.slice};
+                % axmode = 0 -> off, 1 -> px, 2 -> cell #, 3 -> position
+                if decor.axmode == 1; axval = 1:numel(axval); end
+                if decor.axmode == 2; axval = -axval; end
+                % case 3 is the default
                 if decor.logscale
                     semilogy(axval, q)
                 else
                     plot(axval, q);
                 end
+                if decor.axmode == 0; axis off; else; axis on; end
                 if decor.grid; grid on; end
                 if decor.cbar; colorbar; end
             else % plottype: 1 -> imagesc, 2 -> surf
@@ -277,13 +289,18 @@ classdef RealtimePlotter <  LinkedListNode
                     case 5; axh = self.pCoords{3}; axv = self.pCoords{1};
                     case 6; axh = self.pCoords{3}; axv = self.pCoords{2};
                 end
+                
+                if decor.axmode == 1; axh = 1:numel(axh); axv = 1:numel(axv); end
+                if decor.axmode == 2; axh = -axh; axv = -axv; end
 
                 if decor.plottype == 1
                     imagesc(axh, axv, q);
                 else
                     surf(axh, axv, q,'linestyle','none');
                 end
-
+                
+                if decor.axmode == 0; axis off; else; axis on; end
+                
                 if decor.cbar; colorbar; end
             end
         end
@@ -452,6 +469,20 @@ classdef RealtimePlotter <  LinkedListNode
             labno = self.plotProps(plotno).plottype;
             if self.plotProps(plotno).slice < 4; labno = 3; end
             obj.String = labels{labno};
+            self.pGUIPlotsNeedRedraw = 1;
+        end
+        function gcbCycleAxisLabels(self, src, data)
+            a = mod(self.plotProps(self.pGUISelectedPlotnum).axmode+1,4);
+            self.plotProps(self.pGUISelectedPlotnum).axmode = a;
+            
+            obj = findobj('tag','axeslabelsbutton');
+            switch a;
+                case 0; obj.String = 'axis off';
+                case 1; obj.String = 'pixels';
+                case 2; obj.String = 'cell #';
+                case 3; obj.String = 'Position';
+            end
+            
             self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbCyclePlotmode(self, src, data)

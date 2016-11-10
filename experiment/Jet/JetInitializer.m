@@ -102,12 +102,16 @@ classdef JetInitializer < Initializer
 
             potentialField = [];
             selfGravity = [];
+            
+            geo = obj.geomgr;
+            rez = geo.globalDomainRez;
+            
             if isempty(obj.offset)
-                obj.offset = [ceil(obj.grid(1)/10), ceil(obj.grid(2)/2), ceil(obj.grid(3)/2)];
+                obj.offset = [ceil(rez(1)/10), ceil(rez(2)/2), ceil(rez(3)/2)];
             end
                
             % Box height = 1, width = aspect ratio
-            obj.geomgr.makeBoxSize(obj.grid(1)/obj.grid(2));
+            obj.geomgr.makeBoxSize(rez(1)/rez(2));
 
             [mass, mom, mag, ener] = obj.geomgr.basicFluidXYZ();
             
@@ -128,11 +132,11 @@ classdef JetInitializer < Initializer
                         + 0.5*(jetMom^2)/obj.jetMass ...            % kinetic
                         + 0.5*sum(obj.jetMags .* obj.jetMags, 2);   % magnetic
 
-            statics = StaticsInitializer();
+            statics = StaticsInitializer(geo);
              
-            xMin = max(obj.offset(1)-2,1);        xMax = min(obj.offset(1)+2,obj.grid(1));
-            yMin = max(obj.offset(2)-obj.injectorSize,1);        yMax = min(obj.offset(2)+obj.injectorSize,obj.grid(2));
-            zMin = max(obj.offset(3)-obj.injectorSize,1);        zMax = min(obj.offset(3)+obj.injectorSize,obj.grid(3));
+            xMin = max(obj.offset(1)-2,1);        xMax = min(obj.offset(1)+2,rez(1));
+            yMin = max(obj.offset(2)-obj.injectorSize,1);        yMax = min(obj.offset(2)+obj.injectorSize,rez(2));
+            zMin = max(obj.offset(3)-obj.injectorSize,1);        zMax = min(obj.offset(3)+obj.injectorSize,rez(3));
 
             statics.valueSet = {0, obj.jetMass, jetMom, jetEner, obj.jetMags(1), ...
                             obj.jetMags(2), obj.jetMags(3), obj.backMass, ener(1,1)};
@@ -143,8 +147,8 @@ classdef JetInitializer < Initializer
 
             injCase = [iBack; iTop; iBot];
 
-            statics.indexSet = {statics.indexSetForVolume(xMin:xMax,yMin:yMax,zMin:zMax), injCase, statics.indexSetForVolume( (obj.grid(1)-1):obj.grid(1),1:obj.grid(2),1) };
-            statics.indexSet{4} = statics.indexSetForVolume(1:(obj.grid(1)-2), 1:2, 1);
+            statics.indexSet = {statics.indexSetForVolume(xMin:xMax,yMin:yMax,zMin:zMax), injCase, statics.indexSetForVolume( (rez(1)-1):rez(1),1:rez(2),1) };
+            statics.indexSet{4} = statics.indexSetForVolume(1:(rez(1)-2), 1:2, 1);
 
             statics.associateStatics(ENUM.MASS, ENUM.SCALAR,   statics.CELLVAR, 1, 2);
             statics.associateStatics(ENUM.ENER, ENUM.SCALAR,   statics.CELLVAR, 1, 4);

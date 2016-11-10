@@ -75,6 +75,7 @@ plotPanel = uipanel(fig,'Title','Plot control', 'units', 'pixels', 'position', [
     lis = uicontrol(plotPanel, 'Style','listbox',     'String','rho|px|py|pz|vx|vy|vz|Etotal|pressure|temperature','min',0,'max',1,'tag','qtylistbox','position', [15 15 100 150], 'callback', @RTP.gcbChoosePlotQuantity);
 
 % These are arrayed right of the list and fluid # selector
+    button = uicontrol(plotPanel, 'Style','pushbutton','String','axis off','tag','axeslabelsbutton','position',[130 115 80 20], 'callback', @RTP.gcbCycleAxisLabels);
     % flip 2d plots between imagesc and surf
     button = uicontrol(plotPanel, 'Style','pushbutton','String','imagesc','tag','plottypebutton','position',[130 90 80 20], 'callback', @RTP.gcbCyclePlotmode);
 
