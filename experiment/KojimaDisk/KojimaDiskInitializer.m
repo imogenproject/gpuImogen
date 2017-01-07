@@ -110,82 +110,72 @@ classdef KojimaDiskInitializer < Initializer
 %___________________________________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
- %           obj.bcMode.x = ENUM.BCMODE_CONSTANT;
-	    if obj.useZMirror == 1
-	        if obj.grid(3) > 1
-                    obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT };
+            geo = obj.geomgr;
+            nz = geo.globalDomainRez(3);
+            
+            %           obj.bcMode.x = ENUM.BCMODE_CONSTANT;
+            if obj.useZMirror == 1
+                if nz > 1
+                    obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_OUTFLOW };
                 else
                     if mpi_amirank0(); warning('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n'); end
                 end
             end
+            
+            diskInfo = kojimaDiskParams(obj.q, obj.radiusRatio, obj.gamma);
 
-%            obj.frameParameters.omega = 1;
-%            obj.frameParameters.rotateCenter = [obj.grid(1) obj.grid(2)]/2 + .5;
-
-            geo = obj.geomgr;
-
-	    diskInfo = kojimaDiskParams(obj.q, obj.radiusRatio, obj.gamma);
-
-            nz = geo.globalDomainRez(3);
-
-	    switch geo.pGeometryType;
-	    case ENUM.GEOMETRY_SQUARE;
-	        boxsize = 2*(1+obj.edgePadding)*diskInfo.rout * [1 1 1];
-
-		if nz > 1
-		    needheight = diskInfo.height * (1+obj.edgePadding) * (2 - obj.useZMirror);
-		    gotheight  = boxsize * geo.globalDomainRez(3) / geo.globalDomainRez(1);
-		
-		    if needheight > gotheight
-		        warning('NOTE: dz = dx will not be tall enough to hold disk; Raising dz.');
-			boxsize(3) = needheight
-		    else
-		        boxsize(3) = gotheight;
-	            end
-		        
-		end
-
-		geo.makeBoxSize(boxsize);
-		geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
-	    case ENUM.GEOMETRY_CYLINDRICAL;
-	        width = diskInfo.rout - diskInfo.rin;
-		inside = diskInfo.rin - obj.edgePadding * width;
-		outside = diskInfo.rout + obj.edgePadding * width;
-
-		dr = (outside - inside) / geo.globalDomainRez(1);
-
-		if nz > 1
-		    nz = geo.globalDomainRez(3);
-		    availz = dr * nz;
-		    needz = round(.5*(2 - obj.useZMirror) * diskInfo.rout * (1+obj.edgePadding) * diskInfo.aspRatio);
-
-		    if availz < needz
-		        dz = dr * needz / availz;
-
-			if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
-		    else
-		        dz = dr;
-		    end
-
-		    if obj.useZMirror
-		        z0 = -4*dz
-		    else
-			z0 = -round(nz/2)*dz;
-		    end
-		else
-		    z0 = 0;
-		    dz = 1;
-		end
-
-		geo.geometryCylindrical(inside, 1, dr, z0, dz)
-	    end
-
-
+            switch geo.pGeometryType;
+                case ENUM.GEOMETRY_SQUARE;
+                    boxsize = 2*(1+obj.edgePadding)*diskInfo.rout * [1 1 1];
+                    
+                    if nz > 1
+                        needheight = diskInfo.height * (1+obj.edgePadding) * (2 - obj.useZMirror);
+                        gotheight  = boxsize * geo.globalDomainRez(3) / geo.globalDomainRez(1);
+                        
+                        if needheight > gotheight
+                            warning('NOTE: dz = dx will not be tall enough to hold disk; Raising dz.');
+                            boxsize(3) = needheight;
+                        else
+                            boxsize(3) = gotheight;
+                        end
+                        
+                    end
+                    
+                    geo.makeBoxSize(boxsize);
+                    geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
+                case ENUM.GEOMETRY_CYLINDRICAL;
+                    width = diskInfo.rout - diskInfo.rin;
+                    inside = diskInfo.rin - obj.edgePadding * width;
+                    outside = diskInfo.rout + obj.edgePadding * width;
+                    
+                    dr = (outside - inside) / geo.globalDomainRez(1);
+                    
+                    if nz > 1
+                        nz = geo.globalDomainRez(3);
+                        availz = dr * nz;
+                        needz = round(.5*(2 - obj.useZMirror) * diskInfo.rout * (1+obj.edgePadding) * diskInfo.aspRatio);
+                        
+                        if availz < needz
+                            dz = dr * needz / availz;
+                            
+                            if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
+                        else
+                            dz = dr;
+                        end
+                        
+                        if obj.useZMirror; z0 = -4*dz; else z0 = -round(nz/2)*dz; end
+                    else
+                        z0 = 0;
+                        dz = 1;
+                    end
+                    
+                    geo.geometryCylindrical(inside, 1, dr, z0, dz)
+            end
             mom     = geo.zerosXYZ(geo.VECTOR);
 
-	    [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
+            [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
 
-	    [mass, momA, momB, Eint] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
+            [mass, momA, momB, Eint] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
 
             obj.minMass = mpi_max(max(mass(:))) * obj.bgDensityCoeff;
 
