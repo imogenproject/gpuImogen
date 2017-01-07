@@ -15,19 +15,26 @@ function source(run, fluids, mag, tFraction)
 % and self-gravity force is a function only of density
 
 % We double the dtime here because one source step is sandwiched between two flux steps
-dTime = 2 * tFraction * run.time.dTime;
+dTime = tFraction * run.time.dTime;
 
 if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    cudaSourceCylindricalTerms(fluids, dTime, run.geometry);
+    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
 end
 
+% NOTE that this tests the new combined source calculator for frame rotation and gravity field
+% This call solves them simultaneously using the implicit midpoint rule with 3 Jacobi iterations
+% to converge the predictor step
+[uv, vv, ~] = run.geometry.ndgridVecs('pos');
+xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1);
+
+cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omega, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*0,  xyvector);
+
     % FIXME: This could be improved by calculating this affine transform once and storing it
-    if run.frameTracking.omega ~= 0
-        xg = run.geometry.localXposition;
-        yg = run.geometry.localYposition;
-        xyvector = GPU_Type([ (xg-run.frameTracking.rotateCenter(1)) (yg-run.frameTracking.rotateCenter(2)) ], 1); 
-        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
-    end
+%    if run.frameTracking.omega ~= 0
+%        [uv, vv, ~] = run.geometry.ndgridVecs('pos');
+%        xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1); 
+%        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
+%    end
 % FIXME does cudaSourceRotatingFrame actually know what to do with multiple fluids?
 
     for n = 1:numel(run.selfGravity.compactObjects)
@@ -44,16 +51,20 @@ end
     end
 
     %--- External scalar potential (e.g. non self gravitating component) ---%
-    if run.potentialField.ACTIVE
-        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS/10);
-    end
+%    if run.potentialField.ACTIVE
+%        cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0);
+%    end
     
-    if run.frameTracking.omega ~= 0
-        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
-        clear xyvector;
-    end
+%    if run.frameTracking.omega ~= 0
+%        cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
+%        clear xyvector;
+%    end
 
-    cudaSourceVTO(fluids, [dTime 6.28 6.28 fluids(1).MINMASS]);
+if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
+end
+
+    cudaSourceVTO(fluids, [dTime 1 1]);
     %--- Gravitational Potential Sourcing ---%
     %       If the gravitational portion of the code is active, the gravitational potential terms
     %       in both the momentum and energy equations must be appended as source terms.

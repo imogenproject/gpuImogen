@@ -41,7 +41,7 @@ fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot f
 magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
 	echo "Done building MHD kernels"
 
-lambda: cudaSourceCylindricalTerms cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceVTO
+lambda: cudaSourceCylindricalTerms cudaSourceScalarPotential cudaSourceRotatingFrame cudaFreeRadiation cudaAccretingStar cudaSourceVTO cudaTestSourceComposite
 	echo "Done building source/sink term kernels"
 
 thermodynamics: cudaSoundspeed freezeAndPtot cudaFluidStep
@@ -328,6 +328,13 @@ cudaSourceVTO.o: cudaSourceVTO.cu
 
 cudaSourceVTO: cudaCommon.o cudaSourceVTO.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
+cudaTestSourceComposite: cudaCommon.o cudaTestSourceComposite.o
+	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@
+
+cudaTestSourceComposite.o: cudaTestSourceComposite.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaTestSourceComposite.cu -o cudaTestSourceComposite.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaTestSourceComposite.cpp
 
 clean:
 	rm -f *mexa64 *cpp *o
