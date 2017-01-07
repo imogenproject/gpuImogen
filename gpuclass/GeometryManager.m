@@ -395,9 +395,29 @@ classdef GeometryManager < handle
             end
         end
 
-        function [u, v, w] = ndgridVecs(obj)
-            % [u v w] = geo.ndgridVecs() returns the x-, y- and z- index vectors
-            u = obj.localIcoords; v = obj.localJcoords; w = obj.localKcoords;
+        function [u, v, w] = ndgridVecs(obj, form)
+            % [u v w] = geo.ndgridVecs(form) returns the x-, y- and z- index vectors
+            % if 'form' is absent, returns the integer grid indices
+            % if 'form' is the string 'pos', return 
+
+            if nargin < 2; form = 'coords'; end
+            
+            if strcmp(form,'coords')
+                u = obj.localIcoords; v = obj.localJcoords; w = obj.localKcoords;
+            end
+            if strcmp(form, 'pos')
+                if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
+                    u = obj.localXposition;
+                    v = obj.localYposition;
+                    w = obj.localZposition;
+                end
+                if obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+                    u = obj.localRposition;
+                    v = obj.localPhiPosition;
+                    w = obj.localZposition;
+                end
+                
+            end
         end
 
         % 123 = xyz, 456 = xy, xz, yz, 7 = xyz
