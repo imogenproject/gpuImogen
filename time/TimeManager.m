@@ -16,6 +16,7 @@ classdef TimeManager < handle
         WALLMAX;     % Maximum wall time before finishing run in hours.              double
         wallTime;    % Number of hours since run was started.                        double
         startTime;   % Time the run was started.                                     Date Vector
+	startSecs;   % UNIX timestamp at start (used to find avg iter/sec)           unsigned long
         timePercent; % Percent complete based on simulation time.                    double
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
@@ -37,8 +38,12 @@ classdef TimeManager < handle
     methods %                                                                    G E T / S E T  [M]
         
         function result = get.running(obj)
-            result = (obj.iteration <= obj.ITERMAX) && (obj.time < obj.TIMEMAX) ...
+            result = (obj.iteration < obj.ITERMAX) && (obj.time < obj.TIMEMAX) ...
                 && (obj.wallTime < obj.WALLMAX);
+	% Note that < is correct for iterations
+	% This is hit a the start of while(running) {...},
+	% while obj.iteration is updated at the end of the ...,
+	% thus we will see iteration = ITERMAX when we've taken the final step.
         end
         
     end%GET/SET
@@ -46,7 +51,7 @@ classdef TimeManager < handle
     %==============================================================================================
     methods (Access = public) %                                                    P U B L I C  [M]
         
-        %_________________________________________________________________-____________ TimeManager
+        %______________________________________________________________________________ TimeManager
         % Creates a new TimeManager instance.
         function obj = TimeManager()
             obj.startTime   = clock;
@@ -144,10 +149,10 @@ classdef TimeManager < handle
                 switch obj.iteration
                     
                     case 1;        %Activate clock timer for the first loop
-                        tic;
+                        obj.startSecs = tic;
                         
                     case 4;        %Stop clock timer and use the elapsed time to predict total run time
-                        tPerStep = toc/3;
+                        tPerStep = toc(obj.startSecs)/3;
                         save.logPrint('\tFirst three timesteps averaged %0.4g secs ea.\n', tPerStep);
                         
                         if (obj.iterPercent > obj.timePercent)
@@ -162,14 +167,14 @@ classdef TimeManager < handle
                         if ( floor(finTime) - floor(now) >= 1.0 )
                             expComplete = [expComplete ' on ' datestr( finTime, 'mmm-dd')];
                         end
-                        save.logPrint('\tEst. time of completion: %s\n', expComplete);
                         
                         dDays       = floor(secsRemaining/86400); rem = secsRemaining - 86400*dDays;
                         dHours      = floor( rem / 3600 );        rem = rem - 3600*dHours;
                         dMinutes    = floor( rem / 60 );          rem = rem - 60*dMinutes;
                         dSecs       = ceil(rem);
-                        save.logPrint('\tEst. wallclock compute time: [%g days | %g hr | %g mins | %g sec ]\n', ...
+                        save.logPrint('\tEstimated compute time           : [%g days | %g hr | %g mins | %g sec ]\n', ...
                             dDays, dHours, dMinutes, dSecs);
+                        save.logPrint('\tProjected wallclock at completion: %s\n', expComplete);
                 end
             end
             
@@ -191,7 +196,7 @@ classdef TimeManager < handle
                 %--- Prepare and display the UI update string ---%
                 cTime   = now;
                 curTime = strcat(datestr(cTime , 'HH:MM:SS PM'),' on', datestr(cTime, ' mm-dd-yy'));
-                save.logPrint('[[ %0.3g%% | %s |  %s ]]\n', compPer, infoStr, curTime);
+                save.logPrint('[[ %0.3g%% | %s |  %s | avg %i iter/s ]]\n', compPer, infoStr, curTime, obj.iteration/toc(obj.startSecs));
             end
             
             obj.parent.abortCheck();
