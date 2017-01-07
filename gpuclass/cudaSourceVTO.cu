@@ -46,7 +46,7 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor,
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs != 2) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt alpha beta rho_crit])\n");
+    if ((nrhs != 2) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt alpha beta])\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceVTO") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceVTO."); }
 
@@ -56,18 +56,40 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     MGArray fluid[5];
 
     double *fltargs = mxGetPr(prhs[1]);
-    // FIXME: check number of elements
+    int N = mxGetNumberOfElements(prhs[1]);
+    if(N != 3) {
+	DROP_MEX_ERROR("Require [dt alpha beta] in 2nd argument: Got other than 3 values\n");
+    }
 
+    // FIXME: check number of elements
     double dt    = fltargs[0];
     double alpha = fltargs[1];
     double beta  = fltargs[2];
-    double rho_c = fltargs[3];
+    double rho_c = 0;
 
     int numFluids = mxGetNumberOfElements(prhs[0]);
 	int fluidct;
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("vacuum taffy operator dumping: unable to access fluid.");
+
+		const mxArray *flprop;
+		flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
+		if(flprop != NULL) {
+			fltargs = mxGetPr(flprop);
+			if(fltargs == NULL) {
+				status = ERROR_NULL_POINTER;
+			} else {
+				rho_c = *fltargs;
+			}
+		} else {
+			status = ERROR_INVALID_ARGS;
+		}
+		if(status != SUCCESSFUL) {
+			PRINT_FAULT_HEADER; printf("Unable to fetch fluids(%i).MINMASS property! Abort run.\n", fluidct);
+			PRINT_FAULT_FOOTER;
+			DROP_MEX_ERROR("Crashing.\n");
+		}
 
 		status = sourcefunction_VacuumTaffyOperator(&fluid[0], dt, alpha, beta, rho_c);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("vacuum taffy operator dumping: failed to apply source terms.");
@@ -147,13 +169,21 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor,
 
 			if(f0 > rhoMin) {
 				// exponentially so.
-				E = P*rhofactor;
 				rho = f0;
+				u*=rhofactor;
+				v*=rhofactor;
+				w*=rhofactor;
+				// Decay Eint by that factor, and again (T decays at same rate)
+				E = P*rhofactor;
 			} else {
 				// only to the limit...
-				E = P*rhoMin/rho;
+				f0 = rhoMin/rho;
+				u *= f0; v *= f0; w *= f0;
+				E = P*f0;
 				rho = rhoMin;
 			}
+
+			if(E < 1e-5 * rho) E = 1e-5 * rho;
 			// Add new kinetic energy to Etotal
 			E += .5*v0*momfactor*momfactor*rho;
 
