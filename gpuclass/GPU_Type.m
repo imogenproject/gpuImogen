@@ -80,7 +80,7 @@ classdef GPU_Type < handle
 
         function result = size(obj, dimno)
             if nargin == 1
-                if obj.numdims == 2; result = obj.asize(1:2); else; result = obj.asize; end
+                if obj.numdims == 2; result = obj.asize(1:2); else result = obj.asize; end
             else
                 result = obj.asize(dimno);
             end
@@ -96,7 +96,7 @@ classdef GPU_Type < handle
 
         % Cookie-cutter operations for basic math interpertation
         % Warning, these are very much suboptimal due to excessive memory BW use        
-        function y = plus(a, b);
+        function y = plus(a, b)
             y = GPU_Type(cudaBasicOperations(a, b, 1));
         end
 
@@ -168,43 +168,73 @@ classdef GPU_Type < handle
 
         function handleDatain(obj, arrin, docloned)
             gm = GPUManager.getInstance();
-            if isa(arrin, 'double')
-                if isempty(arrin); obj.clearArray(); return; end
-
-                % Cast a CPU double to a GPU double
-                obj.allocated = true;
-                obj.asize = size(arrin);
-                if numel(obj.asize) == 2; obj.asize(3) = 1; end
-                obj.numdims = ndims(arrin);
-
-                halo = gm.useHalo;
-                if docloned;
-                    halo = 0;
-                    pd = gm.partitionDir;
-                    
-                    if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
-                        error('Upload of cloned data does not fit.');
+            
+            if obj.GPU_MemPtr(4) < 0
+                % This is a slab handle: we cannot safely free or resize it here
+                % We must copy the input over the original data 
+                if isa(arrin, 'double')
+                    % We need to transfer this to the GPU first
+                    halo = gm.useHalo;
+                    if docloned;
+                        halo = 0;
+                        pd = gm.partitionDir;
+                        
+                        if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
+                            error('Upload of cloned data does not fit.');
+                        end
                     end
+                    
+                    tmpPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
+                else
+                    tmpPtr = arrin;
                 end
-
-                obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
-            elseif isa(arrin, 'GPU_Type') == 1
-                obj.allocated = true;
-                obj.asize     = arrin.asize;
-                obj.numdims   = arrin.numdims;
-
-                obj.GPU_MemPtr = GPU_clone(arrin);
-            elseif (isa(arrin, 'int64') == 1)
-                % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
-                obj.allocated = true;
-                obj.GPU_MemPtr = arrin;
-
-                q = double(arrin);
-                obj.numdims = 3; if q(3)==1; obj.numdims = 2; end
-                obj.asize = q(1:3)';
+                
+                % Do the transfer
+                GPU_copy(obj.GPU_MemPtr, tmpPtr);
+                
+                % If it came from a CPU array, dump the copy
+                if isa(arrin, 'double'); GPU_free(tmpPtr); end
+                obj.allocated = 1; 
             else
-                 error('GPU_Type must be set with either a double array, another GPU_Type, or int64 tag returned by gpu routine');
+                if isa(arrin, 'double')
+                    if isempty(arrin); obj.clearArray(); return; end
+                    
+                    % Cast a CPU double to a GPU double
+                    obj.allocated = true;
+                    obj.asize = size(arrin);
+                    if numel(obj.asize) == 2; obj.asize(3) = 1; end
+                    obj.numdims = ndims(arrin);
+                    
+                    halo = gm.useHalo;
+                    if docloned;
+                        halo = 0;
+                        pd = gm.partitionDir;
+                        
+                        if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
+                            error('Upload of cloned data does not fit.');
+                        end
+                    end
+                    
+                    obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
+                elseif isa(arrin, 'GPU_Type') == 1
+                    obj.allocated = true;
+                    obj.asize     = arrin.asize;
+                    obj.numdims   = arrin.numdims;
+                    
+                    obj.GPU_MemPtr = GPU_clone(arrin);
+                elseif (isa(arrin, 'int64') == 1)
+                    % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
+                    obj.allocated = 1;
+                    obj.GPU_MemPtr = arrin;
+                    
+                    q = double(arrin);
+                    obj.numdims = 3; if q(3)==1; obj.numdims = 2; end
+                    obj.asize = q(1:3)';
+                else
+                    error('GPU_Type must be set with either a double array, another GPU_Type, or int64 tag returned by gpu routine');
+                end
             end
+            
         end
 
     end % Private methods
