@@ -30,6 +30,7 @@ __device__ __constant__ int arrayparams[4];
 #define ARRAY_NZ arrayparams[2]
 #define ARRAY_SLABSIZE arrayparams[3]
 
+template <geometryType_t coords>
 __global__ void cukern_SourceCylindricalTerms(double *base, double dt);
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
@@ -80,6 +81,8 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 		geo[0] = Rinner;
 		geo[1] = d3x[0];
 
+		int is_RZ = ((sub[4]==1)&&(sub[5]>1));
+
 		cudaSetDevice(fluid->deviceID[i]);
 		returnCode = CHECK_CUDA_ERROR("Setting cuda device");
 		if(returnCode != SUCCESSFUL) return returnCode;
@@ -90,11 +93,22 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 
 		if(returnCode != SUCCESSFUL) return returnCode;
 
-		dim3 blocksize; blocksize.x = blocksize.y = 16; blocksize.z = 1;
-		dim3 gridsize; gridsize.x = ROUNDUPTO(sub[3], 16)/16;
-		               gridsize.y = ROUNDUPTO(sub[4], 16)/16;
-		               gridsize.z = 1;
-		cukern_SourceCylindricalTerms<<<gridsize, blocksize>>>(fluid->devicePtr[i], dt);
+		dim3 gridsize, blocksize;
+		blocksize.x = blocksize.y = 16; blocksize.z = 1;
+		gridsize.z = 1;
+
+		if(is_RZ) {
+			gridsize.x = ROUNDUPTO(sub[3], 16)/16;
+			gridsize.y = ROUNDUPTO(sub[5], 16)/16;
+			cukern_SourceCylindricalTerms<RZ><<<gridsize, blocksize>>>(fluid->devicePtr[i], dt);
+		} else {
+			gridsize.x = ROUNDUPTO(sub[3], 16)/16;
+			gridsize.y = ROUNDUPTO(sub[4], 16)/16;
+			cukern_SourceCylindricalTerms<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], dt);
+		}
+
+
+
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Applying cylindrical source term: i=device#\n");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	}
@@ -102,6 +116,7 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 	return returnCode;
 }
 
+template <geometryType_t coords>
 __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 {
 
@@ -110,11 +125,23 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 	int z = 0;
 
 	if(x >= ARRAY_NR) return;
-	if(y >= ARRAY_NPHI) return;
 
 	base += x + ARRAY_NR * y;
-
 	int delta = ARRAY_NR * ARRAY_NPHI;
+
+	// For 3D, we run in R-Phi and step in Z. Otherwise, we do the whole (single RZ plane at once.
+	switch(coords) {
+	case CYLINDRICAL:
+		if(y >= ARRAY_NPHI) return;
+		z = 0;
+		break;
+	case RZ:
+		if(y >= ARRAY_NZ) return;
+		z = y;
+		// We are stepping through many Zs at once, not just one
+		delta = delta * blockDim.y*gridDim.y;
+		break;
+	}
 
 	double rho, u, v, w, E, oldP, newP, newpr, newpphi;
 	double diffmom;
@@ -132,16 +159,22 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 		newpr   = u + v * diffmom; // pr
 		newpphi = v - u * diffmom; // pphi
 
+		// There is no source of Etotal,
+		// But the change in KE reflects itself as a source of Einternal
 		newP = E - .5*(newpr*newpr+newpphi*newpphi+w*w)/rho;
-
 		if(newP <= 0.0) {
 			oldP = E - .5*(u*u + v*v + w*w)/rho;
-			base[ARRAY_SLABSIZE] = .5*(newpr*newpr + newpphi*newpphi + w*w)/rho + oldP;
+			base[ARRAY_SLABSIZE] = .5*(newpr*newpr + newpphi*newpphi + w*w)/rho + .00001*rho;
 		}
 		base[2*ARRAY_SLABSIZE] = newpr;
 		base[3*ARRAY_SLABSIZE] = newpphi;
 
-		z += 1; base += delta;
+		if(coords == RZ) {
+			z += blockDim.y*gridDim.y;
+		} else {
+			z += 1;
+		}
+		base += delta;
 	}
 
 }

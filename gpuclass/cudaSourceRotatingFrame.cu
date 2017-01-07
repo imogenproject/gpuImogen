@@ -134,7 +134,7 @@ int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double om
 				fluidXY[2].devicePtr[i],
 				fluidXY[3].devicePtr[i],
         	    devXYset[i]);
-		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluidXY, i, "applyScalarPotential");
+		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluidXY, i, "cudaSourceRotatingFrame");
 		if(worked != SUCCESSFUL) break;
 	}
 

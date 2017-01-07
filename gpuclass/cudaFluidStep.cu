@@ -16,15 +16,18 @@
 #include "mpi.h"
 #include "mpi_common.h"
 
-// Local defs
-#include "cudaCommon.h"
-#include "cudaFluidStep.h"
-
-#define USE_SSPRK
-
 // Only uncomment this if you plan to debug this file.
 // Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
+
+// Local defs
+#include "cudaCommon.h"
+#include "cudaFluidStep.h"
+#ifdef DEBUGMODE
+#include "debug_inserts.h"
+#endif
+
+#define USE_SSPRK
 
 // FUNCTION PLACES
 // HLLC 1st order step: L.700
@@ -62,6 +65,9 @@ and considerably speeds up the process. */
 /* This is my handwritten assembly version of the Osher function
  * It is observed to to save some 10% on execution time if used
  */
+
+int releaseTemporaryMemory(double **m, MGArray *ref);
+int grabTemporaryMemory(double **m, MGArray *ref, int nCopies);
 
 template <unsigned int fluxDirection>
 __global__ void  __launch_bounds__(128, 6) cukern_DustRiemann_1storder(double *Qin, double *Qout, double lambda);
@@ -138,6 +144,7 @@ __constant__ __device__ int    arrayParams[4];
 
 cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3 gridsize, dim3 blocksize, double *fluidBase, double *tempmem, double dt);
 
+
 #ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
@@ -192,7 +199,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	stepParameters.stepDirection = stepdir;
 
 #ifdef DEBUGMODE
-	performFluidUpdate_1D(&fluid[0], FluidStepParams params, &topology, mxArray **dbOutput);
+	performFluidUpdate_1D(&fluid[0], stepParameters, &topology, plhs);
 #else
 	performFluidUpdate_1D(&fluid[0], stepParameters, &topology);
 #endif
@@ -200,79 +207,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 #endif
 // STANDALONE_MEX_FUNCTION
-
-#ifdef DEBUGMODE
-#warning "WARNING: COMPILING cudaFluidStep() WITH DEBUG ARRAY DUMP ENABLED. cudaFluidStep will require an output argument to dump to!"
-
-// If defined, the code runs the Euler prediction step and copies wStepValues back to the Matlab fluid data arrays
-// If not defined, it runs the RK2 predictor/corrector step
-#define DBG_FIRSTORDER
-
-// If not debugging the 1st order step, flips on debugging of the 2nd order step
-#ifndef DBG_FIRSTORDER
-#define DBG_SECONDORDER
-#else
-#warning "WARNING: Compiling cudaFluidStep to take 1st order time steps [upwind step is output]"
-#endif
-
-#define DBG_NUMARRAYS 6
-
-#ifdef DBG_FIRSTORDER
-#define DBGSAVE(n, x) if(thisThreadDelivers) { Qout[((n)+6)*DEV_SLABSIZE] = (x); }
-#else
-#define DBGSAVE(n, x) if(thisThreadDelivers) {  Qin[((n)+6)*DEV_SLABSIZE] = (x); }
-#endif
-
-#endif
-// DEBUGMODE
-
-/* Soley for the purpose of making examining malfunctioning fluid step kernels easier:
- * This allows up to x fluid-array-sized arrays to be returned, with data captured by
- * the output-generating threads of the kernel
- *
- * Thus intermediate variables can easily be examined, in whole, at full resolution
- */
-void returnDebugArray(MGArray *ref, int x, double **dbgArrays, mxArray **plhs)
-{
-	CHECK_CUDA_ERROR("entering returnDebugArray");
-
-	MGArray m = *ref;
-
-	int nd = 3;
-	if(m.dim[2] == 1) {
-		nd = 2;
-		if(m.dim[1] == 1) {
-			nd = 1;
-		}
-	}
-	nd = 4;
-	mwSize odims[4];
-	odims[0] = m.dim[0];
-	odims[1] = m.dim[1];
-	odims[2] = m.dim[2];
-	odims[3] = x;
-
-	// Create output numeric array
-	plhs[0] = mxCreateNumericArray(nd, odims, mxDOUBLE_CLASS, mxREAL);
-
-	double *result = mxGetPr(plhs[0]);
-
-	// Create a sacrificial MGA
-	MGArray scratch = ref[0];
-	// dbg arrays is otherwise identical so overwrite the new one's pointers
-	int j, k;
-	for(j = 0; j < scratch.nGPUs; j++) scratch.devicePtr[j] = dbgArrays[j];
-
-	for(k = 0; k < x; k++) {
-		// download this array
-		MGA_downloadArrayToCPU(&scratch, &result, 0);
-		// make a hop to the right and do it again
-		result += scratch.numel;
-		for(j = 0; j < scratch.nGPUs; j++) { scratch.devicePtr[j] += scratch.slabPitch[j] / 8; }
-
-	}
-	return;
-}
 
 #ifdef DEBUGMODE
 int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo,  mxArray **dbOutput)
@@ -288,6 +222,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 	double gamma = params.thermoGamma;
 	double rhomin= params.minimumRho;
+
+	int flag_is2D_RZ = 0;
 
 	// We let the callers just tell us X/Y/Z (~ directions 1/2/3),
 	// At this point we know enough to map these to different templates
@@ -343,6 +279,11 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 		cudaSetDevice(fluid->deviceID[i]);
 
 		calcPartitionExtent(fluid, i, &sub[0]);
+
+		if((sub[4] == 1) && (sub[5] > 1)) {
+			// R-Z simulation: pretend Z doesn't exist to improve exe efficiency here
+			sub[4] = sub[5]; sub[5] = 1;
+		}
 		haParams[0] = sub[3];
 		haParams[1] = sub[4];
 		haParams[2] = sub[5];
@@ -492,6 +433,10 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 				// Find out the size of the partition
 				calcPartitionExtent(fluid, i, sub);
+				if((sub[4] == 1) && (sub[5] > 1)) {
+					sub[4] = sub[5]; sub[5] = 1;
+				}
+
 				gridsize.x = (sub[3]/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < sub[3]);
 				gridsize.y = sub[5];
 				blocksize = makeDim3(32, YBLOCKS, 1);
@@ -507,6 +452,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
+#ifdef DEBUGMODE
+				returnDebugArray(fluid, 1, wStepValues, dbOutput);
+#endif
 
 					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
 					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_1storder");
@@ -523,9 +471,6 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 					cudaSetDevice(fluid->deviceID[i]);
 					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[i], cudaMemcpyDeviceToDevice);
 				}
-#ifdef DEBUGMODE
-				returnDebugArray(fluid, 6, wStepValues, dbOutput);
-#endif
 #else // runs at 2nd order
 
 				if(params.stepMethod == METHOD_HLL) {
@@ -1613,6 +1558,13 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Ble = Bre / Ale; /* Calculate vx */
 			Dle = Dre / Ale; // vy
 			Ele = Ere / Ale; // vz
+#ifdef DBG_FIRSTORDER
+		DBSAVE_HLL(0, Ale);
+		DBSAVE_HLL(1, Ble);
+		DBSAVE_HLL(2, Cle);
+		DBSAVE_HLL(3, Dle);
+		DBSAVE_HLL(4, Ele);
+		#endif
 
 #ifndef USE_SSPRK
 			Bre = Ble; // naive 0th order construction
@@ -2310,6 +2262,7 @@ __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag
 
 		// calculate total pressure P
 		P = 0; // FIXME this needs to be calc'd
+		P  = FLUID_GM1 * (Q[1] - .5*(Q[4]*Q[4]+Q[3]*Q[3]+Q[2]*Q[2])/Q[0] - 0.5*(B[0]*B[0]+B[1]*B[1]+B[2]*B[2]));
 
 		switch(PCswitch & 6) {
 				case 0: vx = Q[2] / Q[0]; break;
@@ -2349,23 +2302,21 @@ __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag
 
 			if(PCswitch == RK_CORRECT) {
 				/* Entertain two flux corrections */
-				shblk[IC + BOS2] = (shblk[IL + BOS0] - shblk[IC + BOS0]) / 2.0; /* Deriv of leftgoing flux */
-				shblk[IC + BOS3] = (shblk[IC + BOS1] - shblk[IL + BOS1]) / 2.0; /* Deriv of ritegoing flux */
+				shblk[IC + BOS2] = 0.5*(shblk[IC + BOS0] - shblk[IL + BOS0]); /* Deriv of leftgoing flux */
+				shblk[IC + BOS3] = 0.5*(shblk[IC + BOS1] - shblk[IL + BOS1]); /* Deriv of ritegoing flux */
 				__syncthreads();
 
 				/* Impose TVD limiter */
-				shblk[IC + BOS0] += LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
-				shblk[IC + BOS1] += LIMITERFUNC(shblk[IR+BOS3], shblk[IC+BOS3]);
+				shblk[IC + BOS0] -= LIMITERFUNC(shblk[IC+BOS2], shblk[IR+BOS2]);
+				shblk[IC + BOS1] += LIMITERFUNC(shblk[IC+BOS3], shblk[IR+BOS3]);
 				__syncthreads();
 			}
 
 			if(thisThreadDelivers) {
 				if(PCswitch == RK_PREDICT) {
-					prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
-							shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					prop[i] = Q[i] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] - shblk[IR+BOS0]+ shblk[IC+BOS0]);
 				} else {
-					prop[i] = Qstore[x0 + i*DEV_SLABSIZE] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] -
-							shblk[IR+BOS0]+ shblk[IC+BOS0]);
+					prop[i] = Qstore[x0 + i*DEV_SLABSIZE] - lambda * ( shblk[IC+BOS1]- shblk[IL+BOS1] - shblk[IR+BOS0]+ shblk[IC+BOS0]);
 				}
 			}
 
@@ -2565,7 +2516,7 @@ __global__ void cukern_PressureFreezeSolverMHD(double *state, double *mag, doubl
 		// Store pressure
 		totalPressure[0] = FLUID_GM1 *b + MHD_PRESS_B*bsq;
 
-		// Find the maximal fast wavespeed
+		// Find the fast MS wavespeed
 		locCf = fabs(px)*invrho + sqrt((FLUID_GG1*b + MHD_CS_B*bsq)*invrho);
 
 		cmax = (locCf > cmax) ? locCf : cmax; // As we hop down the X direction, track the max C_f encountered
