@@ -12,7 +12,6 @@ function relaxingFluid(run, afluid, mag, X)
 %>< mag      magnetic field (face)                                              MagnetArray(3)
 %>> X        vector index of current fluxing direction (1,2,or 3)               int
 
-dt = run.time.dTime;
 v  = [afluid.mass, afluid.mom(1), afluid.mom(2), afluid.mom(3), afluid.ener];
 
 % Advance fluid quantities through a 2nd order upwind timestep

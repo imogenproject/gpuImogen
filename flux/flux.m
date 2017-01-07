@@ -56,7 +56,7 @@ for gas = 1:size(fluid)
         for n = [1 2 3]
             % Skip identity operations
             if dims(fluxcall(n,sweep)) > 2
-                relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
+                relaxingFluid(run, fluid(gas), mag, fluxcall(n,sweep));
                 xchgFluidHalos(mass, mom, ener, topo, fluxcall(n, sweep));
             end
             xchgIndices(run.pureHydro, mass, mom, ener, mag, permcall(n, sweep));
@@ -79,7 +79,7 @@ for gas = 1:size(fluid)
         for n = [1 2 3]
             % Skip identity operations
             if dims(fluxcall(n,sweep)) > 2;
-                relaxingFluid(run, mass, mom, ener, mag, fluxcall(n,sweep));
+                relaxingFluid(run, fluid(gas), mag, fluxcall(n,sweep));
                 xchgFluidHalos(mass, mom, ener, topo, fluxcall(n, sweep));
             end
             xchgIndices(run.pureHydro, mass, mom, ener, mag, permcall(n, sweep));
