@@ -17,16 +17,14 @@ function source(run, fluids, mag, tFraction)
 % We double the dtime here because one source step is sandwiched between two flux steps
 dTime = tFraction * run.time.dTime;
 
-if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
-end
-
-% NOTE that this tests the new combined source calculator for frame rotation and gravity field
-% This call solves them simultaneously using the implicit midpoint rule with 3 Jacobi iterations
-% to converge the predictor step
+%if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
 [uv, vv, ~] = run.geometry.ndgridVecs('pos');
 xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1);
+%    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
+%end
 
+% This call solves geometric source terms, frame rotation and gravity simultaneously
+% It can be programmed to use either implicit midpoint or RK4
 cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omega, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*0,  xyvector);
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
@@ -60,25 +58,13 @@ cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omeg
 %        clear xyvector;
 %    end
 
-if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
-end
+%if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
+%    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
+%end
 
+    % This is a noxious hack to make the "vacuum" in disk simulations act like it
+    % We're not even pretending to be physical, so to heck with accuracy.
     cudaSourceVTO(fluids, [dTime 1 1]);
-    %--- Gravitational Potential Sourcing ---%
-    %       If the gravitational portion of the code is active, the gravitational potential terms
-    %       in both the momentum and energy equations must be appended as source terms.
-% Disabling this because SG is dead until further notice
-%    if run.selfGravity.ACTIVE
-%        enerSource = zeros(run.geometry.localDomainRez);
-%        for i=1:3
-%            momSource       = dTime*mass.thresholdArray ...
-%                                                    .* grav.calculate5PtDerivative(i,run.DGRID{i});
-%            enerSource      = enerSource + momSource .* mom(i).array ./ mass.array; % FIXME this fails to identically conserve energy
-%            mom(i).array    = mom(i).array - momSource;
-%        end
-%        ener.array          = ener.array - enerSource;
-%    end
 
     % The mechanical routines above are written to exactly conserve internal energy so that
     % they commute with things which act purely on internal energy (e.g. radiation)
@@ -88,6 +74,7 @@ end
         fluids(N).radiation.solve(fluids(N), mag, dTime);
     end
 
+    % Take care of any parallel synchronization we need to do to remain self-consistent
     if run.selfGravity.ACTIVE || run.potentialField.ACTIVE
         for N = 1:numel(fluids);
 	    fluids(N).synchronizeHalos(1, [0 1 1 1 1]);
@@ -96,8 +83,10 @@ end
 	end
     end
 
-% can we keep track of what of these we actually need FIXME
+    % Assert boundary conditions
     for N = 1:numel(fluids)
-        fluids(N).setBoundaries(0);
+        fluids(N).setBoundaries(1);
+        fluids(N).setBoundaries(2);
+        fluids(N).setBoundaries(3);
     end
 end

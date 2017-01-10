@@ -24,7 +24,7 @@
 //                      = [g*(g-1)*(E-T) + (1-.5*g*(g-1))B^2] / rho
 #define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
 
-enum geometryType_t { SQUARE, CYLINDRICAL, RZ };
+enum geometryType_t { SQUARE, CYLINDRICAL, RZSQUARE, RZCYLINDRICAL };
 
 typedef struct __GeometryParams {
 	geometryType_t shape;

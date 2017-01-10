@@ -100,7 +100,7 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 		if(is_RZ) {
 			gridsize.x = ROUNDUPTO(sub[3], 16)/16;
 			gridsize.y = ROUNDUPTO(sub[5], 16)/16;
-			cukern_SourceCylindricalTerms<RZ><<<gridsize, blocksize>>>(fluid->devicePtr[i], dt);
+			cukern_SourceCylindricalTerms<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], dt);
 		} else {
 			gridsize.x = ROUNDUPTO(sub[3], 16)/16;
 			gridsize.y = ROUNDUPTO(sub[4], 16)/16;
@@ -115,6 +115,17 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 
 	return returnCode;
 }
+
+// The stage weights for 4th order Gauss-Legendre quadrature
+#define GL4_A11 .25
+#define GL4_A12 -0.038675134594812865529
+#define GL4_A21 0.53867513459481286553
+#define GL4_A22 .25
+// The stage contribution weights
+#define GL4_B1 .5
+#define GL4_B2 .5
+#define JACOBI_ITERS 2
+
 
 template <geometryType_t coords>
 __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
@@ -135,7 +146,7 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 		if(y >= ARRAY_NPHI) return;
 		z = 0;
 		break;
-	case RZ:
+	case RZCYLINDRICAL:
 		if(y >= ARRAY_NZ) return;
 		z = y;
 		// We are stepping through many Zs at once, not just one
@@ -143,33 +154,60 @@ __global__ void cukern_SourceCylindricalTerms(double *base, double dt)
 		break;
 	}
 
-	double rho, u, v, w, E, oldP, newP, newpr, newpphi;
-	double diffmom;
+	double rho, u, v, w, E, newP, vrA, vphiA, vrB, vphiB;
+	double diffmom, diffmomB, scratch;
 	double r = ARRAY_RIN + x*ARRAY_DR;
+
+	int jacobiIter;
 
 	while(z < ARRAY_NZ) {
 		rho = base[0];
-		E   = base[  ARRAY_SLABSIZE];
-		u   = base[2*ARRAY_SLABSIZE];
-		v   = base[3*ARRAY_SLABSIZE];
-		w   = base[4*ARRAY_SLABSIZE];
 
-		diffmom = dt * v / (r * rho);
+		u   = base[2*ARRAY_SLABSIZE]/rho; // vr
+		v   = base[3*ARRAY_SLABSIZE]/rho; // vphi
 
-		newpr   = u + v * diffmom; // pr
-		newpphi = v - u * diffmom; // pphi
+		diffmom = dt * v / r;
 
-		// There is no source of Etotal,
-		// But the change in KE reflects itself as a source of Einternal
-		newP = E - .5*(newpr*newpr+newpphi*newpphi+w*w)/rho;
-		if(newP <= 0.0) {
-			oldP = E - .5*(u*u + v*v + w*w)/rho;
-			base[ARRAY_SLABSIZE] = .5*(newpr*newpr + newpphi*newpphi + w*w)/rho + .00001*rho;
+		/* Make initial GL4 predictions */
+		vrA   = u + GL4_A11* v * diffmom; // pr
+		vphiA = v - GL4_A11* u * diffmom; // pphi
+
+		vrB   = u + GL4_A12* v * diffmom; // pr
+		vphiB = v - GL4_A12* u * diffmom; // pphi
+
+		/* Take a few fixed point iterations */
+		for(jacobiIter = 0; jacobiIter < JACOBI_ITERS; jacobiIter++) {
+			diffmom = dt * vphiA / r;
+			diffmomB= dt * vphiB / r;
+
+			scratch = vrA;
+			vrA   = u + GL4_A11* vphiA   * diffmom  + GL4_A12 * vphiB * diffmomB; // pr
+			vphiA = v - GL4_A11* scratch * diffmom  + GL4_A12 * vrB   * diffmomB; // pphi
+
+			diffmom = dt * vphiA / r;
+
+			scratch = vrB;
+			vrB   = u + GL4_A21* vphiA   * diffmom + GL4_A22 * vphiB   * diffmomB; // pr
+			vphiB = v - GL4_A21* scratch * diffmom + GL4_A22 * scratch * diffmomB; // pphi
 		}
-		base[2*ARRAY_SLABSIZE] = newpr;
-		base[3*ARRAY_SLABSIZE] = newpphi;
 
-		if(coords == RZ) {
+		/* Finish the Runge-Kutta evaluation */
+		u = rho*(u + .5*dt*(vphiA*vphiA + vphiB*vphiB)/r);
+		v = rho*(v - .5*dt*(vphiA*vrA   + vphiB*vrB  )/r);
+
+		// Analytically, the work integral is exactly zero so there is no source of Etotal or Einternal,
+		// So the change in KE reflects itself as a source of Einternal
+		// This can potentially get us into unhappiness
+		E   = base[  ARRAY_SLABSIZE];
+		w   = base[4*ARRAY_SLABSIZE];
+		newP = E - .5*(u*u+v*v+w*w)/rho;
+		if(newP <= 0.0) {
+			base[ARRAY_SLABSIZE] = .5*(u*u+v*v+w*w)/rho + .00001*rho;
+		}
+		base[2*ARRAY_SLABSIZE] = u;
+		base[3*ARRAY_SLABSIZE] = v;
+
+		if(coords == RZCYLINDRICAL) {
 			z += blockDim.y*gridDim.y;
 		} else {
 			z += 1;

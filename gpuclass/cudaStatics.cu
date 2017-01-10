@@ -63,6 +63,10 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 int setOutflowCondition(MGArray *fluid, int rightside, int memdir);
 template <int direct>
 __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normdir);
+template <int direct>
+__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection);
+template <int direct>
+__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection);
 
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
@@ -331,6 +335,12 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 				return ERROR_INVALID_ARGS;
 			}
 
+			if(strcmp(bs, "outflow") == 0) {
+				if(phi.numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+					worked = setOutflowCondition(&phi, d, direction);
+				}
+			}
+
 		}
 		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 	}
@@ -370,23 +380,48 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 				double *base = fluid->devicePtr[i] + 3;
 				cukern_SetOutflowX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
 			}
-			// FIXME: check launch error here
 		}
 		break;
 	case 2: // y
-		PRINT_FAULT_HEADER; printf("Outflow condition has not been implemented for Y direction. Soz.\n");
-		PRINT_FAULT_FOOTER; return ERROR_INVALID_ARGS;
+		blockdim.x = 32; blockdim.y = 3; blockdim.z = 1;
+
+		for(i = 0; i < fluid->nGPUs; i++) {
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+
+			griddim.x = ROUNDUPTO(sub[4], 32)/32;
+			griddim.y = sub[5];
+			griddim.z = 1;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i] + (sub[4]-7)*sub[3];
+				cukern_SetOutflowY<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			} else {
+				cukern_SetOutflowY<0><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			}
+		}
 		break;
 	case 3: // z
-		PRINT_FAULT_HEADER; printf("Outflow condition has not been implemented for Z direction. Soz.\n");
-		PRINT_FAULT_FOOTER; return ERROR_INVALID_ARGS;
+		blockdim.x = 32; blockdim.y = 4; blockdim.z = 1;
+		for(i = 0; i < fluid->nGPUs; i++) { 
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+			griddim.x = ROUNDUPTO(sub[4], blockdim.x)/blockdim.x;
+			griddim.y = ROUNDUPTO(sub[5], blockdim.y)/blockdim.y;
+			griddim.z = 1;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i] + sub[3]*sub[4]*(sub[5]-7);
+				cukern_SetOutflowZ<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			} else {
+				cukern_SetOutflowZ<0><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+			}
+		}
 		break;
 	}
 
-
-
-
-return SUCCESSFUL;
+	status = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, fluid, direction, "Setting outflow BC on array");
+	return status;
 }
 
 // Assume we are passed &rho(3,0,0) if direct == 0
@@ -445,9 +480,111 @@ if(a*direct > 0) {
 
 }
 
+}
+
+// Use 32x3 threads and dim3(roundup(nx/32), nz, 1) blocks
+// if(direct == 0) {minus coordinate edge} assume base is &rho[0]
+// if(direct == 1) {plus coordinate edge}  assume base is &rho[0,ny-7,0]
+template <int direct>
+__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
+{
+int x = threadIdx.x + blockDim.x*blockIdx.x;
+int z = blockIdx.y;
+
+if((x >= nx) || (z >= nz)) return;
+
+// Y-Z translate
+base += x + nx*(ny*z);
+
+double a;
+
+a = base[(1+normalDirection)*slabNumel];
+
+if(a*direct > 0) {
+	// normal mom is positive: extrapolate constant
+	if(direct == 1) { // +y edge
+		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+	} else { // -y edge
+		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+	}
+} else {
+	// normal mom negative: mirror BC
+	if(direct == 1) { // +y edge
+		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+	} else { // -y edge
+		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+	}
 
 }
 
+
+}
+
+// XY threads & block span the XY space
+// one plane of threads
+// if(direct == 0) base should be &rho[0,0,0]
+// if(direct == 1) base should be &rho[0,0,nz-7]
+template<int direct>
+__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
+{
+int x = threadIdx.x + blockDim.x*blockIdx.x;
+int y = threadIdx.y + blockDim.y*blockIdx.y;
+
+if((x >= nx) || (y >= ny)) return;
+
+base += x + nx*y;
+
+int delta = nx*ny;
+double a = base[(1+normalDirection)*slabNumel];
+int q;
+
+if(a*direct > 0) {
+	// positive normal momentum: constant
+	if(direct == 1) { // +z edge
+		for(q = 0; q < 5; q++) { 
+			a = base[3*delta]; base[4*delta] = a; base[5*delta] = a; base[6*delta] = a; base += slabNumel;
+		}
+	} else { // -z edge
+		for(q = 0; q < 5; q++) {
+			a = base[4*delta]; base[3*delta] = a; base[2*delta] = a; base[delta] = a; base += slabNumel;
+		}
+	}
+} else {
+	// negative normal momentum: mirror
+	if(direct == 1) { // +z edge
+		for(q = 0; q < 5; q++) {
+			a = base[0];       base[6*delta] = a;
+			a = base[delta];   base[5*delta] = a;
+			a = base[2*delta]; base[4*delta] = a;
+			base += slabNumel;
+		}
+	} else { // -z edge
+		for(q = 0; q < 5; q++) {
+			a = base[6*delta]; base[0] = a;
+			a = base[5*delta]; base[delta] = a;
+			a = base[4*delta]; base[2*delta] = a;
+			base += slabNumel;
+		}
+	}
+}
+
+}
 
 
 /* Sets the given array+AMD's boundary in the following manner:
