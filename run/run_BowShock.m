@@ -52,11 +52,13 @@ run.ppSave.dim2     = 100;
 %run.ppSave.dim3     = 20;
 
 rp = RealtimePlotter();
-  rp.plotmode = 4;
+  rp.plotmode = 1;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
+  rp.forceRedraw = 1;
   rp.firstCallIteration = 1;
   rp.iterationsPerCall = 20;
+  rp.spawnGUI = 1;
 run.peripherals{end+1} = rp;
 
 run.info            = 'Bow shock test.';

@@ -20,10 +20,12 @@ run.ppSave.dim3 = 100;
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.firstCallIteration = 1;
   rp.iterationsPerCall = 20;
-%run.peripherals{end+1} = rp;
+  rp.spawnGUI = 1;
+  rp.forceRedraw = 1;
+run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
 fm.iniMethod = 2; % hllc

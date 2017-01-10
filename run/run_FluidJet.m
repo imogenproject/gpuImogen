@@ -3,7 +3,7 @@
 %--- Initialize test ---%
 grid = [1024 512 1];
 run                 = JetInitializer(grid);
-run.iterMax         = 1000;
+run.iterMax         = 3000;
 run.injectorSize    = 15;
 run.offset          = [20 256 0];
 run.bcMode.x        = 'const';
@@ -12,7 +12,7 @@ run.bcMode.z        = 'circ'; % just for some variety
 run.direction       = JetInitializer.X;
 run.flip            = false;
 
-run.image.interval  = 10;
+run.image.interval  = 50;
 run.image.mass      = true;
 %run.image.speed     = true;
 
@@ -33,12 +33,14 @@ rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
   rp.insertPause = 0;
-  rp.iterationsPerCall = 20;
+  rp.iterationsPerCall = 50;
   rp.firstCallIteration = 1;
-%run.peripherals{end+1} = rp;
+  rp.forceRedraw=1;
+  rp.spawnGUI = 1;
+run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 3; % xin/jin
+fm.iniMethod = 2; % hllc
 run.peripherals{end+1} = fm;
 
 %--- Run tests ---%

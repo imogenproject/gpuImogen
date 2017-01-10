@@ -4,10 +4,13 @@
 grid = [512 1 1];
 run         = RadiatingShockInitializer(grid);
 
-run.iterMax     = 20000;
+run.iterMax     = 200000;
 run.theta       = 0;
-run.sonicMach   = 2;
-run.cfl = 0.6;
+run.sonicMach   = 10;
+run.cfl = 0.8;
+
+run.machY_boost = 0;
+
 % This sets the radiation prefactor in the parameterized equation
 %        \Gamma = -beta rho^2 T^theta
 % It's irrelevant outside of changing output units because this parameter has a fixed relation 
@@ -17,14 +20,14 @@ run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical fre-free Bremsstrahlung 
-run.radTheta = .0;
+run.radTheta = .5;
 
 % With the whole X length of the grid taken as 1, these set the length of the equilibrium
 % preshock & cold gas layers; Default values are .25 and .1 respectively
 % Low-theta (~ <.2) shocks undergo large-amplitude breathing modes and require a large cold gas
 % layer to let the large-amplitude downstream waves propagate away
 run.fractionPreshock = 0.1;
-run.fractionCold     = 0.7;
+run.fractionCold     = 0.5;
 
 % This sets the temperature relative to the preshock temperature at which radiation rate is clamped
 % to zero. Physically, the value makes little sense if < 1 (since the equilibrium generator assumes
@@ -44,11 +47,12 @@ run.image.mass = true;
 %run.image.pGas = true;
 
 rp = RealtimePlotter();
-  rp.plotmode = 7;
+  rp.plotmode = 1;
   rp.plotDifference = 0;
   rp.insertPause = 1;
   rp.firstCallIteration =1;
   rp.iterationsPerCall = 10;
+  rp.spawnGUI = 1;
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
