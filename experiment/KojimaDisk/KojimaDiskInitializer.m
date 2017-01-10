@@ -163,7 +163,8 @@ classdef KojimaDiskInitializer < Initializer
                             dz = dr;
                         end
                         
-                        if obj.useZMirror; z0 = -4*dz; else z0 = -round(nz/2)*dz; end
+                        % For vertical mirror, offset Z=0 by three cells to agree with mirror BC that has 3 ghost cells
+                        if obj.useZMirror; z0 = -3*dz; else z0 = -round(nz/2)*dz; end
                     else
                         z0 = 0;
                         dz = 1;
