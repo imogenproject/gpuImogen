@@ -25,9 +25,9 @@ end
 
 if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     % In cylindrical coordinates, ONLY rotation about the coordinate axis is supported
-    if mpi_amirank0() && run.frameParameter.rotateCenter ~= [0 0]
+    if mpi_amirank0() && any(tracker.rotateCenter ~= 0)
         disp('NOTE: run.frameParameter.rotateCenter was nonzero while we are using cylindrical coords.');
-	disp('NOTE: Cylindrical coordinates rotate about the axis regardless of this parameter.');
+        disp('NOTE: Cylindrical coordinates rotate about the axis regardless of this parameter.');
     end
     
     [R, ~, ~] = run.geometry.ndgridSetIJK('pos');
