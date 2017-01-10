@@ -16,23 +16,18 @@ parImogenLoad:
 
 [ At this point we have all Imogen paths in the Matlab search path. We have
   access to the GPU through the GPU_Type, MPI through mpi_ wrapper functions,
-  and low-level access to our parallel subsystem through GIS' data fields.
+  and low-level access to our parallel subsystem through ParallelGlobal's data fields.
 
   We do NOT have a directory to save things to, we do NOT have any Imogen file
   logger stuff so fprintf() has to suffice ]
 
 runfile:
-	-> Calls starterRun()
-	-> Must call
-		GIS = GlobalIndexSemantics()
-		GIS.setup([nx ny nz])
-	   to setup parallel array system with global array size [nx ny nz]
-	-> Creates an Initializer
-	-> Sets initial parameters on Initializer
-	-> Requests initial parameters be stored to tmp file
-	-> Invokes imogen() with filename
-
-
+	-> Create a simulation type initializer, e.g.
+		run = JetInitializer([nx ny nz])
+	-> Initializer will setup the geometry manager (GeometryManager).
+	-> Set initial parameters on Initializer
+	-> Requests initial parameters be stored to tmp file or IC structure
+	-> Invokes imogen(filename | struct)
 
 runfile if resuming:
 	-> See special_Resume.m	
@@ -42,18 +37,24 @@ runfile if resuming:
 	   and restart information
 
 imogen():
-	-> Loads initial conditions file
+	-> Loads initial conditions file if file
 	-> Creates run manager
+		-> TODO: Creates all descendant structs/classes
+		-> TODO: Calls descendant.readParams(...): This feeds all scalar parameters in
     [* We now have run.save.logPrint available *]
 	-> Initializes results path
 		-> If new run, creates unique new path
-		-> If resuming, sets up original paths
+		-> If resuming, accesses original paths
 	-> If new run:
-		-> Creates fluid fields using IC data
+		-> Upload fluid fields using IC data
 	-> If restarting:
 		-> Loads indicated dataframe
-		-> Sets up global index semantics with original resolution
+		-> Re-initialize GeometryManager using SimInitializer's pickled state
 		-> Recreates fluid fields using frame's data
+		-> Re-initialize TimeManager using frame's pickled state
+    [* The large fluid dynamic state is now available *]
+        -> TODO: Run manager calls descendant.initialize(): This runs all pre-iteration
+	    exercises that require the fluid state to be available
 	-> Initializes self-gravity system
 	-> Initializes arbitrary external gravity field
 	-> Saves IC data struct (minus fluid fields) to SimInitializer_rank#.mat

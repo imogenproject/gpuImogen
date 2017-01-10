@@ -21,6 +21,7 @@
 \usepackage{amssymb}
 \usepackage{hyperref}
 \usepackage{graphicx}
+\usepackage{color}
 
 \author{Erik Keever}
 \title{Imogen User's Manual}
@@ -163,13 +164,85 @@ lunch then check back" class.
 
 \section{Physics solved by the Imogen simulation engine}
 
+\subsection{Full Equation Set}
+
+The broadest writing of the equations Imogen is capable of solving:
+\begin{align*}
+\frac{\partial \rho}{\partial t} &+ \nabla (\rho v) &= 0 & & \\
+\frac{\partial \rho \vec{v}}{\partial t} &+ \nabla_i \left( \rho \vec{v} v_i + \mathbb{I} P \right) &= 
+- \textcolor{red}{\rho \nabla \phi_g } & & - 
+\textcolor{blue}{ \sum_k n_{d,k} F_{drag,k}  }\\
+\frac{\partial E_{tot}}{\partial t} &+ \nabla v (E_{tot} + P) &= 
+\textcolor{red}{\rho v \cdot \nabla \phi_g} & 
+- \textcolor{green}{\Gamma_0 \rho^2 T^\theta } &
+- \textcolor{blue}{\sum_k n_{d,k} v_{d,k} \cdot F_{drag,k}} \\
+\frac{\partial \rho_{d,k}}{\partial t} &+ \nabla (\rho_{d,k} v_{d,k}) &= 0 & & \\
+\frac{\partial \rho_{d,k} v_{d,k}}{\partial t} &+ \nabla (\rho_{d,k} v_{d,k} v_{d,k}) &= n_{d,k} F_{drag,k}  & & \\
+\frac{\partial T_{d,k}}{\partial_t} &+ \nabla (v_{d,k} T_{d,k} ) &= & & heat+radi
+\end{align*}
+Where here $k$ denotes an arbitrary number of dust fluids.
+
+With auxiliary equations
+\begin{align*}
+\textcolor{red}{\nabla^2 \phi_{self} = 4 \pi G \rho} \\
+\textcolor{red}{\phi_g = \phi_{self} + \phi_{static} + \sum_{i} \frac{-G M_i}{|x - x_i|} } \\
+\textcolor{blue}{F_{drag} = \frac{s_0^2 F_{epstein} + s^2 F_{stokes}}{s_0^2 + s^2}} \\
+\textcolor{blue}{F_{epstein} \approx \frac{-4 \pi}{3} \rho_{gas} s^2 \sqrt{\frac{8}{\gamma \pi}} \sqrt{c_s^2 + 9 \pi |dv|^2 / 128}  \vec{dv} } \\
+\textcolor{blue}{F_{stokes} = -.5 C_d \pi s^2 \rho_{gas} |dv| \vec{dv} }
+\end{align*}
+In the above, G is the gravitational coupling constant and $\phi_{static}$ represents a stationary
+potential field defined at simulation start time.
+$F_{drag}$ generates a smooth interpolation between the rarefied gasdynamics regime experienced
+by a particle much smaller than the mean free path, $F_{epstein}$, and the viscous drag 
+on a particle in the continuum limit given by $F_{stokes}$.
+$F_{epstein}$ as given represents the approximation
+given by Kwok (1975) for the exact Epstein drag, due to the high cost of evaluating multiple
+transcendental functions occurring in it.
+
+
+The Euler equations, unadorned, are self-similar and lack any characteristic scale. Activating
+any of the non-ideal physics in Imogen introduces scales and requires choosing appropriate scaling
+constants.
+
+Conservative transport terms are in black. Gravitation related terms are in red.
+Optically thin radiation terms are in green. Dust terms are in blue.
+
+Self gravity, stationary potential, and compact objects are enableable separately.
+Activating any of them requires choosing a gravitational coupling constant G.
+
+Activating radiative emission requires choosing a radiation scaling constant $\Gamma_0$.
+The code computes as written, using the square of \textit{mass density}. Because we assume an
+ideal gas law, we are actually considering
+\begin{align*}
+\Gamma' n^2 (P/\rho)^{\theta}
+\end{align*}
+with $\Gamma' = \Gamma_0 \mu^{\theta-2} K_b^{-\theta}$.
+
+Imogen contains the following unitful objects which must be defined if the relevant
+physics are in use.
+\begin{itemize}
+\item G - Gravitational coupling constant
+\item $K_b$ - Boltzmann constant
+\item $\mu$ - Gas mean molecular weight
+\item $m_k$ - Mass of dust particles of type k
+\item $s_k$ - Size of dust particles of type k
+\end{itemize}
+
+There are four fundamental unitful quantities in Imogen: mass, length, time, and temperature.
+
+As an example of how they might be chosen: Kojima disks are defined with G=1 and M* = 1. The
+orbital speed at a radius of 1 is defined as 1. By using $p = \rho^\gamma$ as the equation
+of state, implicitly $k_b/\mu$ is chosen.
+
+
+
 \subsection{CFD}
 
 At its core Imogen solves the Euler equations, written here in conservative form:
 \begin{align*}
-\frac{\partial \rho}{\partial t} &= -\frac{\partial}{\partial x_i} \rho v_i \\
-\frac{\partial (\rho v_i)}{\partial t} &= -\frac{\partial}{\partial x_j} (T_{ij} + \mathbb{I} P) \\
-\frac{\partial E}{\partial t} &= -\frac{\partial}{\partial x_i} v_i (E + P)
+\frac{\partial \rho}{\partial t} &+ \frac{\partial}{\partial x_i} \rho v_i &= 0 \\
+\frac{\partial (\rho v_i)}{\partial t} &+ \frac{\partial}{\partial x_j} (T_{ij} + \mathbb{I} P) &= 0 \\
+\frac{\partial E}{\partial t} &+ \frac{\partial}{\partial x_i} v_i (E + P) &= 0
 \end{align*}
 with mass density $\rho$, fluid bulk velocity $v_i$, momentum stress tensor
 $T_{ij} = \rho v_i v_j$, identity tensor $\mathbb{I}$, scalar thermal pressure $P$,
@@ -413,7 +486,7 @@ return.
 \input{../experiment/BowShock/bowDoc.tex}
 \input{../experiment/CentrifugeTest/centrifugeDoc.tex}
 \input{../experiment/DoubleBlast/doubleblastDoc.tex}
-\input{../experiment/Einfeldt/einfeldtDoc.tex}
+\input{../experiment/RiemannProblem/einfeldtDoc.tex}
 \input{../experiment/HachisuDisk/hachisuDoc.tex}
 \input{../experiment/Implosion/implosionDoc.tex}
 \input{../experiment/Jet/jetDoc.tex}
@@ -422,7 +495,7 @@ return.
 \input{../experiment/RayleighTaylor/RT_Doc.tex}
 \input{../experiment/RichtmyerMeshkov/richtmyermeshkovDoc.tex}
 \input{../experiment/SedovTaylorBlastWave/sedovDoc.tex}
-\input{../experiment/SodShockTube/sodDoc.tex}
+\input{../experiment/RiemannProblem/sodDoc.tex}
 \input{../experiment/ShuOsherTube/shuoshertubeDoc.tex}
 
 \end{document}
