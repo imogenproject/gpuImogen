@@ -97,7 +97,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	MGArray trans;
 
 	int i, sub[6];
-	int is3d;
+	int is3d, isRZ;
 
 	MGArray *psi = NULL;
 	if(newArrays != NULL) {
@@ -135,6 +135,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		alterArrayMetadata(phi, &trans, exchangeCode);
 
 		is3d = (phi->dim[2] > 3);
+		isRZ = (phi->dim[1] == 1) && (phi->dim[2] > 3);
 
 		MGArray *nuClone;
 		if((exchangeCode != -1) || (psi != NULL)) {
@@ -165,11 +166,24 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 				break;
 			case 3: // Flip XZ
 				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
-				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
-				gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+
 				gridsize.z = 1;
 
-				cukern_ArrayExchangeXZ<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+				if(isRZ) {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+					cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[5]);
+				} else {
+				if(is3d) {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+					cukern_ArrayExchangeXZ<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4], sub[5]);
+				} else {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[1], BDIM) / BDIM;
+					cukern_ArrayTranspose2D<<<gridsize, blocksize>>>(phi->devicePtr[i], nuClone->devicePtr[i], sub[3], sub[4]);
+				}
+				}
 				break;
 
 			case 4: // Flip YZ
@@ -238,7 +252,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 }
 
 // Identifies cases of index exchanging which do not result in any change of
-// actual in-memory ordering: These cases return 0;
+// actual in-memory ordering: These cases smile and wave as they return 0.
 int actuallyNeedToReorder(int *dims, int code)
 {
 	switch(code) {
@@ -254,11 +268,13 @@ int actuallyNeedToReorder(int *dims, int code)
 		if((dims[1] == 1) || (dims[2] == 1)) return 0;
 		break;
 	case 5: // rotate left
+		if(dims[0] == 1) return 0; // ???
 		if((dims[0] == 1) && (dims[1] == 1)) return 0;
 		if((dims[1] == 1) && (dims[2] == 1)) return 0;
 		if((dims[0] == 1) && (dims[2] == 1)) return 0;
 		break;
 	case 6: // rotate right
+		if(dims[2] == 1) return 0; // ???
 		if((dims[0] == 1) && (dims[1] == 1)) return 0;
 		if((dims[1] == 1) && (dims[2] == 1)) return 0;
 		if((dims[0] == 1) && (dims[2] == 1)) return 0;
@@ -342,7 +358,7 @@ int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode)
 	return SUCCESSFUL;
 }
 
-
+/* Very efficiently swaps XY for YX ordering in a 2D array */
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)
 {
 	__shared__ double tmp[BDIM][BDIM+1];
@@ -454,7 +470,7 @@ __global__ void cukern_ArrayExchangeYZ(double *src, double *dst,   int nx, int n
 }
 
 
-/* This kernel takes an input array src[i + nx(j+ny k)] and writes dst[k + nz(i + nx j)]
+/* This kernel takes an input array src[i + nx(j + ny k)] and writes dst[k + nz(i + nx j)]
  * such that for input indices ordered [123] output indices are ordered [312]
  *
  * Strategy: blocks span I-K space and walk in J.
