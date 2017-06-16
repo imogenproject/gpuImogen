@@ -47,18 +47,22 @@ __constant__ __device__ double devLambda[9];
 // Density below which we force gravity effects to zero
 #define RHOMIN devLambda[3]
 #define RHOGRAV devLambda[4]
+
 // 1 / (rho_g - rho_c)
 #define G1 devLambda[5]
+
 // rho_c / (rho_g - rho_c)
 #define G2 devLambda[6]
+
 #define RINNER devLambda[7]
 #define DELTAR devLambda[8]
 
+__constant__ __device__ unsigned int devSlabdim[3];
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs!=6) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(FluidManager, phi, dt, GeometryManager, rhomin, rho_fullg)\n");
+    if ((nrhs!=6) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaApplyScalarPotential(FluidManager, phi, dt, GeometryManager, rho_nograv, rho_fullgrav)\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceScalarPotential") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceScalarPotential."); }
     
@@ -70,7 +74,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     // Each partition uses the same common parameters
     double dt = *mxGetPr(prhs[2]);
-    GeometryParams geom = accessMatlabGeometryClass(prhs[3]);
+    GeometryParams geom = accessMatlabGeometryClass(prhs[3]); // FIXME check for fail & return
     double rhoMinimum = *mxGetPr(prhs[4]); /* minimum rho, rho_c */
     double rhoFull    = *mxGetPr(prhs[5]); /* rho_g */
 
@@ -79,6 +83,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 // FIXME require separate rhomin/rho_fullg per fluid becuase they will generally have distinct characteristic scales of density.
     for(fluidct = 0; fluidct < numFluids; fluidct++) {
     	worked = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
+    	// FIXME check if this barfed?
     	mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
     	if(flprop != NULL) {
     		rhoMinimum = *((double *)mxGetPr(flprop));
@@ -114,9 +119,19 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, Geom
     lambda[7] = geom.Rinner;
     lambda[8] = dx[1];
 
+    printf("printf debugging, yay!\n");
+    printf("Lambda array: [lambda_x, y, z, rho_nograv, rho_fullgrav, 1/(rho_full-rho_no), rho_no/(rho_full-rho_no), r_in, h_r]\n[");
+    int qqq; for(qqq = 0; qqq < 9; qqq++) { printf("%.12f ", lambda[qqq]);
+       }
+    printf("]\n");
+
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
     	cudaMemcpyToSymbol(devLambda, lambda, 9*sizeof(double), 0, cudaMemcpyHostToDevice);
+	unsigned int sd[3];
+	sd[0] = (unsigned int)(fluid->slabPitch[i] / 8);
+	cudaMemcpyToSymbol(devSlabdim, sd, 1*sizeof(int), 0, cudaMemcpyHostToDevice);
+
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
     }
@@ -202,26 +217,26 @@ for(; globAddr < arrayNumel; globAddr += blockDim.x*gridDim.x) {
 	ener   = 0;
 	locrho = fluid[globAddr]; // rho(z) -> rho
 	if(locrho > rhomin) {
-		mom      = fluid[globAddr + 2*arrayNumel]; // load px(z) -> phiC
+		mom      = fluid[globAddr + 2*devSlabdim[0]]; // load px(z) -> phiC
 		deltaphi = fx[globAddr];
 		if(locrho < RHOGRAV) { deltaphi *= (locrho*G1 - G2); } // G smoothly -> 0 as rho -> RHO_MIN
 		ener                               = -deltaphi*(mom-.5*locrho*deltaphi); // exact KE change
-		fluid[globAddr + 2*arrayNumel]     = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
+		fluid[globAddr + 2*devSlabdim[0]]     = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
 
-		mom      = fluid[globAddr + 3*arrayNumel]; // load py(z) -> phiC
+		mom      = fluid[globAddr + 3*devSlabdim[0]]; // load py(z) -> phiC
 		deltaphi = fy[globAddr];
 		if(locrho < RHOGRAV) { deltaphi *= (locrho*G1 - G2); } // G smoothly -> 0 as rho -> RHO_MIN
 		ener                           -= deltaphi*(mom-.5*locrho*deltaphi); // exact KE change
-		fluid[globAddr + 3*arrayNumel]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
+		fluid[globAddr + 3*devSlabdim[0]]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
 
-		mom      = fluid[globAddr + 4*arrayNumel];
+		mom      = fluid[globAddr + 4*devSlabdim[0]];
 		deltaphi = fz[globAddr];
 		if(locrho < RHOGRAV) { deltaphi *= (locrho*G1 - G2); } // G smoothly -> 0 as rho -> RHO_MIN
 		ener                           -= deltaphi*(mom-.5*locrho*deltaphi); // exact KE change
-		fluid[globAddr + 4*arrayNumel]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
+		fluid[globAddr + 4*devSlabdim[0]]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
 
 		// Store changed kinetic energy
-		fluid[globAddr + arrayNumel]   += ener;
+		fluid[globAddr + devSlabdim[0]]   += ener;
 	}
 }
 
@@ -253,20 +268,20 @@ for(; globAddr < arrayNumel; globAddr += blockDim.x*gridDim.x) {
 	ener   = 0;
 	locrho = fluid[globAddr]; // rho(z) -> rho
 	if(locrho > rhomin) {
-		mom      = fluid[globAddr + 2*arrayNumel]; // load px(z) -> phiC
+		mom      = fluid[globAddr + 2*devSlabdim[0]]; // load px(z) -> phiC
 		deltaphi = fx[globAddr];
 		if(locrho < RHOGRAV) { deltaphi *= (locrho*G1 - G2); } // G smoothly -> 0 as rho -> RHO_MIN
 		ener                            = -deltaphi*(mom-.5*locrho*deltaphi); // exact KE change
-		fluid[globAddr + 2*arrayNumel]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
+		fluid[globAddr + 2*devSlabdim[0]]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
 
-		mom      = fluid[globAddr + 3*arrayNumel]; // load py(z) -> phiC
+		mom      = fluid[globAddr + 3*devSlabdim[0]]; // load py(z) -> phiC
 		deltaphi = fy[globAddr];
 		if(locrho < RHOGRAV) { deltaphi *= (locrho*G1 - G2); } // G smoothly -> 0 as rho -> RHO_MIN
 		ener                           -= deltaphi*(mom-.5*locrho*deltaphi); // exact KE change
-		fluid[globAddr + 3*arrayNumel]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
+		fluid[globAddr + 3*devSlabdim[0]]  = mom - deltaphi*locrho;   // store px <- px - dt * rho dphi/dx;
 
 		// Store change to kinetic energy
-		fluid[globAddr + arrayNumel]   += ener;
+		fluid[globAddr + devSlabdim[0]]   += ener;
 	}
 }
 
