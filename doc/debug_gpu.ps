@@ -1,0 +1,1407 @@
+%!PS-Adobe-3.0
+%%Creator: graphviz version 2.38.0 (20140413.2041)
+%%Title: debugging
+%%Pages: (atend)
+%%BoundingBox: (atend)
+%%EndComments
+save
+%%BeginProlog
+/DotDict 200 dict def
+DotDict begin
+
+/setupLatin1 {
+mark
+/EncodingVector 256 array def
+ EncodingVector 0
+
+ISOLatin1Encoding 0 255 getinterval putinterval
+EncodingVector 45 /hyphen put
+
+% Set up ISO Latin 1 character encoding
+/starnetISO {
+        dup dup findfont dup length dict begin
+        { 1 index /FID ne { def }{ pop pop } ifelse
+        } forall
+        /Encoding EncodingVector def
+        currentdict end definefont
+} def
+/Times-Roman starnetISO def
+/Times-Italic starnetISO def
+/Times-Bold starnetISO def
+/Times-BoldItalic starnetISO def
+/Helvetica starnetISO def
+/Helvetica-Oblique starnetISO def
+/Helvetica-Bold starnetISO def
+/Helvetica-BoldOblique starnetISO def
+/Courier starnetISO def
+/Courier-Oblique starnetISO def
+/Courier-Bold starnetISO def
+/Courier-BoldOblique starnetISO def
+cleartomark
+} bind def
+
+%%BeginResource: procset graphviz 0 0
+/coord-font-family /Times-Roman def
+/default-font-family /Times-Roman def
+/coordfont coord-font-family findfont 8 scalefont def
+
+/InvScaleFactor 1.0 def
+/set_scale {
+       dup 1 exch div /InvScaleFactor exch def
+       scale
+} bind def
+
+% styles
+/solid { [] 0 setdash } bind def
+/dashed { [9 InvScaleFactor mul dup ] 0 setdash } bind def
+/dotted { [1 InvScaleFactor mul 6 InvScaleFactor mul] 0 setdash } bind def
+/invis {/fill {newpath} def /stroke {newpath} def /show {pop newpath} def} bind def
+/bold { 2 setlinewidth } bind def
+/filled { } bind def
+/unfilled { } bind def
+/rounded { } bind def
+/diagonals { } bind def
+/tapered { } bind def
+
+% hooks for setting color 
+/nodecolor { sethsbcolor } bind def
+/edgecolor { sethsbcolor } bind def
+/graphcolor { sethsbcolor } bind def
+/nopcolor {pop pop pop} bind def
+
+/beginpage {	% i j npages
+	/npages exch def
+	/j exch def
+	/i exch def
+	/str 10 string def
+	npages 1 gt {
+		gsave
+			coordfont setfont
+			0 0 moveto
+			(\() show i str cvs show (,) show j str cvs show (\)) show
+		grestore
+	} if
+} bind def
+
+/set_font {
+	findfont exch
+	scalefont setfont
+} def
+
+% draw text fitted to its expected width
+/alignedtext {			% width text
+	/text exch def
+	/width exch def
+	gsave
+		width 0 gt {
+			[] 0 setdash
+			text stringwidth pop width exch sub text length div 0 text ashow
+		} if
+	grestore
+} def
+
+/boxprim {				% xcorner ycorner xsize ysize
+		4 2 roll
+		moveto
+		2 copy
+		exch 0 rlineto
+		0 exch rlineto
+		pop neg 0 rlineto
+		closepath
+} bind def
+
+/ellipse_path {
+	/ry exch def
+	/rx exch def
+	/y exch def
+	/x exch def
+	matrix currentmatrix
+	newpath
+	x y translate
+	rx ry scale
+	0 0 1 0 360 arc
+	setmatrix
+} bind def
+
+/endpage { showpage } bind def
+/showpage { } def
+
+/layercolorseq
+	[	% layer color sequence - darkest to lightest
+		[0 0 0]
+		[.2 .8 .8]
+		[.4 .8 .8]
+		[.6 .8 .8]
+		[.8 .8 .8]
+	]
+def
+
+/layerlen layercolorseq length def
+
+/setlayer {/maxlayer exch def /curlayer exch def
+	layercolorseq curlayer 1 sub layerlen mod get
+	aload pop sethsbcolor
+	/nodecolor {nopcolor} def
+	/edgecolor {nopcolor} def
+	/graphcolor {nopcolor} def
+} bind def
+
+/onlayer { curlayer ne {invis} if } def
+
+/onlayers {
+	/myupper exch def
+	/mylower exch def
+	curlayer mylower lt
+	curlayer myupper gt
+	or
+	{invis} if
+} def
+
+/curlayer 0 def
+
+%%EndResource
+%%EndProlog
+%%BeginSetup
+14 default-font-family set_font
+1 setmiterlimit
+% /arrowlength 10 def
+% /arrowwidth 5 def
+
+% make sure pdfmark is harmless for PS-interpreters other than Distiller
+/pdfmark where {pop} {userdict /pdfmark /cleartomark load put} ifelse
+% make '<<' and '>>' safe on PS Level 1 devices
+/languagelevel where {pop languagelevel}{1} ifelse
+2 lt {
+    userdict (<<) cvn ([) cvn load put
+    userdict (>>) cvn ([) cvn load put
+} if
+
+%%EndSetup
+setupLatin1
+%%Page: 1 1
+%%PageBoundingBox: 36 36 1374 820
+%%PageOrientation: Portrait
+0 0 1 beginpage
+gsave
+36 36 1338 784 boxprim clip newpath
+1 1 set_scale 0 rotate 40 40 translate
+% START
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 220.5 775 moveto
+142.5 775 lineto
+142.5 739 lineto
+220.5 739 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+150.5 753.3 moveto 62 (It's broken!) alignedtext
+grestore
+% RUN_UNIT_TESTS
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 238.5 687 moveto
+124.5 687 lineto
+124.5 651 lineto
+238.5 651 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+132.5 665.3 moveto 98 (Run full unit tests) alignedtext
+grestore
+% START->RUN_UNIT_TESTS
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 181.5 738.6 moveto
+181.5 726.75 181.5 710.82 181.5 697.29 curveto
+stroke
+0 0 0 edgecolor
+newpath 185 697.08 moveto
+181.5 687.08 lineto
+178 697.08 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 185 697.08 moveto
+181.5 687.08 lineto
+178 697.08 lineto
+closepath stroke
+grestore
+% BAD_MODULE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 176.5 584 moveto
+60.5 584 lineto
+60.5 548 lineto
+176.5 548 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+68.5 562.3 moveto 100 (bad module found) alignedtext
+grestore
+% RUN_UNIT_TESTS->BAD_MODULE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 170.81 650.87 moveto
+160.95 635.05 146.15 611.33 134.81 593.15 curveto
+stroke
+0 0 0 edgecolor
+newpath 137.5 590.85 moveto
+129.24 584.22 lineto
+131.56 594.55 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 137.5 590.85 moveto
+129.24 584.22 lineto
+131.56 594.55 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+159.5 614.3 moveto 24 (fails) alignedtext
+grestore
+% RUN_FULL_CODE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 290 584 moveto
+195 584 lineto
+195 548 lineto
+290 548 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+203 562.3 moveto 79 (Run test suite.) alignedtext
+grestore
+% RUN_UNIT_TESTS->RUN_FULL_CODE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 191.85 650.87 moveto
+201.4 635.05 215.73 611.33 226.71 593.15 curveto
+stroke
+0 0 0 edgecolor
+newpath 229.93 594.59 moveto
+232.1 584.22 lineto
+223.94 590.97 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 229.93 594.59 moveto
+232.1 584.22 lineto
+223.94 590.97 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+219.5 614.3 moveto 35 (passes) alignedtext
+grestore
+% FAIL_CONVERGENCE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 128.5 466 moveto
+12.5 466 lineto
+12.5 430 lineto
+128.5 430 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+20.5 444.3 moveto 100 (Algorithm wrong.) alignedtext
+grestore
+% BAD_MODULE->FAIL_CONVERGENCE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 80.33 547.87 moveto
+73.18 542.85 66.65 536.61 62.5 529 curveto
+53.72 512.92 56.05 492.3 60.4 476.02 curveto
+stroke
+0 0 0 edgecolor
+newpath 63.87 476.63 moveto
+63.45 466.04 lineto
+57.18 474.58 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 63.87 476.63 moveto
+63.45 466.04 lineto
+57.18 474.58 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+62.5 502.8 moveto 63 (subtle bug?) alignedtext
+grestore
+% FAIL_CRASH
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 336.5 466 moveto
+190.5 466 lineto
+190.5 430 lineto
+336.5 430 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+198.5 444.3 moveto 130 (Implementation wrong.) alignedtext
+grestore
+% BAD_MODULE->FAIL_CRASH
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 122.94 547.78 moveto
+128.68 526.76 139.06 492.9 148.5 484 curveto
+157.67 475.36 168.91 468.85 180.73 463.94 curveto
+stroke
+0 0 0 edgecolor
+newpath 182.18 467.14 moveto
+190.31 460.34 lineto
+179.71 460.58 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 182.18 467.14 moveto
+190.31 460.34 lineto
+179.71 460.58 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+148.5 502.8 moveto 43 (found it) alignedtext
+grestore
+% RUN_FULL_CODE->FAIL_CONVERGENCE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 225.32 547.98 moveto
+220.12 542.27 214.7 535.65 210.5 529 curveto
+198.91 510.64 207.73 498.42 191.5 484 curveto
+176.74 470.89 157.35 462.67 138.42 457.53 curveto
+stroke
+0 0 0 edgecolor
+newpath 139.14 454.1 moveto
+128.6 455.11 lineto
+137.47 460.9 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 139.14 454.1 moveto
+128.6 455.11 lineto
+137.47 460.9 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+210.5 502.8 moveto 124 (bad convergence order) alignedtext
+grestore
+% RUN_FULL_CODE->FAIL_CRASH
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 290.18 558.8 moveto
+308.4 553.84 327.45 544.95 338.5 529 curveto
+349.89 512.56 349.24 500.87 338.5 484 curveto
+335.63 479.49 332.01 475.56 327.93 472.13 curveto
+stroke
+0 0 0 edgecolor
+newpath 329.72 469.11 moveto
+319.56 466.12 lineto
+325.64 474.79 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 329.72 469.11 moveto
+319.56 466.12 lineto
+325.64 474.79 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+347.5 502.8 moveto 138 (interacting bad modules?) alignedtext
+grestore
+% GOTO_ALGO
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 141 363 moveto
+0 363 lineto
+0 327 lineto
+141 327 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+8 341.3 moveto 125 (Go to algorithm debug) alignedtext
+grestore
+% FAIL_CONVERGENCE->GOTO_ALGO
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 70.5 429.87 moveto
+70.5 414.41 70.5 391.42 70.5 373.41 curveto
+stroke
+0 0 0 edgecolor
+newpath 74 373.22 moveto
+70.5 363.22 lineto
+67 373.22 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 74 373.22 moveto
+70.5 363.22 lineto
+67 373.22 lineto
+closepath stroke
+grestore
+% GOTO_IMPL
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 350.5 363 moveto
+176.5 363 lineto
+176.5 327 lineto
+350.5 327 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+184.5 341.3 moveto 158 (Go to implementation debug) alignedtext
+grestore
+% FAIL_CRASH->GOTO_IMPL
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 263.5 429.87 moveto
+263.5 414.41 263.5 391.42 263.5 373.41 curveto
+stroke
+0 0 0 edgecolor
+newpath 267 373.22 moveto
+263.5 363.22 lineto
+260 373.22 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 267 373.22 moveto
+263.5 363.22 lineto
+260 373.22 lineto
+closepath stroke
+grestore
+% START_IMPL
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 717 775 moveto
+618 775 lineto
+618 739 lineto
+717 739 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+626 753.3 moveto 83 (crashing debug) alignedtext
+grestore
+% RUN_GDB
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 621 687 moveto
+514 687 lineto
+514 651 lineto
+621 651 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+522 665.3 moveto 91 (cuda-gdb time...) alignedtext
+grestore
+% START_IMPL->RUN_GDB
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 617.78 751 moveto
+597.84 746.27 576.73 737.22 564.5 720 curveto
+559.88 713.49 558.96 705.22 559.68 697.29 curveto
+stroke
+0 0 0 edgecolor
+newpath 563.16 697.69 moveto
+561.39 687.24 lineto
+556.26 696.51 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 563.16 697.69 moveto
+561.39 687.24 lineto
+556.26 696.51 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+564.5 708.8 moveto 176 (FAULT IN COMPILED CODE) alignedtext
+grestore
+% RUN_DBSTOP
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 841 687 moveto
+692 687 lineto
+692 651 lineto
+841 651 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+700 665.3 moveto 133 (run with 'dbstop if error') alignedtext
+grestore
+% START_IMPL->RUN_DBSTOP
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 717.34 739.13 moveto
+727.21 734.11 736.87 727.81 744.5 720 curveto
+750.88 713.47 755.58 704.77 758.95 696.47 curveto
+stroke
+0 0 0 edgecolor
+newpath 762.25 697.65 moveto
+762.33 687.05 lineto
+755.66 695.29 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 762.25 697.65 moveto
+762.33 687.05 lineto
+755.66 695.29 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+755.5 708.8 moveto 100 (Matlab is whining) alignedtext
+grestore
+% ADDRESS_EXCEPTION
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 688.5 584 moveto
+446.5 584 lineto
+446.5 548 lineto
+688.5 548 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+454.5 562.3 moveto 226 (cuda-gdb halts on warp addr out of range) alignedtext
+grestore
+% RUN_GDB->ADDRESS_EXCEPTION
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 567.5 650.87 moveto
+567.5 635.41 567.5 612.42 567.5 594.41 curveto
+stroke
+0 0 0 edgecolor
+newpath 571 594.22 moveto
+567.5 584.22 lineto
+564 594.22 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 571 594.22 moveto
+567.5 584.22 lineto
+564 594.22 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+567.5 614.3 moveto 180 (lotsa 'failed to access GPU array') alignedtext
+grestore
+% FOUND_PROXIMATE1
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 621.5 466 moveto
+513.5 466 lineto
+513.5 430 lineto
+621.5 430 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+521.5 444.3 moveto 92 (Well there ya go) alignedtext
+grestore
+% ADDRESS_EXCEPTION->FOUND_PROXIMATE1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 567.5 547.88 moveto
+567.5 529.04 567.5 498.47 567.5 476.3 curveto
+stroke
+0 0 0 edgecolor
+newpath 571 476.19 moveto
+567.5 466.19 lineto
+564 476.19 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 571 476.19 moveto
+567.5 466.19 lineto
+564 476.19 lineto
+closepath stroke
+grestore
+% ITS_NULL
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 490.5 289 moveto
+332.5 289 lineto
+332.5 251 lineto
+490.5 251 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+340.5 273.8 moveto 96 (walk up the stack) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+340.5 258.8 moveto 142 (it went wrong somewhere) alignedtext
+grestore
+% FOUND_PROXIMATE1->ITS_NULL
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 555.87 429.96 moveto
+546.5 416.56 532.76 397.61 519.5 382 curveto
+493.24 351.06 460.4 318.02 437.87 296.11 curveto
+stroke
+0 0 0 edgecolor
+newpath 440.27 293.56 moveto
+430.65 289.12 lineto
+435.4 298.59 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 440.27 293.56 moveto
+430.65 289.12 lineto
+435.4 298.59 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+503.5 348.8 moveto 47 (trying to) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+503.5 333.8 moveto 54 (read 0x0?) alignedtext
+grestore
+% ITS_CSTMEM
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 695 364 moveto
+606 364 lineto
+606 326 lineto
+695 326 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+614 348.8 moveto 72 (probably bad) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+614 333.8 moveto 73 (constant read) alignedtext
+grestore
+% FOUND_PROXIMATE1->ITS_CSTMEM
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 581.58 429.87 moveto
+594.57 414.05 614.06 390.34 629 372.16 curveto
+stroke
+0 0 0 edgecolor
+newpath 631.86 374.19 moveto
+635.51 364.24 lineto
+626.46 369.75 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 631.86 374.19 moveto
+635.51 364.24 lineto
+626.46 369.75 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+619.5 400.8 moveto 74 (trying to read) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+619.5 385.8 moveto 74 (0x\(under 1K\)) alignedtext
+grestore
+% ITS_SHMEM
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 856 363 moveto
+717 363 lineto
+717 327 lineto
+856 327 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+725 341.3 moveto 123 (Shared memory fault?) alignedtext
+grestore
+% FOUND_PROXIMATE1->ITS_SHMEM
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 621.62 437.2 moveto
+645.61 431.67 673.72 423.5 697.5 412 curveto
+720.27 400.99 743.13 383.88 759.98 369.84 curveto
+stroke
+0 0 0 edgecolor
+newpath 762.39 372.38 moveto
+767.74 363.23 lineto
+757.85 367.05 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 762.39 372.38 moveto
+767.74 363.23 lineto
+757.85 367.05 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+743.5 400.8 moveto 74 (trying to read) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+743.5 385.8 moveto 77 (0x\(under 1M\)) alignedtext
+grestore
+% BADPTR
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 445.5 363 moveto
+377.5 363 lineto
+377.5 327 lineto
+445.5 327 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+385.5 341.3 moveto 52 (Is it null?) alignedtext
+grestore
+% FOUND_PROXIMATE1->BADPTR
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 513.27 441.83 moveto
+473.82 436.82 425.19 427.63 412.5 412 curveto
+403.84 401.33 403.07 386.17 404.71 373.07 curveto
+stroke
+0 0 0 edgecolor
+newpath 408.17 373.58 moveto
+406.43 363.13 lineto
+401.27 372.39 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 408.17 373.58 moveto
+406.43 363.13 lineto
+401.27 372.39 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+412.5 393.3 moveto 107 (Check base address) alignedtext
+grestore
+% BAD_HOST_PTR
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 484.5 200 moveto
+338.5 200 lineto
+338.5 162 lineto
+484.5 162 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+346.5 184.8 moveto 130 (Was broken host-side *) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+346.5 169.8 moveto 85 (not trapped on?) alignedtext
+grestore
+% ITS_NULL->BAD_HOST_PTR
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 411.5 250.97 moveto
+411.5 239.19 411.5 223.56 411.5 210.16 curveto
+stroke
+0 0 0 edgecolor
+newpath 415 210 moveto
+411.5 200 lineto
+408 210 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 415 210 moveto
+411.5 200 lineto
+408 210 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+411.5 221.8 moveto 84 (check host side) alignedtext
+grestore
+% OFF_BY_ONE1
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 830 288 moveto
+761 288 lineto
+761 252 lineto
+830 252 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+769 266.3 moveto 53 (Off by 1?) alignedtext
+grestore
+% ITS_CSTMEM->OFF_BY_ONE1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 686.34 325.96 moveto
+706.36 315.88 731.44 303.25 752.5 292.65 curveto
+stroke
+0 0 0 edgecolor
+newpath 754.21 295.71 moveto
+761.56 288.09 lineto
+751.06 289.46 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 754.21 295.71 moveto
+761.56 288.09 lineto
+751.06 289.46 lineto
+closepath stroke
+grestore
+% CHECK_SYM_DEFINES
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 742.5 289 moveto
+508.5 289 lineto
+508.5 251 lineto
+742.5 251 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+516.5 273.8 moveto 218 (Check #DEFINE thing const_array[N]'s) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+571 258.8 moveto 109 (at the top of the file) alignedtext
+grestore
+% ITS_CSTMEM->CHECK_SYM_DEFINES
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 644.32 325.96 moveto
+641.5 317.71 638.09 307.75 634.95 298.6 curveto
+stroke
+0 0 0 edgecolor
+newpath 638.25 297.42 moveto
+631.7 289.09 lineto
+631.62 299.68 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 638.25 297.42 moveto
+631.7 289.09 lineto
+631.62 299.68 lineto
+closepath stroke
+grestore
+% ITS_SHMEM->OFF_BY_ONE1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 788.63 326.7 moveto
+789.68 318.25 790.95 307.87 792.13 298.37 curveto
+stroke
+0 0 0 edgecolor
+newpath 795.63 298.53 moveto
+793.38 288.18 lineto
+788.69 297.67 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 795.63 298.53 moveto
+793.38 288.18 lineto
+788.69 297.67 lineto
+closepath stroke
+grestore
+% BADPTR->ITS_NULL
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 411.5 326.7 moveto
+411.5 318.49 411.5 308.47 411.5 299.2 curveto
+stroke
+0 0 0 edgecolor
+newpath 415 299.19 moveto
+411.5 289.19 lineto
+408 299.19 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 415 299.19 moveto
+411.5 289.19 lineto
+408 299.19 lineto
+closepath stroke
+grestore
+% ADD_ABORT
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 484.5 111 moveto
+338.5 111 lineto
+338.5 73 lineto
+484.5 73 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+346.5 95.8 moveto 130 (Install standard Imogen) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+346.5 80.8 moveto 122 (check-and-abort block) alignedtext
+grestore
+% BAD_HOST_PTR->ADD_ABORT
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 411.5 161.97 moveto
+411.5 150.19 411.5 134.56 411.5 121.16 curveto
+stroke
+0 0 0 edgecolor
+newpath 415 121 moveto
+411.5 111 lineto
+408 121 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 415 121 moveto
+411.5 111 lineto
+408 121 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+411.5 132.8 moveto 91 (Bad coder! Bad!) alignedtext
+grestore
+% RETRY1
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 444 36 moveto
+379 36 lineto
+379 0 lineto
+444 0 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+387 14.3 moveto 49 (try again) alignedtext
+grestore
+% ADD_ABORT->RETRY1
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 411.5 72.83 moveto
+411.5 64.89 411.5 55.41 411.5 46.63 curveto
+stroke
+0 0 0 edgecolor
+newpath 415 46.42 moveto
+411.5 36.42 lineto
+408 46.42 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 415 46.42 moveto
+411.5 36.42 lineto
+408 46.42 lineto
+closepath stroke
+grestore
+% START_ALGO
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1028 775 moveto
+921 775 lineto
+921 739 lineto
+1028 739 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+929 753.3 moveto 91 (algorithm debug) alignedtext
+grestore
+% HOW_WRONG
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1030 687 moveto
+919 687 lineto
+919 651 lineto
+1030 651 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+927 665.3 moveto 95 (How wrong is it?) alignedtext
+grestore
+% START_ALGO->HOW_WRONG
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 974.5 738.6 moveto
+974.5 726.75 974.5 710.82 974.5 697.29 curveto
+stroke
+0 0 0 edgecolor
+newpath 978 697.08 moveto
+974.5 687.08 lineto
+971 697.08 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 978 697.08 moveto
+974.5 687.08 lineto
+971 697.08 lineto
+closepath stroke
+grestore
+% TOTAL_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 809.5 585 moveto
+735.5 585 lineto
+735.5 547 lineto
+809.5 547 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+743.5 569.8 moveto 49 (Bisect to) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+743.5 554.8 moveto 58 (find origin) alignedtext
+grestore
+% HOW_WRONG->TOTAL_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 918.73 661.16 moveto
+865.49 654.11 792 642.79 782.5 633 curveto
+772.95 623.16 770.09 608.31 769.78 595.18 curveto
+stroke
+0 0 0 edgecolor
+newpath 773.28 595.23 moveto
+770 585.16 lineto
+766.28 595.08 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 773.28 595.23 moveto
+770 585.16 lineto
+766.28 595.08 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+782.5 621.8 moveto 65 (Writes total) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+782.5 606.8 moveto 116 (garbage immediately) alignedtext
+grestore
+% SLOW_ACCUM
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 955 584 moveto
+868 584 lineto
+868 548 lineto
+955 548 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+876 562.3 moveto 71 (biased error?) alignedtext
+grestore
+% HOW_WRONG->SLOW_ACCUM
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 926.69 650.9 moveto
+919.44 646.21 912.91 640.33 908.5 633 curveto
+901.62 621.56 901.61 606.88 903.66 594.27 curveto
+stroke
+0 0 0 edgecolor
+newpath 907.12 594.78 moveto
+905.75 584.28 lineto
+900.27 593.35 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 907.12 594.78 moveto
+905.75 584.28 lineto
+900.27 593.35 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+908.5 621.8 moveto 100 (Error accumulates) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+908.5 606.8 moveto 55 (iteratively) alignedtext
+grestore
+% POINT_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1090.5 585 moveto
+978.5 585 lineto
+978.5 547 lineto
+1090.5 547 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+986.5 569.8 moveto 96 (global addressing) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+986.5 554.8 moveto 55 (likely OK) alignedtext
+grestore
+% HOW_WRONG->POINT_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 996.97 650.76 moveto
+1002.65 645.55 1008.31 639.48 1012.5 633 curveto
+1019.93 621.51 1025.09 607.27 1028.54 594.95 curveto
+stroke
+0 0 0 edgecolor
+newpath 1031.95 595.73 moveto
+1031.04 585.17 lineto
+1025.17 593.99 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1031.95 595.73 moveto
+1031.04 585.17 lineto
+1025.17 593.99 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1026.5 614.3 moveto 92 (Defects at points) alignedtext
+grestore
+% LINE_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1210.5 585 moveto
+1108.5 585 lineto
+1108.5 547 lineto
+1210.5 547 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1116.5 569.8 moveto 67 (parallel race) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1116.5 554.8 moveto 86 (condition likely) alignedtext
+grestore
+% HOW_WRONG->LINE_GARBAGE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1030.04 665.54 moveto
+1059.96 661.75 1096.04 652.95 1122.5 633 curveto
+1135.24 623.39 1144.23 608.03 1150.15 594.55 curveto
+stroke
+0 0 0 edgecolor
+newpath 1153.43 595.76 moveto
+1153.93 585.17 lineto
+1146.94 593.14 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1153.43 595.76 moveto
+1153.93 585.17 lineto
+1146.94 593.14 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1145.5 621.8 moveto 87 (Wrong at edges) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1145.5 606.8 moveto 41 (or lines) alignedtext
+grestore
+% NUMEL_VS_SLABPITCH
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 864 466 moveto
+681 466 lineto
+681 430 lineto
+864 430 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+689 444.3 moveto 167 (using partNumel vs slabPitch?) alignedtext
+grestore
+% TOTAL_GARBAGE->NUMEL_VS_SLABPITCH
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 772.5 546.88 moveto
+772.5 528.01 772.5 498.25 772.5 476.49 curveto
+stroke
+0 0 0 edgecolor
+newpath 776 476.24 moveto
+772.5 466.24 lineto
+769 476.24 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 776 476.24 moveto
+772.5 466.24 lineto
+769 476.24 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+772.5 510.3 moveto 59 (but doesn't) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+772.5 495.3 moveto 58 (mem fault) alignedtext
+grestore
+% DO_VALGRIND
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1230 363 moveto
+1083 363 lineto
+1083 327 lineto
+1230 327 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1091 341.3 moveto 131 (Run in cuda-memcheck) alignedtext
+grestore
+% LINE_GARBAGE->DO_VALGRIND
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1154.18 546.72 moveto
+1147.27 520.83 1136.54 471.94 1140.5 430 curveto
+1142.31 410.84 1146.39 389.55 1149.97 373.2 curveto
+stroke
+0 0 0 edgecolor
+newpath 1153.43 373.76 moveto
+1152.23 363.24 lineto
+1146.61 372.22 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1153.43 373.76 moveto
+1152.23 363.24 lineto
+1146.61 372.22 lineto
+closepath stroke
+grestore
+% PROBLEM_IN_FLUIDSTEP
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1329.5 466 moveto
+1149.5 466 lineto
+1149.5 430 lineto
+1329.5 430 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1157.5 444.3 moveto 164 (PROBLEM_IN_FLUIDSTEP) alignedtext
+grestore
+% LINE_GARBAGE->PROBLEM_IN_FLUIDSTEP
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1172 546.88 moveto
+1185.36 527.5 1206.67 496.61 1221.76 474.72 curveto
+stroke
+0 0 0 edgecolor
+newpath 1224.81 476.46 moveto
+1227.61 466.24 lineto
+1219.05 472.49 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1224.81 476.46 moveto
+1227.61 466.24 lineto
+1219.05 472.49 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1214.5 517.8 moveto 110 (Does the error recur) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1214.5 502.8 moveto 94 (at a very specific) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1229.5 487.8 moveto 80 (interval of 28?) alignedtext
+grestore
+% zPROBLEM_IN_FLUIDSTEP
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1180.5 776 moveto
+1046.5 776 lineto
+1046.5 738 lineto
+1180.5 738 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1054.5 760.8 moveto 106 (The fluid step code) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1054.5 745.8 moveto 118 (contains a RAW race) alignedtext
+grestore
+% PROBLEM_IN_FLUIDSTEP->DO_VALGRIND
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1225.42 429.87 moveto
+1212.18 413.76 1192.21 389.46 1177.17 371.15 curveto
+stroke
+0 0 0 edgecolor
+newpath 1179.7 368.72 moveto
+1170.65 363.22 lineto
+1174.29 373.17 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1179.7 368.72 moveto
+1170.65 363.22 lineto
+1174.29 373.17 lineto
+closepath stroke
+grestore
+endpage
+showpage
+grestore
+%%PageTrailer
+%%EndPage: 1
+%%Trailer
+%%Pages: 1
+%%BoundingBox: 36 36 1374 820
+end
+restore
+%%EOF

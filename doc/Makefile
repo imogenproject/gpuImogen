@@ -7,6 +7,9 @@ TEX = latex
 #-----------------------------
 all: manual devel
 
+debuggerChart: debug_gpu.dot
+	dot -Tps debug_gpu.dot  > debug_gpu.ps
+
 manual: manual.tex
 	$(TEX) manual.tex
 	dvipdf manual.dvi

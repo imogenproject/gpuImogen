@@ -1,0 +1,110 @@
+digraph debugging {
+
+size="22,17"
+
+node [shape=box]
+
+START [label="It's broken!"]
+
+RUN_UNIT_TESTS [label="Run full unit tests"]
+
+START -> RUN_UNIT_TESTS
+
+BAD_MODULE [label="bad module found"];
+
+RUN_UNIT_TESTS -> BAD_MODULE [label="fails"]
+
+RUN_FULL_CODE [label="Run test suite."];
+RUN_UNIT_TESTS -> RUN_FULL_CODE [label="passes"];
+
+FAIL_CONVERGENCE [label="Algorithm wrong."];
+FAIL_CRASH [label="Implementation wrong."];
+
+
+RUN_FULL_CODE -> FAIL_CONVERGENCE [label="bad convergence order"];
+RUN_FULL_CODE -> FAIL_CRASH [label="interacting bad modules?"];
+
+BAD_MODULE -> FAIL_CRASH [label="found it"];
+BAD_MODULE -> FAIL_CONVERGENCE [label="subtle bug?"];
+
+GOTO_ALGO [label="Go to algorithm debug"];
+FAIL_CONVERGENCE -> GOTO_ALGO;
+GOTO_IMPL [label="Go to implementation debug"];
+FAIL_CRASH -> GOTO_IMPL;
+
+#----------
+
+START_IMPL [label="crashing debug"];
+
+RUN_GDB [label="cuda-gdb time..."];
+RUN_DBSTOP [label="run with 'dbstop if error'"];
+
+START_IMPL -> RUN_GDB [label="FAULT IN COMPILED CODE"];
+START_IMPL -> RUN_DBSTOP [label="Matlab is whining"];
+
+ADDRESS_EXCEPTION [label="GPU main memory segfault"];
+RUN_GDB -> ADDRESS_EXCEPTION [label="lotsa 'failed to access GPU array'"];
+
+FOUND_PROXIMATE1 [label="Well there ya go"];
+ADDRESS_EXCEPTION [label="cuda-gdb halts on warp addr out of range"];
+
+ADDRESS_EXCEPTION -> FOUND_PROXIMATE1;
+
+FOUND_PROXIMATE1 -> ITS_NULL [label="trying to\lread 0x0?\l"];
+ITS_NULL [label="walk up the stack\lit went wrong somewhere\l"];
+
+ITS_CSTMEM [label="probably bad\lconstant read\l"];
+FOUND_PROXIMATE1 -> ITS_CSTMEM [label="trying to read\l0x(under 1K)\l"];
+
+FOUND_PROXIMATE1 -> ITS_SHMEM [label="trying to read\l0x(under 1M)\l"];
+ITS_SHMEM [label="Shared memory fault?"];
+
+BADPTR [label="Is it null?"]
+FOUND_PROXIMATE1 -> BADPTR [label="Check base address"];
+BADPTR -> ITS_NULL
+
+OFF_BY_ONE1 [label="Off by 1?"];
+ITS_SHMEM -> OFF_BY_ONE1;
+ITS_CSTMEM -> OFF_BY_ONE1;
+
+CHECK_SYM_DEFINES [label="Check #DEFINE thing const_array[N]'s\lat the top of the file"];
+ITS_CSTMEM -> CHECK_SYM_DEFINES;
+
+BAD_HOST_PTR [label="Was broken host-side *\lnot trapped on?\l"];
+ITS_NULL -> BAD_HOST_PTR [label="check host side"]
+
+ADD_ABORT [label="Install standard Imogen\lcheck-and-abort block\l"];
+BAD_HOST_PTR -> ADD_ABORT [label="Bad coder! Bad!"];
+
+RETRY1 [label="try again"];
+ADD_ABORT -> RETRY1
+
+#---------
+
+START_ALGO [label="algorithm debug"];
+
+HOW_WRONG [label="How wrong is it?"];
+START_ALGO -> HOW_WRONG;
+
+TOTAL_GARBAGE [label="Bisect to\lfind origin\l"];
+SLOW_ACCUM [label="biased error?"];
+POINT_GARBAGE[label="global addressing\llikely OK\l"];
+LINE_GARBAGE[label="parallel race\lcondition likely\l"];
+
+HOW_WRONG -> TOTAL_GARBAGE [label="Writes total\lgarbage immediately\l"];
+HOW_WRONG -> SLOW_ACCUM [label="Error accumulates\literatively\l"];
+HOW_WRONG -> POINT_GARBAGE [label="Defects at points"];
+HOW_WRONG -> LINE_GARBAGE [label="Wrong at edges\lor lines\l"];
+
+DO_VALGRIND [label="Run in cuda-memcheck"];
+LINE_GARBAGE -> DO_VALGRIND
+
+zPROBLEM_IN_FLUIDSTEP [label="The fluid step code\lcontains a RAW race\l"];
+LINE_GARBAGE -> PROBLEM_IN_FLUIDSTEP [label="Does the error recur\lat a very specific\linterval of 28?"]
+
+PROBLEM_IN_FLUIDSTEP -> DO_VALGRIND
+
+NUMEL_VS_SLABPITCH [label="using partNumel vs slabPitch?"]
+TOTAL_GARBAGE -> NUMEL_VS_SLABPITCH [label="but doesn't\lmem fault\l"];
+
+}
