@@ -1,7 +1,8 @@
 classdef RealtimePlotter <  LinkedListNode
-% A semi-interactive peripheral for displaying the state of a simulation as
-% it runs, in realtime. Usable only by node-serial simulations, and throws
-% an error if run in a parallel sim. 
+% An interactive peripheral for displaying the state of a simulation as
+% it runs, in realtime. This is usable only by node-serial simulations, 
+% and throws an error to all ranks if run in parallel (simulation fails,
+% parImogenLoad moves on to next runfile)
 %___________________________________________________________________________________________________
     
 %===================================================================================================
@@ -44,6 +45,11 @@ classdef RealtimePlotter <  LinkedListNode
         pGUIPlotsNeedRedraw;
         
         pGeometryMgrHandle;
+
+        pDisplayedPlotOffset;
+
+        pstatic_colorchars = 'rgbcmykw';
+        pstatic_ppfields = {'fluidnum','what','logscale','slice','plottype','grid','cbar','axmode','velvecs','vv_scale','vv_decfac','vv_weight','vv_color','vv_type'};
     end %PROTECTED
     
     %===================================================================================================
@@ -68,7 +74,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.generateTeletextPlots = 0; % FIXME: set this depending on availability of graphics
             self.forceRedraw           = 0;
         
-            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0,'axmode',0);
+            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0,'axmode',0,'velvecs',0,'vv_scale',1,'vv_decfac',10,'vv_weight',1,'vv_color',8,'vv_type',1);
             self.plotProps(2:4) = self.plotProps(1);
 
             self.spawnGUI           = 0;
@@ -77,7 +83,25 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUISelectedPlotnum = 1;
             self.pGUIPlotsNeedRedraw = 0;
 
+            self.pDisplayedPlotOffset = 0; 
+
             self.plotmode = 1; % default to one plot
+        end
+
+        function vectorToPlotprops(self, id, v)
+            if nargin < 3
+                whos
+                error('Did not receive correct number of args: RealtimePlotter.vectorToPlotprops(index 1...4, vector);');
+            end
+            if numel(v) ~= 14
+                whos
+                error('Attempt to use RealtimePlotter.vectorToPlotprops() but input numeric vector does not have 13 elements.');
+            end
+
+            fields = self.pstatic_ppfields;
+            for k = 1:numel(fields)
+                self.plotProps(id).(fields{k}) = v(k);
+            end
         end
         
         function initialize(self, IC, run, fluids, mag)
@@ -132,19 +156,32 @@ classdef RealtimePlotter <  LinkedListNode
         function printCurrentPlotConfig(self)
             rpn = input('Name for RealtimePlotter class: ','s');
 
+            outtype = input('enter 1 for human-readable, 2 for machine code: ');
+
             ap = 1;
             switch(self.plotmode); case 1; ap = 1; case 2; ap = 2; case 3; ap = 2; case 4; ap = 4; end
 
             fprintf('%s.plotmode = %i;\n', rpn, int32(self.plotmode));
-            fprintf('%s.cut = %s\n%s.indSubs = %s\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
+            fprintf('%s.cut = %s\n%s.indSubs = %s;\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
 
-            fieldnames={'fluidnum','what','logscale','slice','plottype','grid','cbar'};
-            for pltno = 1:ap
-                for fname = 1:7;
-                    fprintf('%s.plotProps(%i).%s = %i; ', rpn, int32(pltno), fieldnames{fname}, int32(self.plotProps(pltno).(fieldnames{fname})));
-                    if fname == 4; fprintf('\n'); end
+            if outtype == 1
+                fieldnames = self.pstatic_ppfields;
+                for pltno = 1:ap
+                    for fname = 1:numel(fieldnames);
+                        fprintf('%s.plotProps(%i).%s = %i; ', rpn, int32(pltno), fieldnames{fname}, int32(self.plotProps(pltno).(fieldnames{fname})));
+                        if mod(fname, 4) == 0; fprintf('\n'); end
+                    end
+                    fprintf('\n');
                 end
-                fprintf('\n');
+            else
+                fieldnames = self.pstatic_ppfields;
+                for pltno = 1:ap
+                    psv = [];
+                    for fname = 1:numel(fieldnames)
+                        psv(end+1) = self.plotProps(pltno).(fieldnames{fname});
+                    end
+                    fprintf('%s.vectorToPlotprops(%i, [%s]);\n', rpn, int32(pltno), num2str(psv));
+                end
             end
         end
 
@@ -160,16 +197,28 @@ classdef RealtimePlotter <  LinkedListNode
             end
 
             for plotnum = 1:nplots
-                params = self.plotProps(plotnum);
+                plotid = mod(plotnum + self.pDisplayedPlotOffset-1, 4) + 1;
+
+                params = self.plotProps(plotid);
 
                 q = self.fetchPlotQty(fluids(params.fluidnum), params.slice, params.what);
 
                 if params.logscale
                     q = abs(q);
                 end
+                
+                if params.velvecs == 1
+                    switch(params.slice)
+                        case 4; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 98 + 3*params.vv_type);
+                        case 5; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 99 + 3*params.vv_type);
+                        case 6; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 100 + 3*params.vv_type);
+                    end
+                else
+                    vv = [];
+                end
 
                 self.pickSubplot(plotnum, self.plotmode);
-                self.drawPlot(q, params);
+                self.drawPlot(q, params, vv);
                 obj = findobj('tag','qtylistbox');
                 title(obj.String(params.what,:));
             end
@@ -230,6 +279,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             % NOTE NOTE NOTE the values for 'what' are linked to the ordering of the list entries in the GUI quantity-selection
             % NOTE NOTE NOTE box. search RealtimePlotterGUI.m /lis\ =
+            % LARGE VALUES SPECIFY OTHER THINGS
             switch what;
             case 1; Q = fluid.mass.array(u,v,w); % rho
             case 2; Q = fluid.mom(1).array(u,v,w); % px
@@ -245,6 +295,23 @@ classdef RealtimePlotter <  LinkedListNode
             case 10;% temperature
                 Q = fluid.calcPressureOnCPU();
                 Q = Q(u,v,w)./fluid.mass.array(u,v,w);
+            case 101; % XY velocity
+                Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w) };
+            case 102; % XZ velocity
+                Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
+            case 103; % YZ velocity
+                Q = { fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
+            case 104; % 
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                Q = {QQ{1}(u,v,w), QQ{2}(u,v,w)};
+            case 105;
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                Q = {QQ{1}(u,v,w), QQ{3}(u,v,w)};
+            case 106;
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                Q = {QQ{2}(u,v,w), QQ{3}(u,v,w)};
+            default;
+                error(['Fatal: received value of ' num2str(what) ' that is unhandled.']);
             end
 
             Q = squish(Q); % flatten for return
@@ -265,7 +332,7 @@ classdef RealtimePlotter <  LinkedListNode
             end
         end
 
-        function drawPlot(self, q, decor)
+        function drawPlot(self, q, decor, velocityVectors)
             if decor.slice < 4; % x/y/z cut: one dimensional: do plot()
                 axval = self.pCoords{decor.slice};
                 % axmode = 0 -> off, 1 -> px, 2 -> cell #, 3 -> position
@@ -297,6 +364,22 @@ classdef RealtimePlotter <  LinkedListNode
                     imagesc(axh, axv, q);
                 else
                     surf(axh, axv, q,'linestyle','none');
+                end
+                
+                if decor.velvecs == 1
+                    vvx = squeeze(velocityVectors{1});
+                    vvy = squeeze(velocityVectors{2});
+                    
+                    % load the decimation factor, arrow scale factor, line weight and color for the vector field plots
+                    df = decor.vv_decfac;
+                    vfScale = decor.vv_scale;
+                    lw = decor.vv_weight;
+                    colorChar = self.pstatic_colorchars(decor.vv_color);
+
+                    % And throw it up onto the plot
+                    hold on;
+                    quiver(axh(1:df:end), axv(1:df:end), vvy(1:df:end,1:df:end), vvx(1:df:end,1:df:end),vfScale,colorChar, 'LineWidth',lw)
+                    hold off;
                 end
                 
                 if decor.axmode == 0; axis off; else; axis on; end
@@ -428,6 +511,10 @@ classdef RealtimePlotter <  LinkedListNode
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
+        function gcbCyclePlotOffset(self, src, data)
+            self.pDisplayedPlotOffset  = mod(self.pDisplayedPlotOffset + 1, 4); % 0,1,2,3,0,...
+            self.pGUIPlotsNeedRedraw = 1;
+        end
         function gcbSetPlotFluidsrc(self, src, data) % called by the --/++ arrows by 'FLUID: N'
             F = self.plotProps(self.pGUISelectedPlotnum).fluidnum;
             if src.value < 0;
@@ -457,8 +544,10 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUISelectedPlotnum = mod(self.pGUISelectedPlotnum, plotsActive) + 1; % 1->2->3->4->1
             plotno = self.pGUISelectedPlotnum;
 
-            src.String = ['Editing properties of plot ' num2str(plotno)];
+            src.String = ['Editing plot ' num2str(plotno)];
 
+            obj = findobj('tag','velfieldbutton'); obj.Value = self.plotProps(plotno).velvecs; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
+            obj = findobj('tag','decfactorbox'); x = self.plotProps(plotno).vv_decfac; obj.Value = x; obj.String = num2str(x);
             obj = findobj('tag','qtylistbox'); obj.Value = self.plotProps(plotno).what;
             obj = findobj('tag','colorbarbutton'); obj.Value = self.plotProps(plotno).cbar; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
             obj = findobj('tag','gridbutton'); obj.Value = self.plotProps(plotno).grid; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
@@ -469,7 +558,23 @@ classdef RealtimePlotter <  LinkedListNode
             labno = self.plotProps(plotno).plottype;
             if self.plotProps(plotno).slice < 4; labno = 3; end
             obj.String = labels{labno};
+
+
             self.pGUIPlotsNeedRedraw = 1;
+        end
+        
+        function gcbToggleVelocityField(self, src, data)
+            if src.Value == 1; F = 1; else; F = 0; end
+            
+            self.plotProps(self.pGUISelectedPlotnum).velvecs = F;
+            
+            if F
+                src.BackgroundColor = [3 9 3]/10;
+            else
+                src.BackgroundColor = [94 94 94]/100;
+            end
+            self.pGUIPlotsNeedRedraw = 1;
+            
         end
         function gcbCycleAxisLabels(self, src, data)
             a = mod(self.plotProps(self.pGUISelectedPlotnum).axmode+1,4);
@@ -553,8 +658,6 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbSetCuts(self, src, data) % queue on src.value to determine what to set in self.cuts()
-            % FIXME this needs to be teh implemented
-
             N = str2double(src.Tag(8:9)); % quick'n'dirty
          
             val = str2double(src.String);
@@ -562,27 +665,83 @@ classdef RealtimePlotter <  LinkedListNode
             val = round(val); if val < 1; val = 1; end % true for all inputs
 
             switch N
-                case 11; if val > self.pResolution(3); val = self.pResolution(3); end; self.cut(3) = val; % z cut
-                case 12; if val > self.pResolution(3); val = self.pResolution(3); end; if val > self.indSubs(3,3); self.indSubs(3,3) = val; end; self.indSubs(3,1) = val; 
-                case 13; self.indSubs(3,2) = val;
-                case 14; if val > self.pResolution(3); val = self.pResolution(3); end; if val < self.indSubs(3,1); self.indSubs(3,1) = val; end; self.indSubs(3,3) = val;
+                case 11; val = self.clampValue(val, 1, self.pResolution(3), 1);   self.cut(3) = val; % z cut
+                case 12; val = self.clampValue(val, 1, self.pResolution(3), 1);   if val > self.indSubs(3,3); self.indSubs(3,3) = val; end; self.indSubs(3,1) = val; 
+                case 13; val = self.clampValue(val, 1, self.pResolution(3)-1, 1); self.indSubs(3,2) = val;
+                case 14; val = self.clampValue(val, 1, self.pResolution(3), 1);   if val < self.indSubs(3,1); self.indSubs(3,1) = val; end; self.indSubs(3,3) = val;
 
-                case 21; if val > self.pResolution(2); val = self.pResolution(2); end; self.cut(2) = val; % y cut
-                case 22; if val > self.pResolution(2); val = self.pResolution(2); end; if val > self.indSubs(2,3); self.indSubs(2,3) = val; end; self.indSubs(2,1) = val;
-                case 23; self.indSubs(2,2) = val;
-                case 24; if val > self.pResolution(2); val = self.pResolution(2); end; if val < self.indSubs(2,1); self.indSubs(2,1) = val; end; self.indSubs(2,3) = val;
-                
-                case 31; if val > self.pResolution(1); val = self.pResolution(1); end; self.cut(1) = val; % x cut
-                case 32; if val > self.pResolution(1); val = self.pResolution(1); end; if val > self.indSubs(1,3); self.indSubs(1,3) = val; end; self.indSubs(1,1) = val;
-                case 33; self.indSubs(1,2) = val;
-                case 34; if val > self.pResolution(1); val = self.pResolution(1); end; if val < self.indSubs(1,1); self.indSubs(1,1) = val; end; self.indSubs(1,3) = val;
-                otherwise; error('Oh wow, much bad, self.gcbSetCuts called with invalid src.Tag: lolwut?');
+                case 21; val = self.clampValue(val, 1, self.pResolution(2), 1);   self.cut(2) = val; % y cut
+                case 22; val = self.clampValue(val, 1, self.pResolution(2), 1);   if val > self.indSubs(2,3); self.indSubs(2,3) = val; end; self.indSubs(2,1) = val; 
+                case 23; val = self.clampValue(val, 1, self.pResolution(2)-1, 1); self.indSubs(2,2) = val;
+                case 24; val = self.clampValue(val, 1, self.pResolution(2), 1);   if val < self.indSubs(2,1); self.indSubs(2,1) = val; end; self.indSubs(2,3) = val;
+                    
+                case 31; val = self.clampValue(val, 1, self.pResolution(1), 1);   self.cut(1) = val; % y cut
+                case 32; val = self.clampValue(val, 1, self.pResolution(1), 1);   if val > self.indSubs(1,3); self.indSubs(1,3) = val; end; self.indSubs(1,1) = val; 
+                case 33; val = self.clampValue(val, 1, self.pResolution(1)-1, 1); self.indSubs(1,2) = val;
+                case 34; val = self.clampValue(val, 1, self.pResolution(1), 1);   if val < self.indSubs(1,1); self.indSubs(1,1) = val; end; self.indSubs(1,3) = val;
+
+                otherwise; error('Much bad, self.gcbSetCuts called with invalid src.Tag. Crash time.');
             end
             self.updateSubsets();
             src.String = num2str(val);
             self.pGUIPlotsNeedRedraw = 1;
         end
 
+        function gcbSetVF_df(self, src, data)
+            S = str2num(src.String);
+
+            if isempty(S)
+                src.String = 'Enter a positive integer';
+            else
+                if numel(S) > 1; S = S(1); end
+
+                S = round(S);
+                if S < 1
+                    src.String = 'Enter one positive integer';
+                else
+                    self.plotProps(self.pGUISelectedPlotnum).vv_decfac = S;
+                    src.String = num2str(S);
+                end
+            end
+            self.pGUIPlotsNeedRedraw = 1;
+        end
+
+        function gcbCycleVF_color(self, src, data)
+            M = mod(self.plotProps(self.pGUISelectedPlotnum).vv_color, 8) + 1;
+
+            self.plotProps(self.pGUISelectedPlotnum).vv_color = M;
+
+            clrnames = {'Red','Green','Blue','Cyan','Magenta','Yellow','Black','White'};
+            src.String = clrnames{M};
+            self.pGUIPlotsNeedRedraw = 1;
+        end
+
+        function gcbSetVF_weight(self, src, data)
+            currentWt = self.plotProps(self.pGUISelectedPlotnum).vv_weight;
+
+            if strcmp(src.Tag,'vf_heavybutton')
+                newWt = currentWt + .5;
+            else
+                newWt = currentWt - .5;
+            end
+
+            if newWt < 1; newWt = 1; end
+
+            self.plotProps(self.pGUISelectedPlotnum).vv_weight = newWt;
+            if newWt ~= currentWt; self.pGUIPlotsNeedRedraw = 1; end
+        end
+
+        function gcbCycleVF_type(self, src, data)
+            nutype = mod(self.plotProps(self.pGUISelectedPlotnum).vv_type,2)+1;
+            
+            switch(nutype)
+                case 1; src.String = 'Velocity'; 
+                case 2; src.String = 'A_comoving';
+            end
+            
+            self.plotProps(self.pGUISelectedPlotnum).vv_type = nutype;
+            self.pGUIPlotsNeedRedraw = 1;
+        end
     end%PUBLIC
     
     %===================================================================================================
@@ -614,6 +773,13 @@ classdef RealtimePlotter <  LinkedListNode
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
 
+        function y = clampValue(x, min, max, mkint)
+            y = x;
+            if y < min; y = min; end
+            if y > max; y = max; end
+            if mkint; y = round(y); end
+        end
+        
     end%PROTECTED
     
 end%CLASS
