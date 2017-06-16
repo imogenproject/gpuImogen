@@ -519,16 +519,12 @@ end
 function fail = testCudaSourceScalarPotential(res)
 fail = 0;
 
-%res = [25 25 1];
 rho = rand(res);
 px = rand(res);
 py = rand(res);
 pz = rand(res);
 E = rand(1) + .5*(px.^2 + py.^2 +pz.^2) ./ rho;
 phi = rand(res);
-%phi(4:10,4) = 1:7;
-%phi(4:10,5) = 1:7;
-%phi(4:10,6) = 1:7;
 
 FM = FluidManager();
 FM.DEBUG_uploadData(rho, E, px, py, pz);
@@ -536,14 +532,16 @@ FM.DEBUG_uploadData(rho, E, px, py, pz);
 beta = ones(res);
 dt = .01; % small timestep
 d3x = [.01, .01, .01]; % small volume
-rho_c = .01; % density for min effect of grav
-rho_g = .1; % density for full effect of grav
+rho_nograv = .01; % density for min effect of grav
+rho_fullgrav = .1; % density for full effect of grav
+
+FM.MINMASS = rho_nograv;
 
 phiD = GPU_Type(phi);
 
-beta(rho_g < rho) = 1;
-beta(rho < rho_g) = [(rho(rho < rho_g) - rho_c) / (rho_g - rho_c)];
-beta(rho < rho_c) = 0;
+beta(rho_fullgrav < rho) = 1;
+beta(rho < rho_fullgrav) = [(rho(rho < rho_fullgrav) - rho_nograv) / (rho_fullgrav - rho_nograv)];
+beta(rho < rho_nograv) = 0;
 
 grad_phiX = .5*(circshift(phi, [-1,0,0]) - circshift(phi, [1,0,0])) / d3x(1);
 grad_phiY = .5*(circshift(phi, [0,-1,0]) - circshift(phi, [0,1,0])) / d3x(2);
@@ -563,7 +561,7 @@ pz = pz + Fz * dt;
 GM = GeometryManager(res);
 GM.makeBoxSize(.01*res);
 
-cudaSourceScalarPotential(FM, phiD, dt, GM, rho_c, rho_g);
+cudaSourceScalarPotential(FM, phiD, dt, GM, rho_nograv, rho_fullgrav);
 a = max(px(:) - FM.mom(1).array(:));
 b = max(py(:) - FM.mom(2).array(:));
 c = max(pz(:) - FM.mom(3).array(:));
