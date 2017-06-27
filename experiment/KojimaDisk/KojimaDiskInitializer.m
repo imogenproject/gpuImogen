@@ -34,6 +34,8 @@ classdef KojimaDiskInitializer < Initializer
 
         useStatics;     % specifies if static conditions should be set for the run.     logical
         inflatePressure;% artificially increase the background pressure.                logical 
+
+	buildShearingAnnulus;
     end %PUBLIC
 
 %===================================================================================================
@@ -74,6 +76,7 @@ classdef KojimaDiskInitializer < Initializer
             obj.inflatePressure         = false;
             obj.useZMirror              = 0;
             
+	    obj.buildShearingAnnulus     = 0;
             %--- Set momentum distribution array ---%
             %           This array defines how Imogen distributes momentum in the grid. A value of 1 
             %           specifies no momentum, 2 gives Kojima r^1-q momentum, 3 gives Keplerian 

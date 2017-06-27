@@ -65,6 +65,8 @@ function [rho, moma, momb, eint] = evaluateKojimaDisk(q, gamma, radiusRatio, sta
         eint(outside) = rho(outside) * cextern^2 / (gamma*(gamma-1));
     end
 
+    
+    
     % Make sure velocity is zero where it ought be zero
     outside = (rho == lomass);
     mom(outside) = 0;
@@ -75,6 +77,8 @@ function [rho, moma, momb, eint] = evaluateKojimaDisk(q, gamma, radiusRatio, sta
     % Switch momentum off where gravity won't act
     % FIXME: this and ENUM.GRAV_FEELGRAV_COEFF do not sync with sources/source.m
     mom(rho < 4*lomass) = 0;
+    
+    eint(outside) = 1e-5 * rho(outside);
     
     if 0 % Another bad attempt to reduce the inner edge transient (by making it just fall in)
          % This, too, does not work very well.
@@ -90,6 +94,7 @@ function [rho, moma, momb, eint] = evaluateKojimaDisk(q, gamma, radiusRatio, sta
     if geomode == ENUM.GEOMETRY_CYLINDRICAL
         momb = mom;
         moma = zeros(size(mom));
+        %moma(isPartOfDisk) = .05*rho(isPartOfDisk);
     elseif geomode == ENUM.GEOMETRY_SQUARE
         moma = -mom .* sin(phiPoints);
         momb = mom .* cos(PhiPoints);

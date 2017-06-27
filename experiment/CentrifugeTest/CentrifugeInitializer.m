@@ -131,7 +131,12 @@ classdef CentrifugeInitializer < Initializer
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-    
+   
+    function setupGreshoTest(self)
+        % FIXME: IMPLEMENT:
+	% This function plugs in the conditions of the classic Gresho test...
+    end
+
     function polyK(self, k)
         if k <= 0; warning('P = k rho^gamma, k cannot be <= 0; Defaulted to 1'); k = 1; end
         if self.pEqnOfState ~= self.EOS_ADIABATIC; warning('Setting adiabatic K but EoS is not adiabatic.'); end        
