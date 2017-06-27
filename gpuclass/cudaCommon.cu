@@ -2326,7 +2326,7 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	case ERROR_NULL_POINTER:              estring = "Null pointer caught."; break;
 	case ERROR_GET_GPUTAG_FAILED:         estring = "Attempt to get GPU tag failed."; break;
 	case ERROR_DESERIALIZE_GPUTAG_FAILED: estring = "Deserialization of gputag -> MGArray failed."; break;
-	case ERROR_CUDA_BLEW_UP:              estring = "CUDA API returned an oops; The Hindenburg will now burst into flames..."; break;
+	case ERROR_CUDA_BLEW_UP:              estring = "CUDA API returned an error. Crashing."; break;
 	}
 	printf("Rank %i | In %s (%s:%i): %s\n", mpirank, infunc, infile, atline, estring);
 	return errtype;

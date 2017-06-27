@@ -62,10 +62,6 @@ if it were to be generalized.
 The hydro functions solve the same equations with B set to <0,0,0> which simplifies
 and considerably speeds up the process. */
 
-/* This is my handwritten assembly version of the Osher function
- * It is observed to to save some 10% on execution time if used
- */
-
 int releaseTemporaryMemory(double **m, MGArray *ref);
 int grabTemporaryMemory(double **m, MGArray *ref, int nCopies);
 
@@ -256,7 +252,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	//     g P / rho > g rho_min^(g-1)
 	// (g-1) e / rho > rho_min^(g-1)
 	//             e > rho rho_min^(g-1)/(g-1)
-	gamHost[4] = powl(rhomin, gamma-1.0)/(gamma-1.0);
+	gamHost[4] = 1e-5;//powl(rhomin, gamma-1.0)/(gamma-1.0);
 	gamHost[5] = 1.0 - .5*gamma;
 	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
@@ -280,6 +276,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 		calcPartitionExtent(fluid, i, &sub[0]);
 
+		// NOTE: IMPORTANT: This alters the preceived layout for RZ launches!!!!!!!!!!!!
 		if((sub[4] == 1) && (sub[5] > 1)) {
 			// R-Z simulation: pretend Z doesn't exist to improve exe efficiency here
 			sub[4] = sub[5]; sub[5] = 1;

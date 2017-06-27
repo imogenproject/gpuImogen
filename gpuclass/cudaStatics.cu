@@ -70,6 +70,8 @@ __global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int sla
 
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
+__constant__ __device__ double restFrmSpeed[6];
+
 #ifdef STANDALONE_MEX_FUNCTION
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -362,12 +364,33 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 
 	int memdir = MGA_dir2memdir(&fluid->currentPermutation[0], direction);
 
+	double rfVelocity[6];
+	switch(direction) {
+		case 1:
+			for(i = 0; i < 6; i++) { rfVelocity[i] = 0.0; }
+
+			break;
+		case 2: 
+			// Rotating frame has nonzero v_{rest} in lab frame!!!
+
+			// HACK FIXME NASTY TEST HACK
+			for(i = 0; i < 3; i++) { rfVelocity[i] = -0.47; }
+			for(i = 3; i < 6; i++) { rfVelocity[i] = -2.2;  } 
+		case 3: 
+			for(i = 0; i < 6; i++) { rfVelocity[i] = 0.0; }
+			break;
+	}
+
+	
+
 	switch(memdir) {
 	case 1: // x
 		blockdim.x = 3; blockdim.y = blockdim.z = 16;
 
 		for(i = 0; i < fluid->nGPUs; i++) {
 			cudaSetDevice(fluid->deviceID[i]);
+			cudaMemcpyToSymbol(restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+
 			calcPartitionExtent(fluid, i, &sub[0]);
 
 			griddim.x = ROUNDUPTO(sub[4], 16)/16;
@@ -397,24 +420,24 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 				double *base = fluid->devicePtr[i] + (sub[4]-7)*sub[3];
 				cukern_SetOutflowY<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
 			} else {
-				cukern_SetOutflowY<0><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				cukern_SetOutflowY<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
 			}
 		}
 		break;
 	case 3: // z
-		blockdim.x = 32; blockdim.y = 4; blockdim.z = 1;
+		blockdim.x = 32; blockdim.y = 4; blockdim.z = 3;
 		for(i = 0; i < fluid->nGPUs; i++) { 
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
-			griddim.x = ROUNDUPTO(sub[4], blockdim.x)/blockdim.x;
-			griddim.y = ROUNDUPTO(sub[5], blockdim.y)/blockdim.y;
+			griddim.x = ROUNDUPTO(sub[3], blockdim.x)/blockdim.x;
+			griddim.y = ROUNDUPTO(sub[4], blockdim.y)/blockdim.y;
 			griddim.z = 1;
 
 			if(rightside) {
 				double *base = fluid->devicePtr[i] + sub[3]*sub[4]*(sub[5]-7);
 				cukern_SetOutflowZ<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
 			} else {
-				cukern_SetOutflowZ<0><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				cukern_SetOutflowZ<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
 			}
 		}
 		break;
@@ -443,6 +466,8 @@ double a;
 
 a = base[(1+normdir)*slabNumel];
 
+double rho, E, p1, p2;
+
 if(a*direct > 0) {
 	// boundary normal momentum positive: constant extrap
 	if(direct == 1) { // +x: base = &rho[nx-4, 0 0]
@@ -461,21 +486,25 @@ if(a*direct > 0) {
 		a = base[3]; base[tix] = a; base += slabNumel;
 	}
 } else {
-	// boundary normal momentum negative: mirror BC
+	// boundary normal momentum negative: null normal velocity
 	if(direct == 1) { // +x
 		base = base - 3;
-		a = base[tix]; base[6-tix] = a; base += slabNumel; // rho
-		a = base[tix]; base[6-tix] = a; base += slabNumel; // E
-		a = base[tix]; base[6-tix] = (normdir == 1) ? -a : a; base += slabNumel; // px
-		a = base[tix]; base[6-tix] = (normdir == 2) ? -a : a; base += slabNumel;// py
-		a = base[tix]; base[6-tix] = (normdir == 3) ? -a : a; base += slabNumel;// pz
+		rho = a = base[tix]; base[6-tix] = a; base += slabNumel; // rho
+		E =       base[tix]; base += slabNumel; // E
+	
+		a = base[tix]; if(normdir == 1) { p1 = a; base[6-tix] = p2 = rho*restFrmSpeed[5-tix]; } else { base[6-tix] = a; } base += slabNumel; // px
+		a = base[tix]; if(normdir == 2) { p1 = a; base[6-tix] = p2 = rho*restFrmSpeed[5-tix]; } else { base[6-tix] = a; } base += slabNumel; // py
+		a = base[tix]; if(normdir == 3) { p1 = a; base[6-tix] = p2 = rho*restFrmSpeed[5-tix]; } else { base[6-tix] = a; } // pz
+		base[6-tix-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;;
 	} else { // -x
 		base = base - 3;
-		a = base[tix+4]; base[2-tix] = a; base += slabNumel;
-		a = base[tix+4]; base[2-tix] = a; base += slabNumel;
-		a = base[tix+4]; base[2-tix] = (normdir == 1) ? -a : a; base += slabNumel;
-		a = base[tix+4]; base[2-tix] = (normdir == 2) ? -a : a; base += slabNumel;
-		a = base[tix+4]; base[2-tix] = (normdir == 3) ? -a : a; base += slabNumel;
+		rho = a = base[tix+4]; base[2-tix] = a; base += slabNumel;
+		E       = base[tix+4]; base += slabNumel;
+	
+		a = base[tix+4]; if(normdir == 1) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } base += slabNumel; // px
+		a = base[tix+4]; if(normdir == 2) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } base += slabNumel; // py
+		a = base[tix+4]; if(normdir == 3) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } // pz
+		base[2-tix-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;;
 	}
 
 }
@@ -483,52 +512,57 @@ if(a*direct > 0) {
 }
 
 // Use 32x3 threads and dim3(roundup(nx/32), nz, 1) blocks
-// if(direct == 0) {minus coordinate edge} assume base is &rho[0]
-// if(direct == 1) {plus coordinate edge}  assume base is &rho[0,ny-7,0]
+// if(direct == -1) {minus coordinate edge} assume base is &rho[0]
+// if(direct == 1)  {plus coordinate edge}  assume base is &rho[0,ny-7,0]
 template <int direct>
 __global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
 {
 int x = threadIdx.x + blockDim.x*blockIdx.x;
 int z = blockIdx.y;
+int tiy = threadIdx.y;
 
 if((x >= nx) || (z >= nz)) return;
 
 // Y-Z translate
 base += x + nx*(ny*z);
 
-double a;
+double a, rho, E, p1, p2;
 
 a = base[(1+normalDirection)*slabNumel];
 
 if(a*direct > 0) {
 	// normal mom is positive: extrapolate constant
 	if(direct == 1) { // +y edge
-		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(5+threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(5+tiy)*nx] = a; base += slabNumel;
 	} else { // -y edge
-		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[4*nx]; base[(threadIdx.y)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(tiy)*nx] = a; base += slabNumel;
+		a = base[4*nx]; base[(tiy)*nx] = a; base += slabNumel;
 	}
 } else {
-	// normal mom negative: mirror BC
+	// normal mom negative: set norm momentum to null
 	if(direct == 1) { // +y edge
-		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[threadIdx.y*nx]; base[(6-threadIdx.y)*nx] = a; base += slabNumel;
+		rho = a = base[tiy*nx]; base[(6-tiy)*nx] = a; base += slabNumel;
+		E = base[tiy*ny]; base += slabNumel;
+
+		a = base[tiy*nx]; if(normalDirection == 1) { p1 = a; base[(6-tiy)*nx] = p2 = rho*restFrmSpeed[5-tiy]; } else { base[(6-tiy)*nx] = a; }  base += slabNumel; // pz
+		a = base[tiy*nx]; if(normalDirection == 2) { p1 = a; base[(6-tiy)*nx] = p2 = rho*restFrmSpeed[5-tiy]; } else { base[(6-tiy)*nx] = a; }  base += slabNumel; // pz
+		a = base[tiy*nx]; if(normalDirection == 3) { p1 = a; base[(6-tiy)*nx] = p2 = rho*restFrmSpeed[5-tiy]; } else { base[(6-tiy)*nx] = a; } // pz
+		base[(6-tiy)*nx-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;;
 	} else { // -y edge
-		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
-		a = base[(4+threadIdx.y)*nx]; base[(2-threadIdx.y)*nx] = a; base += slabNumel;
+		rho = a = base[(4+tiy)*nx]; base[(2-tiy)*nx] = a; base += slabNumel;
+		E = base[(4+tiy)*nx]; base += slabNumel;
+
+		a = base[(4+tiy)*nx]; if(normalDirection == 1) { p1 = a; base[(2-tiy)*nx] = p2 = rho*restFrmSpeed[2-tiy]; } else { base[(2-tiy)*nx] = a; }  base += slabNumel; // pz
+		a = base[(4+tiy)*nx]; if(normalDirection == 2) { p1 = a; base[(2-tiy)*nx] = p2 = rho*restFrmSpeed[2-tiy]; } else { base[(2-tiy)*nx] = a; }  base += slabNumel; // pz
+		a = base[(4+tiy)*nx]; if(normalDirection == 3) { p1 = a; base[(2-tiy)*nx] = p2 = rho*restFrmSpeed[2-tiy]; } else { base[(2-tiy)*nx] = a; } // pz
+		base[(2-tiy)*nx-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;
 	}
 
 }
@@ -536,15 +570,16 @@ if(a*direct > 0) {
 
 }
 
-// XY threads & block span the XY space
+// XY threads & block span the XY space, 3 Z threads 
 // one plane of threads
-// if(direct == 0) base should be &rho[0,0,0]
+// if(direct == -1) base should be &rho[0,0,0]
 // if(direct == 1) base should be &rho[0,0,nz-7]
 template<int direct>
 __global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
 {
 int x = threadIdx.x + blockDim.x*blockIdx.x;
 int y = threadIdx.y + blockDim.y*blockIdx.y;
+int tiz= threadIdx.z;
 
 if((x >= nx) || (y >= ny)) return;
 
@@ -552,35 +587,36 @@ base += x + nx*y;
 
 int delta = nx*ny;
 double a = base[(1+normalDirection)*slabNumel];
-int q;
+int i;
+double rho, E, p1, p2;
 
 if(a*direct > 0) {
 	// positive normal momentum: constant
 	if(direct == 1) { // +z edge
-		for(q = 0; q < 5; q++) { 
-			a = base[3*delta]; base[4*delta] = a; base[5*delta] = a; base[6*delta] = a; base += slabNumel;
-		}
+		for(i = 0; i < 5; i++) { a = base[3*delta]; base[(4+tiz)*delta] = a; base += slabNumel; }
 	} else { // -z edge
-		for(q = 0; q < 5; q++) {
-			a = base[4*delta]; base[3*delta] = a; base[2*delta] = a; base[delta] = a; base += slabNumel;
-		}
+		for(i = 0; i < 5; i++) { a = base[3*delta]; base[tiz*delta] = a; base += slabNumel; }
 	}
 } else {
-	// negative normal momentum: mirror
+	// negative normal momentum: set normal mom to null
 	if(direct == 1) { // +z edge
-		for(q = 0; q < 5; q++) {
-			a = base[0];       base[6*delta] = a;
-			a = base[delta];   base[5*delta] = a;
-			a = base[2*delta]; base[4*delta] = a;
-			base += slabNumel;
-		}
-	} else { // -z edge
-		for(q = 0; q < 5; q++) {
-			a = base[6*delta]; base[0] = a;
-			a = base[5*delta]; base[delta] = a;
-			a = base[4*delta]; base[2*delta] = a;
-			base += slabNumel;
-		}
+		rho = a = base[tiz*delta]; base[(6-tiz)*delta] = a; base += slabNumel;
+		E = base[tiz*delta]; base += slabNumel;
+
+		a = base[tiz*delta]; if(normalDirection == 1) { p1 = a; p2 = base[(6-tiz)*delta] = rho*restFrmSpeed[5-tiz]; } else { base[(6-tiz)*delta] = a; } base += slabNumel;
+		a = base[tiz*delta]; if(normalDirection == 2) { p1 = a; p2 = base[(6-tiz)*delta] = rho*restFrmSpeed[5-tiz]; } else { base[(6-tiz)*delta] = a; } base += slabNumel;
+		a = base[tiz*delta]; if(normalDirection == 3) { p1 = a; p2 = base[(6-tiz)*delta] = rho*restFrmSpeed[5-tiz]; } else { base[(6-tiz)*delta] = a; }
+
+		base[(6-tiz)*delta - 3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;
+	} else { // -z edge : defective at present
+		rho = a = base[(6-tiz)*delta]; base[tiz*delta] = a; base += slabNumel;
+		E = base[(6-tiz)*delta]; base += slabNumel;
+
+		a = base[(6-tiz)*delta]; if(normalDirection == 1) { p1 = a; p2 = base[tiz*delta] = rho*restFrmSpeed[2-tiz]; } else { base[tiz*delta] = a; } base += slabNumel;
+		a = base[(6-tiz)*delta]; if(normalDirection == 2) { p1 = a; p2 = base[tiz*delta] = rho*restFrmSpeed[2-tiz]; } else { base[tiz*delta] = a; } base += slabNumel;
+		a = base[(6-tiz)*delta]; if(normalDirection == 3) { p1 = a; p2 = base[tiz*delta] = rho*restFrmSpeed[2-tiz]; } else { base[tiz*delta] = a; }
+
+		base[(6-tiz)*delta - 3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;
 	}
 }
 
