@@ -45,7 +45,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	int nDevices;
 	cudaGetDeviceCount(&nDevices);
-	int returnCode = CHECK_CUDA_ERROR("GPU_ctrl(): cudaGetDeviceCount doesn't even work.\n");
+	int returnCode = CHECK_CUDA_ERROR("GPU_ctrl(): cudaGetDeviceCount doesn't even work.\nIf occurring apropos of nothing, this appears to occur if Matlab was open,\nhad acquired a context, and the system was ACPI suspended.\n");
 	if(returnCode != SUCCESSFUL) return;
 
 	mexLock(); // It would be Bad if this disappeared on us at any point.
