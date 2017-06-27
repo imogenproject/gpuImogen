@@ -24,8 +24,8 @@ xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracki
 %end
 
 % This call solves geometric source terms, frame rotation and gravity simultaneously
-% It can be programmed to use either implicit midpoint or RK4
-cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omega, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS*0,  xyvector);
+% It can be programmed to use either implicit midpoint (IMP), Runge-Kutta 4 (RK4) or Gauss-Legendre 4 (GL4)
+cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omega, dTime, run.geometry, run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1,  xyvector);
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
 %    if run.frameTracking.omega ~= 0
@@ -62,9 +62,11 @@ cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omeg
 %    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
 %end
 
-    % This is a noxious hack to make the "vacuum" in disk simulations act like it
-    % We're not even pretending to be physical, so to heck with accuracy.
-    cudaSourceVTO(fluids, [dTime 1 1]);
+    % The "vacuum taffy operator" serves mainly to keep the false vacuum from accelerating
+    % without limit under the influence of gravity and blowtorching a simulation volume
+    % with infalling gas. This isn't physical so we disregard normal accuracy and symmetry considerations
+    % Rotation rate and geometry are necessary to decay to the proper values in noninertial frames.
+    cudaSourceVTO(fluids, [dTime 5 5 run.frameTracking.omega], run.geometry);
 
     % The mechanical routines above are written to exactly conserve internal energy so that
     % they commute with things which act purely on internal energy (e.g. radiation)

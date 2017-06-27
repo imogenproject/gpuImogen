@@ -67,13 +67,6 @@ to compile the Matlab mex files.
 In Make.config, \textit{MPI\_DIR} must refer to the directory containing the include/ folder
 that holds the mpi.h file, i.e. the --prefix specified when MPI was installed.
 
-\subsection{Parallel Gateway}
-
-Imogen uses the Parallel Gateway (PGW) library as a go-between with MPI.
-
-Make.config's \textit{PGW\_DIR} variable must be set to the install directory
-containing PGW.
-
 \subsection{CUDA}
 
 Imogen's GPU routines are written in CUDA and access to cuda 4.0 or later
@@ -108,7 +101,7 @@ Imogen invokes itself in parallel with the './imogen cluster ...' format.
 This takes place on lines 95 to 124 of the run/imogen file. Before running
 in parallel on a cluster it would be a good idea to examine this section since
 it will almost certainly need to be amended, if only to set the package
-names to their local values.
+names to values appropriate to your cluster system.
 
 \subsection{Troubleshooting}
 
@@ -130,19 +123,22 @@ make it go away permanently.
 
 \section{Invocation}
 
-Imogen is run through the script run/imogen
+\subsection{Standalone / batch}
 
-There are three separate general types of run, all of which end up doing "matlab -r":
+Imogen is started from console to run by itself through the script run/imogen
+
+There are three separate general types of run, all of which invoke "matlab -r":
 \begin{itemize}
-\item serial - One process uses ones GPU; 'imogen' calls Matlab.
-\item parallel - N processes select N GPUs; 'imogen' calls mpirun calls Matlab
-\item cluster - N processes on M nodes; 'imogen' writes a script for qsub that calls Matlab
+\item serial - One process uses the given set of GPUs; 'imogen' calls Matlab.
+\item parallel - N processes use the given set of GPUs; 'imogen' calls mpirun calls Matlab
+\item cluster - 'imogen' submits a script calling itself to qsub
 \end{itemize}
 
-Serial and parallel are for small size simulations that work on a single SMP system,
-while the cluster option uses qsub to fire jobs onto large systems.
+Serial and parallel are for small size simulations that work on a single system,
+or perhaps for testing on a local cluster with an MPI hostfile.
+The cluster option will be necessary to interface with batch schedulers on large machines.
 
-The invocation syntaxes (also available through ./imogen -help) is as follows:
+The invocation syntaxes (also available through ./imogen -help) are as follows:
 \begin{itemize}
 \item ./imogen serial runfile.m [stream\# [GPU\#]];
 \item ./imogen runfile.m; A shortcut that assumes serial, stream 0 and GPU 0.
@@ -153,14 +149,18 @@ The invocation syntaxes (also available through ./imogen -help) is as follows:
 
 \textbf{This is not yet complete -- Erik}
 
-Imogen includes a comprehensive full-simulation test, the simulation
-\textit{run\_FullTestSuite.m}. This ``simulation'' will run dozens of test cases
-for which an exact solution (or reasonable facimile thereof) is available
-and determine whether Imogen is going them right and, where analytic answers
-are available, provide convergence orders.
+Imogen comes with two test suites, \begin{tt}run\_tortureTest\end{tt} and \begin{tt}run\_FullTestSuite\end{tt}.
 
-Note that there are a lot of tests to run, and this test falls under the "go have
-lunch then check back" class.
+The torture test runs a series of unit tests that confirm that all the basics are working, and
+then fuzz most of the assistant routines a programmable number of times with random data and
+resolutions; This is effective at revealing size-dependent, data-dependent and intermittent bugs.
+Depending on the number of fuzz tests run and their size, it may take a number of minutes
+to finish executing.
+
+The test suite ``simulation'' is a large runfile which performs grid refinement tests on a large
+number of problems in one, two and three dimensions. Ultimately it should issue a report
+that all convergence rates are asymptotically as expected; If all tests are run with a high
+degree of refinement, this suite may be expected to take hours to execute.
 
 \section{Physics solved by the Imogen simulation engine}
 
@@ -316,12 +316,20 @@ Imogen has the Eulerian explicit CFL constraint is set by
 and so if $v_i$ can be significantly reduced by setting the grid to co-rotate with a flow,
 the timestep can be significantly increased for advection-dominated flows.
 
-The non-inertial sourcing operator introduces its own errors and it is up to the user to
-determine the point at which the change is worth it.
+Frame rotation introduces the following additional source terms:
+\begin{align*}
+\partial_t \rho &= 0 \\
+\partial_t v &= 2 \omega_z \times \vec{r} + \hat{r} \omega^2 \\
+\partial_t \epsilon_{int} &= 0
+\end{align*}
+i.e. the coriolis and centripetal terms are implemented as fictitous forces.
+
+Imogen implements this term so as to exactly preserve internal energy (the total
+energy density is updated as exactly the change in KE density)
 
 Imogen checks for a rotating frame at simulation initialization and performs the
-transformation to the noninertial frame for you - simulations should be initialized
-in the lab inertial frame.
+transformation to the noninertial frame for you - \textbf{simulations should be initialized
+in the lab inertial frame.}
 
 \subsection{Radiation}
 
@@ -330,8 +338,8 @@ Imogen can solve optically thin radiation with power law cooling,
 (power law lambda)
 
 Programming in different cooling laws is extremely simple as a test by making additional
-entries to the experiment/Radiation.m file, templatted after the thin power law radiation
-one. Of course, don't expect them to be as fast as the GPU accelerated routines.
+entries to the experiment/Radiation.m file, templated after the thin power law radiation
+one. Of course, don't expect them to be as fast as the GPU accelerated routine.
 
 While the power law cooling is reliable enough in and of itself, it has exhibited a
 remarkable ability to derange Imogen's fluid solver routines. None of them has exhibited
@@ -339,9 +347,24 @@ the ability to handle an extremely slowly-moving radiating shock front (i.e. the
 associated with the finite accuracy of the simulation) without some measure of oscillatory
 density error at the adiabatic jump.
 
+This is related to a generic problem associated with nearly stationary shocks in 
+shock-capturing schemes. Without radiation, HLL will exhibit bounded oscillation of the
+measured shock position of a plane shock vs the exact result. However radiation adds
+an additional feedback loop which greatly increases the ``desire'' of the shock to
+place itself exactly at a cell boundary.
+
 (Post pics of evil radiative shocks here)
 
+Work by Roe (REF) has indicated a solution to the instability problem in 1D,
+however the extension to multiple dimensions is as yet unclear except perhaps conceptually.
+
 \subsection{Gravity}
+
+\subsubsection{Stationary gravity field}
+
+An arbitrary stationary potential field may be established. This may e.g. represent
+a fixed star, or may be used in a Cowling approximation to examine NSG modes of a
+self-gravitating equilibrium (NOTE: Still can't solve gravity to generate the equilibrium...)
 
 \subsubsection{Point gravity}
 
@@ -435,9 +458,12 @@ To turn on the rotating frame during start, simply set a nonzero value for the \
 parameter, and assign a 2-element array $\left[x_0, y_0\right]$ to \begin{tt}frameRotateCenter\end{tt}
 and Imogen will automatically transform the fluid momentum field into the noninertial frame at start.
 
-Caution: $x_0$ and $y_0$ need to be in cell coordinates... yes it's dumb.
+Caution: $x_0$ and $y_0$ need to be cell indices giving the origin.
 
-The rotation rate can be altered during simulation time using 
+If the simulation is in cylindrical coordinates, only rotation about the origin axis is supported.
+Any rotation origin other than \begin{tt}[0, 0]\end{tt} will cause a warning.
+
+The rotation rate can be altered during simulation time by calling
 \begin{tt}
 alterFrameRotation(run, mass,\newline
 ener, mom, newOmega)
@@ -449,8 +475,7 @@ and should thus be called rarely.
 
 It is not acceptable to simply alter \begin{tt}run.frameRotateOmega\end{tt} during the run.
 This will alter the behavior of the sourcing function, however it will NOT update the
-\textit{frame-dependent} kinetic energy density. Among other deleterious effects, increasing the rotation
-rate in this manner is therefore likely to cause negative pressure and crash the simulation.
+\textit{frame-dependent} momentum and kinetic energy densities.
 
 \subsection{How to setup radiation}
 
@@ -479,6 +504,13 @@ in-situ analyzer (see above)
 Imogen calls the \begin{tt}.finish\end{tt} method after exiting the CFD iteration loop. At this point the
 ISA needs to write to disk any data not already written because \begin{tt}imogen()\end{tt} is about to 
 return.
+
+\section{The RealtimePlotter}
+
+The RealtimePlotter is a peripheral that does just what its name suggests, and throws up a pretty little
+GUI window to control the plotting process.
+
+
 
 \section{Experiments}
 
