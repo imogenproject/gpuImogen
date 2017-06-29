@@ -95,22 +95,27 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
 
     run.time.recordWallclock();
-    backupData = dumpCheckpoint(run);
-                               
+
+    checkpoint = 0;
+
+    if checkpoint
+        backupData = dumpCheckpoint(run);
+    end
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
-        %if mod(run.time.iteration, 25) == 24
-        %    backupData = dumpCheckpoint(run);
-        %end
+        if checkpoint && mod(run.time.iteration, checkpoint) == (checkpoint-1)
+            backupData = dumpCheckpoint(run);
+        end
 
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, 1);
-        source(run, run.fluid, mag, 1);
+        source(run, run.fluid, mag, 2.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
 
-        if checkPhysicality(run.fluid)
+        if checkpoint && checkPhysicality(run.fluid)
             restoreCheckpoint(run, backupData);
         end
         run.time.step();

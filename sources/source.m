@@ -25,7 +25,8 @@ xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracki
 
 % This call solves geometric source terms, frame rotation and gravity simultaneously
 % It can be programmed to use either implicit midpoint (IMP), Runge-Kutta 4 (RK4) or Gauss-Legendre 4 (GL4)
-cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omega, dTime, run.geometry, run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1,  xyvector);
+cudaTestSourceComposite(fluids, run.potentialField.field, run.geometry, ...
+    [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, run.frameTracking.omega, dTime, 2, 2],  xyvector);
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
 %    if run.frameTracking.omega ~= 0
@@ -66,7 +67,13 @@ cudaTestSourceComposite(fluids, run.potentialField.field, run.frameTracking.omeg
     % without limit under the influence of gravity and blowtorching a simulation volume
     % with infalling gas. This isn't physical so we disregard normal accuracy and symmetry considerations
     % Rotation rate and geometry are necessary to decay to the proper values in noninertial frames.
-    cudaSourceVTO(fluids, [dTime 5 5 run.frameTracking.omega], run.geometry);
+    % Scalar vector:
+    %    [dtime, velocity decay rate, density decay rate, omega]
+    % v/rho decay rates have dimension 1/time; larger #s make the VTO more aggressive
+    
+    % pi/2 rate sets characteristic time to 2MIRPs
+    % rho/T floor is instant/fixed
+    cudaSourceVTO(fluids, [dTime pi/2 pi/2 run.frameTracking.omega], run.geometry);
 
     % The mechanical routines above are written to exactly conserve internal energy so that
     % they commute with things which act purely on internal energy (e.g. radiation)
