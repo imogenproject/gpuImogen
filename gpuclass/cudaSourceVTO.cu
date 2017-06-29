@@ -21,15 +21,26 @@
 #include "cudaSourceVTO.h"
 
 __device__ __constant__ int arrayparams[4];
-#define ARRAY_NUMEL arrayparams[0]
-#define ARRAY_SLABSIZE arrayparams[1]
+#define ARRAY_NX       arrayparams[0]
+#define ARRAY_NYZ      arrayparams[1]
+#define ARRAY_NUMEL    arrayparams[2]
+#define ARRAY_SLABSIZE arrayparams[3]
 
-__global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin);
+__device__ __constant__ double devGeom[4];
+#define GEOM_V0    devGeom[0]
+#define GEOM_DV0    devGeom[1]
+#define GEOM_V1    devGeom[2]
+#define GEOM_DV1    devGeom[3]
+
+
+__global__ void cukern_SourceVacuumTaffyOperator_IRF(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin);
+
+__global__ void cukern_SourceVacuumTaffyOperator_CylRRF(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin);
 
 /* Calculate the whimsically named "vacuum taffy operator",
- *            [\rho  ]   [0                                                            ]
- * \partial_t [\rho v] ~ [-\alpha \rho v \theta(\rho - \rho_c)                         ]
- *            [Etot  ]   [(-\alpha \rho v.v - \beta (P - \rho T_0)\theta(\rho - \rho_c)]
+ *	    [\rho  ]   [0	                                                    ]
+ * \partial_t [\rho v] ~ [-\alpha \rho v \theta(\rho - \rho_c)		         ]
+ *	    [Etot  ]   [(-\alpha \rho v.v - \beta (P - \rho T_0)\theta(\rho - \rho_c)]
  * if density is less than \rho_c, momentum exponentially decays to zero
  * and temperature decays to T_0.
  * i.e., regions evacuated below a sufficiently small density stop moving & become isothermal.
@@ -46,9 +57,9 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor,
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs != 2) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt alpha beta])\n");
+    if ((nrhs != 3) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt alpha beta, omega], GeometryManager)\n");
 
-    if(CHECK_CUDA_ERROR("entering cudaSourceVTO") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSourceVTO."); }
+    if(CHECK_CUDA_ERROR("entering cudaSourceVTO") != SUCCESSFUL) { DROP_MEX_ERROR("Failed before entry to cudaSourceVTO."); }
 
     int status = SUCCESSFUL;
 
@@ -57,15 +68,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     double *fltargs = mxGetPr(prhs[1]);
     int N = mxGetNumberOfElements(prhs[1]);
-    if(N != 3) {
+    if(N != 4) {
 	DROP_MEX_ERROR("Require [dt alpha beta] in 2nd argument: Got other than 3 values\n");
     }
 
-    // FIXME: check number of elements
     double dt    = fltargs[0];
     double alpha = fltargs[1];
     double beta  = fltargs[2];
+    double frameW= fltargs[3];
     double rho_c = 0;
+
+    GeometryParams geo = accessMatlabGeometryClass(prhs[2]);
 
     int numFluids = mxGetNumberOfElements(prhs[0]);
 	int fluidct;
@@ -91,40 +104,67 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			DROP_MEX_ERROR("Crashing.\n");
 		}
 
-		status = sourcefunction_VacuumTaffyOperator(&fluid[0], dt, alpha, beta, rho_c);
+		status = sourcefunction_VacuumTaffyOperator(&fluid[0], dt, alpha, beta, frameW, rho_c, geo);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("vacuum taffy operator dumping: failed to apply source terms.");
 	}
 }
 
-int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double criticalDensity)
+int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double frameOmega, double minimumDensity, GeometryParams geo)
 {
 	int returnCode = SUCCESSFUL;
 	int apHost[4];
+	double hostGeomInfo[4];
+	double criticalDensity = 5*minimumDensity;
 
 	int sub[6];
 
 	int i;
 	for(i = 0; i < fluid->nGPUs; i++) {
 		calcPartitionExtent(fluid, i, &sub[0]);
-		apHost[0] = sub[3]*sub[4]*sub[5];
-		apHost[1] = fluid->slabPitch[i] / 8;
+		apHost[0] = sub[3];
+		apHost[1] = sub[4]*sub[5];
+		apHost[2] = sub[3]*sub[4]*sub[5];
+		apHost[3] = fluid->slabPitch[i] / 8;
 
 		cudaSetDevice(fluid->deviceID[i]);
 		returnCode = CHECK_CUDA_ERROR("Setting cuda device");
 		if(returnCode != SUCCESSFUL) return returnCode;
-		cudaMemcpyToSymbol(arrayparams, &apHost[0], 2*sizeof(int), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol(arrayparams, &apHost[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
 		if(returnCode != SUCCESSFUL) return returnCode;
+	
+	hostGeomInfo[0] = -frameOmega*geo.x0;
+	hostGeomInfo[1] = -frameOmega*geo.h[0];
+	hostGeomInfo[2] = -frameOmega*geo.y0;
+	hostGeomInfo[3] = -frameOmega*geo.h[1];
+	cudaMemcpyToSymbol(devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
+	dim3 gridsize; gridsize.z = 1;
+	
+		// X grid spans X
+		// Rest walks Y/Z
+		dim3 blocksize(128, 1, 1);
 
-		dim3 blocksize(256, 1, 1);
-		dim3 gridsize(32, 1, 1);
+		if(frameOmega != 0.0) {
+			int n_yz = sub[4]*sub[5];
+			gridsize.x = ROUNDUPTO(sub[3], 128)/128;
+			gridsize.y = n_yz >= 32 ? 32 : n_yz;
+			switch(geo.shape) {
+			case SQUARE:
+				PRINT_FAULT_HEADER;
+				printf("VTO operator cannot currently handle rotating frame in square coordinates.\n");
+				PRINT_FAULT_FOOTER;
+				break;
+			case CYLINDRICAL:
+				cukern_SourceVacuumTaffyOperator_CylRRF<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, minimumDensity);
+				break;
 
-		if(blocksize.x*gridsize.x > fluid->partNumel[i]) {
-			gridsize.x = fluid->partNumel[i] / blocksize.x / 2;
-			if(gridsize.x < 1) gridsize.x = 1;
+
+			}
+		} else {
+			gridsize.x = ROUNDUPTO(sub[3], 128)/128;
+			gridsize.y = 1;
+			cukern_SourceVacuumTaffyOperator_IRF<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, minimumDensity);
 		}
-
-		cukern_SourceVacuumTaffyOperator<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, .1*criticalDensity);
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Applying cylindrical source term: i=device#\n");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	}
@@ -132,7 +172,86 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 	return returnCode;
 }
 
-__global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin)
+
+/* The more complex VTO must be aware of geometry to consider the rotation term when computing inertial rest
+ * frame velocity to decay towards. */
+__global__ void cukern_SourceVacuumTaffyOperator_CylRRF(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin)
+{
+	// Cut off x threads at Nr
+	int x = threadIdx.x + blockDim.x*blockIdx.x;
+	if(x >= ARRAY_NX) return;
+
+	// Calculate the phi velocity for this thread's (fixed) R corresponding to inertial rest
+	// A positive omega corresponds to negative vphi_rest
+	double vphi_rest = GEOM_V0 + x*GEOM_DV0;
+
+	// Note that microscopic Nphi*Nz was checked for before kernel invocation,
+	// such that this will not overrun bounds
+	base += x + ARRAY_NX*(threadIdx.y + blockDim.y*blockIdx.y);
+	x = blockDim.y*blockIdx.y;
+
+	double rho, u, v, w, E, f0, v0, P;
+
+	momfactor /= rhofactor; // convert to velocity decay factor
+
+	while(x < ARRAY_NYZ) {
+		rho = base[0];
+
+		if(rho < rhoCrit) {
+			// load remaining data
+			E   = base[  ARRAY_SLABSIZE];
+			u   = base[2*ARRAY_SLABSIZE] / rho;
+			v   = base[3*ARRAY_SLABSIZE] / rho;
+			w   = base[4*ARRAY_SLABSIZE] / rho;
+
+			// compute squared momentum & decay factor
+			v0 = rho*(u*u+v*v+w*w); // velocity^2
+
+			// decay velocity away
+			u=u*momfactor;
+			v = v - vphi_rest; // add frame velocity
+			v *= momfactor;
+			v = v + vphi_rest;
+			w=w*momfactor;
+
+			P = (E - .5*v0)/rho; // T
+
+			// decay away density?
+			f0 = rho*rhofactor;
+
+			if(f0 > rhoMin) {
+				// exponentially so.
+				rho = f0;
+			} else {
+				// only to the limit...
+				rho = rhoMin;
+			}
+
+			// Decay temperature by rhofactor
+			E = P*rhofactor*rho; // Eint = rho_new * T_new
+			
+			if(E < 1e-5 * rho) E = 1e-5 * rho; // Prevent T < 1e-5
+
+			// Add new kinetic energy to new Etotal
+			E += .5*rho*(u*u+v*v+w*w);
+
+			// write vars back out
+			base[0]		= rho;
+			base[  ARRAY_SLABSIZE] = E;
+			base[2*ARRAY_SLABSIZE] = u*rho;
+			base[3*ARRAY_SLABSIZE] = v*rho;
+			base[4*ARRAY_SLABSIZE] = w*rho;
+		}
+
+		// advance to next locations in array
+		x += (blockDim.y*gridDim.y);
+		base += ARRAY_NX*(blockDim.y*gridDim.y);
+	}
+
+}
+
+/* The non-rotating-frame VTO is agnostic to coordinates and therefore simpler/faster */
+__global__ void cukern_SourceVacuumTaffyOperator_IRF(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -177,10 +296,10 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor,
 				E = P*rhofactor;
 			} else {
 				// only to the limit...
-				f0 = rhoMin/rho;
-				u *= f0; v *= f0; w *= f0;
-				E = P*f0;
-				rho = rhoMin;
+				//f0 = rhoMin/rho;
+				//u *= f0; v *= f0; w *= f0;
+				E = P*rhofactor;
+				//rho = rhoMin;
 			}
 
 			if(E < 1e-5 * rho) E = 1e-5 * rho;
@@ -188,7 +307,7 @@ __global__ void cukern_SourceVacuumTaffyOperator(double *base, double momfactor,
 			E += .5*v0*momfactor*momfactor*rho;
 
 			// write vars back out
-			base[0]                = rho;
+			base[0]		= rho;
 			base[  ARRAY_SLABSIZE] = E;
 			base[2*ARRAY_SLABSIZE] = u;
 			base[3*ARRAY_SLABSIZE] = v;
