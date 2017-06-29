@@ -25,11 +25,12 @@ classdef FluidManager < handle
     properties (SetAccess = public, GetAccess = public)
         DataHolder; % A GPU_Type that holds the handle on the memory allocation
         mass, ener, mom; % Fluid state data                             ImogenArrays
+        parent;               % Parent manager                                      ImogenManager
     end
  
 %===================================================================================================
     properties (SetAccess = public, GetAccess = private) %                        P R I V A T E  [P]
-        parent;               % Parent manager                                      ImogenManager
+        
 
         fluidName;            % String describing which fluid this is               String
     end %PRIVATE
