@@ -26,6 +26,8 @@ classdef RealtimePlotter <  LinkedListNode
         plotmode; % 1 = one, 2 = 2 horizontal, 3 = 2 vertical, 4 = 2x2 matrix
         plotProps;
 
+        outputMovieFrames;
+
         spawnGUI;
         forceRedraw;
 
@@ -50,6 +52,15 @@ classdef RealtimePlotter <  LinkedListNode
 
         pstatic_colorchars = 'rgbcmykw';
         pstatic_ppfields = {'fluidnum','what','logscale','slice','plottype','grid','cbar','axmode','velvecs','vv_scale','vv_decfac','vv_weight','vv_color','vv_type'};
+
+        pAxisTypeLabels = {'axis off','cell #','pixels','position'};
+
+        pMovieNextFrame;
+	pMovieFramePrefix;
+
+	pCAct =  [9 3 3]/10;
+	pCEnab = [3 9 3]/10;
+	pCNeut = [94 94 94]/100;
     end %PROTECTED
     
     %===================================================================================================
@@ -85,6 +96,10 @@ classdef RealtimePlotter <  LinkedListNode
 
             self.pDisplayedPlotOffset = 0; 
 
+            self.outputMovieFrames = 0;
+            self.pMovieNextFrame = 0;
+	    self.pMovieFramePrefix = 'RTP_';
+
             self.plotmode = 1; % default to one plot
         end
 
@@ -95,7 +110,7 @@ classdef RealtimePlotter <  LinkedListNode
             end
             if numel(v) ~= 14
                 whos
-                error('Attempt to use RealtimePlotter.vectorToPlotprops() but input numeric vector does not have 13 elements.');
+                error('Attempt to use RealtimePlotter.vectorToPlotprops() but input numeric vector does not have 14 elements.');
             end
 
             fields = self.pstatic_ppfields;
@@ -103,6 +118,12 @@ classdef RealtimePlotter <  LinkedListNode
                 self.plotProps(id).(fields{k}) = v(k);
             end
         end
+
+	function movieProps(self, active, nxt, prefix)
+	    self.outputMovieFrames = active;
+	    self.pMovieNextFrame = nxt;
+	    self.pMovieFramePrefix = prefix;
+	end
         
         function initialize(self, IC, run, fluids, mag)
         % .initialize(IC, run, fluids, mag)
@@ -163,6 +184,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             fprintf('%s.plotmode = %i;\n', rpn, int32(self.plotmode));
             fprintf('%s.cut = %s\n%s.indSubs = %s;\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
+	    fprintf('%s.movieProps(%i, %i, %s);\n', int32(self.outputMovieFrames), int32(self.pMovieNextFrame), self.pMovieFramePrefix);
 
             if outtype == 1
                 fieldnames = self.pstatic_ppfields;
@@ -253,16 +275,30 @@ classdef RealtimePlotter <  LinkedListNode
                         end
                     end
 
-                    btn.BackgroundColor = [94 94 94]/100;
+                    btn.BackgroundColor = self.pCNeut;
                 else
                     input('Enter to continue: ');
                 end
+
+            end
+
+            if self.outputMovieFrames
+                self.emitMovieFrame(run.paths.image, self.pMovieFramePrefix);
             end
 
             % Rearm myself
             p.iter = p.iter + self.iterationsPerCall;
             p.active = 1;
+        end
 
+        function emitMovieFrame(self, path, prefix)
+            f = figure(1);
+            imgdat = getframe(f);
+            imwrite(imgdat.cdata, sprintf('%s/%s%05i.png', path, prefix, int32(self.pMovieNextFrame)));
+        
+            self.pMovieNextFrame = self.pMovieNextFrame+1;
+	    x = findobj('tag','movieframereport');
+	    x.String = sprintf('Next frame: %i', int32(self.pMovieNextFrame));
         end
 
         function Q = fetchPlotQty(self, fluid, sliceID, what)
@@ -387,6 +423,7 @@ classdef RealtimePlotter <  LinkedListNode
                 if decor.cbar; colorbar; end
             end
         end
+
         function oldFrameAnalyzer(self, p, run, fluids, ~)
            figure(1);
 
@@ -406,7 +443,7 @@ classdef RealtimePlotter <  LinkedListNode
                         plot(squish(plotdat(c(1),:,c(3)) ), colorset{i});
                     case 3
                         plot(squish(plotdat(c(1),c(2),:)), colorset{i});
-                    case 4
+                    ase 4
                         q = plotdat(:,:,c(3));
                         if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                            [r, phi] = run.geometry.ndgridSetIJ('pos');
@@ -457,11 +494,11 @@ classdef RealtimePlotter <  LinkedListNode
         function gcbSetPause(self, src, data)
             if src.Value == 1
                 self.insertPause = 1;
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
                 src.String = 'Pause on call';
             else
                 self.insertPause = 0;
-                src.BackgroundColor = [9 3 3]/10;
+                src.BackgroundColor = self.pCAct;
                 src.String = 'No pause on call';
             end
         end
@@ -471,11 +508,11 @@ classdef RealtimePlotter <  LinkedListNode
         function gcbSetRedraw(self, src, data)
             if src.Value == 1
                 self.forceRedraw = 1;
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
                 src.String = 'Force redraw';
             else
                 self.forceRedraw = 0;
-                src.BackgroundColor = [9 3 3]/10;
+                src.BackgroundColor = self.pCAct;
                 src.String = 'No forced redraw';
             end
         end
@@ -546,19 +583,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             src.String = ['Editing plot ' num2str(plotno)];
 
-            obj = findobj('tag','velfieldbutton'); obj.Value = self.plotProps(plotno).velvecs; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
-            obj = findobj('tag','decfactorbox'); x = self.plotProps(plotno).vv_decfac; obj.Value = x; obj.String = num2str(x);
-            obj = findobj('tag','qtylistbox'); obj.Value = self.plotProps(plotno).what;
-            obj = findobj('tag','colorbarbutton'); obj.Value = self.plotProps(plotno).cbar; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
-            obj = findobj('tag','gridbutton'); obj.Value = self.plotProps(plotno).grid; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
-            obj = findobj('tag','logbutton'); obj.Value = self.plotProps(plotno).logscale; if obj.Value == 0; obj.BackgroundColor = [94 94 94]/100; else; obj.BackgroundColor = [3 9 3]/10; end
-            obj = findobj('tag','fluidnumbertxt'); obj.String = ['Fluid: ' num2str(self.plotProps(plotno).fluidnum)];
-            obj = findobj('tag','plottypebutton');
-            labels = {'imagesc','surf','plot'};
-            labno = self.plotProps(plotno).plottype;
-            if self.plotProps(plotno).slice < 4; labno = 3; end
-            obj.String = labels{labno};
-
+	    self.refreshButtonStates();
 
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -569,9 +594,9 @@ classdef RealtimePlotter <  LinkedListNode
             self.plotProps(self.pGUISelectedPlotnum).velvecs = F;
             
             if F
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = [94 94 94]/100;
+                src.BackgroundColor = self.pCNeutt;
             end
             self.pGUIPlotsNeedRedraw = 1;
             
@@ -581,12 +606,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.plotProps(self.pGUISelectedPlotnum).axmode = a;
             
             obj = findobj('tag','axeslabelsbutton');
-            switch a;
-                case 0; obj.String = 'axis off';
-                case 1; obj.String = 'pixels';
-                case 2; obj.String = 'cell #';
-                case 3; obj.String = 'Position';
-            end
+	    obj.String = self.pAxisTypeLabels{a+1};
             
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -606,9 +626,9 @@ classdef RealtimePlotter <  LinkedListNode
             if src.Value == 1; L = 1; else; L = 0; end
             self.plotProps(self.pGUISelectedPlotnum).cbar = L;
             if L % yes colorbar: green it
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = [94 94 94]/100;
+                src.BackgroundColor = self.pCNeutt;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -617,9 +637,9 @@ classdef RealtimePlotter <  LinkedListNode
             self.plotProps(self.pGUISelectedPlotnum).grid = G;
 
             if G; % yes grid: green it
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = [94 94 94]/100;
+                src.BackgroundColor = self.pCNeutt;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -629,10 +649,10 @@ classdef RealtimePlotter <  LinkedListNode
 
             if L % yes log scale: green button
                 src.String = 'log10';
-                src.BackgroundColor = [3 9 3]/10;
+                src.BackgroundColor = self.pCEnab;
             else
                 src.String = 'linear';
-                src.BackgroundColor = [94 94 94]/100;
+                src.BackgroundColor = self.pCNeutt;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -742,6 +762,53 @@ classdef RealtimePlotter <  LinkedListNode
             self.plotProps(self.pGUISelectedPlotnum).vv_type = nutype;
             self.pGUIPlotsNeedRedraw = 1;
         end
+
+	function gcbMovieSetFrame(self, src, data)
+	    S = str2num(src.String);
+
+            if isempty(S)
+                src.String = 'Enter a nonnegative integer';
+            else
+                if numel(S) > 1; S = S(1); end
+
+                S = round(S);
+                if S < 0
+                    src.String = 'Enter one nonnegative integer';
+                else
+                    self.pMovieNextFrame = S;
+                    src.String = num2str(S);
+		    x = findobj('tag','movieframereport');
+		    x.String = sprintf('Next frame: %i', int32(S));
+                end
+            end
+
+	end
+
+	function gcbMoviePrefix(self, src, data)
+            S = src.String;
+
+	    % FIXME deblank & sanity check here...
+
+            if isempty(S)
+                src.String = 'Enter a nonempty string';
+            else
+	        self.pMovieFramePrefix = S;
+		src.String = S;
+            end
+	end
+
+	function gcbMovieToggle(self, src, data)
+            if src.Value == 1
+                self.outputMovieFrames = 1;
+                src.BackgroundColor = [9 2 2]/10;
+                src.String = 'Writing movie frames';
+            else
+                self.outputMovieFrames = 0;
+                src.BackgroundColor = [9 9 9]/10;
+                src.String = 'Not writing frames';
+            end
+
+	end
     end%PUBLIC
     
     %===================================================================================================
@@ -761,6 +828,58 @@ classdef RealtimePlotter <  LinkedListNode
             self.pCoords{3} = self.pGeometryMgrHandle.localZposition(self.pSubsZ);
         end
 
+	function refreshButtonStates(self)
+	    q = self.pGUISelectedPlotnum;
+	    pp = self.plotProps(q);
+
+	    % vector field?
+	    x = findobj('tag','velfieldbutton');
+	    if pp.velvecs; x.Value = 1; x.BackgroundColor = self.PCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
+
+	    % plot qty box
+	    x = findobj('tag','qtylistbox');
+	    x.Value = pp.what;
+
+	    % axis status
+	    x = findobj('tag','axeslabelsbutton');
+	    x.String = self.pAxisTypeLabels{pp.axmode+1};
+
+	    % image/surf/plot selection
+	    x = findobj('tag','plottypebutton');
+	    M = mod(pp.plottype, 2)+1;
+	    if pp.slice < 4; % 1d output
+                x.String = 'plot';
+            else
+                labels = {'imagesc','surf'};
+                x.String = labels{M};
+            end
+
+	    % colorbar
+	    x = findobj('tag','colorbarbutton');
+	    if pp.cbar == 1; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
+
+	    % grid
+	    x = findobj('tag','gridbutton');
+	    if pp.grid == 1; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end
+
+	    % log/lin
+	    x = findobj('tag','logbutton');
+	    if pp.logscale == 1; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end
+
+	    %downsample 
+	    x = findobj('tag','decfactorbox');
+	    x.String = num2str(pp.vv_decfac);
+
+	    % active slice
+	    tagnames={'xSliceButton','ySliceButton','zSliceButton','xySliceButton','xzSliceButton','yzSliceButton'};
+
+	    for n = 1:numel(tagnames)
+	         x = findobj('tag',tagnames{n});
+		 x.Value = (n == pp.slice)*1.0;
+	    end
+
+	end
+
         function mkimage(self, data)
             if self.generateTeletextPlots
                 ttplot(data);
@@ -773,13 +892,13 @@ classdef RealtimePlotter <  LinkedListNode
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
 
-        function y = clampValue(x, min, max, mkint)
+        function y = clampValue(x, minval, maxval, mkint)
             y = x;
-            if y < min; y = min; end
-            if y > max; y = max; end
+            if y < minval; y = minval; end
+            if y > maxval; y = maxval; end
             if mkint; y = round(y); end
         end
-        
+
     end%PROTECTED
     
 end%CLASS
