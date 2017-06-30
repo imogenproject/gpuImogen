@@ -119,12 +119,6 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, Geom
     lambda[7] = geom.Rinner;
     lambda[8] = dx[1];
 
-    printf("printf debugging, yay!\n");
-    printf("Lambda array: [lambda_x, y, z, rho_nograv, rho_fullgrav, 1/(rho_full-rho_no), rho_no/(rho_full-rho_no), r_in, h_r]\n[");
-    int qqq; for(qqq = 0; qqq < 9; qqq++) { printf("%.12f ", lambda[qqq]);
-       }
-    printf("]\n");
-
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
     	cudaMemcpyToSymbol(devLambda, lambda, 9*sizeof(double), 0, cudaMemcpyHostToDevice);
