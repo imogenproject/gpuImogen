@@ -78,7 +78,7 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 		apHost[3] = fluid->slabPitch[i] / 8;
 
 		double geo[2];
-		geo[0] = Rinner;
+		geo[0] = Rinner + d3x[0]*sub[0];
 		geo[1] = d3x[0];
 
 		int is_RZ = ((sub[4]==1)&&(sub[5]>1));

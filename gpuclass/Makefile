@@ -32,7 +32,7 @@ all: base fluids lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
 	
 
 fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones cflTimestep
@@ -144,6 +144,14 @@ GPU_copy.o: GPU_copy.cu
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_copy.cpp
 GPU_copy: GPU_copy.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_copy.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+
+GPU_dbgtag.o: GPU_dbgtag.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_dbgtag.cu -o GPU_dbgtag.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_dbgtag.cpp
+GPU_dbgtag: GPU_dbgtag.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_dbgtag.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
+
+
 
 
 GPU_getslab.o: GPU_getslab.cu

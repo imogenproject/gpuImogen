@@ -27,10 +27,16 @@
 enum geometryType_t { SQUARE, CYLINDRICAL, RZSQUARE, RZCYLINDRICAL };
 
 typedef struct __GeometryParams {
-	geometryType_t shape;
+	geometryType_t shape; /* Describes geometry in play:
+			       *    SQUARE - two-dimensional XY, or three-dimensional XYZ cartesian
+			       *    CYLINRICAL - two-dimensional R-theta, or three-dimensional R-theta-z coordinates
+			       *    RZSQUARE - two-dimensional cartesian coordinates of size [NX 1 NZ]
+			       *    RZCYLINDRICAL - two-dimensional cylindrical coordinates of size [NR 1 NZ] */
 	double h[3]; // dx dy dz, or dr dphi dz
-	double x0, y0, z0;
+	double x0, y0, z0; // Affine offsets
+
 	double Rinner; // Only for cylindrical geometry
+	               // The inner coordinate of the whole-host partition
 
 	// TODO: add allocatable vectors here for variable spacing in the future
 } GeometryParams;

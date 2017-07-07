@@ -179,7 +179,7 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     lambda[5] = 1.0/(rhoFullGravity - rhoNoG);
     lambda[6] = rhoNoG/(rhoFullGravity - rhoNoG);
 
-    lambda[7] = geom.Rinner;
+    lambda[7] = geom.Rinner; // This is actually overwritten per partition below
     lambda[8] = dx[1];
 
 	lambda[9] = omega;
@@ -190,11 +190,14 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
+    	calcPartitionExtent(fluid, i, &sub[0]);
+
+		lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
+
     	cudaMemcpyToSymbol(devLambda, lambda, 11*sizeof(double), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 
-    	calcPartitionExtent(fluid, i, &sub[0]);
 
     	cudaMemcpyToSymbol(devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("memcpy to symbol");
