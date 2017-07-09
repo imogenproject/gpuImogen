@@ -288,90 +288,90 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukern_computeScalarGradient");
 
-		// This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
-		cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
-		worked = CHECK_CUDA_ERROR("cudaMalloc");
-		if(worked != SUCCESSFUL) break;
+	// This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
+	cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
+	worked = CHECK_CUDA_ERROR("cudaMalloc");
+	if(worked != SUCCESSFUL) break;
 
-		blocksize = makeDim3(128, 1, 1);
-		gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
-		gridsize.y = gridsize.z = 1;
-		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
-		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
-		if(worked != SUCCESSFUL) break;
+	blocksize = makeDim3(128, 1, 1);
+	gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
+	gridsize.y = gridsize.z = 1;
+	cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
+	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
+	if(worked != SUCCESSFUL) break;
 
-		gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
-		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
-		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
-		if(worked != SUCCESSFUL) break;
+	gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
+	cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
+	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
+	if(worked != SUCCESSFUL) break;
 
-		// Prepare to launch the solver itself!
-		arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
+	// Prepare to launch the solver itself!
+	arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
-		blocksize = makeDim3(SRCBLOCKX, SRCBLOCKY, 1);
-		gridsize.x = ROUNDUPTO(arraysize.x, blocksize.x) / blocksize.x;
+	blocksize = makeDim3(SRCBLOCKX, SRCBLOCKY, 1);
+	gridsize.x = ROUNDUPTO(arraysize.x, blocksize.x) / blocksize.x;
+	if(isRZ) {
+		gridsize.y = 1;
+	} else {
+		gridsize.y = arraysize.z;
+	}
+	gridsize.z = 1;
+
+	switch(timeOrder) {
+	case 2:
 		if(isRZ) {
-			gridsize.y = 1;
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
 		} else {
-			gridsize.y = arraysize.z;
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
 		}
-		gridsize.z = 1;
-
-		switch(timeOrder) {
-		case 2:
-			if(isRZ) {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					} else {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					}
-			break;
-		case 4:
-			if(isRZ) {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					} else {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					}
-			break;
-		case 6:
-			if(isRZ) {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					} else {
-						if(geom.shape == SQUARE) {
-							cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						} else {
-							cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], XYVectors->devicePtr[i], gradMem[i], fluid->slabPitch[i]/8);
-						}
-					}
-			break;
-		default:
-			PRINT_FAULT_HEADER;
-			printf("Source function requires a temporal order of 2 (implicit midpt), 4 (Gauss-Legendre 4th order) or 6 (GL-6th): Received %i\n", timeOrder);
-			PRINT_FAULT_FOOTER;
-			break;
+	break;
+	case 4:
+		if(isRZ) {
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
+		} else {
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
 		}
+	break;
+	case 6:
+		if(isRZ) {
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
+		} else {
+			if(geom.shape == SQUARE) {
+				cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			} else {
+				cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+			}
+		}
+	break;
+	default:
+		PRINT_FAULT_HEADER;
+		printf("Source function requires a temporal order of 2 (implicit midpt), 4 (Gauss-Legendre 4th order) or 6 (GL-6th): Received %i\n", timeOrder);
+		PRINT_FAULT_FOOTER;
+		break;
+	}
 
-		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
-		if(worked != SUCCESSFUL) break;
+	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
+	if(worked != SUCCESSFUL) break;
     }
 
     int j; // This will halt at the stage failed upon if CUDA barfed above
@@ -785,9 +785,6 @@ __global__ void  cukern_computeScalarGradientRZ_h4(double *rho, double *phi, dou
 	}
 
 }
-
-
-__global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
 
 /* The equations of motion for a rotating frame:
  *
@@ -1512,9 +1509,13 @@ if(addrOut >= partNX) return;
 
 // Affine map back to input address
 int addrIn = addrOut + partX0;
-if(addrIn < 0) addrIn += partNX;
+if(addrIn < 0) {
+	double delta = in[1]-in[0];
+	out[addrOut] = in[0]+delta*addrIn;
+} else {
+	out[addrOut] = in[addrIn];
+}
 
-out[addrOut] = in[addrIn];
 }
 
 /* Converts the fluid slab array from conservative
