@@ -55,7 +55,10 @@ function failed = starterRun(gpuSet)
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
     haloSize = 3; dimensionDistribute = 1;
-    gm.init(gpuSet, haloSize, dimensionDistribute);
+
+    teslaCards = selectGPUs(gpuSet);
+
+    gm.init(teslaCards, haloSize, dimensionDistribute);
 
     mpi_barrier();
     if mpi_amirank0(); disp('Testing device usability in indicated configuration...'); end
