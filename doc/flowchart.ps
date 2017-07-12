@@ -1,0 +1,1393 @@
+%!PS-Adobe-3.0
+%%Creator: graphviz version 2.26.0 (20091210.2329)
+%%Title: execflow
+%%Pages: (atend)
+%%BoundingBox: (atend)
+%%EndComments
+save
+%%BeginProlog
+/DotDict 200 dict def
+DotDict begin
+
+/setupLatin1 {
+mark
+/EncodingVector 256 array def
+ EncodingVector 0
+
+ISOLatin1Encoding 0 255 getinterval putinterval
+EncodingVector 45 /hyphen put
+
+% Set up ISO Latin 1 character encoding
+/starnetISO {
+        dup dup findfont dup length dict begin
+        { 1 index /FID ne { def }{ pop pop } ifelse
+        } forall
+        /Encoding EncodingVector def
+        currentdict end definefont
+} def
+/Times-Roman starnetISO def
+/Times-Italic starnetISO def
+/Times-Bold starnetISO def
+/Times-BoldItalic starnetISO def
+/Helvetica starnetISO def
+/Helvetica-Oblique starnetISO def
+/Helvetica-Bold starnetISO def
+/Helvetica-BoldOblique starnetISO def
+/Courier starnetISO def
+/Courier-Oblique starnetISO def
+/Courier-Bold starnetISO def
+/Courier-BoldOblique starnetISO def
+cleartomark
+} bind def
+
+%%BeginResource: procset graphviz 0 0
+/coord-font-family /Times-Roman def
+/default-font-family /Times-Roman def
+/coordfont coord-font-family findfont 8 scalefont def
+
+/InvScaleFactor 1.0 def
+/set_scale {
+       dup 1 exch div /InvScaleFactor exch def
+       scale
+} bind def
+
+% styles
+/solid { [] 0 setdash } bind def
+/dashed { [9 InvScaleFactor mul dup ] 0 setdash } bind def
+/dotted { [1 InvScaleFactor mul 6 InvScaleFactor mul] 0 setdash } bind def
+/invis {/fill {newpath} def /stroke {newpath} def /show {pop newpath} def} bind def
+/bold { 2 setlinewidth } bind def
+/filled { } bind def
+/unfilled { } bind def
+/rounded { } bind def
+/diagonals { } bind def
+
+% hooks for setting color 
+/nodecolor { sethsbcolor } bind def
+/edgecolor { sethsbcolor } bind def
+/graphcolor { sethsbcolor } bind def
+/nopcolor {pop pop pop} bind def
+
+/beginpage {	% i j npages
+	/npages exch def
+	/j exch def
+	/i exch def
+	/str 10 string def
+	npages 1 gt {
+		gsave
+			coordfont setfont
+			0 0 moveto
+			(\() show i str cvs show (,) show j str cvs show (\)) show
+		grestore
+	} if
+} bind def
+
+/set_font {
+	findfont exch
+	scalefont setfont
+} def
+
+% draw text fitted to its expected width
+/alignedtext {			% width text
+	/text exch def
+	/width exch def
+	gsave
+		width 0 gt {
+			[] 0 setdash
+			text stringwidth pop width exch sub text length div 0 text ashow
+		} if
+	grestore
+} def
+
+/boxprim {				% xcorner ycorner xsize ysize
+		4 2 roll
+		moveto
+		2 copy
+		exch 0 rlineto
+		0 exch rlineto
+		pop neg 0 rlineto
+		closepath
+} bind def
+
+/ellipse_path {
+	/ry exch def
+	/rx exch def
+	/y exch def
+	/x exch def
+	matrix currentmatrix
+	newpath
+	x y translate
+	rx ry scale
+	0 0 1 0 360 arc
+	setmatrix
+} bind def
+
+/endpage { showpage } bind def
+/showpage { } def
+
+/layercolorseq
+	[	% layer color sequence - darkest to lightest
+		[0 0 0]
+		[.2 .8 .8]
+		[.4 .8 .8]
+		[.6 .8 .8]
+		[.8 .8 .8]
+	]
+def
+
+/layerlen layercolorseq length def
+
+/setlayer {/maxlayer exch def /curlayer exch def
+	layercolorseq curlayer 1 sub layerlen mod get
+	aload pop sethsbcolor
+	/nodecolor {nopcolor} def
+	/edgecolor {nopcolor} def
+	/graphcolor {nopcolor} def
+} bind def
+
+/onlayer { curlayer ne {invis} if } def
+
+/onlayers {
+	/myupper exch def
+	/mylower exch def
+	curlayer mylower lt
+	curlayer myupper gt
+	or
+	{invis} if
+} def
+
+/curlayer 0 def
+
+%%EndResource
+%%EndProlog
+%%BeginSetup
+14 default-font-family set_font
+1 setmiterlimit
+% /arrowlength 10 def
+% /arrowwidth 5 def
+
+% make sure pdfmark is harmless for PS-interpreters other than Distiller
+/pdfmark where {pop} {userdict /pdfmark /cleartomark load put} ifelse
+% make '<<' and '>>' safe on PS Level 1 devices
+/languagelevel where {pop languagelevel}{1} ifelse
+2 lt {
+    userdict (<<) cvn ([) cvn load put
+    userdict (>>) cvn ([) cvn load put
+} if
+
+%%EndSetup
+setupLatin1
+%%Page: 1 1
+%%PageBoundingBox: 36 36 1676 1699
+%%PageOrientation: Portrait
+0 0 1 beginpage
+gsave
+36 36 1640 1663 boxprim clip newpath
+1 1 set_scale 0 rotate 40 41 translate
+0 0 0 graphcolor
+14 /Times-Roman set_font
+739 1638.4 moveto 154 (Imogen execution flowchart) alignedtext
+% START
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 689 1628 moveto
+289 1628 lineto
+289 1506 lineto
+689 1506 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1611.4 moveto 133 (./imogen serial runfile n) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1592.4 moveto 298 (	-> invokes matlab -r parImogenLoad\(runfile, ...\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1573.4 moveto 165 (./imogen parallel runfile n NP) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1554.4 moveto 384 (	-> invokes mpirun -np NP matlab -r parImogenLoad\(runfile, ...\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1535.4 moveto 220 (./imogen cluster runfile n nodes ppn NP) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+297 1516.4 moveto 251 (	-> Submits the above to batch processor) alignedtext
+grestore
+% PARIMOGENLOAD
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 613 1468 moveto
+365 1468 lineto
+365 1384 lineto
+613 1384 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+372.5 1451.4 moveto 91 (parImogenLoad:) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+372.5 1432.4 moveto 233 (	\(1\) Initialize runtimes \(MPI, CUDA\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+372.5 1413.4 moveto 135 (	\(2\) run simulations) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+372.5 1394.4 moveto 205 (	\(3\) If scripted, shutdown & exit) alignedtext
+grestore
+% START->PARIMOGENLOAD
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 489 1505.98 moveto
+489 1496.67 489 1487.15 489 1478.06 curveto
+stroke
+0 0 0 edgecolor
+newpath 492.5 1478.03 moveto
+489 1468.03 lineto
+485.5 1478.03 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 492.5 1478.03 moveto
+489 1468.03 lineto
+485.5 1478.03 lineto
+closepath stroke
+grestore
+% STARTRUN
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 471 1319.5 moveto
+247 1319.5 lineto
+247 1216.5 lineto
+471 1216.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+254.5 1302.9 moveto 76 (\(1\) Add paths) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+254.5 1283.9 moveto 147 (\(2\) Initialize MPI runtime;) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+254.5 1264.9 moveto 160 (	Get topology & context) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+254.5 1245.9 moveto 202 (\(3\) Create global GPUManager class) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+254.5 1226.9 moveto 209 (	selectGPUs\(gpuSet\) & test them) alignedtext
+grestore
+% PARIMOGENLOAD->STARTRUN
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 454.16 1383.66 moveto
+440.01 1366.46 423.41 1346.29 408.08 1327.65 curveto
+stroke
+0 0 0 edgecolor
+newpath 410.65 1325.26 moveto
+401.59 1319.76 lineto
+405.24 1329.71 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 410.65 1325.26 moveto
+401.59 1319.76 lineto
+405.24 1329.71 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+439 1352.9 moveto 131 ( \(1\) starterRun\(gpuinfo\)) alignedtext
+grestore
+% EVALBOX
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 965 1327.5 moveto
+489 1327.5 lineto
+489 1208.5 lineto
+965 1208.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+497 1310.9 moveto 412 (At this point we have all Imogen paths in the Matlab search path. We have) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+497 1291.9 moveto 455 (  access to the GPU through the GPU_Type, MPI through mpi_ wrapper functions,) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+497 1272.9 moveto 460 (  and low-level access to our parallel subsystem through ParallelGlobal's data fields.) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+497 1237.9 moveto 453 (  We do NOT have a directory to save things to, we do NOT have any Imogen file) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+497 1218.9 moveto 211 (  logger stuff so fprintf\(\) has to suffice) alignedtext
+grestore
+% PARIMOGENLOAD->EVALBOX
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 552.47 1383.87 moveto
+575.95 1368.28 603.16 1350.22 629 1333.06 curveto
+stroke
+0 0 0 edgecolor
+newpath 630.93 1335.98 moveto
+637.33 1327.53 lineto
+627.06 1330.14 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 630.93 1335.98 moveto
+637.33 1327.53 lineto
+627.06 1330.14 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+608 1352.9 moveto 135 ( \(2\) try { eval\(runfile\); }) alignedtext
+grestore
+% THERUNFILE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 930 1152 moveto
+524 1152 lineto
+524 1030 lineto
+930 1030 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1135.4 moveto 391 (\(1\) Create a simulation type initializer w/global domain resolution, e.g.) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1116.4 moveto 197 (	run = JetInitializer\([nx ny nz]\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1097.4 moveto 299 (	* [nx ny nz], [nx ny 1], [nx 1 nz] are permissible) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1078.4 moveto 175 (\(2\) Set parameters on Initializer) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1059.4 moveto 347 (\(3\) Create any peripherals \(e.g. RealtimePlotter\) & attach them) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+531.5 1040.4 moveto 340 (\(4\) Requests initial parameters be stored to file or IC structure) alignedtext
+grestore
+% EVALBOX->THERUNFILE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 727 1208.08 moveto
+727 1193.41 727 1177.57 727 1162.42 curveto
+stroke
+0 0 0 edgecolor
+newpath 730.5 1162.07 moveto
+727 1152.07 lineto
+723.5 1162.07 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 730.5 1162.07 moveto
+727 1152.07 lineto
+723.5 1162.07 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+727 1176.9 moveto 106 (In the runfile script) alignedtext
+grestore
+% INITIALIZER
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 566 937 moveto
+316 937 lineto
+316 891 lineto
+566 891 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+323.5 920.4 moveto 100 (Initializer creation) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+323.5 901.4 moveto 235 (Storage for all input parameters for the run) alignedtext
+grestore
+% THERUNFILE->INITIALIZER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 628.17 1029.84 moveto
+580.34 1000.24 525.2 966.11 487.22 942.6 curveto
+stroke
+0 0 0 edgecolor
+newpath 488.77 939.45 moveto
+478.43 937.16 lineto
+485.09 945.4 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 488.77 939.45 moveto
+478.43 937.16 lineto
+485.09 945.4 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+592 989.9 moveto 20 ( \(1\)) alignedtext
+grestore
+% IMOGENCALL
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 997 956 moveto
+819 956 lineto
+819 872 lineto
+997 872 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+826.5 939.4 moveto 163 (imogen\(srcdata, resumeInfo\):) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+826.5 920.4 moveto 160 (	\(1\) Initialize simulation) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+826.5 901.4 moveto 85 (	\(2\) Iterate) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+826.5 882.4 moveto 94 (	\(3\) Finalize) alignedtext
+grestore
+% THERUNFILE->IMOGENCALL
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 789.54 1029.84 moveto
+811.75 1008.12 836.46 983.96 857.53 963.35 curveto
+stroke
+0 0 0 edgecolor
+newpath 860.12 965.71 moveto
+864.83 956.22 lineto
+855.23 960.71 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 860.12 965.71 moveto
+864.83 956.22 lineto
+855.23 960.71 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+844 999.4 moveto 116 ( \(5\) imogen\(icStruct\)) alignedtext
+0 0 0 edgecolor
+14 /Times-Roman set_font
+844 980.4 moveto 82 (imogen\(icFile\)) alignedtext
+grestore
+% GEOMGR
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 302 768.5 moveto
+0 768.5 lineto
+0 703.5 lineto
+302 703.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+8 751.9 moveto 144 (\(1\) Partition data per node) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+8 732.9 moveto 158 (\(2\) Compute local index sets) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+8 713.9 moveto 286 (\(3\) Compute absolute positions & geometric factors) alignedtext
+grestore
+% INITIALIZER->GEOMGR
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 315.97 895.52 moveto
+263.47 885.47 210.16 871.49 191 854 curveto
+169.94 834.78 159.96 804.06 155.24 778.78 curveto
+stroke
+0 0 0 edgecolor
+newpath 158.65 777.98 moveto
+153.57 768.69 lineto
+151.75 779.13 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 158.65 777.98 moveto
+153.57 768.69 lineto
+151.75 779.13 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+191 840.9 moveto 254 (self.geomgr = GeometryManager\([nx ny nz]\);) alignedtext
+grestore
+% RUNINIT
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 614 790.5 moveto
+320 790.5 lineto
+320 681.5 lineto
+614 681.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+364 776.23 moveto 206 (This dumpster fire does most of what) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+382.5 759.43 moveto 169 (the class initializer ought to do) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+392 742.63 moveto 150 (\(1\) Create ImogenManager) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+328 725.83 moveto 278 (\(2\) Setup GeometryManager from pickled IC state) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+383.5 709.03 moveto 167 (\(3\) set the # of FluidManagers) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+383.5 692.23 moveto 167 (\(4\) Set the run.bcModes struct) alignedtext
+grestore
+% IMOGENCALL->RUNINIT
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 818.98 902.6 moveto
+697.47 886.85 493.93 859.73 488 854 curveto
+473.73 840.21 467.18 820.32 464.57 800.78 curveto
+stroke
+0 0 0 edgecolor
+newpath 468.04 800.23 moveto
+463.55 790.63 lineto
+461.07 800.93 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 468.04 800.23 moveto
+463.55 790.63 lineto
+461.07 800.93 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+488 840.9 moveto 151 ( \(1a\) run = initialize\(IC.ini\)) alignedtext
+grestore
+% RESULTPATHS
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 710 754 moveto
+632 754 lineto
+632 718 lineto
+710 718 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+639.5 732.9 moveto 63 (create dir...) alignedtext
+grestore
+% IMOGENCALL->RESULTPATHS
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 818.97 904.75 moveto
+753.93 895.94 673.65 880.07 653 854 curveto
+632.69 828.36 644.27 789.48 656.13 763.43 curveto
+stroke
+0 0 0 edgecolor
+newpath 659.43 764.66 moveto
+660.63 754.13 lineto
+653.12 761.62 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 659.43 764.66 moveto
+660.63 754.13 lineto
+653.12 761.62 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+653 840.9 moveto 190 ( \(1b\) initializeResultPaths\(run, IC\)) alignedtext
+grestore
+% RELOADPATH
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 908 759 moveto
+756 759 lineto
+756 713 lineto
+908 713 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+764 742.4 moveto 136 (Load named data frames) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+764 723.4 moveto 106 (Overwrite run.time) alignedtext
+grestore
+% IMOGENCALL->RELOADPATH
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 865.99 871.73 moveto
+861.81 866.08 858.01 860.11 855 854 curveto
+841.9 827.42 836.25 794.02 833.83 769.55 curveto
+stroke
+0 0 0 edgecolor
+newpath 837.29 768.99 moveto
+832.94 759.32 lineto
+830.32 769.59 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 837.29 768.99 moveto
+832.94 759.32 lineto
+830.32 769.59 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+855 840.9 moveto 94 ( \(1c\) If restarting) alignedtext
+grestore
+% UPLOADARRAYS
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 964 581 moveto
+690 581 lineto
+690 497 lineto
+964 497 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+697.5 564.4 moveto 241 (uploadDataArrays\(FieldSource, run, statics\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+697.5 545.4 moveto 259 (	\(1\) Create N empty FluidManager classes) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+697.5 526.4 moveto 242 (	\(2\) Allocate GPU data slab and upload) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+697.5 507.4 moveto 203 (	\(3\) fluid\(F\).processFluidDetails) alignedtext
+grestore
+% IMOGENCALL->UPLOADARRAYS
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 941.3 871.68 moveto
+944.44 865.99 947.14 860.03 949 854 curveto
+957.27 827.24 969.66 774.96 917 656 curveto
+906.38 632.01 889.85 608.49 873.85 588.91 curveto
+stroke
+0 0 0 edgecolor
+newpath 876.38 586.47 moveto
+867.28 581.04 lineto
+871.01 590.96 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 876.38 586.47 moveto
+867.28 581.04 lineto
+871.01 590.96 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+956 732.9 moveto 64 ( \(1c\) if new) alignedtext
+grestore
+% DOINIT
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1259 797 moveto
+1045 797 lineto
+1045 675 lineto
+1259 675 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1053 780.4 moveto 198 (* calls .initialize of every peripheral) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1053 761.4 moveto 174 (* calls ImageManager.initialize) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1053 742.4 moveto 196 (* calls each FluidManager.initialize) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1053 723.4 moveto 163 (* calls SelfGravity.initialize\(\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1053 704.4 moveto 166 (* calls PotentialField.initialize) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1066 685.4 moveto 172 (* calls frameTracking.initialize) alignedtext
+grestore
+% IMOGENCALL->DOINIT
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 965.82 871.82 moveto
+993.9 851.34 1028.31 826.24 1059.87 803.21 curveto
+stroke
+0 0 0 edgecolor
+newpath 1062.25 805.81 moveto
+1068.26 797.09 lineto
+1058.12 800.15 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1062.25 805.81 moveto
+1068.26 797.09 lineto
+1058.12 800.15 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1015 840.9 moveto 154 ( \(1d\) run.initialize\(IC, mag\)) alignedtext
+grestore
+% FLUIDLOOP
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1511 816 moveto
+1277 816 lineto
+1277 656 lineto
+1511 656 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 799.4 moveto 121 (\(1\) Compute timestep) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 780.4 moveto 88 (\(2\) Checkpoint?) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 761.4 moveto 204 (\(3\) exp\(permutation\([F G H]\) dt\)*psi) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 742.4 moveto 80 (\(4\) source\(psi\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 723.4 moveto 205 (\(5\) exp\(permutation\([H G F]\) dt \) psi) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 704.4 moveto 218 (\(6\) Check physicality; Restore checkpt?) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 685.4 moveto 97 (\(7\) Advance time) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1285 666.4 moveto 95 (\(8\) Poll event list) alignedtext
+grestore
+% IMOGENCALL->FLUIDLOOP
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 997.19 900.35 moveto
+1070.07 886.83 1174.59 861.96 1267.72 815.96 curveto
+stroke
+0 0 0 edgecolor
+newpath 1269.34 819.06 moveto
+1276.7 811.44 lineto
+1266.19 812.81 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1269.34 819.06 moveto
+1276.7 811.44 lineto
+1266.19 812.81 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1222 840.9 moveto 110 ( \(2\) Enter fluid loop) alignedtext
+grestore
+% RUNFINAL
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1607 754 moveto
+1529 754 lineto
+1529 718 lineto
+1607 718 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1536.5 732.9 moveto 63 (run.finalize) alignedtext
+grestore
+% IMOGENCALL->RUNFINAL
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 997.14 909.32 moveto
+1146.12 899.94 1437.5 874.52 1520 816 curveto
+1538.06 803.19 1550.52 781.25 1558.21 763.59 curveto
+stroke
+0 0 0 edgecolor
+newpath 1561.46 764.88 moveto
+1561.99 754.3 lineto
+1554.98 762.24 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1561.46 764.88 moveto
+1561.99 754.3 lineto
+1554.98 762.24 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1475 840.9 moveto 20 ( \(3\)) alignedtext
+grestore
+% IMOGENMANAGER
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 602 459.5 moveto
+396 459.5 lineto
+396 400.5 lineto
+602 400.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+431 445.23 moveto 136 (\(1\) creates peripheral list) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+404 428.43 moveto 190 (\(2\) creates obj.bc = BCManager\(\);) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+493 411.63 moveto 12 (...) alignedtext
+grestore
+% RUNINIT->IMOGENMANAGER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 472.72 681.29 moveto
+479.07 620.53 489.18 523.91 494.83 469.89 curveto
+stroke
+0 0 0 edgecolor
+newpath 498.34 469.99 moveto
+495.9 459.68 lineto
+491.37 469.26 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 498.34 469.99 moveto
+495.9 459.68 lineto
+491.37 469.26 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+478 624.9 moveto 20 ( \(1\)) alignedtext
+grestore
+% BCMANAGER
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 671 199 moveto
+347 199 lineto
+347 157 lineto
+671 157 lineto
+closepath stroke
+0 1 1 nodecolor
+14 /Times-Roman set_font
+355.5 184.73 moveto 307 (BCManager exists to have .attachBoundaryConditions\(\)) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+399 167.93 moveto 220 (method called: does .populateBCModes) alignedtext
+grestore
+% IMOGENMANAGER->BCMANAGER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 500.19 400.1 moveto
+502.09 352.1 505.81 258.3 507.75 209.38 curveto
+stroke
+0 0 0 edgecolor
+newpath 511.26 209.22 moveto
+508.16 199.09 lineto
+504.27 208.94 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 511.26 209.22 moveto
+508.16 199.09 lineto
+504.27 208.94 lineto
+closepath stroke
+grestore
+% POPMODES
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 680 84 moveto
+338 84 lineto
+338 0 lineto
+680 0 lineto
+closepath stroke
+0 1 1 nodecolor
+14 /Times-Roman set_font
+345.5 67.4 moveto 194 (Trawl through the BC modes struct) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+345.5 48.4 moveto 184 (Explicitly enumerate all elements) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+345.5 29.4 moveto 327 (All interior edges of rank's domain are reset to CIRCULAR) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+345.5 10.4 moveto 291 (All edges marked circular have .bcHaloShare bits set) alignedtext
+grestore
+% BCMANAGER->POPMODES
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 509 156.75 moveto
+509 140.05 509 116.05 509 94.31 curveto
+stroke
+0 0 0 edgecolor
+newpath 512.5 94.19 moveto
+509 84.19 lineto
+505.5 94.19 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 512.5 94.19 moveto
+509 84.19 lineto
+505.5 94.19 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+509 108.9 moveto 112 (populateBCModes\(\)) alignedtext
+grestore
+% RELOADPATH->UPLOADARRAYS
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 831.41 712.63 moveto
+830.65 682.97 829.33 630.94 828.33 591.55 curveto
+stroke
+0 0 0 edgecolor
+newpath 831.83 591.22 moveto
+828.07 581.31 lineto
+824.83 591.4 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 831.83 591.22 moveto
+828.07 581.31 lineto
+824.83 591.4 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+829 624.9 moveto 30 ( \(1c\) ) alignedtext
+grestore
+% FLUIDARRAYCLASS
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 942 381.5 moveto
+674 381.5 lineto
+674 272.5 lineto
+942 272.5 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+682 367.23 moveto 252 (FluidArray is a slightly adorned ImogenArray) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+762.5 350.43 moveto 91 (\(1\) attaches BCs) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+756 333.63 moveto 104 (\(2\) obj.initialArray) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+729.5 316.83 moveto 157 (  -> does initial parallel sync) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+725.5 300.03 moveto 25 (  -> ) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+750.5 300.03 moveto 140 (calls obj.setupBoundaries) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+729 283.23 moveto 25 (  -> ) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+754 283.23 moveto 133 (applies BCs for 1st time) alignedtext
+grestore
+% UPLOADARRAYS->FLUIDARRAYCLASS
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 823.22 496.86 moveto
+820.54 466.88 816.87 426.02 813.82 391.9 curveto
+stroke
+0 0 0 edgecolor
+newpath 817.27 391.19 moveto
+812.89 381.54 lineto
+810.29 391.81 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 817.27 391.19 moveto
+812.89 381.54 lineto
+810.29 391.81 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+819 426.9 moveto 20 ( \(2\)) alignedtext
+grestore
+% FLUIDARRAYCLASS->BCMANAGER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 684.11 272.45 moveto
+671.17 266.38 658.27 260.15 646 254 curveto
+614.9 238.4 580.67 219.41 554.21 204.32 curveto
+stroke
+0 0 0 edgecolor
+newpath 555.61 201.09 moveto
+545.19 199.16 lineto
+552.13 207.16 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 555.61 201.09 moveto
+545.19 199.16 lineto
+552.13 207.16 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+646 240.9 moveto 158 (.attachBoundaryConditions\(\)) alignedtext
+grestore
+% SETUPBOUNDARIES
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 926 216 moveto
+690 216 lineto
+690 140 lineto
+926 140 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+737.5 201.73 moveto 141 (processes statics for array) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+698.5 184.93 moveto 219 (Calls Edges\(modes, array, 0, geometry\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+720.5 168.13 moveto 175 (to get possible additional statics) alignedtext
+0 1 1 nodecolor
+14 /Times-Roman set_font
+730.5 151.33 moveto 155 (creates boundaryData object) alignedtext
+grestore
+% FLUIDARRAYCLASS->SETUPBOUNDARIES
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 808 272.36 moveto
+808 257.39 808 241.27 808 226.66 curveto
+stroke
+0 0 0 edgecolor
+newpath 811.5 226.32 moveto
+808 216.32 lineto
+804.5 226.32 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 811.5 226.32 moveto
+808 216.32 lineto
+804.5 226.32 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+808 240.9 moveto 121 (obj.setupBoundaries\(\)) alignedtext
+grestore
+% TIMESTEP
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1226 600 moveto
+982 600 lineto
+982 478 lineto
+1226 478 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+989.5 583.4 moveto 145 (Computes c_s everywhere) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+989.5 564.4 moveto 229 (call cflTimestep\(\) to find explicit Euler dt) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+989.5 545.4 moveto 183 (accounts for: flux algo, geometry) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+989.5 526.4 moveto 115 (Does not account for) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+989.5 507.4 moveto 168 (d/dt\(T_cfl\): can crash if v. fast) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1047.5 488.4 moveto 113 (change in conditions) alignedtext
+grestore
+% FLUIDLOOP->TIMESTEP
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1276.89 661.04 moveto
+1273.91 659.32 1270.94 657.64 1268 656 curveto
+1252.03 647.08 1246.52 647.67 1231 638 curveto
+1215.69 628.45 1200.02 617.43 1185.16 606.27 curveto
+stroke
+0 0 0 edgecolor
+newpath 1187.07 603.33 moveto
+1176.99 600.07 lineto
+1182.84 608.91 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1187.07 603.33 moveto
+1176.99 600.07 lineto
+1182.84 608.91 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1231 624.9 moveto 20 ( \(1\)) alignedtext
+grestore
+% FLUIDLOOP->TIMESTEP
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1302.2 655.82 moveto
+1285.59 642.61 1268.1 629.49 1251 618 curveto
+1244.66 613.74 1238.06 609.52 1231.34 605.38 curveto
+stroke
+0 0 0 edgecolor
+newpath 1233.12 602.36 moveto
+1222.75 600.17 lineto
+1229.49 608.35 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1233.12 602.36 moveto
+1222.75 600.17 lineto
+1229.49 608.35 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1275 624.9 moveto 20 ( \(7\)) alignedtext
+grestore
+% CHECKPOINTER
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1486 600 moveto
+1244 600 lineto
+1244 478 lineto
+1486 478 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 583.4 moveto 133 (store state copy on CPU) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 564.4 moveto 226 (check for unphysical \(== rho < 0, T < 0\)) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 545.4 moveto 57 (conditions) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 526.4 moveto 132 (If found, restore backup) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 507.4 moveto 150 (Reduces CFL aggressively,) alignedtext
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1252 488.4 moveto 201 (raises toward original conservatively) alignedtext
+grestore
+% FLUIDLOOP->CHECKPOINTER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1364.68 655.77 moveto
+1363.22 649.81 1361.96 643.85 1361 638 curveto
+1359.56 629.23 1360.78 626.89 1361 618 curveto
+1361.06 615.48 1361.14 612.91 1361.22 610.32 curveto
+stroke
+0 0 0 edgecolor
+newpath 1364.72 610.35 moveto
+1361.59 600.23 lineto
+1357.73 610.1 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1364.72 610.35 moveto
+1361.59 600.23 lineto
+1357.73 610.1 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1361 624.9 moveto 20 ( \(2\)) alignedtext
+grestore
+% FLUIDLOOP->CHECKPOINTER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1386.16 655.89 moveto
+1384.63 643.19 1382.91 630.22 1381 618 curveto
+1380.6 615.46 1380.18 612.88 1379.74 610.27 curveto
+stroke
+0 0 0 edgecolor
+newpath 1383.14 609.38 moveto
+1377.95 600.14 lineto
+1376.24 610.6 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1383.14 609.38 moveto
+1377.95 600.14 lineto
+1376.24 610.6 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1383 624.9 moveto 20 ( \(6\)) alignedtext
+grestore
+% FLUXER
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1558 557 moveto
+1504 557 lineto
+1504 521 lineto
+1558 521 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1514.5 535.9 moveto 33 (fluxer) alignedtext
+grestore
+% FLUIDLOOP->FLUXER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1440.91 655.72 moveto
+1450.13 642.51 1460.3 629.43 1471 618 curveto
+1480.12 608.27 1486.11 609.93 1495 600 curveto
+1504.04 589.91 1511.96 577.21 1518.06 566.01 curveto
+stroke
+0 0 0 edgecolor
+newpath 1521.21 567.53 moveto
+1522.73 557.05 lineto
+1515.01 564.3 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1521.21 567.53 moveto
+1522.73 557.05 lineto
+1515.01 564.3 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1471 624.9 moveto 20 ( \(3\)) alignedtext
+grestore
+% FLUIDLOOP->FLUXER
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1478.08 655.75 moveto
+1482.7 649.94 1487.05 644 1491 638 curveto
+1505.56 615.88 1516.33 587.62 1523 566.96 curveto
+stroke
+0 0 0 edgecolor
+newpath 1526.41 567.79 moveto
+1526.03 557.2 lineto
+1519.72 565.71 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1526.41 567.79 moveto
+1526.03 557.2 lineto
+1519.72 565.71 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1501 624.9 moveto 20 ( \(5\)) alignedtext
+grestore
+% SOURCE
+gsave
+1 setlinewidth
+0 0 0 nodecolor
+newpath 1632 557 moveto
+1576 557 lineto
+1576 521 lineto
+1632 521 lineto
+closepath stroke
+0 0 0 nodecolor
+14 /Times-Roman set_font
+1584 535.9 moveto 40 (sourcer) alignedtext
+grestore
+% FLUIDLOOP->SOURCE
+gsave
+1 setlinewidth
+0 0 0 edgecolor
+newpath 1510.55 655.72 moveto
+1530.79 638.74 1550.58 619.88 1567 600 curveto
+1575.56 589.63 1583.52 577.08 1589.84 566.07 curveto
+stroke
+0 0 0 edgecolor
+newpath 1592.94 567.7 moveto
+1594.75 557.26 lineto
+1586.83 564.29 lineto
+closepath fill
+1 setlinewidth
+solid
+0 0 0 edgecolor
+newpath 1592.94 567.7 moveto
+1594.75 557.26 lineto
+1586.83 564.29 lineto
+closepath stroke
+0 0 0 edgecolor
+14 /Times-Roman set_font
+1547 624.9 moveto 20 ( \(4\)) alignedtext
+grestore
+endpage
+showpage
+grestore
+%%PageTrailer
+%%EndPage: 1
+%%Trailer
+%%Pages: 1
+%%BoundingBox: 36 36 1676 1699
+end
+restore
+%%EOF

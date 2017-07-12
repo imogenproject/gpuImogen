@@ -1,0 +1,109 @@
+digraph execflow {
+
+// title
+labelloc="t";
+label="Imogen execution flowchart"
+
+node[shape=box labeljust="l"]
+
+START [label="./imogen serial runfile n\l	-> invokes matlab -r parImogenLoad(runfile, ...)\l./imogen parallel runfile n NP\l	-> invokes mpirun -np NP matlab -r parImogenLoad(runfile, ...)\l./imogen cluster runfile n nodes ppn NP\l	-> Submits the above to batch processor\l"];
+
+START -> PARIMOGENLOAD
+
+PARIMOGENLOAD[label="parImogenLoad:\l	(1) Initialize runtimes (MPI, CUDA)\l	(2) run simulations\l	(3) If scripted, shutdown & exit\l"];
+
+PARIMOGENLOAD -> STARTRUN [label=" (1) starterRun(gpuinfo)"];
+PARIMOGENLOAD -> EVALBOX [label=" (2) try { eval(runfile); }"];
+
+
+STARTRUN [label="(1) Add paths\l(2) Initialize MPI runtime;\l	Get topology & context\l(3) Create global GPUManager class\l	selectGPUs(gpuSet) & test them\l"];
+
+EVALBOX [label="At this point we have all Imogen paths in the Matlab search path. We have\l  access to the GPU through the GPU_Type, MPI through mpi_ wrapper functions,\l  and low-level access to our parallel subsystem through ParallelGlobal's data fields.\l\l  We do NOT have a directory to save things to, we do NOT have any Imogen file\l  logger stuff so fprintf() has to suffice\l"];
+
+EVALBOX -> THERUNFILE [label="In the runfile script"];
+
+THERUNFILE [label="(1) Create a simulation type initializer w/global domain resolution, e.g.\l	run = JetInitializer([nx ny nz])\l	* [nx ny nz], [nx ny 1], [nx 1 nz] are permissible\l(2) Set parameters on Initializer\l(3) Create any peripherals (e.g. RealtimePlotter) & attach them\l(4) Requests initial parameters be stored to file or IC structure\l"];
+
+THERUNFILE -> INITIALIZER [label=" (1)"];
+
+INITIALIZER [label="Initializer creation\lStorage for all input parameters for the run\l"];
+
+INITIALIZER -> GEOMGR [label="self.geomgr = GeometryManager([nx ny nz]);"];
+
+GEOMGR [label="(1) Partition data per node\l(2) Compute local index sets\l(3) Compute absolute positions & geometric factors\l"];
+
+THERUNFILE -> IMOGENCALL [label=" (5) imogen(icStruct)\limogen(icFile)\l"];
+
+IMOGENCALL [label="imogen(srcdata, resumeInfo):\l	(1) Initialize simulation\l	(2) Iterate\l	(3) Finalize\l"];
+
+IMOGENCALL -> RUNINIT [label=" (1a) run = initialize(IC.ini)\l"];
+IMOGENCALL -> RESULTPATHS [label=" (1b) initializeResultPaths(run, IC)\l"];
+
+RUNINIT [label=<This dumpster fire does most of what<br/>the class initializer ought to do<br/>	(1) Create ImogenManager<br/>	(2) Setup GeometryManager from pickled IC state<br/>	(3) set the # of FluidManagers<br/>	<font color="red">(4) Set the run.bcModes struct</font>>];
+
+RESULTPATHS [label="create dir..."];
+
+RUNINIT -> IMOGENMANAGER [label=" (1)"];
+
+IMOGENMANAGER [label=<(1) creates peripheral list<br/><font color="red">(2) creates obj.bc = BCManager();</font><br/>...>];
+
+IMOGENMANAGER -> BCMANAGER;
+
+BCMANAGER [label=<<font color="red">BCManager exists to have .attachBoundaryConditions()<br/>method called: does .populateBCModes</font>>];
+
+BCMANAGER -> POPMODES [label="populateBCModes()"];
+
+POPMODES [fontcolor="red" label="Trawl through the BC modes struct\lExplicitly enumerate all elements\lAll interior edges of rank's domain are reset to CIRCULAR\lAll edges marked circular have .bcHaloShare bits set\l"];
+
+RELOADPATH [label="Load named data frames\lOverwrite run.time\l"];
+
+IMOGENCALL -> RELOADPATH [label=" (1c) If restarting"];
+
+RELOADPATH -> UPLOADARRAYS [label=" (1c) "];
+IMOGENCALL -> UPLOADARRAYS [label=" (1c) if new"];
+
+UPLOADARRAYS [label="uploadDataArrays(FieldSource, run, statics)\l	(1) Create N empty FluidManager classes\l	(2) Allocate GPU data slab and upload\l	(3) fluid(F).processFluidDetails\l"];
+
+UPLOADARRAYS -> FLUIDARRAYCLASS [label=" (2)"];
+
+FLUIDARRAYCLASS [label=<FluidArray is a slightly adorned ImogenArray<br/>	<font color="red">(1) attaches BCs</font><br/>	(2) obj.initialArray<br/>  -&gt; does initial parallel sync<br/>  -&gt; <font color="red">calls obj.setupBoundaries</font><br/>  -&gt; <font color="red">applies BCs for 1st time</font>>];
+
+FLUIDARRAYCLASS -> BCMANAGER [label=".attachBoundaryConditions()"];
+
+FLUIDARRAYCLASS -> SETUPBOUNDARIES [label="obj.setupBoundaries()"];
+
+SETUPBOUNDARIES [label=<processes statics for array<br/><font color="red">Calls Edges(modes, array, 0, geometry)</font><br/>to get possible additional statics<br/><font color="red">creates boundaryData object</font>>];
+
+IMOGENCALL -> DOINIT [label=" (1d) run.initialize(IC, mag)"];
+
+DOINIT [label="* calls .initialize of every peripheral\l* calls ImageManager.initialize\l* calls each FluidManager.initialize\l* calls SelfGravity.initialize()\l* calls PotentialField.initialize\l* calls frameTracking.initialize"];
+
+
+
+IMOGENCALL -> FLUIDLOOP [label=" (2) Enter fluid loop"];
+FLUIDLOOP [label="(1) Compute timestep\l(2) Checkpoint?\l(3) exp(permutation([F G H]) dt)*psi\l(4) source(psi)\l(5) exp(permutation([H G F]) dt ) psi\l(6) Check physicality; Restore checkpt?\l(7) Advance time\l(8) Poll event list\l"];
+
+FLUIDLOOP -> TIMESTEP [label=" (1)"];
+TIMESTEP [label="Computes c_s everywhere\lcall cflTimestep() to find explicit Euler dt\laccounts for: flux algo, geometry\lDoes not account for\ld/dt(T_cfl): can crash if v. fast\lchange in conditions"];
+
+FLUIDLOOP -> CHECKPOINTER [label=" (2)"];
+CHECKPOINTER [label="store state copy on CPU\lcheck for unphysical (== rho < 0, T < 0)\lconditions\lIf found, restore backup\lReduces CFL aggressively,\lraises toward original conservatively\l"];
+
+FLUIDLOOP -> FLUXER [label=" (3)"];
+FLUXER [label="fluxer"]
+
+FLUIDLOOP -> SOURCE [label=" (4)"];
+SOURCE [label="sourcer"]
+
+FLUIDLOOP -> FLUXER [label=" (5)"];
+
+FLUIDLOOP -> CHECKPOINTER [label=" (6)"];
+
+FLUIDLOOP -> TIMESTEP [label=" (7)"];
+
+
+IMOGENCALL -> RUNFINAL [label=" (3)"];
+
+RUNFINAL [label="run.finalize"];
+
+}
