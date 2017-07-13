@@ -203,7 +203,7 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, int direction)
 				if(worked != SUCCESSFUL) break;
 			}
 		}
-
+		free(bs);
 	}
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
