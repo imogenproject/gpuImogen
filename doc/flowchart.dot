@@ -78,8 +78,6 @@ IMOGENCALL -> DOINIT [label=" (1d) run.initialize(IC, mag)"];
 
 DOINIT [label="* calls .initialize of every peripheral\l* calls ImageManager.initialize\l* calls each FluidManager.initialize\l* calls SelfGravity.initialize()\l* calls PotentialField.initialize\l* calls frameTracking.initialize"];
 
-
-
 IMOGENCALL -> FLUIDLOOP [label=" (2) Enter fluid loop"];
 FLUIDLOOP [label="(1) Compute timestep\l(2) Checkpoint?\l(3) exp(permutation([F G H]) dt)*psi\l(4) source(psi)\l(5) exp(permutation([H G F]) dt ) psi\l(6) Check physicality; Restore checkpt?\l(7) Advance time\l(8) Poll event list\l"];
 
@@ -90,7 +88,41 @@ FLUIDLOOP -> CHECKPOINTER [label=" (2)"];
 CHECKPOINTER [label="store state copy on CPU\lcheck for unphysical (== rho < 0, T < 0)\lconditions\lIf found, restore backup\lReduces CFL aggressively,\lraises toward original conservatively\l"];
 
 FLUIDLOOP -> FLUXER [label=" (3)"];
-FLUXER [label="fluxer"]
+
+FLUXER [label="fluxer: compiled routine"]
+
+FLUXER -> ARRAY_ROTATER [label=" (1) possible\lprepermutate\l"];
+
+FLUXER -> FLUXBLOCK [label=" (2) flux block"];
+
+FLUXBLOCK [label="for N=1:3:\l(1) flux\l(2) assert BCs\l(3) exchange MPI halos\l(4) rotate arrays\l"];
+
+FLUXBLOCK -> FLUX1D [label=" (1)"];
+FLUXBLOCK -> SET_BCS [label=" (2) setFluidBoundary()"];
+FLUXBLOCK -> SYNC_HALOS [label=" (3)"];
+FLUXBLOCK -> ARRAY_ROTATER [label=" (4)"];
+
+FLUXER -> ARRAY_ROTATER [label=" (3) possible\lpost-permutate\n"];
+
+
+ARRAY_ROTATER [label="flipArrayIndices()"];
+FLUX1D [label="complete 1D CFD step\l(1) perform fluxing\l(2) exchange inter-GPU halos"];
+
+SET_BCS [label="For both faces of given direction,\lIf bcMode[face,dir] is \"outflow\" setOutflowCondition\lIf bcMode[face,dir] is not, setBoundaryConditions()\l"];
+
+FLUX1D -> XINJIN [label=" (1) XJ method"];
+FLUX1D -> GODUNOV [label=" (1) HLL/HLLC"];
+
+XINJIN [label="Xin-Jin relaxing method"];
+GODUNOV [label="HLL? Solve pressure\lInvoke CFD predict step\lHLL? Solve pressure\lInvoke CFD 2nd order\l"];
+
+FLUX1D -> MGAHALOSYNC [label=" (2)"];
+
+MGAHALOSYNC [label="MGA halo sync"];
+
+
+
+
 
 FLUIDLOOP -> SOURCE [label=" (4)"];
 SOURCE [label="sourcer"]
