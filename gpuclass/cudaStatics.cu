@@ -376,18 +376,23 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 			// HACK FIXME NASTY TEST HACK
 			for(i = 0; i < 3; i++) { rfVelocity[i] = -0.47; }
 			for(i = 3; i < 6; i++) { rfVelocity[i] = -2.2;  } 
+			break;
 		case 3: 
 			for(i = 0; i < 6; i++) { rfVelocity[i] = 0.0; }
 			break;
 	}
-
-	
 
 	switch(memdir) {
 	case 1: // x
 		blockdim.x = 3; blockdim.y = blockdim.z = 16;
 
 		for(i = 0; i < fluid->nGPUs; i++) {
+			// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
+			if(fluid->partitionDir == PARTITION_X) {
+				if(rightside && (i != fluid->nGPUs-1)) continue;
+				if(!rightside && (i != 0)) continue;
+			}
+
 			cudaSetDevice(fluid->deviceID[i]);
 			cudaMemcpyToSymbol(restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
 
@@ -407,8 +412,12 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 		break;
 	case 2: // y
 		blockdim.x = 32; blockdim.y = 3; blockdim.z = 1;
-
+		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
 		for(i = 0; i < fluid->nGPUs; i++) {
+			if(fluid->partitionDir == PARTITION_Y) {
+				if(rightside && (i != fluid->nGPUs-1)) continue;
+				if(!rightside && (i != 0)) continue;
+			}
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 
@@ -426,7 +435,12 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 		break;
 	case 3: // z
 		blockdim.x = 32; blockdim.y = 4; blockdim.z = 3;
-		for(i = 0; i < fluid->nGPUs; i++) { 
+		for(i = 0; i < fluid->nGPUs; i++) {
+			// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
+			if(fluid->partitionDir == PARTITION_Z) {
+				if(rightside && (i != fluid->nGPUs-1)) continue;
+				if(!rightside && (i != 0)) continue;
+			}
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 			griddim.x = ROUNDUPTO(sub[3], blockdim.x)/blockdim.x;
