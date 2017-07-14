@@ -35,7 +35,10 @@ classdef KojimaDiskInitializer < Initializer
         useStatics;     % specifies if static conditions should be set for the run.     logical
         inflatePressure;% artificially increase the background pressure.                logical 
 
-	buildShearingAnnulus;
+        perturbDisk;    % If true, the disk generated is disturbed away from equilibrium
+        perturbRhoAmp; 
+
+        buildShearingAnnulus;
     end %PUBLIC
 
 %===================================================================================================
@@ -58,25 +61,28 @@ classdef KojimaDiskInitializer < Initializer
             obj.mode.magnet         = false;
             obj.mode.gravity        = true;
             obj.iterMax             = 300;
-            obj.bcMode.x            = ENUM.BCMODE_CONSTANT;
+            obj.bcMode.x            = ENUM.BCMODE_CONSTANT; % FIXME wrong use outflow...
             obj.bcMode.y            = ENUM.BCMODE_CONSTANT;
             obj.activeSlices.xy     = true;
             obj.bgDensityCoeff      = 1e-5;
             
-            obj.gravity.constant        = 1;
-            obj.pointMass               = 1;
-            obj.pointRadius             = 0.3;
-            obj.gamma                   = 5/3;
-            obj.q                       = 2;
-            obj.radiusRatio             = 0.8;
-            obj.edgePadding             = 0.5;
+            obj.gravity.constant    = 1;
+            obj.pointMass           = 1;
+            obj.pointRadius         = 0.3;
+            obj.gamma               = 5/3;
+            obj.q                   = 2;
+            obj.radiusRatio         = 0.8;
+            obj.edgePadding         = 0.5;
 
-            obj.thresholdMass           = 0;
-            obj.useStatics              = false;
-            obj.inflatePressure         = false;
-            obj.useZMirror              = 0;
+            obj.thresholdMass       = 0;
+            obj.useStatics          = false;
+            obj.inflatePressure     = false;
+            obj.useZMirror          = 0;
+
+            obj.perturbDisk         = 0;
+            obj.perturbRhoAmp       = 0;
             
-	    obj.buildShearingAnnulus     = 0;
+            obj.buildShearingAnnulus = 0;
             %--- Set momentum distribution array ---%
             %           This array defines how Imogen distributes momentum in the grid. A value of 1 
             %           specifies no momentum, 2 gives Kojima r^1-q momentum, 3 gives Keplerian 
@@ -89,10 +95,10 @@ classdef KojimaDiskInitializer < Initializer
             %           Fourth selects momentum outside the disk.
             %           Default is zero momentum except in the disk.
             %           In principle [4 3 2 3] is nearest equilibrium but it is violently unstable.
-            obj.diskMomDist             = [ KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE, ...
-                                                KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE, ...   
-                                                KojimaDiskInitializer.MOMENTUM_DISTRIB_KOJIMA, ...
-                                                KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE ];
+            obj.diskMomDist         = [ KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE, ...
+                                        KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE, ...   
+                                        KojimaDiskInitializer.MOMENTUM_DISTRIB_KOJIMA, ...
+                                        KojimaDiskInitializer.MOMENTUM_DISTRIB_NONE ];
             
             obj.operateOnInput(input, [64 64 1]);
             
@@ -175,15 +181,21 @@ classdef KojimaDiskInitializer < Initializer
                     
                     geo.geometryCylindrical(inside, 1, dr, z0, dz)
             end
+
             mom     = geo.zerosXYZ(geo.VECTOR);
 
             [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
-
             [mass, momA, momB, Eint] = evaluateKojimaDisk(obj.q, obj.gamma, obj.radiusRatio, 1, obj.bgDensityCoeff, radpts, phipts, zpts, geo.pGeometryType);
 
             obj.minMass = mpi_max(max(mass(:))) * obj.bgDensityCoeff;
-
             mass    = max(mass, obj.minMass);
+
+            if obj.perturbDisk
+                m0 = obj.perturbRhoAmp * (rand(size(mass)) - 0.5);
+                fullydisk = (mass > 100*obj.minMass);
+                mass(fullydisk) = mass(fullydisk) .* (1 + m0(fullydisk));
+            end
+
             mag     = geo.zerosXYZ(geo.VECTOR);
             
             if obj.inflatePressure
@@ -211,7 +223,7 @@ classdef KojimaDiskInitializer < Initializer
             fluids = obj.stateToFluid(mass, mom, ener);
 
             sphericalR = sqrt(radpts.^2 + zpts.^2);
-	    potentialField.field = -1./sphericalR;
+            potentialField.field = -1./sphericalR;
 
 %            if obj.useZMirror == 1
 %                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...

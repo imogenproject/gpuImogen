@@ -1,4 +1,4 @@
-function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
+function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize)
 % This script is the command and control manager for command line run Imogen scripts. It is
 % designed to simplify the run script syntax and allow for greater extensibility.
 % 
@@ -7,7 +7,7 @@ function parImogenLoad(runFile, logFile, alias, gpuSet, nofinalize)
 
     %-- Stand up the basics Imogen expects to be in place --%
     shutDownEverything = 0;
-    failed = starterRun(gpuSet);
+    failed = starterRun(gpuInfo);
 
     if ~iscell(runFile); runFile = {runFile}; end
 

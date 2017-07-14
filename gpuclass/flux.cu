@@ -61,6 +61,13 @@ if(order > 0) { /* If we are doing forward sweep */
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
 
+			/* FIXME: This SHOULD NOT be necessary but I don't have time to track down
+			 * FIXME: why the damn halos are O(t) dirty at this point */
+			if(nowDir == fluid->partitionDir) {
+				returnCode = MGA_exchangeLocalHalos(fluid, 5);
+                		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			}
+
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
@@ -84,6 +91,13 @@ if(order > 0) { /* If we are doing forward sweep */
 
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
+
+			/* FIXME: This SHOULD NOT be necessary but I don't have time to track down
+			 * FIXME: why the damn halos are O(t) dirty at this point */
+			if(nowDir == fluid->partitionDir) {
+				returnCode = MGA_exchangeLocalHalos(fluid, 5);
+                		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			}
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
