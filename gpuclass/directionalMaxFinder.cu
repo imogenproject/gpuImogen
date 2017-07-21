@@ -167,7 +167,7 @@ switch(nrhs) {
     for(devCount = 0; devCount < fluid->nGPUs; devCount++) {
         cudaSetDevice(fluid->deviceID[devCount]);
         CHECK_CUDA_ERROR("cudaSetDevice()");
-        cudaDeviceSynchronize();
+        cudaDeviceSynchronize(); // Must make sure all kernel writes to host memory are finished
         CHECK_CUDA_ERROR("cudaDeviceSynchronize()");
         if(devCount == 0) { maxout[0] = blkA[0][0]; dirout[0] = blkB[devCount][0]; } // Special first case: initialize nodeMax
 
@@ -296,6 +296,11 @@ double u, v;
 int q;
 
 freeze[tix] = 0.0;
+if(tix == 0) {
+	out[blockIdx.x] = 0;
+	// A very small resolution (total numel on partition < 8K - 128) may cause the whole block
+	// to return: If we don't do this the host may read unititialized memory.
+}
 
 if(x >= n) return; // This is unlikely but we may get a stupid-small resolution
 

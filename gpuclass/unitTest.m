@@ -92,8 +92,10 @@ function R = randomResolution(dim, nmax)
     if dim == -1 % Runs a specific resolution
         R = nmax;
     else
+        x = GPUManager.getInstance();
+        nMin = max(3*numel(x.deviceList), 6);
         R = round(nmax.*rand(1,3));
-        R(R < 6) = 6;
+        R(R < nMin) = nMin;
         if dim < 3; R(3) = 1; end
     end
 end
