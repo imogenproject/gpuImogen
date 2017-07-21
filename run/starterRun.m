@@ -54,7 +54,7 @@ function failed = starterRun(gpuSet)
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    haloSize = 3; dimensionDistribute = 1;
+    haloSize = 4; dimensionDistribute = 1;
 
     teslaCards = selectGPUs(gpuSet);
 

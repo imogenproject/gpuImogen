@@ -24,6 +24,8 @@
    circularity[...
  */
 
+#define HALO_DEPTH 3
+
 #ifdef STANDALONE_MEX_FUNCTION
 /* mexFunction call:
  * cudaHaloExchange(GPU array, direction, topology, exterior circularity) */
@@ -98,7 +100,7 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xc
 		double *ptrHalo;
 
 		// Find the size of the swap buffer
-		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, 3);
+		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, HALO_DEPTH);
 
 		cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
 		returnCode = CHECK_CUDA_ERROR("cudaHostAlloc");
@@ -109,14 +111,14 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xc
 		double *ptmp = ptrHalo;
 		// Fetch left face
 		if(leftCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 0, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 0, HALO_DEPTH, &ptmp);
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 
 		ptmp = ptrHalo + numPerHalo;
 		// Fetch right face
 		if(rightCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 0, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 0, HALO_DEPTH, &ptmp);
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		// synchronize to make sure host sees what was uploaded
@@ -135,13 +137,13 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xc
 		// write left face
 		ptmp = ptrHalo + 2*numPerHalo;
 		if(leftCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 1, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 1, HALO_DEPTH, &ptmp);
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		ptmp = ptrHalo + 3*numPerHalo;
 		// Fetch right face
 		if(rightCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 1, 3, &ptmp);
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 1, HALO_DEPTH, &ptmp);
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 		cudaFreeHost((void **)ptrHalo);
