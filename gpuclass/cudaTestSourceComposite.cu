@@ -192,7 +192,7 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     	cudaSetDevice(fluid->deviceID[i]);
     	calcPartitionExtent(fluid, i, &sub[0]);
 
-		lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
+	lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
 
     	cudaMemcpyToSymbol(devLambda, lambda, 11*sizeof(double), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
@@ -373,6 +373,9 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
 	if(worked != SUCCESSFUL) break;
     }
+
+    worked = MGA_exchangeLocalHalos(fluid, 5);
+    if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
     int j; // This will halt at the stage failed upon if CUDA barfed above
     for(j = 0; j < i; j++) {
