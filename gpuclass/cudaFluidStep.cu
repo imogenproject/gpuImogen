@@ -257,6 +257,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
 	// Even for gamma=5/3, soundspeed is very weakly dependent on density (cube root) for adiabatic fluid
+
+	// NOTE: camHost[8] is updated per partition
 	if(params.geometry.shape == CYLINDRICAL) {
 		gamHost[8] = params.geometry.Rinner;
 		gamHost[9] = params.geometry.h[params.stepDirection-1];
@@ -284,9 +286,13 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 		haParams[0] = sub[3];
 		haParams[1] = sub[4];
 		haParams[2] = sub[5];
+
 		/* This is aligned on 256 so we _can_ safely divide by 8
 		 * We _have_  to because the cuda code does (double *) + SLABSIZE */
 		haParams[3] = fluid->slabPitch[i] / sizeof(double);
+
+		// Inner cell radius must be set per partition
+		gamHost[8] = params.geometry.Rinner + sub[0] * gamHost[9];
 
 		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 #ifdef FLOATFLUX
