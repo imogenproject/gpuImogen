@@ -11,4 +11,6 @@
 int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, int direction);
 int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direction);
 
+int doBCForPart(MGArray *fluid, int part, int direct, int rightside);
+
 #endif /* CUDASTATICS_H_ */

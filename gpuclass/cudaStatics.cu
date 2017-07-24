@@ -350,6 +350,16 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, int direc
 	return SUCCESSFUL;
 }
 
+int doBCForPart(MGArray *fluid, int part, int direct, int rightside)
+{
+	if(fluid->partitionDir == direct) {
+		if(rightside && (part != fluid->nGPUs-1)) return 0;
+		if(!rightside && (part != 0)) return 0;
+	}
+	return 1;
+}
+
+// FIXME - split the cudamemcpy and kernel<<<>>> calls to avoid stream serialization performance bug
 /* Sets boundary condition as follows:
  * boundary = (v_normal > 0) ? constant : mirror
  * This must be passed ONLY the density array (FIXME: awful testing hack)
@@ -388,14 +398,13 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 
 		for(i = 0; i < fluid->nGPUs; i++) {
 			// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
-			if(fluid->partitionDir == PARTITION_X) {
-				if(rightside && (i != fluid->nGPUs-1)) continue;
-				if(!rightside && (i != 0)) continue;
+			if(doBCForPart(fluid, i, PARTITION_X, rightside)) {
+				cudaSetDevice(fluid->deviceID[i]);
+				cudaMemcpyToSymbol(restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
 			}
-
-			cudaSetDevice(fluid->deviceID[i]);
-			cudaMemcpyToSymbol(restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
-
+		}
+		for(i = 0; i < fluid->nGPUs; i++) {
+			if(doBCForPart(fluid, i, PARTITION_X, rightside) == 0) continue;
 			calcPartitionExtent(fluid, i, &sub[0]);
 
 			griddim.x = ROUNDUPTO(sub[4], 16)/16;
@@ -412,12 +421,8 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 		break;
 	case 2: // y
 		blockdim.x = 32; blockdim.y = 3; blockdim.z = 1;
-		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
 		for(i = 0; i < fluid->nGPUs; i++) {
-			if(fluid->partitionDir == PARTITION_Y) {
-				if(rightside && (i != fluid->nGPUs-1)) continue;
-				if(!rightside && (i != 0)) continue;
-			}
+			if(doBCForPart(fluid, i, PARTITION_Y, rightside) == 0) continue;
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 
@@ -436,11 +441,8 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 	case 3: // z
 		blockdim.x = 32; blockdim.y = 4; blockdim.z = 3;
 		for(i = 0; i < fluid->nGPUs; i++) {
-			// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
-			if(fluid->partitionDir == PARTITION_Z) {
-				if(rightside && (i != fluid->nGPUs-1)) continue;
-				if(!rightside && (i != 0)) continue;
-			}
+			if(doBCForPart(fluid, i, PARTITION_Z, rightside) == 0) continue;
+
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 			griddim.x = ROUNDUPTO(sub[3], blockdim.x)/blockdim.x;

@@ -188,25 +188,28 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	int isThreeD = (fluid->dim[2] > 1);
 	int isRZ = (fluid->dim[2] > 1) & (fluid->dim[1] == 1);
 
+	double *gradMem[fluid->nGPUs];
+
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
     	calcPartitionExtent(fluid, i, &sub[0]);
 
-	lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
+    	lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
 
     	cudaMemcpyToSymbol(devLambda, lambda, 11*sizeof(double), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 
-
     	cudaMemcpyToSymbol(devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("memcpy to symbol");
     	if(worked != SUCCESSFUL) break;
+
+    	cudaMalloc((void **)&gradMem[i], 3*sub[3]*sub[4]*sub[5]*sizeof(double));
     }
 
     if(worked != SUCCESSFUL) return worked;
 
-    double *gradMem[fluid->nGPUs];
+    double *fpi, *ppi;
 
     // Iterate over all partitions, and here we GO!
     for(i = 0; i < fluid->nGPUs; i++) {
@@ -215,8 +218,6 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 		if(worked != SUCCESSFUL) break;
 
         calcPartitionExtent(fluid, i, sub);
-
-        cudaMalloc((void **)&gradMem[i], 3*sub[3]*sub[4]*sub[5]*sizeof(double));
 
         arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
@@ -229,49 +230,50 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         }
         gridsize.z = 1;
 
+        fpi = fluid->devicePtr[i]; // save some readability below...
+        ppi = phi->devicePtr[i];
+
         switch(spaceOrder) {
         case 2:
         	if(isThreeD) {
         		if(isRZ) {
-        			cukern_computeScalarGradientRZ_h2<<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
+        			cukern_computeScalarGradientRZ_h2<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
         			writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], fluid->partNumel[i], 0.0);
         		} else {
         			if(geom.shape == SQUARE) {
-
-        				cukern_computeScalarGradient3D_h2<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
+        				cukern_computeScalarGradient3D_h2<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
         			if(geom.shape == CYLINDRICAL) {
-        				cukern_computeScalarGradient3D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
+        				cukern_computeScalarGradient3D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
         		}
         	} else {
         		if(geom.shape == SQUARE) {
-        			cukern_computeScalarGradient2D_h2<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
+        			cukern_computeScalarGradient2D_h2<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
         		if(geom.shape == CYLINDRICAL) {
-        			cukern_computeScalarGradient2D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
+        			cukern_computeScalarGradient2D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
 
         		writeScalarToVector<<<32, 256>>>(gradMem[i]+2*fluid->partNumel[i], fluid->partNumel[i], 0.0);
-
         	}
         	break;
         case 4:
         	if(isThreeD) {
         		if(isRZ) {
-        			cukern_computeScalarGradientRZ_h4<<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
+        			cukern_computeScalarGradientRZ_h4<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
         			writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], fluid->partNumel[i], 0.0);
         		} else {
         			if(geom.shape == SQUARE) {
-        				cukern_computeScalarGradient3D_h4_partone<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
-        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i]+fluid->partNumel[i]*2, arraysize);
+        				cukern_computeScalarGradient3D_h4_partone<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
+        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i]+fluid->partNumel[i]*2, arraysize);
         			}
         			if(geom.shape == CYLINDRICAL) {
-        				cukern_computeScalarGradient3D_h4_partone<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
-        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i]+fluid->partNumel[i]*2, arraysize);
+        				cukern_computeScalarGradient3D_h4_partone<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
+        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i]+fluid->partNumel[i]*2, arraysize);
         			}
         		}
         	} else {
         		if(geom.shape == SQUARE) {
-        			cukern_computeScalarGradient2D_h4<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
+        			cukern_computeScalarGradient2D_h4<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
         		if(geom.shape == CYLINDRICAL) {
-        			cukern_computeScalarGradient2D_h4<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], phi->devicePtr[i], gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
+        			cukern_computeScalarGradient2D_h4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
 
         		writeScalarToVector<<<32, 256>>>(gradMem[i]+2*fluid->partNumel[i], fluid->partNumel[i], 0.0);
 
@@ -288,90 +290,86 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukern_computeScalarGradient");
 
-	// This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
-	cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
-	worked = CHECK_CUDA_ERROR("cudaMalloc");
-	if(worked != SUCCESSFUL) break;
+        // This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
+        cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
+        worked = CHECK_CUDA_ERROR("cudaMalloc");
+        if(worked != SUCCESSFUL) break;
 
-	blocksize = makeDim3(128, 1, 1);
-	gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
-	gridsize.y = gridsize.z = 1;
-	cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
-	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
-	if(worked != SUCCESSFUL) break;
+        blocksize = makeDim3(128, 1, 1);
+        gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
+        gridsize.y = gridsize.z = 1;
+        cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
+        if(worked != SUCCESSFUL) break;
 
-	gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
-	cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
-	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
-	if(worked != SUCCESSFUL) break;
+        gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
+        cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
+        if(worked != SUCCESSFUL) break;
 
-	// Prepare to launch the solver itself!
-	arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
+        // Prepare to launch the solver itself!
+        arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
-	blocksize = makeDim3(SRCBLOCKX, SRCBLOCKY, 1);
-	gridsize.x = ROUNDUPTO(arraysize.x, blocksize.x) / blocksize.x;
-	if(isRZ) {
-		gridsize.y = 1;
-	} else {
-		gridsize.y = arraysize.z;
-	}
-	gridsize.z = 1;
+        blocksize = makeDim3(SRCBLOCKX, SRCBLOCKY, 1);
+        gridsize.x = ROUNDUPTO(arraysize.x, blocksize.x) / blocksize.x;
+        gridsize.y = (isRZ) ? 1 : arraysize.z;
+        gridsize.z = 1;
 
-	switch(timeOrder) {
-	case 2:
-		if(isRZ) {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		} else {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		}
-	break;
-	case 4:
-		if(isRZ) {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		} else {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		}
-	break;
-	case 6:
-		if(isRZ) {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		} else {
-			if(geom.shape == SQUARE) {
-				cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			} else {
-				cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fluid->devicePtr[i], devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
-			}
-		}
-	break;
-	default:
-		PRINT_FAULT_HEADER;
-		printf("Source function requires a temporal order of 2 (implicit midpt), 4 (Gauss-Legendre 4th order) or 6 (GL-6th): Received %i\n", timeOrder);
-		PRINT_FAULT_FOOTER;
-		break;
-	}
+        switch(timeOrder) {
+        case 2:
+        	if(isRZ) {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	} else {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	}
+        	break;
+        case 4:
+        	if(isRZ) {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	} else {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	}
+        	break;
+        case 6:
+        	if(isRZ) {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	} else {
+        		if(geom.shape == SQUARE) {
+        			cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		} else {
+        			cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        		}
+        	}
+        	break;
+        default:
+        	PRINT_FAULT_HEADER;
+        	printf("Source function requires a temporal order of 2 (implicit midpt), 4 (Gauss-Legendre 4th order) or 6 (GL-6th): Received %i\n", timeOrder);
+        	PRINT_FAULT_FOOTER;
+        	break;
+        }
 
-	worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
-	if(worked != SUCCESSFUL) break;
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
+        if(worked != SUCCESSFUL) break;
     }
 
     worked = MGA_exchangeLocalHalos(fluid, 5);
@@ -379,8 +377,8 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
     int j; // This will halt at the stage failed upon if CUDA barfed above
     for(j = 0; j < i; j++) {
-		cudaFree((void *)gradMem[j]);
-		cudaFree((void *)devXYset[j]);
+    	cudaFree((void *)gradMem[j]);
+    	cudaFree((void *)devXYset[j]);
     }
 
     // Don't bother checking cudaFree if we already have an error caused above, it was just trying to clean up the barf
