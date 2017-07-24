@@ -14,11 +14,13 @@ classdef GPUManager < handle
         isInitd;
         cudaStreamsPtr;
         nprocs;
+	useExterior;
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         stackDeviceList, stackUseHalo, stackPartitionDir, stackCudaStreamsPtr, stackNprocs;
+	stackUseExterior;
         numStack;
     end %PROTECTED
 
@@ -34,6 +36,7 @@ classdef GPUManager < handle
             g.partitionDir = 1;
             g.isInitd = 0;
             g.cudaStreamsPtr = int64(0); % initialize to NULL
+	    g.useExterior = 0;
 
             g.init([0], 3, 1);
             g.numStack = 0;
@@ -73,6 +76,7 @@ classdef GPUManager < handle
             self.stackPartitionDir{N} = self.partitionDir;
             self.stackCudaStreamsPtr{N} = self.cudaStreamsPtr;
             self.stackNprocs{N} = self.nprocs;
+	    self.stackUseExterior{N} = self.useExterior;
         end
         
         function popParameters(self)
@@ -84,6 +88,7 @@ classdef GPUManager < handle
             self.partitionDir = self.stackPartitionDir{N};
             self.cudaStreamsPtr = self.stackCudaStreamsPtr{N};
             self.nprocs = self.stackNprocs{N};
+	    self.useExterior = self.stackUseExterior{N};
         end
 
     end%PUBLIC
@@ -103,8 +108,9 @@ classdef GPUManager < handle
     methods (Static = true) %                                                      S T A T I C   [M]
 
 %_______________________________________________________________________________________ getInstance
-% Accesses the singleton instance of the ImogenManager class, or creates one if none have
+% Accesses the singleton instance of the GPUManager class, or creates one if none have
 % been initialized yet.
+% This is, I believe, the only global remaining in imogen
         function singleObj = getInstance()
             persistent instance;
             if isempty(instance) || ~isvalid(instance)

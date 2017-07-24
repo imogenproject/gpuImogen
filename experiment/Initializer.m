@@ -244,6 +244,22 @@ classdef Initializer < handle
                 obj.slice = ceil(obj.geomgr.globalDomainRez/2);
 %            end
             iniSettings = obj.getRunSettings();
+
+	    % One more act: The geometric settings and partitioning are now fixed,
+	    % so we need to set the useExternalHalo flag. If we have one rank (no mpi),
+	    % multiple GPUs, and a circular BC in the direction we are partitioned in,
+	    % then the GPU partitioner needs to add a halo to the *outside* of the grid in
+	    % the partition direction.
+	    % In every other case this is not necessary:
+	    % 	not circular - the BC is set visibly on the grid
+	    %	one gpu - any halos are handled by the CPU level parallel manager
+	    gm = GPUManager.getInstance();
+            pm = ParallelGlobals();
+
+	    extHalo = 1;
+	    if numel(gm.deviceList) == 1; extHalo = 0; end
+	    extHalo = 0; % FIXME HACK
+	    gm.useExternalHalo = extHalo;
         end
 
         % These either dump ICs to a file or return them as a structure.
