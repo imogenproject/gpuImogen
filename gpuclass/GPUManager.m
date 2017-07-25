@@ -14,13 +14,13 @@ classdef GPUManager < handle
         isInitd;
         cudaStreamsPtr;
         nprocs;
-	useExterior;
+	    useExteriorHalo;
     end %PUBLIC
 
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         stackDeviceList, stackUseHalo, stackPartitionDir, stackCudaStreamsPtr, stackNprocs;
-	stackUseExterior;
+	    stackUseExterior;
         numStack;
     end %PROTECTED
 
@@ -36,7 +36,7 @@ classdef GPUManager < handle
             g.partitionDir = 1;
             g.isInitd = 0;
             g.cudaStreamsPtr = int64(0); % initialize to NULL
-	    g.useExterior = 0;
+	    g.useExteriorHalo = 0;
 
             g.init([0], 3, 1);
             g.numStack = 0;
@@ -76,7 +76,7 @@ classdef GPUManager < handle
             self.stackPartitionDir{N} = self.partitionDir;
             self.stackCudaStreamsPtr{N} = self.cudaStreamsPtr;
             self.stackNprocs{N} = self.nprocs;
-	    self.stackUseExterior{N} = self.useExterior;
+	    self.stackUseExterior{N} = self.useExteriorHalo;
         end
         
         function popParameters(self)
@@ -88,7 +88,7 @@ classdef GPUManager < handle
             self.partitionDir = self.stackPartitionDir{N};
             self.cudaStreamsPtr = self.stackCudaStreamsPtr{N};
             self.nprocs = self.stackNprocs{N};
-	    self.useExterior = self.stackUseExterior{N};
+	    self.useExteriorHalo = self.stackUseExterior{N};
         end
 
     end%PUBLIC

@@ -256,10 +256,15 @@ classdef Initializer < handle
 	    gm = GPUManager.getInstance();
             pm = ParallelGlobals();
 
-	    extHalo = 1;
-	    if numel(gm.deviceList) == 1; extHalo = 0; end
-	    extHalo = 0; % FIXME HACK
-	    gm.useExternalHalo = extHalo;
+	    bcIsCircular = 0; % FIXME NOTE UGLY HACK
+
+	    if numel(gm.deviceList) > 1) && (pm.topology.nProc(gm.partitionDir) == 1) && bcIsCircular
+                extHalo = 0;
+            else
+                extHalo = 1;
+            end
+
+	    gm.useExteriorHalo = extHalo;
         end
 
         % These either dump ICs to a file or return them as a structure.

@@ -184,7 +184,7 @@ classdef GPU_Type < handle
                         end
                     end
                     
-                    tmpPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir (gm.nprocs(gm.partitionDir) == 1) ]);
+                    tmpPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExteriorHalo ]);
                 else
                     tmpPtr = arrin;
                 end
@@ -215,7 +215,7 @@ classdef GPU_Type < handle
                         end
                     end
                     
-                    obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExterior]);
+                    obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExteriorHalo]);
                 elseif isa(arrin, 'GPU_Type') == 1
                     obj.allocated = true;
                     obj.asize     = arrin.asize;
