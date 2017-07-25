@@ -405,6 +405,8 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 		}
 		for(i = 0; i < fluid->nGPUs; i++) {
 			if(doBCForPart(fluid, i, PARTITION_X, rightside) == 0) continue;
+
+			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 
 			griddim.x = ROUNDUPTO(sub[4], 16)/16;

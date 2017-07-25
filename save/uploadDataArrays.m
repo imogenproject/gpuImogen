@@ -56,6 +56,15 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         fluid(F).processFluidDetails(FluidData.details);
         if fluid(F).checkCFL; hasNoCFL = 0; end
         fluid(F).attachFluid(DataHolder, mass, ener, mom);
+
+        % Outflows will not have set right: They are driven by the mass BC alone
+        % but all other arrays are uploaded after mass.
+        outflows = strcmp(mass.bcModes,ENUM.BCMODE_OUTFLOW);
+        if any(outflows(:))
+            mass.applyBoundaryConditions(1);
+            mass.applyBoundaryConditions(2);
+            mass.applyBoundaryConditions(3);
+        end
     end
 
     if hasNoCFL;

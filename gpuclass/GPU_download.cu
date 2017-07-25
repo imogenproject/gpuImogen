@@ -30,18 +30,34 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		return;
 	}
 	
-	
+	int singlePart;
 	int nd = 3;
-	if(m.dim[2] == 1) {
-		nd = 2;
-		if(m.dim[1] == 1) {
-			nd = 1;
-		}
-	}
 	mwSize odims[3];
-	odims[0] = m.dim[0];
-	odims[1] = m.dim[1];
-	odims[2] = m.dim[2];
+
+	if(nrhs > 1) {
+		singlePart = (int)*mxGetPr(prhs[1]); // only one partition
+	} else {
+		singlePart = -1;
+	}
+
+	if(singlePart >= 0) {
+		int sub[6];
+		calcPartitionExtent(&m, singlePart, &sub[0]);
+		nd = 3;
+		odims[0] = sub[3];
+		odims[1] = sub[4];
+		odims[2] = sub[5];
+	} else {
+		if(m.dim[2] == 1) {
+			nd = 2;
+			if(m.dim[1] == 1) {
+				nd = 1;
+			}
+		}
+		odims[0] = m.dim[0];
+		odims[1] = m.dim[1];
+		odims[2] = m.dim[2];
+	}
 	
 	// Create output ueric array
 	plhs[0] = mxCreateNumericArray(nd, odims, mxDOUBLE_CLASS, mxREAL);
