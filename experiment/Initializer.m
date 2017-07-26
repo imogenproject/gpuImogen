@@ -258,7 +258,7 @@ classdef Initializer < handle
 
 	    bcIsCircular = 0; % FIXME NOTE UGLY HACK
 
-	    if (numel(gm.deviceList) > 1) && (pm.topology.nProc(gm.partitionDir) == 1) && bcIsCircular
+	    if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
                 extHalo = 1;
             else
                 extHalo = 0;
