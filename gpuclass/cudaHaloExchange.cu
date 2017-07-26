@@ -24,7 +24,7 @@
    circularity[...
  */
 
-#define HALO_DEPTH 3
+#define HALO_DEPTH 4
 
 #ifdef STANDALONE_MEX_FUNCTION
 /* mexFunction call:

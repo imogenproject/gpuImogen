@@ -5,7 +5,7 @@ classdef GeometryManager < handle
 % x = GlobalIndexSemantics(): Retreive
 
     properties (Constant = true, Transient = true)
-        haloAmt = 3;
+        haloAmt = 4;
         SCALAR = 1000;
         VECTOR = 1001;
     end
@@ -342,7 +342,7 @@ classdef GeometryManager < handle
 
             LL=[1 1 1; (obj.pLocalDomainOffset+1)]';
             for j = 1:ndim;
-                LL(j,:) = LL(j,:) - 3*(obj.topology.nproc(j) > 1);
+                LL(j,:) = LL(j,:) - obj.haloAmt*(obj.topology.nproc(j) > 1);
             end
 
         end
@@ -357,7 +357,7 @@ classdef GeometryManager < handle
             for j = 1:ndim;
                 q = 1:obj.localDomainRez(j);
                 % This line degerates to the identity operation if nproc(j) = 1
-                q = q + obj.pLocalDomainOffset(j) - 3*(obj.topology.nproc(j) > 1);
+                q = q + obj.pLocalDomainOffset(j) - obj.haloAmt*(obj.topology.nproc(j) > 1);
 
                 % If the edges are periodic, wrap coordinates around
                 if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
@@ -370,7 +370,7 @@ classdef GeometryManager < handle
                     lmin = 4;
                 end
                 if (obj.topology.coord(j) < obj.topology.nproc(j)-1) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
-                    lmax = lmax - 3;
+                    lmax = lmax - obj.haloAmt;
                 end
 
                 lnh{j} = lmin:lmax;
