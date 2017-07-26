@@ -1076,7 +1076,7 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 
 		/* Reverse silly memory ordering */
 		int d = dir - 1;
-		int dmax = topology->nproc[d];
+		//int dmax = topology->nproc[d];
 
 		MPI_Comm commune = MPI_Comm_f2c(topology->comm);
 		int r0; MPI_Comm_rank(commune, &r0);
@@ -1328,6 +1328,23 @@ int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
+/* returns true IFF arrays a and b have identical memory layouts,
+ * this usually implies that temp array reallocations can be avoided */
+int MGA_arraysAreIdenticallyShaped(MGArray *a, MGArray *b)
+{
+	if((a == NULL) || (b == NULL)) return 0;
+
+	if(a->addExteriorHalo != b->addExteriorHalo) return 0; // same halo settings...
+	if(a->nGPUs != b->nGPUs) return 0; // same gpu count...
+	if(a->haloSize != b->haloSize) return 0; // same halos size...
+	int i;
+	for(i = 0; i < 3; i++) { if(a->dim[i] != b->dim[i]) return 0; } // same external dimension...
+	for(i = 0; i < a->nGPUs; i++) {
+		if(a->deviceID[i] != b->deviceID[i]) return 0;
+	}
+
+	return 1;
+}
 
 template<MGAReductionOperator OP>
 __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel)
@@ -1461,10 +1478,10 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				size_t halotile = a->dim[0]*a->dim[1];
 				size_t byteblock = halotile*a->haloSize*sizeof(double);
 
-				size_t L_halo = (subp[5] - a->haloSize)*halotile;
+				//size_t L_halo = (subp[5] - a->haloSize)*halotile;
 				size_t L_src  = (subp[5]-2*a->haloSize)*halotile;
 				size_t R_halo = (sub[5] - a->haloSize)*halotile;
-				size_t R_src  = (sub[5] -2*a->haloSize)*halotile;
+				//size_t R_src  = (sub[5] -2*a->haloSize)*halotile;
 
 				// If we have an exterior halo, or this is NOT the last GPU,
 				// fill the +side halo of THIS partition (j) with data from the -side of the next one (jn):

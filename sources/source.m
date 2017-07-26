@@ -23,10 +23,13 @@ xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracki
 %    cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
 %end
 
+% FIXME: problem has appeared in 4th order grad(phi) calculator... possibly related to
+% FIXME: change in haloing? running at 2nd order for now
+
 % This call solves geometric source terms, frame rotation and gravity simultaneously
 % It can be programmed to use either implicit midpoint (IMP), Runge-Kutta 4 (RK4) or Gauss-Legendre 4 (GL4)
 cudaTestSourceComposite(fluids, run.potentialField.field, run.geometry, ...
-    [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, run.frameTracking.omega, dTime, 2, 2],  xyvector);
+    [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, run.frameTracking.omega, dTime, 2, 6],  xyvector);
 
     % FIXME: This could be improved by calculating this affine transform once and storing it
 %    if run.frameTracking.omega ~= 0

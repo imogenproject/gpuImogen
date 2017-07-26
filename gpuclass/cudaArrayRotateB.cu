@@ -99,13 +99,24 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	int i, sub[6];
 	int is3d, isRZ;
 
+	int j;
+	// Determine if we can avoid making new arrays for every array we're doing this to
+	// malloc/free are slow in cuda too
+	int reallocatePerArray = 0;
+	for(j = 1; j < nArrays; j++) {
+		if(MGA_arraysAreIdenticallyShaped(phi, phi+j) == 0) {
+			reallocatePerArray = 1;
+		}
+	}
+
 	MGArray *psi = NULL;
 	if(newArrays != NULL) {
 		newArrays[0] = (MGArray *)malloc(nArrays * sizeof(MGArray));
 		psi = newArrays[0];
+		reallocatePerArray = 1; // definitely should do this if they're being returned!
 	}
 
-	int j;
+	MGArray *nuClone;
 	for(j = 0; j < nArrays; j++) {
 
 		if(actuallyNeedToReorder(&phi->dim[0], exchangeCode) == 0) {
@@ -137,9 +148,10 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		is3d = (phi->dim[2] > 3);
 		isRZ = (phi->dim[1] == 1) && (phi->dim[2] > 3);
 
-		MGArray *nuClone;
-		if((exchangeCode != -1) || (psi != NULL)) {
-			nuClone = MGA_allocArrays(1, &trans);
+		if((j == 0) || reallocatePerArray) {
+			if((exchangeCode != -1) || (psi != NULL)) {
+				nuClone = MGA_allocArrays(1, &trans);
+			}
 		}
 
 		dim3 blocksize, gridsize;
@@ -237,8 +249,13 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 				returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaMemcpyAsync()"));
 				if(returnCode != SUCCESSFUL) break;
 			}
-			if(returnCode == SUCCESSFUL) returnCode = MGA_delete(nuClone); // Before deleting new pointer
-			free(nuClone);
+			if(returnCode == SUCCESSFUL) {
+				if((j == (nArrays-1)) || reallocatePerArray) {
+					returnCode = MGA_delete(nuClone); // Before deleting new pointer
+				}
+			}
+			if((j == (nArrays-1)) || reallocatePerArray) { free(nuClone); }
+
 		} else { // Otherwise, simply write the new MGArray to the output pointer.
 			psi[0] = *nuClone;
 		}

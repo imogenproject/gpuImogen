@@ -133,12 +133,18 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	
-	hostGeomInfo[0] = -frameOmega*geo.x0;
-	hostGeomInfo[1] = -frameOmega*geo.h[0];
-	hostGeomInfo[2] = -frameOmega*geo.y0;
-	hostGeomInfo[3] = -frameOmega*geo.h[1];
-	cudaMemcpyToSymbol(devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
-	dim3 gridsize; gridsize.z = 1;
+		hostGeomInfo[0] = -frameOmega*geo.x0;
+		hostGeomInfo[1] = -frameOmega*geo.h[0];
+		hostGeomInfo[2] = -frameOmega*geo.y0;
+		hostGeomInfo[3] = -frameOmega*geo.h[1];
+		cudaMemcpyToSymbol(devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
+	}
+
+	for(i = 0; i < fluid->nGPUs; i++) {
+		cudaSetDevice(fluid->deviceID[i]);
+		calcPartitionExtent(fluid, i, &sub[0]);
+		dim3 gridsize;
+		gridsize.z = 1;
 	
 		// X grid spans X
 		// Rest walks Y/Z
@@ -157,8 +163,6 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 			case CYLINDRICAL:
 				cukern_SourceVacuumTaffyOperator_CylRRF<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, minimumDensity);
 				break;
-
-
 			}
 		} else {
 			gridsize.x = ROUNDUPTO(sub[3], 128)/128;

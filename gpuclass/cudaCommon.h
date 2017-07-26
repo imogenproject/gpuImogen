@@ -222,6 +222,8 @@ int  MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 MGAReductionOperator MGAReductionOperator_mpi2mga(MPI_Op mo);
 MPI_Op MGAReductionOperator_mga2mpi(MGAReductionOperator op);
 
+int MGA_arraysAreIdenticallyShaped(MGArray *a, MGArray *b);
+
 /* Functions for managing halos of MGA partitioned data */
 int MGA_exchangeLocalHalos(MGArray *a, int n);
 int MGA_partitionHaloNumel(MGArray *a, int partition, int direction, int h);
