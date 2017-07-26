@@ -34,7 +34,7 @@ function succeed = runBasicTest(REZ)
 
 A = rand(REZ);
 Ad = GPU_Type(A);
-B = max(max(abs(Ad.array - A)));
+B = max(max(max(abs(Ad.array - A))));
 if B ~= 0;
     disp('!!! GPU ul/dl: Returned data failed to be exactly equal to original: Failure.');
     succeed = 1; return
@@ -42,7 +42,7 @@ else; disp('	UL/DL successful!'); end
 
 % SINGLE DEVICE DEEP COPY
 Cd = GPU_clone(Ad);
-B = max(max(abs(GPU_download(Cd) - Ad.array)));
+B = max(max(max(abs(GPU_download(Cd) - Ad.array))));
 if B ~= 0;
     disp('!!! GPU_clone data was not identical to original data after download: Failure.');
     succeed = 1; return;

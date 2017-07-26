@@ -1451,25 +1451,40 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
 				calcPartitionExtent(a, j, sub);
+				int subp[6];
+
 				jn = (j+1) % a->nGPUs; // Next partition
+				jp = (j-1+a->nGPUs) % a->nGPUs; // previous partition
+
+				calcPartitionExtent(a, jp, subp);
 
 				size_t halotile = a->dim[0]*a->dim[1];
 				size_t byteblock = halotile*a->haloSize*sizeof(double);
 
-				size_t L_halo = (sub[5] - a->haloSize)*halotile;
-				size_t L_src  = (sub[5]-2*a->haloSize)*halotile;
+				size_t L_halo = (subp[5] - a->haloSize)*halotile;
+				size_t L_src  = (subp[5]-2*a->haloSize)*halotile;
+				size_t R_halo = (sub[5] - a->haloSize)*halotile;
+				size_t R_src  = (sub[5] -2*a->haloSize)*halotile;
 
-				// Fill right halo with left's source
-				cudaMemcpy((void *)a->devicePtr[jn],
-						(void *)(a->devicePtr[j] + L_src), byteblock, cudaMemcpyDeviceToDevice);
-				returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
-				if(returnCode != SUCCESSFUL) break;
+				// If we have an exterior halo, or this is NOT the last GPU,
+				// fill the +side halo of THIS partition (j) with data from the -side of the next one (jn):
+				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
+					// Fill right halo with left's source
+					cudaMemcpy((void *)(a->devicePtr[j]+R_halo),
+						   (void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
+					returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
+					if(returnCode != SUCCESSFUL) break;
+				}
 
-				// Fill left halo with right's source
-				cudaMemcpy((void *)(a->devicePtr[j] + L_halo),
-						(void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
-				returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
-				if(returnCode != SUCCESSFUL) break;
+				// If we have an exterior halo (then always), or this is NOT the FIRST gpu,
+				// fill the -side halo of this partition (j) with data from the +side of the previous one (jp):
+				if(a->addExteriorHalo || (j > 0)) {
+					// Fill left halo with right's source
+					cudaMemcpy((void *)(a->devicePtr[j]),
+							(void *)(a->devicePtr[jp]+L_src), byteblock, cudaMemcpyDeviceToDevice);
+					returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
+					if(returnCode != SUCCESSFUL) break;\
+				} 
 
 				cudaDeviceSynchronize();
 
@@ -1833,7 +1848,9 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 			return ERROR_NULL_POINTER;
 		}
 
-		cudaError_t fail = cudaMemcpy((void *)gmem[i], (void *)g->devicePtr[i], g->partNumel[i]*sizeof(double), cudaMemcpyDeviceToHost);
+		cudaSetDevice(g->deviceID[i]);
+
+		cudaError_t fail = cudaMemcpyAsync((void *)gmem[i], (void *)g->devicePtr[i], g->partNumel[i]*sizeof(double), cudaMemcpyDeviceToHost);
 		returnCode = CHECK_CUDA_ERROR("MGArray_downloadArrayToCPU");
 		if(returnCode != SUCCESSFUL) break;
 	}
@@ -1887,6 +1904,9 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 
 		// If we're fetching only 1 partition zap the offset
 		if(partitionFrom >= 0) { outOffset.x = outOffset.y = outOffset.z = 0; }
+
+		cudaSetDevice(g->deviceID[i]);
+		cudaDeviceSynchronize();
 
 		for(w = 0; w < ptExtent.z; w++) {
 			for(v = 0; v < ptExtent.y; v++) {
@@ -2040,10 +2060,16 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 			}
 		}
 
-		cudaError_t fail = cudaMemcpy((void *)g->devicePtr[i], (void *)gmem[i], g->partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
+		cudaSetDevice(g->deviceID[i]);
+		cudaError_t fail = cudaMemcpyAsync((void *)g->devicePtr[i], (void *)gmem[i], g->partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR((const char *)"MGArray_uploadArrayToGPU");
 		if(returnCode != SUCCESSFUL) break;
 
+	}
+
+	for(i = fromPart; i < toPart; i++) {
+		cudaSetDevice(g->deviceID[i]);
+		cudaDeviceSynchronize();
 		free(gmem[i]);
 	}
 
