@@ -2046,7 +2046,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 			if((g->addExteriorHalo != 0) || (i > 0)) {
 				switch(g->partitionDir) {
 				case PARTITION_X: partExtent.x -= g->haloSize; readOff.x += g->haloSize; ptOff.x += g->haloSize; break;
-				case PARTITION_Y: partExtent.y -= g->haloSize; readOff.y += g->haloSize; ptOff.y += g->haloSize;  break;
+				case PARTITION_Y: partExtent.y -= g->haloSize; readOff.y += g->haloSize; ptOff.y += g->haloSize; break;
 				case PARTITION_Z: partExtent.z -= g->haloSize; readOff.z += g->haloSize; ptOff.z += g->haloSize; break;
 				}
 			}

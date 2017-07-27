@@ -19,7 +19,7 @@
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
-	if((nlhs != 1) || (nrhs < 1)) { mexErrMsgTxt("Form: result_tag = GPU_upload(host array [, device list [, (halo [,partition direct])]])"); }
+	if((nlhs != 1) || (nrhs < 1)) { mexErrMsgTxt("Form: result_tag = GPU_upload(host array [, device list [, (halo [,partition direct [, clone_partitions]])]])"); }
 
 	CHECK_CUDA_ERROR("entering GPU_upload");
 
@@ -29,6 +29,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	m.haloSize = 0;
 	m.partitionDir = PARTITION_X;
 	m.addExteriorHalo = 1;
+	int forceClone = 0;
 
 	if(nrhs >= 3) {
 		int a = mxGetNumberOfElements(prhs[2]);
@@ -49,6 +50,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		if(a >= 3) {
 			// addExteriorHalo should be false iff #procs(partition direction) > 1
 			m.addExteriorHalo = (int)d[2];
+		}
+		if(a >= 4) {
+			forceClone = (int)d[3];
 		}
 	}
 
@@ -81,9 +85,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	for(i = 0; i < nd; i++) { m.dim[i] = idims[i]; }
 	for(;      i < 3; i++) { m.dim[i] = 1; }
 
-	// If the size in the partition direction is 1, clone it instead
-	int forceClone = 0;
+	// If we are already cloning, multiply the size in the partition direct by #GPUs
+	if(forceClone) {
+		m.dim[m.partitionDir-1] = m.dim[m.partitionDir-1] * m.nGPUs;
+	}
 
+	// If the size in the partition direction is 1, clone it instead
 	if((m.dim[m.partitionDir-1] == 1) && (m.nGPUs > 1)) {
 		m.haloSize = 0;
 		m.dim[m.partitionDir-1] = m.nGPUs;

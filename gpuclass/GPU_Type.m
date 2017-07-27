@@ -207,15 +207,12 @@ classdef GPU_Type < handle
                     
                     halo = gm.useHalo;
                     if docloned;
+                        cloneme = 1;
                         halo = 0;
-                        pd = gm.partitionDir;
-                        
-                        if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
-                            error('Upload of cloned data does not fit.');
-                        end
+                    else
+                        cloneme = 0;
                     end
-                    
-                    obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExteriorHalo]);
+                    obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExteriorHalo, cloneme]);
                 elseif isa(arrin, 'GPU_Type') == 1
                     obj.allocated = true;
                     obj.asize     = arrin.asize;
@@ -223,7 +220,7 @@ classdef GPU_Type < handle
                     
                     obj.GPU_MemPtr = GPU_clone(arrin);
                 elseif (isa(arrin, 'int64') == 1)
-                    % Convert a gpu routine-returned 5-int tag to a GPU_Type for matlab
+                    % Convert a gpu routine-returned 11-int tag to a GPU_Type for matlab
                     obj.allocated = 1;
                     obj.GPU_MemPtr = arrin;
                     
