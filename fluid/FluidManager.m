@@ -51,34 +51,35 @@ classdef FluidManager < handle
             % Set defaults
             self.checkCFL     = 1;
             self.isDust       = 0;
+            self.gamma        = 5/3;
         end
       
         function setBoundaries(self, direction, what)
-	    if nargin < 3; what = [1 1 1 1 1 ]; else
-	        if numel(what) ~= 5; error('shit!'); end
+            if nargin < 3; what = [1 1 1 1 1 ]; else
+                if numel(what) ~= 5; error('shit!'); end
             end
 
-	    if what(1); self.mass.applyBoundaryConditions(direction); end
+            if what(1); self.mass.applyBoundaryConditions(direction); end
             if what(2); self.ener.applyBoundaryConditions(direction); end
             if what(3); self.mom(1).applyBoundaryConditions(direction); end
             if what(4); self.mom(2).applyBoundaryConditions(direction); end
             if what(5); self.mom(3).applyBoundaryConditions(direction); end
-	end
+        end
 
-	function synchronizeHalos(self, direction, what)
-	    if nargin < 3; what = [1 1 1 1 1 ]; else
-	        if numel(what) ~= 5; error('shit!'); end
+        function synchronizeHalos(self, direction, what)
+            if nargin < 3; what = [1 1 1 1 1 ]; else
+                if numel(what) ~= 5; error('shit!'); end
             end
 
             geo = self.parent.geometry;
 
-	    if what(1); cudaHaloExchange(self.mass,   direction, geo.topology, geo.edgeInterior(:,direction)); end
-	    if what(2); cudaHaloExchange(self.mom(1), direction, geo.topology, geo.edgeInterior(:,direction)); end
-	    if what(3); cudaHaloExchange(self.mom(2), direction, geo.topology, geo.edgeInterior(:,direction)); end
-	    if what(4); cudaHaloExchange(self.mom(3), direction, geo.topology, geo.edgeInterior(:,direction)); end
-	    if what(5); cudaHaloExchange(self.ener,   direction, geo.topology, geo.edgeInterior(:,direction)); end
+            if what(1); cudaHaloExchange(self.mass,   direction, geo.topology, geo.edgeInterior(:,direction)); end
+            if what(2); cudaHaloExchange(self.mom(1), direction, geo.topology, geo.edgeInterior(:,direction)); end
+            if what(3); cudaHaloExchange(self.mom(2), direction, geo.topology, geo.edgeInterior(:,direction)); end
+            if what(4); cudaHaloExchange(self.mom(3), direction, geo.topology, geo.edgeInterior(:,direction)); end
+            if what(5); cudaHaloExchange(self.ener,   direction, geo.topology, geo.edgeInterior(:,direction)); end
 
-	end
+        end
         
         function attachBoundaryConditions(self, element)
             if ~isempty(self.parent)
@@ -145,9 +146,9 @@ classdef FluidManager < handle
             self.attachFluid(DH, dens, etotal, momentum);
         end
 
-	function P = calcPressureOnCPU(self)
+        function P = calcPressureOnCPU(self)
             P = (self.gamma - 1) * (self.ener.array - .5*(self.mom(1).array.^2+self.mom(2).array.^2+self.mom(3).array.^2)./self.mass.array);
-	end
+        end
 
 %___________________________________________________________________________________________________ initialize
         function initialize(self, mag)

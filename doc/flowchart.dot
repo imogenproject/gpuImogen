@@ -16,7 +16,7 @@ PARIMOGENLOAD -> STARTRUN [label=" (1) starterRun(gpuinfo)"];
 PARIMOGENLOAD -> EVALBOX [label=" (2) try { eval(runfile); }"];
 
 
-STARTRUN [label="(1) Add paths\l(2) Initialize MPI runtime;\l	Get topology & context\l(3) Create global GPUManager class\l	selectGPUs(gpuSet) & test them\l"];
+STARTRUN [label=<(1) Add paths<br/><font color="blue">(2) Initialize MPI runtime;</font><br/>	<font color="blue">Get topology &amp; context</font><br/><font color="green">(3) Create global GPUManager class</font><br/><font color="green">	selectGPUs(gpuSet) &amp; test usability</font>>];
 
 EVALBOX [label="At this point we have all Imogen paths in the Matlab search path. We have\l  access to the GPU through the GPU_Type, MPI through mpi_ wrapper functions,\l  and low-level access to our parallel subsystem through ParallelGlobal's data fields.\l\l  We do NOT have a directory to save things to, we do NOT have any Imogen file\l  logger stuff so fprintf() has to suffice\l"];
 
@@ -28,7 +28,7 @@ THERUNFILE -> INITIALIZER [label=" (1)"];
 
 INITIALIZER [label="Initializer creation\lStorage for all input parameters for the run\l"];
 
-INITIALIZER -> GEOMGR [label="self.geomgr = GeometryManager([nx ny nz]);"];
+INITIALIZER -> GEOMGR [label=<<font color="blue">self.geomgr = GeometryManager([nx ny nz]);</font>>];
 
 GEOMGR [label="(1) Partition data per node\l(2) Compute local index sets\l(3) Compute absolute positions & geometric factors\l"];
 
@@ -62,7 +62,7 @@ IMOGENCALL -> RELOADPATH [label=" (1c) If restarting"];
 RELOADPATH -> UPLOADARRAYS [label=" (1c) "];
 IMOGENCALL -> UPLOADARRAYS [label=" (1c) if new"];
 
-UPLOADARRAYS [label="uploadDataArrays(FieldSource, run, statics)\l	(1) Create N empty FluidManager classes\l	(2) Allocate GPU data slab and upload\l	(3) fluid(F).processFluidDetails\l"];
+UPLOADARRAYS [label=<<font color="green">uploadDataArrays(FieldSource, run, statics)<br/>	(1) Create N empty FluidManager classes<br/>	(2) Allocate GPU data slab and upload</font><br/>	(3) fluid(F).processFluidDetails>];
 
 UPLOADARRAYS -> FLUIDARRAYCLASS [label=" (2)"];
 
@@ -79,7 +79,7 @@ IMOGENCALL -> DOINIT [label=" (1d) run.initialize(IC, mag)"];
 DOINIT [label="* calls .initialize of every peripheral\l* calls ImageManager.initialize\l* calls each FluidManager.initialize\l* calls SelfGravity.initialize()\l* calls PotentialField.initialize\l* calls frameTracking.initialize"];
 
 IMOGENCALL -> FLUIDLOOP [label=" (2) Enter fluid loop"];
-FLUIDLOOP [label="(1) Compute timestep\l(2) Checkpoint?\l(3) exp(permutation([F G H]) dt)*psi\l(4) source(psi)\l(5) exp(permutation([H G F]) dt ) psi\l(6) Check physicality; Restore checkpt?\l(7) Advance time\l(8) Poll event list\l"];
+FLUIDLOOP [label="(1) Compute timestep\l(2) Checkpoint?\l(3) exp(permutation([F G H]) dt)*psi\l    (per fluid)\l\l(4) source(psi)\l(5) exp(permutation([H G F]) dt ) psi\l(6) Check physicality; Restore checkpt?\l(7) Advance time\l(8) Poll event list\l"];
 
 FLUIDLOOP -> TIMESTEP [label=" (1)"];
 TIMESTEP [label="Computes c_s everywhere\lcall cflTimestep() to find explicit Euler dt\laccounts for: flux algo, geometry\lDoes not account for\ld/dt(T_cfl): can crash if v. fast\lchange in conditions"];
@@ -89,50 +89,53 @@ CHECKPOINTER [label="store state copy on CPU\lcheck for unphysical (== rho < 0, 
 
 FLUIDLOOP -> FLUXER [label=" (3)"];
 
-FLUXER [label="fluxer: compiled routine"]
+FLUXER [label="fluxer: compiled routine\l   1) setup 1st axis\l 2) run through all 3 axes\l 3) return to XYZ array orientation\l"]
 
 FLUXER -> ARRAY_ROTATER [label=" (1) possible\lprepermutate\l"];
 
 FLUXER -> FLUXBLOCK [label=" (2) flux block"];
 
-FLUXBLOCK [label="for N=1:3:\l(1) flux\l(2) assert BCs\l(3) exchange MPI halos\l(4) rotate arrays\l"];
+FLUXBLOCK [label=<for N=1:3:<br/>(1) flux<br/><font color="red">(2) assert BCs</font><br/><font color="blue">(3) exchange MPI halos</font><br/>(4) rotate arrays>];
 
-FLUXBLOCK -> FLUX1D [label=" (1)"];
+FLUXBLOCK -> FLUX1D [label=" (1) solve u_t+F(u)_x=0 in 1D"];
 FLUXBLOCK -> SET_BCS [label=" (2) setFluidBoundary()"];
-FLUXBLOCK -> SYNC_HALOS [label=" (3)"];
+FLUXBLOCK -> SYNC_HALOS [label=" (3) cudaHaloExchange()"];
 FLUXBLOCK -> ARRAY_ROTATER [label=" (4)"];
 
 FLUXER -> ARRAY_ROTATER [label=" (3) possible\lpost-permutate\n"];
 
 
 ARRAY_ROTATER [label="flipArrayIndices()"];
-FLUX1D [label="complete 1D CFD step\l(1) perform fluxing\l(2) exchange inter-GPU halos"];
+FLUX1D [label="(1) perform fluxing\l(2) exchange inter-GPU halos\l"];
 
-SET_BCS [label="For both faces of given direction,\lIf bcMode[face,dir] is \"outflow\" setOutflowCondition\lIf bcMode[face,dir] is not, setBoundaryConditions()\l"];
+SET_BCS [label=<<font color="red">For both faces of given direction,<br/>If bcMode[face,dir] is \"outflow\" setOutflowCondition<br/>If bcMode[face,dir] is not, setBoundaryConditions()</font>>];
 
 FLUX1D -> XINJIN [label=" (1) XJ method"];
 FLUX1D -> GODUNOV [label=" (1) HLL/HLLC"];
 
-XINJIN [label="Xin-Jin relaxing method"];
-GODUNOV [label="HLL? Solve pressure\lInvoke CFD predict step\lHLL? Solve pressure\lInvoke CFD 2nd order\l"];
+XINJIN [label="calculate c_freeze\lupwind step\lcalculate c_f\lcorrection step\l"];
+GODUNOV [label="HLL? Solve pressure\lInvoke time method 1st stage\lHLL? Solve pressure\lInvoke time method 2nd stage\l"];
 
-FLUX1D -> MGAHALOSYNC [label=" (2)"];
+FLUX1D -> MGAHALOSYNC [label=" (2) MGA_exchangeLocalHalos"];
 
-MGAHALOSYNC [label="MGA halo sync"];
+MGAHALOSYNC [label="For partition i,\lcopy partition (i-1) RHS to i's LHS\lcop partition (i+1) LHS to i's RHS\l"];
 
+SYNC_HALOS [label="Inter-rank halo exchange"];
 
-
-
-
-FLUIDLOOP -> SOURCE [label=" (4)"];
-SOURCE [label="sourcer"]
+FLUIDLOOP -> SOURCE [label=" (4) Compute nonconservative\levolution equation terms"];
+SOURCE [label="source.m: top-level\lsourcing control"]
 
 FLUIDLOOP -> FLUXER [label=" (5)"];
-
 FLUIDLOOP -> CHECKPOINTER [label=" (6)"];
-
 FLUIDLOOP -> TIMESTEP [label=" (7)"];
 
+SOURCE -> SRC_COMPOSITE;
+SOURCE -> SRC_VTO;
+SOURCE -> SRC_RADIATION;
+
+SRC_COMPOSITE [label="cudaTestSourceComposite\lSimultaneously solves:\l   gravity\l   frame rotation\l    cylindrical geometric terms\l"]
+SRC_VTO [label="vacuum taffy operator\lkeep 'vacuum' well behaved\l"];
+SRC_RADIATION [label="energy sink due to thin radiation"];
 
 IMOGENCALL -> RUNFINAL [label=" (3)"];
 

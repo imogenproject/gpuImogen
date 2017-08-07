@@ -14,6 +14,8 @@
 
 #include "cudaCommon.h"
 
+// obj.GPU_MemPtr = GPU_upload(arrin, gm.deviceList, [halo gm.partitionDir gm.useExterior]);
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result

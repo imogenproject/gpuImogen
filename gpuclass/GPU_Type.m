@@ -189,6 +189,10 @@ classdef GPU_Type < handle
                     tmpPtr = arrin;
                 end
                 
+                if gm.useExteriorHalo ~= obj.GPU_MemPtr(8)
+                    error('Uploaded data and existing slab use different [incompatible] useExteriorHalo settings.');
+                end
+
                 % Do the transfer
                 GPU_copy(obj.GPU_MemPtr, tmpPtr);
                 

@@ -25,8 +25,8 @@ classdef AdvectionInitializer < Initializer
         pWavenumber;
         pAmplitude;
         pPhase; % FIXME: Not implemented yet because lazy
-	% pCycles: The number of self rest frame oscillations of a travelling wave
-	%          or lab rest frame cycles of a entropy wave, to run
+        % pCycles: The number of self rest frame oscillations of a travelling wave
+        %          or lab rest frame cycles of a entropy wave, to run
         pCycles;
         pWaveK;               % 'Physical' K used to calculate <k|x>
         
@@ -35,7 +35,7 @@ classdef AdvectionInitializer < Initializer
 
         pBeLinear; % If true, uses linear wave eigenvectors; If false, uses exact characteristic
         pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the
-	% background speed such that <p|x> = exactly zero
+        % background speed such that <p|x> = exactly zero
         pTwoFluidMode;
     end %PROTECTED
     
@@ -235,15 +235,15 @@ classdef AdvectionInitializer < Initializer
             end
             
             if obj.pTwoFluidMode
-	        fluids(1) = obj.stateToFluid(mass, mom, ener);
-%		fluids(1).details.gamma = 
-
-		fluids(2) = obj.stateToFluid(mass, -mom, ener);
-%		fluids(2).details.gamma =
+                fluids(1) = obj.stateToFluid(mass, mom, ener);
+%                fluids(1).details.gamma = 
+                % Set a very cold fluid as the dust
+                fluids(2) = obj.stateToFluid(.1*mass, 0*mom, .001*mass);
+%                fluids(2).details.gamma =
                 fprintf('WARNING: Experimental two-fluid mode: Generating 2nd fluid with reversed momentum!\n');
-		fprintf('WARNING: Experimental two-fluid mode: Allowing both fluids to be assigned default gamma value.\n');
+                fprintf('WARNING: Experimental two-fluid mode: Allowing both fluids to be assigned default gamma value.\n');
             else
-	        fluids(1) = obj.stateToFluid(mass, mom, ener);
+                fluids(1) = obj.stateToFluid(mass, mom, ener);
             end
 
             if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end

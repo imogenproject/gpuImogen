@@ -359,7 +359,6 @@ int doBCForPart(MGArray *fluid, int part, int direct, int rightside)
 	return 1;
 }
 
-// FIXME - split the cudamemcpy and kernel<<<>>> calls to avoid stream serialization performance bug
 /* Sets boundary condition as follows:
  * boundary = (v_normal > 0) ? constant : mirror
  * This must be passed ONLY the density array (FIXME: awful testing hack)

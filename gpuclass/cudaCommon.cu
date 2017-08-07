@@ -1365,13 +1365,23 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 	dim3 blocksize, gridsize;
 	int returnCode = SUCCESSFUL;
 
+	// Checking this @ runtime costs a very small price (< 1usec * n) but may save as many as n*nGPUs
+	// cudaMallocs and cudaFrees, potentially saving entire msecs.
+	int arrayGeometryIdentical = 1;
+        for(j = 1; j < n; j++) {
+                if(MGA_arraysAreIdenticallyShaped(a, a+j) == 0) {
+                        arrayGeometryIdentical = 0;
+                }
+        }
+
+	double *buffs[a->nGPUs * 4];
+
 	for(i = 0; i < n; i++) {
 		// Can't do this if there are no halos
 		if(a->haloSize == 0) { break; }
 		// Or there's only one partition to begin with
 		if(a->nGPUs == 1) { break; }
 
-		double *buffs[a->nGPUs * 4];
 		int sub[6];
 
 		calcPartitionExtent(a, 0, &sub[0]);
@@ -1381,6 +1391,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 		int numHalo = a->haloSize * numTransverse;
 
 		if(a->partitionDir != PARTITION_Z) {
+			if((i == 0) || (arrayGeometryIdentical == 0)) {
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
 				CHECK_CUDA_ERROR("cudaSetDevice()");
@@ -1391,6 +1402,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				buffs[4*j+2] = buffs[4*j] + 2*numHalo;
 				buffs[4*j+3] = buffs[4*j] + 3*numHalo;
 			}
+			}
 
 			// Fetch current partition's halo to linear strips, letting jn denote next and jp denote previous
 			for(j = 0; j < a->nGPUs; j++) {
@@ -1398,7 +1410,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				jp = (j - 1 + a->nGPUs) % a->nGPUs;
 
 				// If addExteriorHalo is set, we behave circularly
-				// This is appropriate if e.g. we have only one MPI rank in the partitioned direction.
+				// This is appropriate if e.g. we have only one MPI rank in the partitioned direction with a circular BC
 
 				// If there are N>1 MPI ranks in the U direction and we are partitioned in U,
 				// We do not handle these boundaries & leave them to MPI (cudaHaloExchange)
@@ -1450,12 +1462,14 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 			}
 
 			// Let go of temp memory
+			if((i == n-1) || (arrayGeometryIdentical == 0)) {
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
 				CHECK_CUDA_ERROR("cudaSetDevice");
 				cudaFree(buffs[4*j]);
 				returnCode = CHECK_CUDA_ERROR("cudaFree");
 				if(returnCode != SUCCESSFUL) break;
+			}
 			}
 			if(returnCode != SUCCESSFUL) break;
 
