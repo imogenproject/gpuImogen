@@ -2129,14 +2129,14 @@ int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *flui
 	fluidPtrs[1] = mxGetProperty(canister, fluidIdx,(const char *)("ener"));
 	if(fluidPtrs[1] == NULL) {
 		PRINT_FAULT_HEADER;
-		printf("Unable to fetch 'mass' property from canister\nNot a FluidManager class?\n");
+		printf("Unable to fetch 'ener' property from canister\nNot a FluidManager class?\n");
 		PRINT_FAULT_FOOTER;
 		return ERROR_INVALID_ARGS;
 	}
 	fluidPtrs[2] = mxGetProperty(canister, fluidIdx,(const char *)("mom"));
 	if(fluidPtrs[2] == NULL) {
 		PRINT_FAULT_HEADER;
-		printf("Unable to fetch 'mass' property from canister\nNot a FluidManager class?\n");
+		printf("Unable to fetch 'mom' property from canister\nNot a FluidManager class?\n");
 		PRINT_FAULT_FOOTER;
 		return ERROR_INVALID_ARGS;
 	}

@@ -54,12 +54,32 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	MGArray fluidA[5];
 	int status = MGA_accessFluidCanister(prhs[0], 0, &fluidA[0]);
+	if(status != SUCCESSFUL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to access first FluidManager.\n");
+		PRINT_FAULT_FOOTER;
+		DROP_MEX_ERROR("crashing.");
+	}
 
 	MGArray fluidB[5];
 	status = MGA_accessFluidCanister(prhs[0], 1, &fluidB[0]);
+	if(status != SUCCESSFUL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to access second FluidManager.\n");
+		PRINT_FAULT_FOOTER;
+		DROP_MEX_ERROR("crashing.");
+	}
 
 	double *params = mxGetPr(prhs[1]);
-    
+
+	size_t ne = mxGetNumberOfElements(prhs[1]);
+	if(ne < 5) {
+		PRINT_FAULT_HEADER;
+		printf("2nd argument to cudaSource2FluidDrag must have 5 elements.\nGiven argument has %i instead.\n", ne);
+		PRINT_FAULT_FOOTER;
+		DROP_MEX_ERROR("Crashing.");
+	}    
+
 	// FIXME check numel in 2nd parameter
 	double sigma = params[0];
 	double fluidGamma = derefXdotAdotB_scalar(prhs[0], "gamma", NULL);
@@ -72,7 +92,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	//10nm iron ball, 300K -> 1.79m/s thermal velocity?
 	//100nm iron ball, 300K -> 56mm/s thermal velocity?
     
-	status = sourcefunction_2FluidDrag(&fluidA[0], &fluidB[0], fluidGamma, sigma, gasMu, dustDiameter, dustMass, dt);
+	status = CHECK_IMOGEN_ERROR(sourcefunction_2FluidDrag(&fluidA[0], &fluidB[0], fluidGamma, sigma, gasMu, dustDiameter, dustMass, dt));
+
+	if(status != SUCCESSFUL) {
+		DROP_MEX_ERROR("2-fluid drag code crashed.");
+	}
+
+	return;
+
 }
 
 int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, double sigma, double mu, double Ddust, double Mdust, double dt)
@@ -89,23 +116,34 @@ int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, doub
     hostDrag[2] = PI*PI/gam;
     hostDrag[3] = 5*sqrt(gam*PI/2.0)*mu / (144.0 * sigma);
     hostDrag[4] = Mdust; // FIXME: this should be an array perhaps?
+    hostDrag[5] = Ddust*Ddust;
     
 	for(i = 0; i < fluidA->nGPUs; i++) {
 		cudaSetDevice(fluidA->deviceID[i]);
+		statusCode = CHECK_CUDA_ERROR("cudaSetDevice");
+		if(statusCode != SUCCESSFUL) break;
 
 		calcPartitionExtent(fluidA, i, &sub[0]);
 		hostFluidParams[0] = sub[3];
 		hostFluidParams[1] = sub[4];
 		hostFluidParams[2] = sub[5];
 		hostFluidParams[3] = fluidA->slabPitch[i] / sizeof(double); // This is important, due to padding, is isn't just .partNumel
-		cudaMemcpyToSymbol("devFluidParams", &hostFluidParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
-        cudaMemcpyToSymbol("dragParams", &hostDrag[0], 5*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol(devFluidParams, &hostFluidParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
+		statusCode = CHECK_CUDA_ERROR("memcpyToSymbol");
+		if(statusCode != SUCCESSFUL) break;
+		cudaMemcpyToSymbol(dragparams, &hostDrag[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+		statusCode = CHECK_CUDA_ERROR("memcpyToSymbol");
+		if(statusCode != SUCCESSFUL) break;
+	}
+	
+	if(statusCode != SUCCESSFUL) {
+		printf("Unsuccessful attempt to setup fluid drag parameters.\n");
+		PRINT_FAULT_FOOTER;
 	}
 
-	statusCode = solveDragEMP(fluidA, fluidB, dt);
-
-	return SUCCESSFUL;
-
+	statusCode = CHECK_IMOGEN_ERROR(solveDragEMP(fluidA, fluidB, dt));
+	
+	return statusCode;
 }
 
 /* Solves the action of gas-dust drag for one dust using the explicit midpoint method
@@ -119,40 +157,58 @@ double *tmpmem[n];
 double *g; double *d;
 double *vrel;
 
+int statusCode = SUCCESSFUL;
+
 int i;
 for(i = 0; i < n; i++) {
 	cudaSetDevice(gas->deviceID[i]);
+	statusCode = CHECK_CUDA_ERROR("cudaSetDevice");
+	if(statusCode != SUCCESSFUL) break;
 	// allocate temp storage per gpu
-	cudaMalloc((void **)(&tmpmem[i]), 3*gas->slabPitch[i]);
-    // store initial v_relative, current v_relative, and acceleration in slabs 1, 2 and 3
+	cudaMalloc((void **)(&tmpmem[i]), 4*gas->slabPitch[i]);
+	statusCode = CHECK_CUDA_ERROR("cudaMalloc tmpmem for solveDragEMP");
+	if(statusCode != SUCCESSFUL) break;
+    // store initial v_relative, current v_relative, ini_uint, acceleration in slabs 1, 2, 3 and 4
+}
+
+if(statusCode != SUCCESSFUL) {
+	printf("Unable to grab temporary memory: Crashing.\n");
+	PRINT_FAULT_FOOTER;
+	return statusCode;
 }
 
 dim3 blocksize(128, 1, 1);
 dim3 gridsize(32, 1, 1);
 
 for(i = 0; i < n; i++) {
+	// avoid launching tons of threads for small problems
+	gridsize.x = 32;
+	if(ROUNDUPTO(gas->partNumel[i], 128)/128 < 32) {
+		gridsize.x = ROUNDUPTO(gas->partNumel[i], 128)/128;
+	}
+
 	cudaSetDevice(gas->deviceID[i]);
 
 	g = gas->devicePtr[i];
 	d = dust->devicePtr[i];
 	vrel = tmpmem[i] + 0;
 	// compute initial delta-v
-	cukern_findInitialDeltaV<<<blocksize, gridsize>>>(g, d, vrel, gas->slabPitch[i], gas->partNumel[i]);
+	cukern_findInitialDeltaV<<<gridsize, gridsize>>>(g, d, vrel, gas->slabPitch[i]/8, gas->partNumel[i]);
 
 	// solve gas drag at t=0
-	cukern_GasDustDrag<<<blocksize, gridsize>>>(g, d, vrel, gas->partNumel[i]);
+	cukern_GasDustDrag<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
 
 	// compute delta-v at t=1/2
-	cukern_SolveDvDt<<<blocksize, gridsize>>>(vrel, dt, gas->slabPitch[i], gas->partNumel[i]);
+	cukern_SolveDvDt<<<gridsize, blocksize>>>(vrel, dt, gas->slabPitch[i]/8, gas->partNumel[i]);
 
 	// solve gas drag at t=1/2
-	cukern_GasDustDrag<<<blocksize, gridsize>>>(g, d, vrel, gas->partNumel[i]);
+	cukern_GasDustDrag<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
 
 	// compute delta-v at t=1
-	cukern_SolveDvDt<<<blocksize, gridsize>>>(vrel, dt, gas->slabPitch[i], gas->partNumel[i]);
+	cukern_SolveDvDt<<<gridsize, blocksize>>>(vrel, dt, gas->slabPitch[i]/8, gas->partNumel[i]);
 
 	// compute new gas/dust momentum and temperature arrays
-	cukern_applyFinalDeltaV<<<blocksize, gridsize>>>(g, d, vrel, gas->slabPitch[i], gas->partNumel[i]);
+	cukern_applyFinalDeltaV<<<gridsize, blocksize>>>(g, d, vrel, gas->slabPitch[i]/8, gas->partNumel[i]);
 }
 
 for(i = 0; i < n; i++) {
@@ -203,12 +259,12 @@ __device__ double drag_coeff(double Re)
  * We may extract common factors from both drag regimes,
  * multiply by the dust number density to get the volume force density, and
  * asymptotically interpolate between them to find that
- *                                                        n_dust
+ *							n_dust
  * Fdrag = s^2 rho_gas [ s0^2 K_epstein + s^2 K_stokes ] -------- \vec{dv}
- *                                                       s0^2+s^2
+ *						       s0^2+s^2
  * Where we find the particledynamic and viscous-fluid drag coefficients as
  *      K_epstein = (4 pi /3) sqrt(8 / gamma pi) sqrt(c_s^2 + 9 pi |dv|^2 / 128)
- *                = sqrt(dragparams[0]*uint + dragparams[1]* dv.dv)
+ *		= sqrt(dragparams[0]*uint + dragparams[1]* dv.dv)
  *      K_stokes  = .5 C_d pi |dv|
  * And the interpolation cutover s_0 is chosen s_0 = (4/9) MFP
  */
@@ -223,9 +279,9 @@ __device__ double drag_coeff(double Re)
  *
  * 1. load magnitude dv 
  * 3. compute uinternal = Ugas(t)/rhogas     // Specific internal energy
- * 4. compute d0 = theta / rho_gas                      // 4/9 of gas mean free path - used to interp between epstein & stokes drag
+ * 4. compute d0 = theta / rho_gas		      // 4/9 of gas mean free path - used to interp between epstein & stokes drag
  * 5. compute Re = alpha * sqrt(|dv^2|/uint) * rho_gas  // Reynolds number for stokes gas drag
- * 6. compute C_hat = C_hat(Re)                         // Drag coeff, from model or (TODO) table?
+ * 6. compute C_hat = C_hat(Re)			 // Drag coeff, from model or (TODO) table?
  * 7. compute f_drag = rho_gas * D_dust^2 * (d0^2 * sqrt(beta*uinternal + epsilon*|dv|^2) + D_dust^2 * C_hat * sqrt(|dv|^2) ) * rho_dust * vector{dv} / (m_dust * (d0^2+D_dust^2));
  * 7. compute f_drag = rho_gas * D_dust^2 * (d0^2 * sqrt(beta*uinternal(dv) + epsilon*dv^2) + D_dust^2 * C_hat * dv ) * rho_dust * dv / (m_dust * (d0^2+D_dust^2)); 
  * -> a_rel = -f_d / rho_g - f_d / rho_d = - f_d (1/rho_g + 1/rho_d) = -f_d (rho_g + rho_d) / (rho_g rho_d) = -f_d / reduced mass
@@ -233,9 +289,9 @@ __device__ double drag_coeff(double Re)
  *
  * 7. compute a_rel = [ d0^2 * sqrt(beta*uinternal(dv) + epsilon*dv^2) + D_dust^2 * C_hat(dv) * dv] * dv * D_dust^2 * (rho_g + rho_d) / (m_dust * (d0^2 + D_dust^2));
 
- *        W/
- *        y1 = d0^2 * D_dust^2 * (rho_gas + rho_dust) / (m_dust * (d0^2+D_dust^2))
- *        y2 = D_dust^2  D_dust^2 * rho_dust / (m_dust * (d0^2+D_dust^2))
+ *	W/
+ *	y1 = d0^2 * D_dust^2 * (rho_gas + rho_dust) / (m_dust * (d0^2+D_dust^2))
+ *	y2 = D_dust^2  D_dust^2 * rho_dust / (m_dust * (d0^2+D_dust^2))
  */
 
 #define ALPHA   dragparams[0]
@@ -243,6 +299,7 @@ __device__ double drag_coeff(double Re)
 #define EPSILON dragparams[2]
 #define THETA   dragparams[3]
 #define DUSTMASS dragparams[4]
+#define DDUSTSQR dragparams[5]
 
 /* This function directly computes the gas-dust drag force in the full (stokes+epstein) regime
  * This is suited for weaker drag or strange regimes, but unnecessary and time-consuming for
@@ -253,42 +310,43 @@ __global__ void cukern_GasDustDrag(double *gas, double *dust, double *vrel, int 
 	int i = threadIdx.x + blockIdx.x*gridDim.x;
 
 	double rhoA, rhoB;   // gas and dust densities respectively 
-	double magdv;        // magnitude velocity difference
+	double magdv;	// magnitude velocity difference
 	double uinternal;    // specific internal energy density
-	double Re;           // Spherical particle Reynolds number
-    double accel;        // Relative acceleration (d/dt of vrel)
-    double d0squared, dDustSquared;
-    double kEpstein, kStokes;
+	double Re;	   // Spherical particle Reynolds number
+	double accel;	// Relative acceleration (d/dt of vrel)
+	double d0squared;
+	double kEpstein, kStokes;
 
 	gas  += i;
 	dust += i;
+	vrel += i;
 
 	for(; i < N; i+= blockDim.x*gridDim.x) {
 		magdv = vrel[FLUID_SLABPITCH];
 
 		rhoA = gas[0];
 		rhoB = dust[0];
-        
-        // make sure computation includes gas heating term!
-        uinternal = vrel[2*FLUID_SLABPITCH] + rhoB * (vrel[0]*vrel[0] - magdv*magdv) / (rhoA + rhoB);
+	
+		// make sure computation includes gas heating term!
+		uinternal = vrel[2*FLUID_SLABPITCH] + rhoB * (vrel[0]*vrel[0] - magdv*magdv) / (rhoA + rhoB);
 
 		kEpstein = sqrt(BETA*uinternal + EPSILON*magdv*magdv);
 
-        // FIXME this implementation is poorly conditioned (re ~ 1/v for v << v0)
+		// FIXME this implementation is poorly conditioned (re ~ 1/v for v << v0)
 		Re = ALPHA*magdv*rhoA/sqrt(uinternal);
 		kStokes = drag_coeff(Re) * magdv;
-        
-        d0squared = THETA / rhoA;
-        d0squared *= d0squared;
+	
+		d0squared = THETA / rhoA;
+		d0squared *= d0squared;
 
-         //a_rel = ( d0squared * sqrt(beta*uinternal(dv) + epsilon*dv^2) + D_dust^2 * C_hat(dv) * dv) * dv * D_dust^2 * (rho_g + rho_d) / (m_dust * (d0^2 + D_dust^2));
-        accel = ( d0squared * kEpstein + dDustSquared * kStokes) * magdv * dDustSquared * (rhoA + rhoB) / (DUSTMASS * (d0squared + dDustSquared));
-        
-        vrel[2*FLUID_SLABPITCH] = accel;
-        
+		 //a_rel = ( d0squared * sqrt(beta*uinternal(dv) + epsilon*dv^2) + D_dust^2 * C_hat(dv) * dv) * dv * D_dust^2 * (rho_g + rho_d) / (m_dust * (d0^2 + D_dust^2));
+		accel = ( d0squared * kEpstein + DDUSTSQR * kStokes) * magdv * DDUSTSQR * (rhoA + rhoB) / (DUSTMASS * (d0squared + DDUSTSQR));
+	
+		vrel[3*FLUID_SLABPITCH] = accel;
+	
 		gas += blockDim.x*gridDim.x;
 		dust += blockDim.x*gridDim.x;
-        vrel += blockDim.x*gridDim.x;
+		vrel += blockDim.x*gridDim.x;
 	}
 
 }
@@ -335,9 +393,9 @@ while(x < partNumel) {
 }
 
 /* dv_rel/dt = dv_gas/dt - dv_dust/dt
- *           = -F / rho_g - (F / rho_d)
- *           = -F (1/rho_g + 1/rho_d)
- *           = -F (rho_g + rho_d) / (rho_g rho_d) = -F/rho_reduced
+ *	   = -F / rho_g - (F / rho_d)
+ *	   = -F (1/rho_g + 1/rho_d)
+ *	   = -F (rho_g + rho_d) / (rho_g rho_d) = -F/rho_reduced
  */
 __global__ void cukern_SolveDvDt(double *tmparray, double dt, unsigned long slabNumel, unsigned long partNumel)
 {
@@ -346,7 +404,7 @@ tmparray += x;
 
 while(x < partNumel) {
 	// solve pdot
-	tmparray[slabNumel]           -= tmparray[2*slabNumel] * dt;
+	tmparray[slabNumel]	   -= tmparray[3*slabNumel] * dt;
 
 	x += blockDim.x*gridDim.x;
 	tmparray += blockDim.x*gridDim.x;
