@@ -554,11 +554,11 @@ classdef RealtimePlotter <  LinkedListNode
         end
         function gcbSetPlotFluidsrc(self, src, data) % called by the --/++ arrows by 'FLUID: N'
             F = self.plotProps(self.pGUISelectedPlotnum).fluidnum;
-            if src.value < 0;
+            if src.Value < 0;
                 F = F - 1;
                 if F < 1; F = 1; end
             end
-            if src.value > 0;
+            if src.Value > 0;
                 F = F + 1;
                 if F > self.pNumFluids; F = self.pNumFluids; end
             end
@@ -652,7 +652,7 @@ classdef RealtimePlotter <  LinkedListNode
                 src.BackgroundColor = self.pCEnab;
             else
                 src.String = 'linear';
-                src.BackgroundColor = self.pCNeutt;
+                src.BackgroundColor = self.pCNeut;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
