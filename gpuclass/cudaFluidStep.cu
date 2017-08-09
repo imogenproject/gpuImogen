@@ -1257,6 +1257,9 @@ DBGSAVE(1, E);
 //DBGSAVE(4, shptr[BOS6]); // px
 //DBGSAVE(5, shptr[BOS5]); // E
 #endif
+		// The code does not break without this because we use 32xN size threadblocks and
+		// warps execute synchronously, but cuda-memcheck --racecheck complains bitterly
+		__syncthreads();
 
 		if(thisThreadDelivers) {
 			switch(fluxScheme) {
