@@ -93,7 +93,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	for(i = 0; i < fluid->nGPUs; i++) {
 		cudaSetDevice(fluid->deviceID[i]);
-		cudaMemcpyToSymbol(gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)gammafunc, &hostgf[0],     6*sizeof(double), 0, cudaMemcpyHostToDevice);
 		CHECK_CUDA_ERROR("cfreeze symbol upload");
 	}
 
