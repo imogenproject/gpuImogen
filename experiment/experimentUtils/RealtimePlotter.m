@@ -184,7 +184,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             fprintf('%s.plotmode = %i;\n', rpn, int32(self.plotmode));
             fprintf('%s.cut = %s\n%s.indSubs = %s;\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
-	    fprintf('%s.movieProps(%i, %i, %s);\n', int32(self.outputMovieFrames), int32(self.pMovieNextFrame), self.pMovieFramePrefix);
+	    fprintf('%s.movieProps(%i, %i, ''%s'');\n', rpn, int32(self.outputMovieFrames), int32(self.pMovieNextFrame), self.pMovieFramePrefix);
 
             if outtype == 1
                 fieldnames = self.pstatic_ppfields;
@@ -596,7 +596,7 @@ classdef RealtimePlotter <  LinkedListNode
             if F
                 src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = self.pCNeutt;
+                src.BackgroundColor = self.pCNeut;
             end
             self.pGUIPlotsNeedRedraw = 1;
             
@@ -628,7 +628,7 @@ classdef RealtimePlotter <  LinkedListNode
             if L % yes colorbar: green it
                 src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = self.pCNeutt;
+                src.BackgroundColor = self.pCNeut;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -639,7 +639,7 @@ classdef RealtimePlotter <  LinkedListNode
             if G; % yes grid: green it
                 src.BackgroundColor = self.pCEnab;
             else
-                src.BackgroundColor = self.pCNeutt;
+                src.BackgroundColor = self.pCNeut;
             end
             self.pGUIPlotsNeedRedraw = 1;
         end

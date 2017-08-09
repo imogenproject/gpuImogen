@@ -189,7 +189,7 @@ classdef AdvectionInitializer < Initializer
             
             % Calculate the background velocity
             c_s      = sqrt(obj.gamma*obj.pPressure); % The infinitesmal soundspeed
-            if obj.pUseStationaryFrame;
+            if obj.pUseStationaryFrame
                 bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude, obj.gamma)*K/norm(K);
             else
                 bgvelocity = c_s * obj.pBackgroundMach;
@@ -238,7 +238,7 @@ classdef AdvectionInitializer < Initializer
                 fluids(1) = obj.stateToFluid(mass, mom, ener);
 %                fluids(1).details.gamma = 
                 % Set a very cold fluid as the dust
-                fluids(2) = obj.stateToFluid(.1*mass, 0*mom, .001*mass);
+                fluids(2) = obj.stateToFluid(.1*ones(size(mass)), 0*mom, .001*ones(size(mass)));
 %                fluids(2).details.gamma =
                 fprintf('WARNING: Experimental two-fluid mode: Generating 2nd fluid with reversed momentum!\n');
                 fprintf('WARNING: Experimental two-fluid mode: Allowing both fluids to be assigned default gamma value.\n');
