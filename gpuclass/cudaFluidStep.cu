@@ -294,11 +294,11 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 		// Inner cell radius must be set per partition
 		gamHost[8] = params.geometry.Rinner + sub[0] * gamHost[9];
 
-		cudaMemcpyToSymbol(arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)arrayParams, &haParams[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 #ifdef FLOATFLUX
-		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 10*sizeof(float), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)fluidQtys, &gamHost[0], 10*sizeof(float), 0, cudaMemcpyHostToDevice);
 #else
-		cudaMemcpyToSymbol(fluidQtys, &gamHost[0], 10*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)fluidQtys, &gamHost[0], 10*sizeof(double), 0, cudaMemcpyHostToDevice);
 #endif
 	}
 	returnCode = CHECK_CUDA_ERROR("Parameter upload");

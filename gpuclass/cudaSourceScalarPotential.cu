@@ -121,10 +121,10 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, Geom
 
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
-    	cudaMemcpyToSymbol(devLambda, lambda, 9*sizeof(double), 0, cudaMemcpyHostToDevice);
-	unsigned int sd[3];
-	sd[0] = (unsigned int)(fluid->slabPitch[i] / 8);
-	cudaMemcpyToSymbol(devSlabdim, sd, 1*sizeof(int), 0, cudaMemcpyHostToDevice);
+    	cudaMemcpyToSymbol((const void *)devLambda, lambda, 9*sizeof(double), 0, cudaMemcpyHostToDevice);
+    	unsigned int sd[3];
+    	sd[0] = (unsigned int)(fluid->slabPitch[i] / 8);
+    	cudaMemcpyToSymbol((const void *)devSlabdim, sd, 1*sizeof(int), 0, cudaMemcpyHostToDevice);
 
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;

@@ -129,7 +129,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 		cudaSetDevice(fluid->deviceID[i]);
 		returnCode = CHECK_CUDA_ERROR("Setting cuda device");
 		if(returnCode != SUCCESSFUL) return returnCode;
-		cudaMemcpyToSymbol(arrayparams, &apHost[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)arrayparams, &apHost[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	
@@ -137,7 +137,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 		hostGeomInfo[1] = -frameOmega*geo.h[0];
 		hostGeomInfo[2] = -frameOmega*geo.y0;
 		hostGeomInfo[3] = -frameOmega*geo.h[1];
-		cudaMemcpyToSymbol(devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
 	}
 
 	for(i = 0; i < fluid->nGPUs; i++) {

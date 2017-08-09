@@ -103,7 +103,7 @@ int calculateSoundspeed(MGArray *fluid, MGArray *mag, MGArray *cs, double gamma)
 		calcPartitionExtent(&fluid[0], i, &sub[0]);
 		cudaSetDevice(fluid[0].deviceID[i]);
 		CHECK_CUDA_ERROR("Setting device.");
-		cudaMemcpyToSymbol(pressParams, &hostParams[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)pressParams, &hostParams[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
 		CHECK_CUDA_ERROR("cudaSoundspeed memcpy to constants.");
 
 		for(j = 0; j < 5; j++) { srcs[j] = fluid[j].devicePtr[i]; }

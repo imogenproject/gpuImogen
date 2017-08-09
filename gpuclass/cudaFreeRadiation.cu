@@ -120,7 +120,7 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
 	int j, k;
 	for(j = 0; j < fluid->nGPUs; j++) {
 		cudaSetDevice(fluid->deviceID[j]);
-		cudaMemcpyToSymbol(radparam, hostRP, 8*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)radparam, hostRP, 8*sizeof(double), 0, cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
 		if(returnCode != SUCCESSFUL) break;
 	}

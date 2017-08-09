@@ -86,9 +86,9 @@ int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, doub
 		cudaSetDevice(fluid->deviceID[i]);
 		returnCode = CHECK_CUDA_ERROR("Setting cuda device");
 		if(returnCode != SUCCESSFUL) return returnCode;
-		cudaMemcpyToSymbol(arrayparams, &apHost[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)arrayparams, &apHost[0], 4*sizeof(int), 0, cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
-		cudaMemcpyToSymbol(geoparam, &geo[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)geoparam, &geo[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
 
 		if(returnCode != SUCCESSFUL) return returnCode;

@@ -196,11 +196,11 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
     	lambda[7] = geom.Rinner + dx[0] * sub[0]; // Innermost cell coord may change per-partition
 
-    	cudaMemcpyToSymbol(devLambda, lambda, 11*sizeof(double), 0, cudaMemcpyHostToDevice);
+    	cudaMemcpyToSymbol((const void *)devLambda, lambda, 11*sizeof(double), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 
-    	cudaMemcpyToSymbol(devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
+    	cudaMemcpyToSymbol((const void *)devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
     	worked = CHECK_CUDA_ERROR("memcpy to symbol");
     	if(worked != SUCCESSFUL) break;
 

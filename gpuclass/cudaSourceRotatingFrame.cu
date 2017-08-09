@@ -94,13 +94,13 @@ int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double om
 
 
 		// Upload rotation parameters
-		cudaMemcpyToSymbol(devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
 		worked = CHECK_CUDA_ERROR("memcpy to symbol");
 		if(worked != SUCCESSFUL) break;
 
 		// Upload partition size
 		calcPartitionExtent(fluidXY, i, &sub[0]);
-		cudaMemcpyToSymbol(devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
+		cudaMemcpyToSymbol((const void *)devIntParams, &sub[3], 3*sizeof(int), 0, cudaMemcpyHostToDevice);
 		worked = CHECK_CUDA_ERROR("memcpy to symbol");
 		if(worked != SUCCESSFUL) break;
 

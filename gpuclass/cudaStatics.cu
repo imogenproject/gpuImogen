@@ -399,7 +399,7 @@ int setOutflowCondition(MGArray *fluid, int rightside, int direction)
 			// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
 			if(doBCForPart(fluid, i, PARTITION_X, rightside)) {
 				cudaSetDevice(fluid->deviceID[i]);
-				cudaMemcpyToSymbol(restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+				cudaMemcpyToSymbol((const void *)restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
 			}
 		}
 		for(i = 0; i < fluid->nGPUs; i++) {
