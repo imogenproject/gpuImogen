@@ -106,7 +106,7 @@ netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
 
 %fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Serialize parameters and other small stuff
-netcdf.putVar(ncid, gammavar, frame.gamma);
+netcdf.putVar(ncid, gammavar, frame.gamma(1));
 netcdf.putVar(ncid, aboutvar, frame.about);
 netcdf.putVar(ncid, versionvar, frame.ver);
 

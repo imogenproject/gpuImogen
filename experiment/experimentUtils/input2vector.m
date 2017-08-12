@@ -18,5 +18,6 @@ if numel(V) > N; V = V(1:N); end
 
 if makeint; V = round(V); end
 
+V = reshape(V, [numel(V) 1]);
 
 end
