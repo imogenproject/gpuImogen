@@ -74,6 +74,8 @@ function outdirectory = imogen(srcData, resumeinfo)
     %--- Pre-loop actions ---%
     run.initialize(IC, mag);
 
+    srcFunc = sourceChooser(run, run.fluid, mag);
+
     clear('IC', 'ini', 'statics');    
     mpi_barrier();
     run.save.logPrint('---------- Entering simulation loop\n');
@@ -111,7 +113,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, 1);
-        source(run, run.fluid, mag, 2.0);
+        srcFunc(run, run.fluid, mag, 2.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
 
