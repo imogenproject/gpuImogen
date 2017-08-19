@@ -257,6 +257,7 @@ void dropMexError(const char *excuse, const char *infile, int atline);
 #define ERROR_NULL_POINTER -102
 #define ERROR_GET_GPUTAG_FAILED -103
 #define ERROR_DESERIALIZE_GPUTAG_FAILED -104
+#define ERROR_NOIMPLEMENT -105
 
 #define ERROR_CUDA_BLEW_UP -1000
 

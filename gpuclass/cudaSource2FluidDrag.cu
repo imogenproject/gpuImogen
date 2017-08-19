@@ -27,7 +27,7 @@ int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, doub
 
 int solveDragEMP(MGArray *gas, MGArray *dust, double dt);
 
-__global__ void cukern_GasDustDrag(double *gas, double *dust, double *vrel, int N);
+__global__ void cukern_GasDustDrag_full(double *gas, double *dust, double *vrel, int N);
 __global__ void cukern_findInitialDeltaV(double *g, double *d, double *dv, unsigned long partNumel);
 __global__ void cukern_SolveDvDt(double *tmparray, double dt, unsigned long partNumel);
 __global__ void cukern_applyFinalDeltaV(double *g, double *d, double *dv_final, unsigned long partNumel);
@@ -198,13 +198,13 @@ for(i = 0; i < n; i++) {
 	cukern_findInitialDeltaV<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
 
 	// solve gas drag at t=0
-	cukern_GasDustDrag<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
+	cukern_GasDustDrag_full<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
 
 	// compute delta-v at t=1/2
 	cukern_SolveDvDt<<<gridsize, blocksize>>>(vrel, .5*dt, gas->partNumel[i]);
 	
 	// solve gas drag at t=1/2
-	cukern_GasDustDrag<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
+	cukern_GasDustDrag_full<<<gridsize, blocksize>>>(g, d, vrel, gas->partNumel[i]);
 
 	// compute delta-v at t=1
 	cukern_SolveDvDt<<<gridsize, blocksize>>>(vrel, dt, gas->partNumel[i]);
@@ -307,7 +307,7 @@ __device__ double drag_coeff(double Re)
  * This is suited for weaker drag or strange regimes, but unnecessary and time-consuming for
  * small particles which will never exit the low-speed Epstein regime.
  */
-__global__ void cukern_GasDustDrag(double *gas, double *dust, double *vrel, int N)
+__global__ void cukern_GasDustDrag_full(double *gas, double *dust, double *vrel, int N)
 {
 	int i = threadIdx.x + blockIdx.x*blockDim.x;
 

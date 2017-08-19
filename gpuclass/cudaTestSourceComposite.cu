@@ -130,9 +130,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	status = MGA_accessMatlabArrays(prhs, 4, 4, &xyvec);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access X-Y vector."); }
 
-	status = MGA_accessMatlabArrays(prhs, 1, 1, &gravPot);
-	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access gravity potential array."); }
-
+	if(spaceOrder != 0) {
+		status = MGA_accessMatlabArrays(prhs, 1, 1, &gravPot);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to access gravity potential array."); }
+	}
 	dim3 gridsize, blocksize;
 
 	int numFluids = mxGetNumberOfElements(prhs[0]);
@@ -231,9 +232,12 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         gridsize.z = 1;
 
         fpi = fluid->devicePtr[i]; // save some readability below...
-        ppi = phi->devicePtr[i];
+        ppi = phi->devicePtr[i]; // WARNING: this could be garbage if spaceOrder == 0 and we rx'd no potential array
 
         switch(spaceOrder) {
+        case 0:
+        	writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], 3*fluid->partNumel[i], 0.0);
+        	break;
         case 2:
         	if(isThreeD) {
         		if(isRZ) {
@@ -282,7 +286,7 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         	break;
         default:
         	PRINT_FAULT_HEADER;
-        	printf("Was passed spatial order parameter of %i, must be passed 2 (2nd order) or 4 (4th order)\n", spaceOrder);
+        	printf("Was passed spatial order parameter of %i, must be passed 0 (off), 2 (2nd order), or 4 (4th order)\n", spaceOrder);
         	PRINT_FAULT_FOOTER;
         	cudaFree(gradMem[i]);
         	return ERROR_INVALID_ARGS;
@@ -334,12 +338,14 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         case 4:
         	if(isRZ) {
         		if(geom.shape == SQUARE) {
+        			worked = ERROR_NOIMPLEMENT; break;
         			cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		} else {
         			cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		}
         	} else {
         		if(geom.shape == SQUARE) {
+        			worked = ERROR_NOIMPLEMENT; break;
         			cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		} else {
         			cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
@@ -349,12 +355,14 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         case 6:
         	if(isRZ) {
         		if(geom.shape == SQUARE) {
+        			worked = ERROR_NOIMPLEMENT; break;
         			cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		} else {
         			cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		}
         	} else {
         		if(geom.shape == SQUARE) {
+					worked = ERROR_NOIMPLEMENT; break;
         			cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
         		} else {
         			cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
@@ -368,9 +376,12 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         	break;
         }
 
+        if(worked != SUCCESSFUL) break;
         worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukernSourceComposite");
         if(worked != SUCCESSFUL) break;
     }
+
+    if(worked != SUCCESSFUL) return worked;
 
     worked = MGA_exchangeLocalHalos(fluid, 5);
     if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;

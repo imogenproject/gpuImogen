@@ -2384,6 +2384,7 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	case ERROR_GET_GPUTAG_FAILED:         estring = "Attempt to get GPU tag failed."; break;
 	case ERROR_DESERIALIZE_GPUTAG_FAILED: estring = "Deserialization of gputag -> MGArray failed."; break;
 	case ERROR_CUDA_BLEW_UP:              estring = "CUDA API returned an error. Crashing."; break;
+	case ERROR_NOIMPLEMENT:                estring = "Required functionality not implemented."; break;
 	}
 	printf("Rank %i | In %s (%s:%i): %s\n", mpirank, infunc, infile, atline, estring);
 	return errtype;
@@ -2396,13 +2397,9 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 void dropMexError(const char *excuse, const char *infile, int atline)
 {
 	char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
-
 	sprintf(turd, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
-
 	mexErrMsgTxt(turd);
-
 	free(turd);
-
 }
 
 void printdim3(char *name, dim3 dim)
