@@ -69,14 +69,6 @@ end
 %catch MERR, loc_initializationError('thresholdmass',MERR);
 %end
 
-%% .minMass                     Minimum allowed mass density value
-
-%try
-%    run.fluid.MINMASS = ini.minMass;
-%    run.appendInfo('Minimum mass density', run.fluid.MINMASS);
-%catch MERR, loc_initializationError('minmass',MERR);
-%end
-
 %% .profile                     Enable the profiler to record execution information
 
 try
