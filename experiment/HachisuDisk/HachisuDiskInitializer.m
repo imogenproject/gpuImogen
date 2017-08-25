@@ -102,7 +102,7 @@ classdef HachisuDiskInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             potentialField = [];
             selfGravity = [];
@@ -204,6 +204,8 @@ classdef HachisuDiskInitializer < Initializer
                     obj.grid/2 + [.5 .5 .5], obj.starMass, obj.pointRadius); % Temporary kludge
                 end
             end
+
+	    fluids = obj.stateToFluid(mass, mom, ener);
 
         end
         
