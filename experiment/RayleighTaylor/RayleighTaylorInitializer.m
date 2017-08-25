@@ -36,7 +36,7 @@ classdef RayleighTaylorInitializer < Initializer
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-%___________________________________________________________________________________________________ GravityTestInitializer
+%____________________________________________________________________________ GravityTestInitializer
         function obj = RayleighTaylorInitializer(input)            
             obj                     = obj@Initializer();
             obj.grid = input;
@@ -47,7 +47,7 @@ classdef RayleighTaylorInitializer < Initializer
             obj.mode.magnet         = false;
             obj.mode.gravity        = false;
             obj.iterMax             = 300;
-            obj.gamma               = 1.4;
+            obj.fluidDetails(1).gamma = 1.4;
             obj.bcMode.x            = 'circ';
             obj.bcMode.y            = 'mirror';
             obj.bcMode.z            = 'circ';
@@ -82,7 +82,7 @@ classdef RayleighTaylorInitializer < Initializer
 %===================================================================================================    
     methods (Access = protected) %                                          P R O T E C T E D    [M]                
         
-%___________________________________________________________________________________________________ calculateInitialConditions
+%________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             potentialField = PotentialFieldInitializer();
@@ -113,8 +113,6 @@ classdef RayleighTaylorInitializer < Initializer
             else
                 Pnode              = obj.gravConstant*(Y0*obj.rhoBottom+(Y(1,1,1)-Y0)*obj.rhoTop);
             end
-
-            obj.minMass = .0001*obj.rhoBottom;
 
             % Set gas pressure gradient to balance gravity
             ener = (obj.P0 - Pnode - obj.gravConstant * (cumsum(mass,2)-mass(1,1,1)) * obj.dGrid(2) );
@@ -149,11 +147,12 @@ classdef RayleighTaylorInitializer < Initializer
             end
 
             % Calculate Energy Density
-            ener = ener/(obj.gamma - 1) ...
+            ener = ener/(obj.fluidDetails(1).gamma - 1) ...
             + 0.5*squish(sum(mom.*mom,1))./mass...        
             + 0.5*squish(sum(mag.*mag,1));
 
             fluids = obj.stateToFluid(mass, mom, ener);
+	    obj.fluidDetails.minMass = .0001*obj.rhoBottom;
         end
     end%PROTECTED
         

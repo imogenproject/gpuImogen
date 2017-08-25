@@ -18,8 +18,11 @@ classdef FluidManager < handle
         radiation;                % Radiative emission properties for this fluid        Radiation
     
         checkCFL;
-        isDust; 
-        gamma;
+        isDust;
+
+        gamma;                    % Adiabatic index of the fluid
+        particleMu;               % mu, the average mass of a molecule/particle
+        particleSigma;            % the mean geometric collision cross-section 
     end%PUBLIC
    
     properties (SetAccess = public, GetAccess = public)
@@ -45,13 +48,14 @@ classdef FluidManager < handle
 %___________________________________________________________________________________________________ FluidManager
 % Creates a new FluidManager instance.
         function self = FluidManager() 
-            self.viscosity    = ArtificialViscosity();
-            self.radiation    = Radiation();
-            self.fluidName    = 'some_gas';
+            self.viscosity     = ArtificialViscosity();
+            self.radiation     = Radiation();
+            self.fluidName     = 'some_gas';
             % Set defaults
-            self.checkCFL     = 1;
-            self.isDust       = 0;
-            self.gamma        = 5/3;
+            self.checkCFL      = 1;
+            self.isDust        = 0;
+            % These defaults apply to cold (under ~100K) molecular hydrogen
+            self.processFluidDetails(fluidDetailModel('cold_molecular_hydrogen'));
         end
       
         function setBoundaries(self, direction, what)
@@ -105,9 +109,12 @@ classdef FluidManager < handle
             % This is called in uploadDataArrays with the ini.fluid(:).details structure
             % It sets all per-fluid properties, including adiabatic index and radiation
             % properties
-            if isfield(details,'isDust');   self.isDust   = details.isDust;   end
-            if isfield(details,'checkCFL'); self.checkCFL = details.checkCFL; end
-            if isfield(details,'gamma');     self.gamma = details.gamma; end
+            self.MINMASS = details.minMass;
+            self.gamma = details.gamma;
+
+            if isfield(details,'isDust');   self.isDust     = details.isDust;   end
+            if isfield(details,'checkCFL'); self.checkCFL   = details.checkCFL; end
+
             if isfield(details,'radiation');
                 self.radiation.readSubInitializer(self, details.radiation);
             end

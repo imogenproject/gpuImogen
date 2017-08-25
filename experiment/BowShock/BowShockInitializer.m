@@ -151,7 +151,7 @@ classdef BowShockInitializer < Initializer
             potentialField = [];
             selfGravity = [];
            
-	    geo = obj.geomgr;
+            geo = obj.geomgr;
 
             geo.makeBoxSize(obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1) );
             geo.makeBoxOriginCoord(ceil(geo.globalDomainRez/2));
@@ -174,7 +174,7 @@ classdef BowShockInitializer < Initializer
             ball = (norm <= 1.0);
             
             % Set minimum mass; Solve the hydro jump for the incoming blast
-	    % FIXME no no no, hardcoded parameters BAD
+            % FIXME no no no, hardcoded parameters BAD
             obj.minMass = min(obj.pPreshockRho, obj.pBallRho) / 10000;
             
             blast = HDJumpSolver(obj.pBlastMach, 0, obj.gamma);

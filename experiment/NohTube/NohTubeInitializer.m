@@ -9,11 +9,11 @@ classdef NohTubeInitializer < Initializer
         v0;    % Initial implosion speed
         rho0;  % Initial density
         r0;    % Radius of implosion
-	       % For 1D, r0 < 0 = prior to wall impact
+               % For 1D, r0 < 0 = prior to wall impact
         
         M0;    % Mach (large for analytical soln to work:
 
-	halfspace;
+        halfspace;
     end %PUBLIC
     
     %===================================================================================================
@@ -59,10 +59,10 @@ classdef NohTubeInitializer < Initializer
         function useHalfspace(self, direct)
             if numel(direct) == 1; direct = [1 1 1]*direct; end
 
-	    self.halfspace = direct;
-	end
+            self.halfspace = direct;
+        end
 
-	function setupHalfspaces(self)
+        function setupHalfspaces(self)
             if numel(self.halfspace) == 1; self.halfspace = [1 1 1]*self.halfspace; end
             rez = self.geomgr.globalDomainRez;
             
@@ -124,7 +124,7 @@ classdef NohTubeInitializer < Initializer
             if spaceDim > 1
                 generator = NohTubeColdGeneral(obj.rho0, 1, obj.M0);
                 % 1 = p0 (init pressure) is IGNORED for multi-dim problem
-		% I do not know the solution/ICs for d > 1
+                % I do not know the solution/ICs for d > 1
                 R = sqrt(X.^2+Y.^2+Z.^2);
                 Rmax = max(R(:));
                 Rmin = 0;
@@ -139,7 +139,7 @@ classdef NohTubeInitializer < Initializer
             
             [rho, vradial, Pini] = generator.solve(spaceDim, Rsolve, obj.r0);
             
-	    % fixme - is setting T = 1 appropriate?
+            % fixme - is setting T = 1 appropriate?
             Pini(rho< obj.minMass) = obj.minMass/(obj.gamma - 1);
             rho(rho < obj.minMass) = obj.minMass;
             

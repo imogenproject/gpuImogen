@@ -55,9 +55,9 @@ classdef CentrifugeInitializer < Initializer
         
 %___________________________________________________________________________________________________ KojimaDiskInitializer
         function obj = CentrifugeInitializer(input)
-	% CentrifugeInitializer: the core of the centrifuge experiment. Tests ability of code to
-	% maintain analytically time-independent but linearly unstable flow solution.
-	% See Imogen manual for details.
+        % CentrifugeInitializer: the core of the centrifuge experiment. Tests ability of code to
+        % maintain analytically time-independent but linearly unstable flow solution.
+        % See Imogen manual for details.
             obj                     = obj@Initializer();            
             obj.runCode             = 'CENTRIFUGE';
             obj.info                = 'Code test for rotating-frame source term.';
@@ -134,7 +134,7 @@ classdef CentrifugeInitializer < Initializer
    
     function setupGreshoTest(self)
         % FIXME: IMPLEMENT:
-	% This function plugs in the conditions of the classic Gresho test...
+        % This function plugs in the conditions of the classic Gresho test...
     end
 
     function polyK(self, k)
@@ -181,7 +181,7 @@ classdef CentrifugeInitializer < Initializer
             % Compute density resulting from centrifuge potential
             [rho, Pgas] = obj.thermo(Rphi);
 
-	    % Plug end values in to make sure the interpolator flatlines outside the rotating region
+            % Plug end values in to make sure the interpolator flatlines outside the rotating region
             rho(10001:10002) = obj.pRho0;
             rads = [rads 1.5*(1+obj.pEdgeFraction)];
             momphi = rho .* rads .* obj.pOmegaCurve(rads);
@@ -195,14 +195,14 @@ classdef CentrifugeInitializer < Initializer
             mom(1,:,:,1) = -Yv .* interp1(rads, momphi, gridR) ./ gridR;
             mom(2,:,:,1) = Xv  .* interp1(rads, momphi, gridR) ./ gridR;
 
-	    ener(:,:,1)  = interp1(rads, Pgas, gridR) / (obj.gamma-1);
+            ener(:,:,1)  = interp1(rads, Pgas, gridR) / (obj.gamma-1);
 
-	    % Oh, lawd
-	    for c = 2:size(mass,3);
-		mass(:,:,c)  = mass(:,:,1);
-		mom(:,:,:,c) = mom(:,:,:,1);
-		ener(:,:,c)  = ener(:,:,1);
-	    end
+            % Oh, lawd
+            for c = 2:size(mass,3);
+                mass(:,:,c)  = mass(:,:,1);
+                mom(:,:,:,c) = mom(:,:,:,1);
+                ener(:,:,c)  = ener(:,:,1);
+            end
 
             mass    = max(mass, obj.minMass);
             mag     = zeros([3 mygrid]);

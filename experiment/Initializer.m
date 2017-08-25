@@ -12,14 +12,12 @@ classdef Initializer < handle
         cfl;            % Multiplicative coefficient for timesteps.         double
         customSave;     % Which arrays to save in custom save slices.       struct
         debug;          % Run Imogen in debug mode.                         logical *
-        gamma;          % Polytropic equation of state constant.            double
         gravity;        % Gravity sub-initializer object containing all     GravitySubInitializer
                         %   gravity related settings.
         info;           % Short information describing run.                 string
         image;          % Which images to save.                             struct
         iterMax;        % Maximum iterations for the run.                   int
         wallMax;        % Maximum wall time allowed for the run in hours.   double
-        minMass;        % Minimum allowed mass density value.               double
         mode;           % Specifies the portions of the code are active.    struct
         notes;          % Lengthy information regarding a run.              string
         ppSave;         % Percentage of execution between slice saves.      struct
@@ -48,6 +46,7 @@ classdef Initializer < handle
         peripherals;
 
         frameParameters;% .omega, rotateCenter, centerVelocity
+	fluidDetails;
         numFluids;
         
         geomgr;         % GeometryManager class
@@ -57,6 +56,8 @@ classdef Initializer < handle
     properties (Dependent = true) %                                            D E P E N D E N T [P]
         fades;
         saveSlicesSpecified; % Specifies if save slices have been specified.
+	gamma; % Compat: feeds through to .fluidDetails(1).gamma
+	minMass; % Compat: feeds through to .fluidDetails(1).minMass
     end %DEPENDENT
         
 %===================================================================================================
@@ -75,7 +76,7 @@ classdef Initializer < handle
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
 
-%___________________________________________________________________________________________________ Initializer
+%_______________________________________________________________________________________ Initializer
         function obj = Initializer()
             obj.pInfo                = cell(1,100);
             obj.pInfoIndex           = 1;
@@ -84,9 +85,7 @@ classdef Initializer < handle
             obj.mode.magnet          = false;
             obj.mode.gravity         = false;
             obj.debug                = false;
-            obj.gamma                = 5/3;
             obj.iterMax              = 10;
-            obj.minMass              = 1e-5;
             obj.ppSave.dim1          = 10;
             obj.ppSave.dim2          = 25;
             obj.ppSave.dim3          = 50;
@@ -111,6 +110,10 @@ classdef Initializer < handle
             obj.frameParameters.rotateCenter = [0 0];
             obj.frameParameters.velocity = [0 0 0];
 
+            obj.numFluids = 1;
+	    obj.fluidDetails = fluidDetailModel();
+	    obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
+
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
                 obj.activeSlices.(fields{i}) = false; 
@@ -118,30 +121,36 @@ classdef Initializer < handle
             
             obj.logProperties       = {'alias'};
             
-            obj.numFluids = 1;
             obj.geomgr = GeometryManager([128 128 128]);
         end           
 
-%___________________________________________________________________________________________________ GS: saveSlicesSpecified
+%___________________________________________________________________________ GS: saveSlicesSpecified
         function result = get.saveSlicesSpecified(obj)
             s      = obj.activeSlices;
             result = s.x || s.y || s.z || s.xy || s.xz || s.yz || s.xyz;
         end
+
+
+	function g = get.gamma(self); g = self.fluidDetails(1).gamma; end;
+	function set.gamma(self, g); self.fluidDetails(1).gamma = g; end
+	function m = get.minMass(self); m = self.fluidDetails(1).minMass; end;
+	function set.minMass(self, m); self.fluidDetails(1).minMass = m; end
+
         
-%___________________________________________________________________________________________________ GS: fades
+%_________________________________________________________________________________________ GS: fades
         function result = get.fades(obj)
             if (obj.pFadesIndex < 2);  result = [];
             else                      result = obj.pFades(1:(obj.pFadesIndex-1));
             end
         end
         
-%___________________________________________________________________________________________________ GS: info
+%__________________________________________________________________________________________ GS: info
         function result = get.info(obj)
             if isempty(obj.info); obj.info = 'Unspecified trial information.'; end
             result = ['---+ (' obj.runCode ') ' obj.info];
         end
 
-%___________________________________________________________________________________________________ GS: image
+%_________________________________________________________________________________________ GS: image
         function result = get.image(obj)
             fields = ImageManager.IMGTYPES;
             if ~isempty(obj.image);     result = obj.image; end
@@ -155,7 +164,7 @@ classdef Initializer < handle
             
         end
                 
-%___________________________________________________________________________________________________ GS: cfl        
+%___________________________________________________________________________________________ GS: cfl        
         function result = get.cfl(obj)
            if isempty(obj.cfl)
                if obj.mode.magnet;      result = 0.35;
@@ -165,7 +174,7 @@ classdef Initializer < handle
            end
         end
         
-%___________________________________________________________________________________________________ GS: bcMode     
+%________________________________________________________________________________________ GS: bcMode     
         function result = get.bcMode(obj)
            if isempty(obj.bcMode)
                 result.x = 'circ'; result.y = 'circ'; result.z = 'circ';
@@ -173,7 +182,7 @@ classdef Initializer < handle
            end
         end
         
-%___________________________________________________________________________________________________ GS: fluxLimiter
+%___________________________________________________________________________________ GS: fluxLimiter
         function result = get.fluxLimiter(obj)
             result = struct();
             fields = {'x', 'y', 'z'};
@@ -191,7 +200,7 @@ classdef Initializer < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         
-%___________________________________________________________________________________________________ operateOnInput
+%____________________________________________________________________________________ operateOnInput
         function operateOnInput(obj, input, defaultGrid)
             if isempty(input)
                 grid        = defaultGrid;
@@ -207,7 +216,7 @@ classdef Initializer < handle
             obj.geomgr.setup(grid);
         end
         
-%___________________________________________________________________________________________________ getInitialConditions
+%______________________________________________________________________________ getInitialConditions
 % Given simulation parameters filled out in a superclass, uses the superclass' calculateInitialConditions
 % function to get Q(x,0) fluid fields.
         function [fluids, mag, statics, potentialField, selfGravity, iniSettings] = getInitialConditions(obj)
@@ -228,15 +237,11 @@ classdef Initializer < handle
                 if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
 
-                % Fill in gamma values for fluids which did not have them set
-		% This also permits the simple use of 'run.gammma' to continue w/o major rewriting
                 for z = 1:numel(fluids)
-		    if isfield(fluids(z).details, 'gamma') == 0
-		        fluids(z).details.gamma = obj.gamma;
-		    end
+                    fluids(z).details = obj.fluidDetails(z);
+		    fluids(z).details.minMass = mpi_max(fluids(z).details.minMass);
 		end
 
-                obj.minMass = max(mpi_allgather(obj.minMass));
             end
 
 % FIXME his is an ugly hack; slice determination is a FAIL since parallelization.
@@ -347,7 +352,7 @@ classdef Initializer < handle
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             %%%% Must be implemented in subclasses %%%%
         end
-    
+
 %___________________________________________________________________________________________________ loadDataFromFile
         function loadDataFromFile(obj, filePathToLoad)
             if isempty(filePathToLoad); return; end

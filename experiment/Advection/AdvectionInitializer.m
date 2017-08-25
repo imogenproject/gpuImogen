@@ -12,6 +12,7 @@ classdef AdvectionInitializer < Initializer
         backgroundB;         % Initial magnetic field. Automatically actives magnetic fluxing. [1x3].
         
         waveType;            % One of the 4 MHD wave types, or 'sound' for adiabatic fluid sound.
+        boxLength;
     end %PUBLIC
     
     properties(SetAccess = private, GetAccess = public);
@@ -49,11 +50,11 @@ classdef AdvectionInitializer < Initializer
         function obj = AdvectionInitializer(input)
             obj                 = obj@Initializer();
 
+            obj.boxLength       = 1;
             obj.writeFluid      = 1;
 
-            obj.gamma           = 5/3;
-            obj.pPressure        = 1;
-            obj.pDensity         = 1;
+            obj.pPressure       = 1;
+            obj.pDensity        = 1;
             obj.backgroundMach  = [0 0 0];
             obj.backgroundB     = [0 0 0];
             
@@ -65,7 +66,6 @@ classdef AdvectionInitializer < Initializer
             obj.cycles          = 2;
 
             obj.waveLinearity(true);
-
             
             obj.runCode         = 'ADVEC';
             obj.info            = 'Advection test.';
@@ -80,9 +80,9 @@ classdef AdvectionInitializer < Initializer
             obj.activeSlices.xyz= true;
             obj.activeSlices.x  = true;
             
-            obj.bcMode.x          = ENUM.BCMODE_CIRCULAR;
-            obj.bcMode.y          = ENUM.BCMODE_CIRCULAR;
-            obj.bcMode.z          = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.x        = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.y        = ENUM.BCMODE_CIRCULAR;
+            obj.bcMode.z        = ENUM.BCMODE_CIRCULAR;
             
             obj.operateOnInput(input, [512 1 1]);
         end
@@ -162,7 +162,7 @@ classdef AdvectionInitializer < Initializer
             self.backgroundMach = self.pBackgroundMach(:,copyfrom);
             self.wavenumber     = self.pWavenumber(:,copyfrom);
             self.setBackground(self.pDensity(1,copyfrom), self.pPressure(1,copyfrom));
-            self.gamma(1,self.pWriteFluid) = self.gamma(copyfrom);
+            self.fluidDetails(end+1) = fluidDetailModel('10um_iron_balls');
         end
 
     end%GET/SET
@@ -192,8 +192,8 @@ classdef AdvectionInitializer < Initializer
             
             statics  = StaticsInitializer(geo);
             
-            geo.makeBoxSize(1);
-            geo.makeBoxOriginCoord([-.5 -.5 -.5]);
+            geo.makeBoxSize(obj.boxLength);
+            geo.makeBoxOriginCoord(obj.boxLength * [-.5 -.5 -.5]);
             
             [xGrid yGrid zGrid] = geo.ndgridSetIJK('pos');
 
@@ -205,7 +205,7 @@ classdef AdvectionInitializer < Initializer
                     % omega = c_wave k
                     % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
                     rez   = geo.globalDomainRez;
-                    K     = 2*pi*obj.pWavenumber(:,fluidCt) ./ [1; rez(2)/rez(1); rez(3)/rez(1)];
+                    K     = 2*pi*obj.pWavenumber(:,fluidCt) ./ ([1; rez(2)/rez(1); rez(3)/rez(1)] * obj.boxLength);
                     obj.pWaveK(:,fluidCt) = K;
                     KdotX = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
                     
@@ -245,15 +245,13 @@ classdef AdvectionInitializer < Initializer
                 else
                     [mass, mom, ~, ener] = geo.basicFluidXYZ();
                     mass = mass * obj.pDensity(1,fluidCt);
-                    ener = ener * .001 / (obj.gamma(1,fluidCt)-1);
+                    ener = ener * .001 / (obj.fluidDetails(fluidCt).gamma-1);
                 end
 
-                fluids(fluidCt) = obj.stateToFluid(mass, mom, ener);
-                fluids(fluidCt).details.gamma = obj.gamma(1,fluidCt);
+                fluids(fluidCt)         = obj.stateToFluid(mass, mom, ener);
 
-            
                 obj.waveOmega = omega;
-                wavespeed = omega / norm(K);
+                wavespeed     = omega / norm(K);
             
                 % forward speed = background speed + wave speed; Sim time = length/speed, length \eq 1
                 if abs(wavespeed) < .05*c_s; wavespeed = c_s; end

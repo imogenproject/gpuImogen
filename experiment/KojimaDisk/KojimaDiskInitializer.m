@@ -38,6 +38,8 @@ classdef KojimaDiskInitializer < Initializer
         perturbDisk;    % If true, the disk generated is disturbed away from equilibrium
         perturbRhoAmp; 
 
+        dustLoad; 
+
         buildShearingAnnulus;
     end %PUBLIC
 
@@ -54,35 +56,36 @@ classdef KojimaDiskInitializer < Initializer
         
 %___________________________________________________________________________________________________ KojimaDiskInitializer
         function obj = KojimaDiskInitializer(input)
-            obj                     = obj@Initializer();            
-            obj.runCode             = 'KOJIMA';
-            obj.info                = 'Kojima point-potential disk trial.';
-            obj.mode.fluid          = true;
-            obj.mode.magnet         = false;
-            obj.mode.gravity        = true;
-            obj.iterMax             = 300;
-            obj.bcMode.x            = ENUM.BCMODE_CONSTANT; % FIXME wrong use outflow...
-            obj.bcMode.y            = ENUM.BCMODE_CONSTANT;
-            obj.activeSlices.xy     = true;
-            obj.bgDensityCoeff      = 1e-5;
+            obj                  = obj@Initializer();            
+            obj.runCode          = 'KOJIMA';
+            obj.info             = 'Kojima point-potential disk trial.';
+            obj.mode.fluid       = true;
+            obj.mode.magnet      = false;
+            obj.mode.gravity     = true;
+            obj.iterMax          = 300;
+            obj.bcMode.x         = ENUM.BCMODE_CONSTANT; % FIXME wrong use outflow...
+            obj.bcMode.y         = ENUM.BCMODE_CONSTANT;
+            obj.activeSlices.xy  = true;
+            obj.bgDensityCoeff   = 1e-5;
             
-            obj.gravity.constant    = 1;
-            obj.pointMass           = 1;
-            obj.pointRadius         = 0.3;
-            obj.gamma               = 5/3;
-            obj.q                   = 2;
-            obj.radiusRatio         = 0.8;
-            obj.edgePadding         = 0.5;
+            obj.gravity.constant = 1;
+            obj.pointMass        = 1;
+            obj.pointRadius      = 0.3;
+            obj.gamma            = 5/3;
+            obj.q                = 2;
+            obj.radiusRatio      = 0.8;
+            obj.edgePadding      = 0.5;
 
-            obj.thresholdMass       = 0;
-            obj.useStatics          = false;
-            obj.inflatePressure     = false;
-            obj.useZMirror          = 0;
+            obj.thresholdMass    = 0;
+            obj.useStatics       = false;
+            obj.inflatePressure  = false;
+            obj.useZMirror       = 0;
 
-            obj.perturbDisk         = 0;
-            obj.perturbRhoAmp       = 0;
+            obj.perturbDisk      = 0;
+            obj.perturbRhoAmp    = 0;
             
             obj.buildShearingAnnulus = 0;
+            obj.dustLoad         = 0;
             %--- Set momentum distribution array ---%
             %           This array defines how Imogen distributes momentum in the grid. A value of 1 
             %           specifies no momentum, 2 gives Kojima r^1-q momentum, 3 gives Keplerian 
@@ -222,16 +225,12 @@ classdef KojimaDiskInitializer < Initializer
 
             fluids = obj.stateToFluid(mass, mom, ener);
 
+            if obj.dustLoad > 0
+                
+            end
+
             sphericalR = sqrt(radpts.^2 + zpts.^2);
             potentialField.field = -1./sphericalR;
-
-%            if obj.useZMirror == 1
-%                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
-%                [obj.grid(1)/2 obj.grid(2)/2 0] + [.5 .5 0], 1, obj.pointRadius); % Temporary kludge
-%            else
-%                potentialField.field = grav_GetPointPotential(obj.grid, tempd, ...
-%                obj.grid/2 + [.5 .5 .5], 1, obj.pointRadius); % Temporary kludge
-%            end
         end
         
     end%PROTECTED

@@ -6,6 +6,8 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 
     memtot = sum(iniGPUMem);
     memneed = numel(FieldSource.fluids(1).mass) * 11 * 8 * numel(FieldSource.fluids);
+    mpi_barrier(); % Keep anybody from drinking up available memory before we check
+
     if memneed / memtot > .9
         run.save.logAllPrint('WARNING: Projected GPU memory utilization of %.1f%c exceeds 9/10 of total device memory.\n', 100*memneed/memtot, 37);
         run.save.logAllPrint('WARNING: Reduction in simulation size or increase in #of GPUs/nodes may be required.\n');
@@ -31,7 +33,6 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         fluid(F) = FluidManager();
         % HACK HACK HACK this should be in some other init place
         fluid(F).MASS_THRESHOLD = FieldSource.ini.thresholdMass;
-        fluid(F).MINMASS        = FieldSource.ini.minMass;
         fluid(F).parent         = run;
 
         FluidData = FieldSource.fluids(F);
