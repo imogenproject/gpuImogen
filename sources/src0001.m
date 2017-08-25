@@ -3,13 +3,12 @@ function src0001(run, fluids, mag, tFraction)
 
 dTime = run.time.dTime * tFraction;
 
-sigma_gas = 2.4e-19;
-mu_gas    = 3.3e-27;
-dia_dust  = 10e-6; % 10um iron spheres
-mass_dust = 3e-11;
+sigma_gas  = fluids(1).particleSigma;
+mu_gas     = fluids(1).particleMu;
+sigma_dust = fluids(2).particleSigma;
+mu_dust    = fluids(2).particleMu;
 
 cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime]);
-
 
 % Assert boundary conditions
 for N = 1:numel(fluids)

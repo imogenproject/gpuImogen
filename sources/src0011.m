@@ -3,10 +3,10 @@ function src0011(run, fluids, mag, tFraction)
 
 dTime = run.time.dTime * tFraction;
 
-sigma_gas = 2.4e-19;
-mu_gas    = 3.3e-27;
-dia_dust  = 10e-6; % 10um iron spheres
-mass_dust = 3e-11;
+sigma_gas  = fluids(1).particleSigma;
+mu_gas     = fluids(1).particleMu;
+sigma_dust = fluids(2).particleSigma;
+mu_dust    = fluids(2).particleMu;
 
 cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime/2]);
 cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0);

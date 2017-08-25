@@ -14,20 +14,20 @@ else
     potOrder = 0;
 end
 
-sigma_gas = 2.4e-19;
-mu_gas    = 3.3e-27;
-dia_dust  = 10e-6; % 10um iron spheres
-mass_dust = 3e-11;
+sigma_gas  = fluids(1).particleSigma;
+mu_gas     = fluids(1).particleMu;
+sigma_dust = fluids(2).particleSigma;
+mu_dust    = fluids(2).particleMu;
 
 % This call solves geometric source terms, frame rotation and gravity simultaneously
 % parameter vector:
 % [rho_no gravity, rho_full gravity, omega, dt, space order, time order]
 % It can be programmed to use either implicit midpoint (IMP), Runge-Kutta 4 (RK4), Gauss-Legendre 4 (GL4), or GL6
 
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime/2]);
+cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mu_dust, dTime/2]);
 cudaTestSourceComposite(fluids, run.potentialField.field, run.geometry, ...
     [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, run.frameTracking.omega, dTime, potOrder, 6],  xyvector);
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime/2]);
+cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mu_dust, dTime/2]);
 % Take care of any parallel synchronization we need to do to remain self-consistent
 
 if potOrder > 0
