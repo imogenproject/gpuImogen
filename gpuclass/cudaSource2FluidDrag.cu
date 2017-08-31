@@ -23,7 +23,7 @@ __constant__ double dragparams[16];
 
 #define PI 3.141592653589793
 
-int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, double sigmaGas, double mu, double sigmaDust, double Mdust, double dt);
+int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, double sigmaGas, double muGas, double sigmaDust, double Mdust, double dt);
 
 int solveDragEMP(MGArray *gas, MGArray *dust, double dt);
 
@@ -82,18 +82,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		DROP_MEX_ERROR("Crashing.");
 	}	
 
-	double sigma        = params[0];
-	double fluidGamma   = derefXdotAdotB_scalar(prhs[0], "gamma", NULL);
-	double gasMu        = params[1];
-	double dustDiameter = params[2];
-	double dustMass     = params[3];
-	double dt           = params[4];
+	double fluidGamma = derefXdotAdotB_scalar(prhs[0], "gamma", NULL);
+	double dt         = params[4];
+
+	double sigmaGas   = params[0];
+	double muGas      = params[1];
+	double sigmaDust  = params[2];
+	double muDust     = params[3];
 	
 	//1nm iron sphere, 300K -> 56m/s thermal velocity
 	//10nm iron ball, 300K -> 1.79m/s thermal velocity
 	//100nm iron ball, 300K -> 56mm/s thermal velocity
 	
-	status = CHECK_IMOGEN_ERROR(sourcefunction_2FluidDrag(&fluidA[0], &fluidB[0], fluidGamma, sigma, gasMu, dustDiameter, dustMass, dt));
+	status = CHECK_IMOGEN_ERROR(sourcefunction_2FluidDrag(&fluidA[0], &fluidB[0], fluidGamma, sigmaGas, muGas, sigmaDust, muDust, dt));
 
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) {
 		DROP_MEX_ERROR("2-fluid drag code crashed.");
@@ -103,7 +104,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 }
 
-int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, double sigmaGas, double mu, double sigmaDust, double Mdust, double dt)
+int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, double sigmaGas, double muGas, double sigmaDust, double muDust, double dt)
 {
 	int i;
 	int sub[6];
@@ -112,11 +113,11 @@ int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, double gam, doub
 	int statusCode = SUCCESSFUL;
 
 	double hostDrag[16];
-	hostDrag[0] = 128.0 * sigmaGas * sqrt(sigmaDust) / (5 * mu * PI * sqrt(gam - 1)); // alpha
+	hostDrag[0] = 128.0 * sigmaGas * sqrt(sigmaDust) / (5 * muGas * PI * sqrt(gam - 1)); // alpha
 	hostDrag[1] = 128*(gam-1.0)/(PI*9.0); // beta
 	hostDrag[2] = 1/gam;
-	hostDrag[3] = 5*PI*sqrt(PI/2.0)*mu / (144.0 * sigmaGas);
-	hostDrag[4] = Mdust; // FIXME: this should be an array perhaps?
+	hostDrag[3] = 5*PI*sqrt(PI/2.0)*muGas / (144.0 * sigmaGas);
+	hostDrag[4] = muDust; // FIXME: this should be an array perhaps?
 	hostDrag[5] = sigmaDust;
 	
 	for(i = 0; i < fluidA->nGPUs; i++) {
