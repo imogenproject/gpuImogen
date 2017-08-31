@@ -7,9 +7,10 @@ run.timeMax     = 0.038;
 run.iterMax     = 50000;
 
 run.alias       = '';
-run.info        = '2D Double Blast Wave test.';
+run.info        = '1D Double Blast Wave test.';
 run.notes       = '';
 
+% The original Woodward & Colella (1984) test parameters
 run.pRight      = 100;
 run.pLeft       = 1000;
 run.pMid        = .01;

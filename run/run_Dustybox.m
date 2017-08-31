@@ -20,20 +20,20 @@ run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 10;
 
 % Set a background speed at which the fluid is advected
-run.backgroundMach = .2;
+run.backgroundMach = 0.0;
 
 % Set the type of wave to be run.
 % One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
 % The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
 % Any nonzero B will automatically activate magnetic fluxing
 run.waveType = 'sonic';
-run.amplitude = .05;
+run.amplitude = .0;
 
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 %                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
-run.wavenumber = [3 0 0];
+run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
 run.cycles = 5;
 
@@ -51,24 +51,6 @@ run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
 
-rp = RealtimePlotter();
-  rp.plotmode = 7;
-  rp.plotDifference = 0;
-  rp.insertPause = 1;
-  rp.iterationsPerCall = 1;
-  rp.firstCallIteration = 1;
-  rp.spawnGUI = 1;
-
-rp.plotmode = 4;
-rp.cut = [256 1 1];
-rp.indSubs = [1 1 512;1 1 1;1 1 1];
-rp.movieProps(0, 82, 'TP_');
-rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-
-  run.peripherals{end+1} = rp;
   
 fm = FlipMethod(); % 1 = HLL, 2 = HLLC, 3 = XJ
   fm.iniMethod = 2; 

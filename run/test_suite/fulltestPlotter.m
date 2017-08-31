@@ -13,46 +13,66 @@ if doquad; maxplot = 4; end
 
 % Plot the advection test results
 if isfield(FTR,'advection')
+    if isfield(FTR.advection,'Xalign_mach0')
+        plotno = prepNextPlot(maxplot, plotno);
+        plotAdvecOutput(FTR.advection.Xalign_mach0);
+        title('X advection, n = [1 0 0], stationary bg,');
+        stylizePlot(gca());
+    end
     
-    plotno = prepNextPlot(maxplot, plotno);
-    plotAdvecOutput(FTR.advection.Xalign_mach0);
-    title('X advection, n = [1 0 0], stationary bg,','fontsize',14);
+    if isfield(FTR.advection, 'Xalign_mach0p5')
+        plotno = prepNextPlot(maxplot, plotno);
+        plotAdvecOutput(FTR.advection.Xalign_mach0p5);
+        title('X advection, n = [1 0 0], moving bg');
+        stylizePlot(gca());
+    end
     
-    plotno = prepNextPlot(maxplot, plotno);
-    plotAdvecOutput(FTR.advection.Xalign_mach0p5);
-    title('X advection, n = [1 0 0], moving bg','fontsize',14);
-    
-    plotno = prepNextPlot(maxplot, plotno);
-    plotAdvecOutput(FTR.advection.XY);
-    title('Cross-grid advection, n = [4 5 0]','fontsize',14);
+    if isfield(FTR.advection, 'XY')
+        plotno = prepNextPlot(maxplot, plotno);
+        plotAdvecOutput(FTR.advection.XY);
+        title('Cross-grid advection, n = [4 5 0]');
+        stylizePlot(gca());
+    end
 end
 
 if isfield(FTR,'einfeldt')
     % Plot the Einfeldt rarefaction test results
     plotno = prepNextPlot(maxplot, plotno);
     plotEinfeldt(FTR.einfeldt);
-    title('Einfeldt test results','fontsize',14);
+    title('Einfeldt test results');
+    stylizePlot(gca());
 end
 
 if isfield(FTR,'sod')
     % Plot the Sod tube results
     plotno = prepNextPlot(maxplot, plotno);
     plotSod(FTR.sod.X)
-    title('Sod tube convergence results','fontsize',14);
+    title('Sod tube convergence results');
+    stylizePlot(gca());
+end
+
+if isfield(FTR,'doubleBlast')
+    % Plot the double blast refinement results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotDoubleBlast(FTR.doubleBlast);
+    title('Double blast test convergence results');
+    stylizePlot(gca());
 end
 
 if isfield(FTR,'centrifuge')
     % Plot centrifuge test results
     plotno = prepNextPlot(maxplot, plotno);
     plotCentrifuge(FTR.centrifuge);
-    title('Centrifuge equilibrium maintainence results','fontsize',14);
+    title('Centrifuge equilibrium maintainence results');
+    stylizePlot(gca());
 end
 
 if isfield(FTR, 'sedov3d')
     % Plot Sedov-Taylor metric results
     plotno = prepNextPlot(maxplot, plotno);
     plotSedov(FTR.sedov3d);
-    title('3D Sedov-Taylor density errors','fontsize',14);
+    title('3D Sedov-Taylor density errors');
+    stylizePlot(gca());
 end
 
 end
@@ -67,14 +87,22 @@ hold on;
 
 end
 
+function stylizePlot(A)
+
+A.XLabel.FontSize = 14;
+A.YLabel.FontSize = 14;
+A.ZLabel.FontSize = 14;
+
+end
+
 function plotAdvecOutput(q)
 
-plot(-log2(q.relativeH), log2(q.err1),'r-x'); % one norm
-plot(-log2(q.relativeH), log2(q.err2),'g-x'); % 2 norm
-plot(-log2(q.relativeH), .5*(log2(q.err1(1)) + log2(q.err2(1))) + 2*log2(q.relativeH),'k-'); % reference slope of -2
+plot(log2(q.N), log2(q.err1),'r-x'); % one norm
+plot(log2(q.N), log2(q.err2),'g-x'); % 2 norm
+plot(log2(q.N), .5*(log2(q.err1(1)) + log2(q.err2(1))) - 2*log2(q.N/q.N(1)),'k-'); % reference slope of -2
 
-xlabel('-log_2(h * 32)','fontsize',14);
-ylabel('log_2(norm(\rho - \rho_{exact})','fontsize',14);
+xlabel('log_2(# pts)');
+ylabel('log_2(norm(\rho - \rho_{exact})');
 
 legend(['1-norm, avg slope ' num2str(q.L1_Order)], ['2-norm, avg slope ' num2str(q.L2_Order)], 'Reference 2nd order slope');
 
@@ -86,10 +114,10 @@ plot(log2(q.N), log2(q.L1),'r-x');
 plot(log2(q.N), log2(q.L2),'g-x');
 plot(log2(q.N), .5*(log2(q.L1(1)) + log2(q.L2(1))) - log2(q.N/q.N(1)),'k-');
 
-xlabel('Log_2(1/h)','fontsize',14);
-ylabel('log_2(norm(\rho - \rho_{exact})','fontsize',14);
+xlabel('Log_2(# pts)');
+ylabel('log_2(norm(\rho - \rho_{exact})');
 
-legend('1-Norm','2-Norm','reference -2 slope');
+legend('1-Norm','2-Norm','reference -1 slope');
 
 end
 
@@ -99,11 +127,21 @@ plot(log2(q.res), log2(q.L1),'r-x');
 plot(log2(q.res), log2(q.L2),'g-x');
 plot(log2(q.res), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.res/q.res(1)),'k-');
 
-xlabel('log_2(1/h)','fontsize',14);
-ylabel('log_2(norm(\rho - \rho_{exact}))','fontsize',14);
+xlabel('log_2(# pts)');
+ylabel('log_2(norm(\rho - \rho_{exact}))');
 
-legend('1-Norm','2-Norm','slope of -1');
+legend('1-Norm','2-Norm','Reference slope of -1');
 
+end
+
+function plotDoubleBlast(q)
+plot(log2(q.N), log2(q.L1),'r-x');
+plot(log2(q.N), log2(q.L2),'g-x');
+plot(log2(q.N), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.N/q.N(1)),'k-');
+xlabel('Refinement steps');
+ylabel('|\rho - \rho_{max refinement}|');
+
+legend('1-norm','2-norm','Reference slope of -1');
 end
 
 function plotCentrifuge(q)
@@ -141,8 +179,8 @@ plot(1:N,log2(q.L1(:,end)),'r-x');
 plot(1:N,log2(q.L2(:,end)),'b-o');
 
 legend('L_1 norm','L_2 norm');
-xlabel('log_2(n/32)','fontsize',14);
-ylabel('log_2(norm(\rho - \rho_{ini}))','fontsize',14);
+xlabel('log_2(n/32)');
+ylabel('log_2(norm(\rho - \rho_{ini}))');
 
 end
 
@@ -151,7 +189,8 @@ function plotSedov(q)
 plot(q.times, q.rhoL1,'-x');
 plot(q.times, q.rhoL2,'-o');
 
-xlabel('Simulation time (end = r \rightarrow 0.45)','fontsize',14)
-ylabel('Norm(\rho - \rho_{exact})','fontsize',14);
+xlabel('Simulation time (end = r \rightarrow 0.45)')
+ylabel('Norm(\rho - \rho_{exact})');
 
 end
+

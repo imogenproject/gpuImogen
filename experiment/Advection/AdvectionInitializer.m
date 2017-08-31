@@ -228,6 +228,7 @@ classdef AdvectionInitializer < Initializer
                     if strcmp(obj.waveType, 'entropy')
                         amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,fluidCt));
                         FW.entropyExact(amp, K);
+                        omega = norm(obj.pWaveK(1,fluidCt))*sqrt(obj.gamma(1,fluidCt));
                     elseif strcmp(obj.waveType, 'sonic')
                         amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,fluidCt));
                         if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else

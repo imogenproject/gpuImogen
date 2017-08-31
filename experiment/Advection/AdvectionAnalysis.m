@@ -36,8 +36,8 @@ geo.makeBoxOriginCoord([-.5 -.5 -.5]);
 KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 
 % Calculate the linear factor in displacement
-machParallel = IC.ini.backgroundMach * Khat';
-machPerp     = IC.ini.backgroundMach - Khat * machParallel;
+machParallel = IC.ini.backgroundMach' * Khat;
+machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
 % Output vars...
 rhoerr_L1 = []; rhoerr_L2 = [];
@@ -57,10 +57,15 @@ for N = 1:S.numFrames();
     
     % Compute the displacement of a reference wave through circular BCs 
     % Parameterized by original phase
-backMap = CharacteristicAnalysis1D(0:.0001:.9999, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*(0:.0001:.9999)), t);
+    rng = 0:.0001:.9999;
+    if strcmp(IC.ini.waveType, 'sonic')
+        backMap = CharacteristicAnalysis1D(rng, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*rng), t);
+    elseif strcmp(IC.ini.waveType, 'entropy')
+        backMap = CharacteristicAnalysis1D_entropy(rng, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*rng), t);
+    end
 
     % Map this onto the full 3D space by referring to original phases
-    rhoAnalytic = interp1(2*pi*(0:.0001:.9999), backMap, mod(KdotX,2*pi),'pchip');
+    rhoAnalytic = interp1(2*pi*rng, backMap, mod(KdotX,2*pi),'pchip');
 
     % The moment of truth: calculate the 1- and 2-norms
     delta = rhoAnalytic - F.mass;
@@ -84,7 +89,7 @@ autopsy.wavenumber = IC.ini.pWavenumber;
 autopsy.rhoL1 = rhoerr_L1;
 autopsy.rhoL2 = rhoerr_L2;
 
-autopsy
+%autopsy
 
 if mpi_amirank0()
     cd(directory);

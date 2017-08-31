@@ -32,17 +32,17 @@ de_FD = circshift(e,-1) - e;
 de_BD = circshift(de_FD,1);
 dx_FD = circshift(x0,-1) - x0; dx_FD = mod(dx_FD, periodicity);
 dx_BD = circshift(dx_FD,1);
-% Extract b from the (a + bx + cx^2) van Der Monde fit
+% Extract b from the (a + bx + cx^2) Van Der Monde fit
 % to know e' to second order accuracy
 de_dx = de_FD.*dx_FD.*dx_FD;
 de_dx = de_dx + circshift(de_dx,1);
 de_dx = de_dx ./ ( dx_FD.*dx_BD.*(dx_FD+dx_BD));
 
-% Compute the critical time
+% Compute the critical time based on the shortest overturn time (biggest slope)
 criticalTime = 2/(gp1*c0*max(de_dx));
 
 if any(T > criticalTime)
-    warning('WARNING: T > critical time: SHOCK HAS FORMED, CHARACTERISTIC PROJECTION INVALID');
+    warning('ANALYSIS FAILURE: T > critical time: A SHOCK HAS FORMED, CHARACTERISTIC PROJECTION NO LONGER VALID');
 end
 
 rho1 = rho0*(1 + e);

@@ -9,7 +9,7 @@ if nargin < 7
 end
 
 run         = AdvectionInitializer(grid);
-run.iterMax = 99999;
+run.iterMax = 499999;
 run.info    = 'Advection test.';
 run.notes   = 'Automated test suite: Advection';
 
@@ -43,6 +43,7 @@ run.ppSave.dim3 =  100;
 run.wavenumber = N0;
 % run for only 1/3 because this will decrease by factor of 3 at 3x the wavenumber
 
+% Worth warning, this will diverge as 1/amplitude when amplitude is small...
 run.forCriticalTimes(.95);
 %run.cycles = 4;
 run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
@@ -65,7 +66,7 @@ result.firstGrid = grid;
 result.doublings = doublings;
 result.paths = {};
 result.err1 = []; result.err2 = [];
-result.relativeH = [];
+result.N = [];
 
 for D = 1:doublings;
     % Run simulation at present resolution & store results path
@@ -79,20 +80,20 @@ for D = 1:doublings;
     % Store error norms
     result.err1(end+1) = A.rhoL1(end);
     result.err2(end+1) = A.rhoL2(end);
-    result.relativeH(end+1) = 2^(1-D);
+    result.N(end+1) = grid(1);
 
     % Refine grid
     grid=grid*2;
     if grid(2) <= 2; grid(2) = 1; end % keep 1D from becoming 2D
-    if grid(3) <= 2; grid(3) = 1; end; % keep 2D from becoming 3D
+    if grid(3) <= 2; grid(3) = 1; end % keep 1D/2D from becoming 3D
     run.geomgr.setup(grid);
 end
 
-if numel(B0) < 3; B0 = [1 1 1]*B0(1); end %Prevent descriptor sprintf from barfing
-if numel(V0) < 3; V0 = [1 0 0]*V0(1); end;
+if numel(B0) < 3; B0 = [1 1 1]*B0(1); end % Prevent descriptor sprintf from barfing
+if numel(V0) < 3; V0 = [1 0 0]*V0(1); end
 
-L1_Order = mean(diff(log(result.err1)) ./ diff(log(result.relativeH)));
-L2_Order = mean(diff(log(result.err2)) ./ diff(log(result.relativeH)));
+L1_Order = mean(diff(log(result.err1)) ./ diff(log(result.N)));
+L2_Order = mean(diff(log(result.err2)) ./ diff(log(result.N)));
 
 result.L1_Order = L1_Order;
 result.L2_Order = L2_Order;

@@ -17,7 +17,7 @@ run             = RiemannProblemInitializer(grid);
 % Run the test until the rarefaction propagates 95% of the way to the edge of
 % the grid.
 run.timeMax     = .92*.5/((1+M)*sqrt(gamma));
-run.iterMax     = 19999;
+run.iterMax     = 99999;
 
 run.cfl 	    = .75;
 
