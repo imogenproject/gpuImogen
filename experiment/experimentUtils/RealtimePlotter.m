@@ -241,8 +241,12 @@ classdef RealtimePlotter <  LinkedListNode
 
                 self.pickSubplot(plotnum, self.plotmode);
                 self.drawPlot(q, params, vv);
+                
+                % FIXME this requires the RealtimePlotterGUI to be open...
                 obj = findobj('tag','qtylistbox');
-                title(obj.String(params.what,:));
+                if ~isempty(obj)
+                    title(obj.String(params.what,:));
+                end
             end
 
             fig.Name = ['Output at iteration ' num2str(run.time.iteration) ', time ' num2str(sum(run.time.history))];
