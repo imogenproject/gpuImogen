@@ -4,7 +4,7 @@ classdef RadiatingFlowSolver < handle
 % d/dx(rho vx)        = 0
 % d/dx(rho vx vy + P) = 0
 % d/dx(rho vx vy)     = 0
-% d/dx(vx(T + gamma P / gamma-1)) = lambda
+% d/dx(vx(KE + gamma P / gamma-1)) = lambda
 % where 'lambda' is an arbitrary radiation function
 
     properties (SetAccess = public, GetAccess = public)

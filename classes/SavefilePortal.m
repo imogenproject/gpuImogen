@@ -6,8 +6,10 @@ classdef SavefilePortal < handle
     end%CONSTANT
     
     %===================================================================================================
-    properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
+    properties (SetAccess = protected, GetAccess = public) %                           P U B L I C  [P]
     end %PUBLIC
+    
+    
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
@@ -84,7 +86,7 @@ classdef SavefilePortal < handle
                 if strcmp(id,'YZ');id = 6; end
                 if strcmp(id,'XYZ');id = 7; end
                 if isa(id,'double') == false;
-                    fprintf('Received string ''%s'' for ID. Valid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\nDefaulting to XYZ.\n');
+                    fprintf('Received string ''%s'' for ID.\nValid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\nDefaulting to XYZ.\n');
                     id = 7;
                 end
             end
