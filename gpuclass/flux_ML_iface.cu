@@ -103,7 +103,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			break;
 		}
 		fsp.minimumRho = rhoMin;
-		performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect);
+		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect);
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
