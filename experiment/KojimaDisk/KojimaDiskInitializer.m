@@ -231,6 +231,14 @@ classdef KojimaDiskInitializer < Initializer
 
             sphericalR = sqrt(radpts.^2 + zpts.^2);
             potentialField.field = -1./sphericalR;
+
+            % Constructs a single-parameter softened potential -a/sqrt(r^2 + r0^2) inside pointRadius to avoid
+	    % a singularity approaching r=0; 'a' is chosen sqrt(2) to match external 1/r 
+	    soft = (sphericalR < obj.pointRadius);
+	    phiSoft = -sqrt(2./(sphericalR(soft).^2 + obj.pointRadius^2));
+
+	    potentialField.field(soft) = phiSoft;
+
         end
         
     end%PROTECTED
