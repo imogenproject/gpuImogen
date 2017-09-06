@@ -110,7 +110,7 @@ classdef SaveManager < LinkedListNode
 % FIXME: This should determine *when* resultsHandler should be called
 % and mark THAT iteration/time, not waste time on every iteration...
 	saver = ImogenEvent([], 1, [], @resultsHandler);
-	saver.active = 1;
+	saver.armed = 1;
 	run.attachEvent(saver);
 	
     rez = obj.parent.geometry.globalDomainRez;

@@ -155,7 +155,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.updateSubsets();
             
             ticker = ImogenEvent([], self.firstCallIteration, [], @self.FrameAnalyzer);
-            ticker.active = 1;
+            ticker.armed = 1;
             run.attachEvent(ticker);
 
             % Throw up a window that lets the user interactive muck with a run's visualization
@@ -481,7 +481,7 @@ classdef RealtimePlotter <  LinkedListNode
             
             % Rearm myself
             p.iter = p.iter + self.iterationsPerCall;
-            p.active = 1;
+            p.armed = 1;
             
             if self.insertPause; input('Enter to continue: '); end
         end

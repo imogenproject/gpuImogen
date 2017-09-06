@@ -17,7 +17,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
     % Re-enable the save trigger
     if ~isempty(saveEvent)
         saveEvent.iter = saveEvent.iter + 1;
-        saveEvent.active = 1;
+        saveEvent.armed = 1;
     end
     
     if ~run.save.FSAVE; return; end

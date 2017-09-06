@@ -37,7 +37,7 @@ classdef ImogenManager < handle
         %--- Core operations: Timestep control, conservative CFD/MHD
         time;           % Manages temporal actions.                                 TimeManager
         fluid;          % Manages fluid routines.                                   FluidManager
-	% radiation removed: This is a per-fluid property
+        % radiation removed: This is a per-fluid property
         magnet;         % Manages magnetic routines.                                MagnetManager
         geometry;       % Parallel behavior/semantics/global geometry handler       GeometryManager
 
@@ -285,9 +285,13 @@ classdef ImogenManager < handle
             
             while ~isempty(p)
                 triggered = 0;
-                if p.active;
-                    if obj.time.iteration >= p.iter; triggered = 1; p.active = 0; end
-                    if obj.time.time      >= p.time; triggered = 1; p.active = 0; end
+                if p.armed;
+                    if obj.time.iteration >= p.iter; triggered = 1; p.armed = 0; end
+                    if obj.time.time      >= p.time; triggered = 1; p.armed = 0; end
+                    if ~isepmpty(p.testHandle);
+                        triggered = p.testHandle(p, obj, fluids, mag);
+                        if triggered; p.armed = 0; end
+                    end
                 end
 
                 % the callback may delete p

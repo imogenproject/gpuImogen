@@ -35,7 +35,7 @@ classdef BoosterPeripheral < LinkedListNode;
 
             % An ImogenEvent is a linked list node, a trigger condition & a callback duct taped together
             myEvent = ImogenEvent([], 20, [], @self.callbackMethod);
-            myEvent.active = 1;
+            myEvent.armed = 1;
             % Initialize is called before the CFD loop begins
             run.attachEvent(myEvent);
         end

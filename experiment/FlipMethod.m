@@ -45,7 +45,7 @@ classdef FlipMethod < LinkedListNode;
                     myEvent = ImogenEvent([], self.atstep, [], @self.flipToXJ); 
                 end
                 
-                myEvent.active = 1;
+                myEvent.armed = 1;
                 run.attachEvent(myEvent);
             end
 

@@ -1,5 +1,7 @@
 classdef ImogenEvent < LinkedListNode
-    % Class annotation template for creating new classes.
+    % An event which is polled once per Imogen timestep.
+    % If the conditions for the event to be triggered are met, the callbackHandle function is called.
+    % the .armed property is set to zero if triggered: 
     %___________________________________________________________________________________________________
     
     %===================================================================================================
@@ -8,12 +10,11 @@ classdef ImogenEvent < LinkedListNode
     
     %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        active;
-
-        time;
-        iter;
-        testHandle;
-        callbackHandle;
+        armed;         % if true, checks possible event triggers below
+        time;           % if armed and sum(run.time.history) >= time, triggers the callback
+        iter;           % if armed and run.time.iteration >= iter, triggers the callback
+        testHandle;     % if armed and not [], triggers callback if testHandle(event, run, fluids, mag) == 1 
+        callbackHandle; % If event is armed and triggered, callbackHandle(event, run, fluids, mag)
     end %PUBLIC
     
     %===================================================================================================
@@ -35,7 +36,7 @@ classdef ImogenEvent < LinkedListNode
                 if ~isempty(handle); self.testHandle = handle; end
                 if ~isempty(callback); self.callbackHandle = callback; end
 
-                self.active = 0;
+                self.armed = 0;
         end
 
     end%PUBLIC
