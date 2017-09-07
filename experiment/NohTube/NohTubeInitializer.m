@@ -11,7 +11,7 @@ classdef NohTubeInitializer < Initializer
         r0;    % Radius of implosion
                % For 1D, r0 < 0 = prior to wall impact
         
-        M0;    % Mach (large for analytical soln to work:
+        M0;    % Mach (large for analytical soln to work)
 
         halfspace;
     end %PUBLIC
@@ -49,6 +49,13 @@ classdef NohTubeInitializer < Initializer
             obj.useHalfspace([0 0 0]);
             
             obj.pureHydro = 1;
+            
+            obj.rho0 = 1;
+            obj.r0 = -0.8;
+            obj.v0 = -1;
+            obj.M0 = 3;
+            
+            obj.useHalfspace([0 0 0]);
         end
         
         
@@ -66,21 +73,23 @@ classdef NohTubeInitializer < Initializer
             if numel(self.halfspace) == 1; self.halfspace = [1 1 1]*self.halfspace; end
             rez = self.geomgr.globalDomainRez;
             
+            ext = ENUM.BCMODE_CONSTANT;
+            
             if self.halfspace(1)
-                self.bcMode.x = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+                self.bcMode.x = {ENUM.BCMODE_MIRROR, ext};
             else
-                self.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+                self.bcMode.x = {ext, ext};
             end
             if self.halfspace(2) && (rez(2) > 1)
-                self.bcMode.y = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+                self.bcMode.y = {ENUM.BCMODE_MIRROR, ext};
             else
-                self.bcMode.y = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+                self.bcMode.y = {ext, ext};
             end
             if rez(3) > 1
                 if self.halfspace(3)
-                    self.bcMode.z = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_STATIC};
+                    self.bcMode.z = {ENUM.BCMODE_MIRROR, ext};
                 else
-                    self.bcMode.z = {ENUM.BCMODE_STATIC, ENUM.BCMODE_STATIC};
+                    self.bcMode.z = {ext, ext};
                 end
             else; self.bcMode.z = {ENUM.BCMODE_CIRCULAR, ENUM.BCMODE_CIRCULAR}; end
         end
