@@ -40,51 +40,54 @@ end
 
 tic;
 for F = 1:nFuncs;
-    outcome = -1;
-
-    targfunc = @noSuchThing; % Default to failure
-    if strcmp(funcList{F}, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
-    if strcmp(funcList{F}, 'cudaArrayRotateB'); targfunc = @testCudaArrayRotateB; end
-    if strcmp(funcList{F}, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
-    if strcmp(funcList{F}, 'cudaFwdAverage'); targfunc = @testCudaFwdAverage; end
-    if strcmp(funcList{F}, 'cudaFwdDifference'); targfunc = @testCudaFwdDifference; end
-    if strcmp(funcList{F}, 'cudaMHDKernels'); targfunc = @testCudaMHDKernels; end
-    if strcmp(funcList{F}, 'cudaMagPrep'); targfunc = @testCudaMagPrep; end
-    if strcmp(funcList{F}, 'cudaMagTVD'); targfunc = @testCudaMagTVD; end
-    if strcmp(funcList{F}, 'cudaMagW'); targfunc = @testCudaMagW; end
-    if strcmp(funcList{F}, 'cudaShift'); targfunc = @testCudaShift; end
-    if strcmp(funcList{F}, 'cudaSoundspeed'); targfunc = @testCudaSoundspeed; end
-    if strcmp(funcList{F}, 'cudaSourceAntimach'); targfunc = @testCudaSourceAntimach; end
-    if strcmp(funcList{F}, 'cudaSourceRotatingFrame'); targfunc = @testCudaSourceRotatingFrame; end
-    if strcmp(funcList{F}, 'cudaSourceScalarPotential'); targfunc = @testCudaSourceScalarPotential; end
-    if strcmp(funcList{F}, 'cudaStatics'); targfunc = @testCudaStatics; end
-    if strcmp(funcList{F}, 'directionalMaxFinder'); targfunc = @testDirectionalMaxFinder; end
-    if strcmp(funcList{F}, 'freezeAndPtot'); targfunc = @testFreezeAndPtot; end
-
-    outcome = iterateOnFunction(targfunc, D, R);
+    outcome = iterateOnFunction(funcList{F}, D, R);
 
     switch outcome
-        case 1;  fprintf('Testing %s failed!\n', funcList{F}); result = 1;
-        case 0;  fprintf('Testing %s successful!\n', funcList{F});
-        case -1; fprintf('Test for function named %s not implemented\n', funcList{F});
-        case -2: fprintf('No function named %s...\n', funcList{F});
+        case 1;  if mpi_amirank0(); fprintf('Tests of %s failed!\n', funcList{F}); result = 1;
+        case 0;  if mpi_amirank0(); fprintf('Tests of %s successful!\n', funcList{F}); end
+        case -1; if mpi_amirank0(); fprintf('Test for function named %s not implemented\n', funcList{F}); end
+        case -2; if mpi_amirank0(); fprintf('No function named %s...\n', funcList{F}); end
     end
 
 end
 
-fprintf('### Tested %i functions in %fsec ###\n', nFuncs, toc);
+if mpi_amirank0(); fprintf('### Tested %i functions in %fsec ###\n', nFuncs, toc); end
 end
+
+function targfunc = name2func(func)
+    targfunc = @noSuchThing; % Default to failure
+    if strcmp(func, 'cudaArrayAtomic'); targfunc = @testCudaArrayAtomic; end
+    if strcmp(func, 'cudaArrayRotateB'); targfunc = @testCudaArrayRotateB; end
+    if strcmp(func, 'cudaFreeRadiation'); targfunc = @testCudaFreeRadiation; end
+    if strcmp(func, 'cudaFwdAverage'); targfunc = @testCudaFwdAverage; end
+    if strcmp(func, 'cudaFwdDifference'); targfunc = @testCudaFwdDifference; end
+    if strcmp(func, 'cudaMHDKernels'); targfunc = @testCudaMHDKernels; end
+    if strcmp(func, 'cudaMagPrep'); targfunc = @testCudaMagPrep; end
+    if strcmp(func, 'cudaMagTVD'); targfunc = @testCudaMagTVD; end
+    if strcmp(func, 'cudaMagW'); targfunc = @testCudaMagW; end
+    if strcmp(func, 'cudaShift'); targfunc = @testCudaShift; end
+    if strcmp(func, 'cudaSoundspeed'); targfunc = @testCudaSoundspeed; end
+    if strcmp(func, 'cudaSourceAntimach'); targfunc = @testCudaSourceAntimach; end
+    if strcmp(func, 'cudaSourceRotatingFrame'); targfunc = @testCudaSourceRotatingFrame; end
+    if strcmp(func, 'cudaSourceScalarPotential'); targfunc = @testCudaSourceScalarPotential; end
+    if strcmp(func, 'cudaStatics'); targfunc = @testCudaStatics; end
+    if strcmp(func, 'directionalMaxFinder'); targfunc = @testDirectionalMaxFinder; end
+    if strcmp(func, 'freezeAndPtot'); targfunc = @testFreezeAndPtot; end
+end
+
 
 function outcome = iterateOnFunction(fname, D, R)
     outcome = 0;
     for n = 1:numel(D)
         res = randomResolution(D(n), R(n,:));
-        outcome = fname(res);
-        if outcome ~= 0;
-            fprintf('To rerun this exact test:\n\tunitTest([%i %i %i], {''%s''})\n', int32(res(1)), int32(res(2)), int32(res(3)), 'umdunno');
+	func = name2func(fname);
+        outcome = func(res);
+        if mpi_any(outcome ~= 0)
+            if outcome ~= 0; fprintf('RANK %i: Copypasta to rerun this exact test:\n\tunitTest([%i %i %i], {''%s''})\n', mpi_myrank(), int32(res(1)), int32(res(2)), int32(res(3)), fname); end
+	    outcome = mpi_max(outcome);
             break;
         end
-        fprintf('.');
+        if mpi_amirank0(); fprintf('.'); end
     end
 end
 
@@ -104,57 +107,62 @@ end
 function failure = noSuchThing(res); failure = -1; end
 
 function outcome = testCudaArrayAtomic(res)
+    r = mpi_myrank();
     fail = 0;
     X = rand(res);
     Xg = GPU_Type(X);
 
     cudaArrayAtomic(Xg, .4, 1);
     X(X < .4) = .4;
-    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! Test failed: setting min, res=%ix%ix%in', res(1),res(2), res(3) ); fail = 1; end
+    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! RANK %I: Test failed: setting min, res=%ix%ix%i\n', r, res(1),res(2), res(3) ); fail = 1; end
 
     cudaArrayAtomic(Xg, .6, 2);
     X(X > .6) = .6;
-    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! Test failed: setting max, res=%ix%ix%in', res(1),res(2), res(3) ); fail = 1; end
+    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! RANK %I: Test failed: setting max, res=%ix%ix%i\n', r, res(1),res(2), res(3) ); fail = 1; end
   
     X( (X > .4) & (X < .6) ) = NaN;
     Xg.array = X;
     X(isnan(X)) = 0;
     cudaArrayAtomic(Xg, 0, 3);
-    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! Test failed: removing NaN, res=%ix%ix%in', res(1),res(2), res(3) ); fail = 1; end
+    if any(Xg.array(:) ~= X(:) ); fprintf('  !!! RANK %i: Test failed: removing NaN, res=%ix%ix%i\n', r, res(1),res(2), res(3) ); fail = 1; end
+
+%ERRORFAKE
+if r == 1; fail = 1; end
 
     outcome = fail;
 end
 
 function fail = testCudaArrayRotateB(res)
     fail = 0;
+    r = mpi_myrank();
     X = rand(res);
     Xg = GPU_Type(X);
     Yg = GPU_Type(cudaArrayRotateB(Xg,2));
     Yg.array(1);
     Xp = permute(X, [2 1 3]);
-    if any(any(any(Yg.array ~= Xp)));  disp('  !!! Test failed: XY transpose !!!'); fail = 1; end
+    if any(any(any(Yg.array ~= Xp)));  fprintf('  !!! RANK %i: Test failed: XY transpose !!!', r); fail = 1; end
     clear Yg;
 
     if res(3) > 3 % Test further transpositions in higher dimensions
         Yg = GPU_Type(cudaArrayRotateB(Xg,3));
         Xp = permute(X, [3 2 1]);
 
-        if any(any(any(Yg.array ~= Xp))); disp('   !!! Test failed: XZ transpose !!!'); fail = 1; end
+        if any(any(any(Yg.array ~= Xp))); fprintf('   !!! RANK %i: Test failed: XZ transpose !!!', r); fail = 1; end
 
         Zg = GPU_Type(cudaArrayRotateB(Xg, 4));
         Xp = permute(X, [1 3 2]);
-        if any(any(any(Zg.array ~= Xp))); disp('   !!! Test failed: YZ transpose !!!'); fail = 1; end
+        if any(any(any(Zg.array ~= Xp))); fprintf('   !!! RANK %i: Test failed: YZ transpose !!!', r); fail = 1; end
 	
 	Zg = cudaArrayRotateB(Xg, 5);
 	cudaArrayRotateB(Zg,5);
 	cudaArrayRotateB(Zg,5);
-	if any(any(any(GPU_download(Zg) ~= X))); disp('   !!! Test failed: Permute indices left !!!'); fail = 1; end 
+	if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices left !!!', r); fail = 1; end 
 	GPU_free(Zg);
 
 	Zg = cudaArrayRotateB(Xg, 6);
 	cudaArrayRotateB(Zg,6);
 	cudaArrayRotateB(Zg,6);
-	if any(any(any(GPU_download(Zg) ~= X))); disp('   !!! Test failed: Permute indices right !!!'); fail = 1; end 
+	if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices right !!!', r); fail = 1; end 
 	GPU_free(Zg);
 
      end
@@ -177,31 +185,28 @@ function fail = testCudaFreeRadiation(res)
     Ehydro = T + .5+.25*rand(res); Ehydrod = GPU_Type(Ehydro);
     Emhd = Ehydro + B;             Emhdd = GPU_Type(Emhd);
 
-    thtest = .5;
-    gm1 = 2/3;
-    Tmin = 0.2;
-
-    % Test HD radiation rate
-    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest 1 0 1]));
-    rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
-
-    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
-        fail = 1;
-        disp(['Failed calculating radiation rate in hydrodynamic gas. Theta: ' mat2str(thtest)]);
-    end
-
-    tau = .1*.5/max(rtest.array(:));
-
-    % Test HD radiation sinking at various radiative exponents
-    % Key values of theta: 
     for thtest = [-.3 0 .28 .5 1 1.3]
+        gm1 = 2/3;
+        Tmin = 0.2;
+
         Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
 
+        % RADIATION RATE -- HYDRODYNAMIC
+        rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest 1 0 1]));
+        rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
 
+        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+            fail = 1;
+            fprintf('    !!! RANK %i: Failed calculating radiation rate in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
+        end
+
+        tau = .1*.5/max(rtest.array(:));
+
+        % RADIATION LOSS -- HYDRODYNAMIC
         cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
         P0 = gm1*(Ehydro - T);
 
-% Apply the various algorithms here
+        % Apply the various algorithms here
         if thtest == 0
             % Radiation rate is independent of pressure:
             Pf = P0 - gm1 * tau * rho.^2;
@@ -222,30 +227,27 @@ function fail = testCudaFreeRadiation(res)
 
         if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12;
 		fail = 1;
-		disp(['Failed calculating radiation loss in hydrodynamic gas. Theta: ' mat2str(thtest)]);
+		fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
 	end
-    end
 
-    thtest = 0.5;
-    % Test MHD radiation rate
-    rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest 1 0 0]));
-    rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
-
-    if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
-        fail = 1;
-        disp(['Failed calculating radiation rate in MHD gas. Theta: ' mat2str(thtest)]);
-    end
-
-    % Test MHD radiation sinking
-    tau = .01*.5/max(rtest.array(:));
-
-    for thtest = [-.3 0 .28 .5 1 1.3]
         Emhdd = GPU_Type(Emhd); % Reload internal energy array
+
+        % RADIATION RATE -- MAGNETOHYDRODYNAMIC
+        rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest 1 0 0]));
+        rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
+
+        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+            fail = 1;
+            fprintf('   !!! RANK %i: Failed calculating radiation rate in MHD gas. Theta: %f\n', mpi_myrank(), thtest);
+        end
+
+        % RADIATION LOSS -- MAGNETOHYDRODYNAMIC
+        tau = .01*.5/max(rtest.array(:));
 
         cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau Tmin 0]);
         P0 = gm1*(Emhd - T - B);
 
-% Apply the various algorithms here
+        % Apply the various algorithms here
         if thtest == 0
             % Radiation rate is independent of pressure:
             Pf = P0 - gm1 * tau * rho.^2;
@@ -267,7 +269,7 @@ function fail = testCudaFreeRadiation(res)
 
         if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12;
                 fail = 1;
-                disp(['Failed calculating radiation loss in hydrodynamic gas. Theta: ' mat2str(thtest)]);
+                fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %i\n', mpi_myrank(), thtest);
         end
     end
 
@@ -519,6 +521,7 @@ end
 end
 
 function fail = testCudaSourceScalarPotential(res)
+% FIXME: this probably breaks in parallel?
 fail = 0;
 
 rho = rand(res);
@@ -588,11 +591,11 @@ fail = 0;
 rho = .5 + rand(res);
 rhoD = GPU_Type(rho);
 
-cpuResult = max(rho(:));
-gpuResult = directionalMaxFinder(rhoD);
+cpuResult = mpi_max(max(rho(:)));
+gpuResult = mpi_max(directionalMaxFinder(rhoD));
 
 if cpuResult ~= gpuResult 
-    disp('    !!! Simple global maximum was not correct !!!');
+    fprintf('    !!! RANK %i: Simple global maximum was not correct!!! cpu=%f, gpu=%f\n', mpi_myrank(), cpuResult, gpuResult);
     fail = 1;
 end
 
@@ -614,15 +617,20 @@ if cflY > cfl; cfl = cflY; cflDir = 2; end
 cflZ = max(cs(:) + abs(pz(:) ./ rho(:)));
 if cflZ > cfl; cfl = cflZ; cflDir = 3; end
 
+cfl = mpi_max(cfl);
+
 % Now make the GPU compute it
 [gpuCFL gpuDIR] = directionalMaxFinder(rhoD, csD, pxD, pyD, pzD);
 
+gpuCFL = mpi_max(gpuCFL);
+
 if gpuCFL ~= cfl;
-    disp('   !!! Test failed to return correct cfl speed !!!');
+    fprintf('   !!! RANK %i: Test failed to return correct cfl speed !!! cpu=%f, gpu=%f\n', mpi_myrank(), cfl, gpuCFL);
     fail = 1;
 end
+% FIXME this requires the complex-structs thing in MPI
 if gpuDIR ~= cflDir
-    disp('   !!! Test failed to return correct cfl direction !!!');
+    fprintf('   !!! RANK %i: Test failed to return correct cfl direction !!! cpu=%i, gpu=%i\n', mpi_myrank(), int32(cflDir), int32(gpuDIR));
     fail = 1;
 end
 

@@ -5,9 +5,6 @@ if nargin < 1;
     disp('Defaulting to resolution of 32^3');
 end
 
-addpath('../gpuclass');
-addpath('./');
-
 context = parallel_start();
 topology = parallel_topology(context, 3);
 pg = ParallelGlobals(context, topology); % yucky global from hell
@@ -114,9 +111,9 @@ if MYID == 0
 end
 
 % TEST MPI_SUM
-A = mpi_prod(alpha);
-B = mpi_prod(beta);
-C = mpi_prod(gamma);
+A = mpi_sum(alpha);
+B = mpi_sum(beta);
+C = mpi_sum(gamma);
 
 if MYID == 0
     rng(0);

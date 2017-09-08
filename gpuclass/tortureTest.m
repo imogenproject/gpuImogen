@@ -24,13 +24,15 @@ if nargin < 3
     disp('>>> WARNING: Number of tests not indicated, defaulting to 5 ea');
 end
 
-disp('#########################');
-disp('Setting up test environment');
-disp('#########################');
-
 addpath('../mpi');
 mpi_init();
-if mpi_amirank0(); disp('Started MPI'); end
+if mpi_amirank0();
+    disp('Started MPI');
+    disp('#########################');
+    disp('Setting up test environment');
+    disp('#########################');
+end
+
 GPU_ctrl('peers',1);
 if mpi_amirank0(); disp('Turned on peer memory access'); end
 
@@ -66,14 +68,15 @@ if mpi_amirank0(); disp('#########################'); end
 % FLUX		
 % 	ARRAY_INDEX_EXCHANGE:	cudaArrayRotateB
 %	RELAXING_FLUID:		freezeAndPtot, cudaFluidStep, cudaHaloExchange
-% 75% coverage by unit tests (no fluid step test)
+% 75% coverage by unit tests
+%	-> cudaFluidStep can be tested by run_FullTestSuite
 % SOURCE
 %	cudaSourceRotatingFrame, cudaAccretingStar, cudaSourceScalarPotential, cudaFreeRadiation
 % 50% coverage by unit tests (accreting star broken)
 
 if numel(multidev) < 2;
     functests = [1 0 0 0];
-    disp('>>> WARNING: Only one device indicated for use. Multi-device fuzzing tests will not be done');
+    if mpi_amirank0(); disp('>>> WARNING: Only one device indicated for use. Multi-device fuzzing tests will not be done'); end
 else
     functests = [1 1 1 1];
 end
@@ -85,9 +88,11 @@ names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMa
 
 if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
-for N = 1:numel(names); disp(['	' names{N}]); end
-if mpi_amirank0(); disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
-                   disp('#########################'); end
+if mpi_amirank0();
+    for N = 1:numel(names); disp(['	' names{N}]); end
+    disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
+    disp('#########################');
+end
 
 randSeed = 5418;
 % Note these do not DEFINE convenient roundish sizes, actual sizes are randomly chosen up to these
