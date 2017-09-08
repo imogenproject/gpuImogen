@@ -201,23 +201,22 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
  *
  * The breakdown by the cooling exponent theta is as follows:
  *
- * CASE theta >= 1: cooling (in this operator's psuedo-"lagrangian" frame,
- * considering only the cooling operator) never finishes: phi is
+ * CASE theta >= 1: cooling of a uniform flow never finishes: phi is
  * positive, q is negative, and Tfin > 0 if Tini > 0; The solution
  * is a fractional power.
  * 
  * CASE theta == 1: Temperature decays exponentially.
  *
  * FOR ANY theta < 1, q is positive and phi is negative. Therefore the
- * ode contains a critical point where positive feedback causes runaway
+ * ODE contains a critical point where positive feedback causes runaway
  * cooling and all internal energy is radiated in finite time.
  * 
  * CASE 0 < theta < 1: q > 1; Temperature approaches 0 smoothly (parabolic up near singularity)
- * CASE theta == 0: Temperature nearly goes to 0
+ * CASE theta == 0: Temperature linearly goes to 0 (r.r. independent of T)
  * CASE theta < 0:  Temperature approaches 0 nonsmoothly (parabolic down near singularity)
  * 
  * For all cases with theta < 1, the solver notes if we have exceeded the
- * critical time and returns the correct post-singularity (T = 0) solution
+ * critical time and returns the presumptive post-singularity (T = 0) solution
  */
 
 /* NOTE:
@@ -243,7 +242,7 @@ switch(radiationAlgorithm) {
 		Pf = Pini - GAMMA_M1*STRENGTH*rho*rho; break;
 	case ALGO_THETAONE:
 		// Special case: dE = -strength rho P dt; Logarithmic outcome
-		Pf = exp(log(Pini) - GAMMA_M1*STRENGTH*rho); break;
+		Pf = Pini * exp(-GAMMA_M1*STRENGTH*rho); break;
 	case ALGO_GENERAL_ANALYTIC:
 		// General case: dE = -strength rho^(2-theta) P^theta dt
                               // ANALYTIC_SCALE = (theta-1) (gamma-1) strength
