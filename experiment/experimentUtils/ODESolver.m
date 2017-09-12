@@ -103,6 +103,7 @@ classdef ODESolver < handle
         end
         
         function status = integrateImplicit(self, L, abort_cond)
+        % Take steps until a distance L is covered using an implicit method
             if self.requireIC == 1
                 error('Cannot initiate integration without initial conditions: self.setInitialCondition(x0, y0);');
             end
@@ -146,6 +147,7 @@ classdef ODESolver < handle
         end
         
         function status = integrateExplicit(self, L, abort_cond)
+        % Takes steps until a distance L is covered using an explicit method 
             if self.requireIC == 1
                 error('Cannot initiate integration without initial conditions: self.setInitialCondition(x0, y0);');
             end
@@ -181,11 +183,10 @@ classdef ODESolver < handle
                 % generate new column at left
                 self.f_history(:,1) = self.f(self.solution(end,1),self.solution(end,2));
             end
-            
         end
         
-        % Solves scalar nonlinear equation using Newton-Raphson
         function y = NR_Solve(self, f, x, y0)
+        % Solves scalar nonlinear equation using Newton-Raphson
             eyestep = 1i*4.9303806576313240e-32; % epsilon ^ 2
             eyemag = 4.9303806576313240e-32;
             
@@ -199,6 +200,7 @@ classdef ODESolver < handle
         end
         
         function y = NR_SolveAutonomous(self, f, y0)
+        % Solves scalar, autonomous nonlinear equation using Newton-Raphson
             eyestep = 1i*4.9303806576313240e-32; % epsilon ^ 2
             eyemag = 4.9303806576313240e-32;
             
@@ -208,12 +210,10 @@ classdef ODESolver < handle
                 y = y + delta;
                 if abs(delta / y) < 8*eps; break; end
             end
-            
         end
         
-        
-        % Solves vector nonlinear equation using Newton-Raphson
         function y = MV_NR_Solve(self, f, x, y0)
+        % Solves vector nonlinear equation using Newton-Raphson
             eyestep = 1i*4.9303806576313240e-32; % epsilon ^ 2
             eyemag = 4.9303806576313240e-32;
             
@@ -233,10 +233,10 @@ classdef ODESolver < handle
                 y = y + delta;
                 if mean(abs(delta ./ y)) < 8*eps; break; end
             end
-            
         end
         
         function y = MV_NR_SolveAutonomous(self, f, y0)
+        % Solves vector nonlinear autonomous equation using Newton-Raphson
             eyestep = 1i*4.9303806576313240e-32; % epsilon ^ 2
             eyemag = 4.9303806576313240e-32;
             
@@ -256,19 +256,37 @@ classdef ODESolver < handle
                 
                 delta = -(J^-1)*f(y);
                 %                ymid = y + .5*deltaA;
-                %		for a = 1:D
+                %                for a = 1:D
                 %                    J(:,a) = imag(f(ymid + cstep))/eyemag;
                 %                    cstep = circshift(cstep,[1 0]);
                 %                end
-                %		delta = -(J^-1)*f(y);
+                %                delta = -(J^-1)*f(y);
                 y = y + delta;
                 
                 %history(:,end+1) = delta;
                 if mean(abs(delta ./ y)) < 8*eps; break; end
             end
-            
-            %diff(log(abs(history')))
-            
+        end
+
+        function J = computeJacobian(self, x, y0)
+        % Computes Jacobian at given (x, y0) or at most recent solution point if not given
+            if nargin == 1
+                x = self.solution(end,1);
+                y0 = self.solution(end,2:end);
+            end
+            eyestep = 1i*4.9303806576313240e-32; % epsilon ^ 2
+            eyemag  =    4.9303806576313240e-32; % epsilon ^ 2
+
+            D = numel(y0);
+            J = zeros([D D]);
+            cstep = zeros([D 1]); cstep(1) = eyestep;
+
+            % Evaluate J directly because we assume dimension is small
+            for a = 1:D
+                xi = self.f(x, y0 + cstep);
+                J(:,a) = imag(xi(1,:))/eyemag;
+                cstep = circshift(cstep,[1 0]);
+            end
         end
         
         function help(self)
@@ -283,7 +301,6 @@ classdef ODESolver < handle
             disp('S.setStep(h)');
             disp('Now either way the solve can be run:');
             disp('S.integrate(length)');
-            
         end
         
     end%GET/SET
@@ -292,6 +309,8 @@ classdef ODESolver < handle
     methods (Access = public) %                                                     P U B L I C  [M]
         
         function demonstrateMe(self)
+        % Sets up an initial condition with a massively nonlinear ODE and compares numeric
+        % result with the exact solution
             a = 1; b = -.1;
             d = 50;
             u = -.5;
@@ -340,6 +359,8 @@ classdef ODESolver < handle
         end
         
         function F = sampleODE(self, x, y)
+        % The sample ODE used by the demo code in .demonstrateMe()
+        % Computes [f'; f''; f'''] exactly.
             a=1; b=-.1;
             d=50;
             u=-.5; v=4*pi;
@@ -362,6 +383,7 @@ classdef ODESolver < handle
         end
         
         function q = domethod(self, M, h, xn, yn)
+        % Uses a method matrix to compute the next LMM/SDLMM/TDLMM point.
             q = zeros([size(M,3) 1]);
             hf = cumprod(ones(size(M))*h,1).*M;
             
@@ -372,9 +394,9 @@ classdef ODESolver < handle
             end
         end
         
+        function status = bootstrapHistory(self)
         % This generates history using multi-implicit methods given nothing but the starting
         % point
-        function status = bootstrapHistory(self)
             maxder = size(self.methMatrix,1);
             needpoints = size(self.methMatrix,2) - 1;
             
@@ -425,7 +447,6 @@ classdef ODESolver < handle
                 end
                 F = @(y) [y(2)-y(1); y(3)-y(2); y0-y(3)] + self.domethod(coeffMatrix, h, xi, [y; y0]);
             end
-            % Perform nonlinear iterations to solve the system for multiple future values of y simultaneously
             ysol = self.MV_NR_SolveAutonomous(F, ypoints);
             
             self.f_history(:,1) = self.f(self.solution(end,1), y0);
@@ -438,9 +459,7 @@ classdef ODESolver < handle
             for n = 1:(needpoints+1)
                 self.f_history(:,needpoints+2-n) = self.f(theta(n,1), theta(n,2));
             end
-            
         end
-        
     end%PROTECTED
     
     %===================================================================================================
