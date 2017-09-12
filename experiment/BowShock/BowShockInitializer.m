@@ -246,7 +246,7 @@ classdef BowShockInitializer < Initializer
             
             if (obj.magX == 0) && (obj.magY == 0); obj.pureHydro = 1; end
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
             
         end
         
