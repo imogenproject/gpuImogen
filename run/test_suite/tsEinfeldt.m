@@ -12,7 +12,7 @@ if nargin < 5
 end
 
 %--- Initialize test ---%
-grid = [N0 1 1 ];
+grid = [N0 1 1];
 run             = RiemannProblemInitializer(grid);
 % Run the test until the rarefaction propagates 95% of the way to the edge of
 % the grid.
@@ -24,18 +24,10 @@ run.cfl 	    = .75;
 run.setupEinfeldt(M, gamma)
 run.bcMode.x    = ENUM.BCMODE_CONSTANT;
 
-%run.useInSituAnalysis = 0;
-%run.stepsPerInSitu = 10;
-%run.inSituHandle = @RealtimePlotter;
-
 run.alias       = '';
 run.info        = 'Einfeldt Strong Rarefaction test.';
 run.notes	    = '';
 run.ppSave.dim3 = 100;
-
-%fm = FlipMethod();
-%  fm.iniMethod = 2; % hllc
-%run.peripherals{end+1} = fm;
 
 if prettyPictures
     rp = RealtimePlotter();
