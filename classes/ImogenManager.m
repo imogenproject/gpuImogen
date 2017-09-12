@@ -288,7 +288,7 @@ classdef ImogenManager < handle
                 if p.armed;
                     if obj.time.iteration >= p.iter; triggered = 1; p.armed = 0; end
                     if obj.time.time      >= p.time; triggered = 1; p.armed = 0; end
-                    if ~isepmpty(p.testHandle);
+                    if ~isempty(p.testHandle);
                         triggered = p.testHandle(p, obj, fluids, mag);
                         if triggered; p.armed = 0; end
                     end
