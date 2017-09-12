@@ -195,13 +195,17 @@ classdef AdvectionInitializer < Initializer
             geo.makeBoxSize(obj.boxLength);
             geo.makeBoxOriginCoord(obj.boxLength * [-.5 -.5 -.5]);
             
-            [xGrid yGrid zGrid] = geo.ndgridSetIJK('pos');
+            [xGrid, yGrid, zGrid] = geo.ndgridSetIJK('pos');
 
             tMax = [];
             
             for fluidCt = 1:size(obj.pAmplitude,2)
+                % Calculate the background velocity
+                % FIXME HACK HACK HACK using wrong EoS if fluidCt != 1...
+                % FIXME note that P = rho kb T / mu extremely small if mu is dust-like
+                c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,fluidCt)/obj.pDensity(1,fluidCt)  ); % The infinitesmal soundspeed
+
                 if obj.pAmplitude(1,fluidCt) ~= 0
-                    
                     % omega = c_wave k
                     % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
                     rez   = geo.globalDomainRez;
@@ -209,8 +213,6 @@ classdef AdvectionInitializer < Initializer
                     obj.pWaveK(:,fluidCt) = K;
                     KdotX = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
                     
-                    % Calculate the background velocity
-                    c_s      = sqrt(obj.gamma(1,fluidCt)*obj.pPressure(1,fluidCt)/obj.pDensity(1,fluidCt)  ); % The infinitesmal soundspeed
                     if obj.pUseStationaryFrame
                         bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude(1,fluidCt), obj.gamma(1,fluidCt))*K/norm(K);
                     else
@@ -236,20 +238,26 @@ classdef AdvectionInitializer < Initializer
                         
                         omega = norm(obj.pWaveK(1,fluidCt))*sqrt(obj.gamma(1,fluidCt)); % FIXME do not assume this is normalized
                     elseif strcmp(obj.waveType, 'fast ma')
-                        [waveEigenvector omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
+                        [waveEigenvector, omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
                         waveEigenvector(8) = c_s^2 * waveEigenvector(1);
                     end
                     
                     mass = FW.waveRho;
-                    mom  = FW.waveMomentum();
-                    ener = FW.waveTotalEnergy();
+                    vel  = FW.waveVelocity();
+                    ener = FW.waveInternalEnergy();
                 else
-                    [mass, mom, ~, ener] = geo.basicFluidXYZ();
+                    [mass, vel, ~, ener] = geo.basicFluidXYZ();
                     mass = mass * obj.pDensity(1,fluidCt);
-                    ener = ener * .001 / (obj.fluidDetails(fluidCt).gamma-1);
+
+                    for q = 1:3; vel(q,:,:,:) = obj.pBackgroundMach(q,fluidCt) * c_s; end
+                    ener = ener * obj.pPressure(1,fluidCt) / (obj.fluidDetails(fluidCt).gamma-1);
+                    
+                    omega = 2*pi; % HACK HACK HACK
+                    K = [1 0 0]; % HACK HACK HACK
                 end
 
-                fluids(fluidCt)         = obj.stateToFluid(mass, mom, ener);
+                fluids(fluidCt)         = obj.rhoVelEintToFluid(mass, vel, ener);
+                fluids(fluidCt).details = obj.fluidDetails(fluidCt);
 
                 obj.waveOmega = omega;
                 wavespeed     = omega / norm(K);

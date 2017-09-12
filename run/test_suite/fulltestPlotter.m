@@ -1,11 +1,13 @@
-function fulltestPlotter(FTR)
+function fulltestPlotter(FTR, doquad)
 % > FTR : Full Test Result structure saved by the test suite
 
 plotno = 0;
 maxplot = 1;
 figure();
 
-doquad = input('Plot figures in 2x2 matrix? ');
+if nargin < 2
+    doquad = input('Plot figures in 2x2 matrix? ');
+end
 if doquad; maxplot = 4; end
 
 % Begin plot output
@@ -75,6 +77,14 @@ if isfield(FTR, 'sedov3d')
     stylizePlot(gca());
 end
 
+if isfield(FTR, 'dustybox')
+    % Plot dusty box results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotDustybox(FTR.dustybox);
+    title('Accuracy of dustybox solutions');
+    stylizePlot(gca());
+end
+
 end
 
 function p = prepNextPlot(maxplot, plotno)
@@ -105,6 +115,27 @@ xlabel('log_2(# pts)');
 ylabel('log_2(norm(\rho - \rho_{exact})');
 
 legend(['1-norm, avg slope ' num2str(q.L1_Order)], ['2-norm, avg slope ' num2str(q.L2_Order)], 'Reference 2nd order slope');
+
+end
+
+function plotDustybox(q)
+
+shiftA = 0;%floor(log2(abs(q.mid.L2(1)/q.slow.L2(1))));
+shiftB = 0;%ceil(log2(abs(q.mid.L2(1)/q.supersonic.L2(1))));
+
+plot(log2(q.slow.N), shiftA + log2(abs(q.slow.L2)),'b-x');
+plot(log2(q.mid.N), log2(abs(q.mid.L2)),'g-x');
+plot(log2(q.supersonic.N), shiftB + log2(abs(q.supersonic.L2)),'r-x');
+
+z = ones(size(q.mid.N));
+
+plot(log2(q.mid.N), -16.61*z,'k-');
+plot(log2(q.mid.N), -29.9*z,'k-.');
+
+xlabel('log_2(# pts)');
+ylabel('Velocity error at t=5');
+
+legend('M_{ini} = .01', 'M_{ini} = .25', 'M_{ini} = 2.0', '10^{-5} error','10^{-9} error');
 
 end
 

@@ -1,7 +1,7 @@
 % Wave advection simulation
 
 %grid = [512 512 1];
-grid = [512 1 1];
+grid = [64 1 1];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
@@ -20,7 +20,7 @@ run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 10;
 
 % Set a background speed at which the fluid is advected
-run.backgroundMach = 0.0;
+run.backgroundMach = .12;
 
 % Set the type of wave to be run.
 % One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
@@ -35,12 +35,14 @@ run.amplitude = .0;
 % number of transverse wave periods in Y and Z directions
 run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
-run.cycles = 5;
+run.cycles = 25;
 
 run.addNewFluid(1);
 
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
+
+run.peripherals{end+1} = DustyBoxAnalyzer();
 
 run.writeFluid = 2;
   run.amplitude = 0;
@@ -50,7 +52,6 @@ run.writeFluid = 2;
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
-
   
 fm = FlipMethod(); % 1 = HLL, 2 = HLLC, 3 = XJ
   fm.iniMethod = 2; 

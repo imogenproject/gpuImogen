@@ -3,22 +3,26 @@
 
 TestResults.name = 'Imogen Master Test Suite';
 
-TestResultFilename = '~/Sep19test_hllc.mat';
+TestResultFilename = '~/Aug2017test_HLL_hirez.mat';
 
 %--- Override: Run ALL the tests! ---%
-doALLTheTests = 1;
+doALLTheTests = 0;
 realtimePictures = 0;
 
 %--- Individual selects ---%
 % Advection/transport tests
-doSonicAdvectStaticBG = 0;
-doSonicAdvectMovingBG = 0;
-doSonicAdvectAngleXY  = 0;
-doEntropyAdvect       = 0;
+doSonicAdvectStaticBG   = 0;
+doSonicAdvectMovingBG   = 0;
+doSonicAdvectAngleXY    = 0;
+doEntropyAdvectStaticBG = 0;
+doEntropyAdvectMovingBG = 0;
 
 % 1D tests
 doSodTubeTests        = 0;
 doEinfeldtTests       = 0;
+doDoubleBlastTests    = 0;
+doNohTubeTests        = 0;
+doDustyBoxes          = 1;
 
 % 2D tests
 doCentrifugeTests     = 0;
@@ -37,17 +41,21 @@ if mpi_amirank0();
 end
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 4;
-einfeldtDoublings   = 5;
-sodDoublings        = 5;
-centrifugeDoublings = 4;
-sedov2D_scales      = [1 2 4 8];
-sedov3D_scales      = [1 2 4];
+advectionDoublings  = 9;
+doubleblastDoublings= 9;
+dustyBoxDoublings   = 5;
+einfeldtDoublings   = 9;
+nohDoublings        = 5;
+sodDoublings        = 9;
+
+advection2DDoublings= 6;
+centrifugeDoublings = 6;
+sedov2D_scales      = [1 2 4 8 16 24];
+
+sedov3D_scales      = [1 2 3 4 5];
 
 fm = FlipMethod();
-  fm.iniMethod = 1; % HLL
-%  fm.iniMethod = 2; % HLLC
-%  fm.iniMethod = 3; % XJ
+  fm.iniMethod = ENUM.CFD_XINJIN;
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
@@ -80,9 +88,9 @@ end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doALLTheTests
-    if mpi_amirank0(); disp('Testing advection in 2D across moving background'); end
+    if mpi_amirank0(); disp('Testing sound advection in 2D across moving background'); end
     try
-        x = tsAdvection('sonic',[baseResolution baseResolution 1], [5 3 0], [0 0 0], .4387, advectionDoublings, realtimePictures, fm);
+        x = tsAdvection('sonic',[baseResolution baseResolution 1], [5 3 0], [0 0 0], .4387, advection2DDoublings, realtimePictures, fm);
     catch ME
         fprintf('2D Advection test simulation barfed.\n');
         prettyprintException(ME);
@@ -95,9 +103,26 @@ end
 
 % This one is unhappy. It expects to have a variable defined (the self-rest-frame oscillation frequency) that isn't set for this type
 %--- Test that an entropy wave just passively coasts along as it ought ---% 
-%if doEntropyAdvect || doALLTheTests
-%    TestResult.advection.HDentropy = tsAdvection('entropy',[1024 1024 1], [9 5 0], [0 0 0], 2.1948, doublings);
-%end
+if doEntropyAdvectStaticBG || doALLTheTests
+    if mpi_amirank0(); disp('Testing entropy wave advection in 1D with static background.'); end
+    try
+        TestResult.advection.HDentropy_static = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings);
+    catch ME
+        fprintf('Stationary entropy wave test simulation failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+end
+if doEntropyAdvectMovingBG || doALLTheTests
+    if mpi_amirank0(); disp('Testing convected entropy wave in 1D.'); end
+    try
+        TestResult.advection.HDentropy_moving = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 1.178, advectionDoublings);
+    catch ME
+        fprintf('Convected entropy wave test simulation failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+end
 
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
 if doEinfeldtTests || doALLTheTests
@@ -128,6 +153,20 @@ if doSodTubeTests || doALLTheTests
     if mpi_amirank0(); disp('Results for Sod tube refinement:'); disp(x); end
 end
 
+if doNohTubeTests || doALLTheTests
+    if mpi_amirank0(); disp('Testing convergence of Noh tube'); end
+    try
+        x = tsNohtube(baseResolution, nohDoublings, realtimePictures, fm);
+    catch ME
+        fprintf('Noh shock tube test has failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+    end
+    
+    TestResult.sod.X = x;
+    if mpi_amirank0(); disp('Results for Sod tube refinement:'); disp(x); end
+end
+
 if doCentrifugeTests || doALLTheTests
     if mpi_amirank0(); disp('Testing centrifuge equilibrium-maintainence.'); end
     try
@@ -143,6 +182,52 @@ if doCentrifugeTests || doALLTheTests
     % FIXME: Run a centrifuge with a rotating frame term!
 end
 
+if doDoubleBlastTests || doALLTheTests
+   if mpi_amirank0(); disp('Performing refinement test on WC1984 double-blast'); end
+   try
+       x = tsDoubleBlast([baseResolution 1 1], doubleblastDoublings, realtimePictures, fm);
+   catch ME
+       disp('Double blast test has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+   end
+   
+   TestResult.doubleBlast = x;
+   if mpi_amirank0(); disp('Results for double blast test:'); disp(x); end
+   
+end
+
+if doDustyBoxes || doALLTheTests
+   if mpi_amirank0(); disp('Performing temporal refinement test on spatially uniform dusty boxes'); end
+   try
+       x = tsDustybox(baseResolution, 5/3, .01, dustyBoxDoublings, realtimePictures, fm);
+   catch ME
+       disp('Dusty box test (Mach .01) has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+   end
+   TestResult.dustybox.slow = x;
+   if mpi_amirank0(); disp('Results for M=.01 dusty box test:'); disp(x); end
+   try
+       x = tsDustybox(baseResolution, 5/3, .25, dustyBoxDoublings, realtimePictures, fm);
+   catch ME
+       disp('Dusty box test (Mach 0.25) has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+   end
+   TestResult.dustybox.mid = x;
+   if mpi_amirank0(); disp('Results for M=.25 dusty box test:'); disp(x); end
+   try
+       x = tsDustybox(baseResolution, 5/3, 2.0, dustyBoxDoublings, realtimePictures, fm);
+   catch ME
+       disp('Dusty box test (Mach 2) has failed.');
+        prettyprintException(ME);
+        x = 'FAILED';
+   end
+   TestResult.dustybox.supersonic = x;
+   if mpi_amirank0(); disp('Results for M=2.0 dusty box test:'); disp(x); end
+   
+end
 
 %--- Test propagation across a three-dimensional grid ---%
 % Not sure that this mode actually works in the analyzer, though it will certainly work in the initializer

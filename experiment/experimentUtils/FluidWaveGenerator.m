@@ -83,20 +83,33 @@ classdef FluidWaveGenerator < handle
             vz = squish(self.waveVel(3,:,:,:));
         end
 
+        function mom = waveVelocity(self)
+        % mom = waveMomentum() is a utility that computes the conserved momentum variable that
+        % Imogen runs on from the wave density/velocity functions
+            mom = zeros(size(self.waveVel));
+            mom(1,:,:,:) = squish(self.waveVel(1,:,:,:),'onlyleading');
+            mom(2,:,:,:) = squish(self.waveVel(2,:,:,:),'onlyleading');
+            mom(3,:,:,:) = squish(self.waveVel(3,:,:,:),'onlyleading');
+        end
         
         function mom = waveMomentum(self)
         % mom = waveMomentum() is a utility that computes the conserved momentum variable that
         % Imogen runs on from the wave density/velocity functions
             mom = zeros(size(self.waveVel));
-            mom(1,:,:,:) = self.waveRho.*squish(self.waveVel(1,:,:,:));
-            mom(2,:,:,:) = self.waveRho.*squish(self.waveVel(2,:,:,:));
-            mom(3,:,:,:) = self.waveRho.*squish(self.waveVel(3,:,:,:));
+            mom(1,:,:,:) = self.waveRho.*squish(self.waveVel(1,:,:,:),'onlyleading');
+            mom(2,:,:,:) = self.waveRho.*squish(self.waveVel(2,:,:,:),'onlyleading');
+            mom(3,:,:,:) = self.waveRho.*squish(self.waveVel(3,:,:,:),'onlyleading');
         end
         
         function Etot = waveTotalEnergy(self)
             Etot = .5*squish(sum(self.waveVel.^2, 1)) .* self.waveRho + self.wavePressure / (self.pGamma-1);
         end
-% I'm prototyping, we'll check for sanity once this turkey takes off
+        
+        function Eint = waveInternalEnergy(self)
+            Eint = self.wavePressure / (self.pGamma-1);
+        end
+        
+        % I'm prototyping, we'll check for sanity once this turkey takes off
         % Evaluate sonic waves propagating in the direction of k
         % This always uses the +\hat{k} sense; Reverse the wave direction via k -> -k
         function sonicInfinitesmal(self, drho, k)
@@ -114,12 +127,6 @@ classdef FluidWaveGenerator < handle
             self.wavePressure = self.pP + self.cs0^2 * drho;
                 
         end
-
-%        function [dvx dvy dvz dP] = sonicNLO(self, drho, k, gamma)
-%            k = k / norm(k);
-%
-%
-%        end
 
         % Integrate the exact sonic characteristic
         function sonicExact(self, drho, k)
@@ -139,18 +146,18 @@ classdef FluidWaveGenerator < handle
             self.wavePressure = self.polyK*(self.pRho + drho).^self.pGamma;
         end
 
-	% Entropy wave is linear and has no approximate form
+        % Entropy wave is linear and has no approximate form
         function entropyExact(self, drho, k)
             self.updateDerivedConstants();
-	    self.waveRho = self.pRho + drho;
-
-	    self.waveVel = zeros([3 size(drho)]);
-	    self.waveVel(1,:,:,:) = self.pV(1);
-	    self.waveVel(2,:,:,:) = self.pV(2);
-	    self.waveVel(3,:,:,:) = self.pV(3);
-
-	    self.wavePressure = self.pP * ones(size(self.waveRho));
-	end
+            self.waveRho = self.pRho + drho;
+            
+            self.waveVel = zeros([3 size(drho)]);
+            self.waveVel(1,:,:,:) = self.pV(1);
+            self.waveVel(2,:,:,:) = self.pV(2);
+            self.waveVel(3,:,:,:) = self.pV(3);
+            
+            self.wavePressure = self.pP * ones(size(self.waveRho));
+        end
 
     end%PUBLIC
     
