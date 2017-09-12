@@ -313,6 +313,7 @@ __device__ double drag_coeff(double Re)
 /* This function directly computes the gas-dust drag force in the full (stokes+epstein) regime
  * This is suited for weaker drag or strange regimes, but unnecessary and time-consuming for
  * small particles which will never exit the low-speed Epstein regime.
+ * Computes acceleration into vrel[3*slabPitch]
  */
 __global__ void cukern_GasDustDrag_full(double *gas, double *dust, double *vrel, int N)
 {
@@ -443,8 +444,8 @@ __global__ void cukern_GasDustDrag_linearTime(double *gas, double *dust, double 
 }
 
 
-/* Computes initial magnitude velocity ("w") into dv[0]
- * and computes Uint_ini (e_internal / rho evaluated at original |w|) into dv[slabNumel] */
+/* Computes initial magnitude velocity ("w") into dv[0] and dv[slabPitch]
+ * and computes Uint_ini (e_internal / rho evaluated at original |w|) into dv[2*slabNumel] */
 __global__ void cukern_findInitialDeltaV(double *g, double *d, double *dv, unsigned long partNumel)
 {
 int x = threadIdx.x + blockIdx.x*blockDim.x;
@@ -488,6 +489,7 @@ while(x < partNumel) {
  *	   = -F / rho_g - (F / rho_d)
  *	   = -F (1/rho_g + 1/rho_d)
  *	   = -F (rho_g + rho_d) / (rho_g rho_d) = -F/rho_reduced
+ * FIXME this works only because of the exploitable nature of the explicit midpoint method
  */
 __global__ void cukern_SolveDvDt(double *tmparray, double dt, unsigned long partNumel)
 {
@@ -496,7 +498,7 @@ tmparray += x;
 
 while(x < partNumel) {
 	// solve pdot
-	tmparray[FLUID_SLABPITCH]	   -= tmparray[3*FLUID_SLABPITCH] * dt;
+	tmparray[FLUID_SLABPITCH]	   = tmparray[0] - tmparray[3*FLUID_SLABPITCH] * dt;
 
 	x += blockDim.x*gridDim.x;
 	tmparray += blockDim.x*gridDim.x;
