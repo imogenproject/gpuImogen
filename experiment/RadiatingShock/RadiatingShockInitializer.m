@@ -288,7 +288,7 @@ classdef RadiatingShockInitializer < Initializer
             %statics.setMag_allConstantBC(mag, 2);
 
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
 	    fluids(1).details.radiation = rad;
         end

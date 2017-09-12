@@ -111,7 +111,7 @@ classdef KarmanStreetInitializer < Initializer
                     statics.associateStatics(ENUM.MOM,  ENUM.VECTOR(3), statics.CELLVAR, 1, 4);
                 end
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
         end
     end%PROTECTED       

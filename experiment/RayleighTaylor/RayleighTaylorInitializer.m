@@ -151,7 +151,7 @@ classdef RayleighTaylorInitializer < Initializer
             + 0.5*squish(sum(mom.*mom,1))./mass...        
             + 0.5*squish(sum(mag.*mag,1));
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 	    obj.fluidDetails.minMass = .0001*obj.rhoBottom;
         end
     end%PROTECTED

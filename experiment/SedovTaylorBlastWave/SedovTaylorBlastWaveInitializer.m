@@ -134,7 +134,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
             ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.geomgr.d3h));
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
         end
     
     end%PROTECTED

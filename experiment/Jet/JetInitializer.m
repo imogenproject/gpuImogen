@@ -167,7 +167,7 @@ classdef JetInitializer < Initializer
             if obj.mode.magnet;     obj.runCode = [obj.runCode 'Mag'];  end
             if obj.mode.gravity;    obj.runCode = [obj.runCode 'Grav']; end
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
         end
         
 %___________________________________________________________________________________________________ toInfo

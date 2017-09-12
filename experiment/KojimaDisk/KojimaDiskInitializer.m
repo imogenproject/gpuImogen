@@ -223,7 +223,7 @@ classdef KojimaDiskInitializer < Initializer
 
             potentialField = PotentialFieldInitializer();
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
             if obj.dustLoad > 0
                 

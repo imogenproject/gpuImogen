@@ -303,7 +303,7 @@ classdef RiemannProblemInitializer < Initializer
                 obj.activeSlices.xyz = true;
             end
             
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
             
         end
         

@@ -205,7 +205,7 @@ classdef HachisuDiskInitializer < Initializer
                 end
             end
 
-	    fluids = obj.stateToFluid(mass, mom, ener);
+	    fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
         end
         

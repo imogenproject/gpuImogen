@@ -212,7 +212,7 @@ classdef CentrifugeInitializer < Initializer
                         + 0.5*squish(sum(mag .* mag, 1));                      % magnetic energy                    
             
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
             statics = [];%StaticsInitializer(obj.grid);
             selfGravity = [];

@@ -96,7 +96,7 @@ classdef DoubleBlastInitializer < Initializer
             + 0.5*squish(sum(mom.*mom,1))./mass...
             + 0.5*squish(sum(mag.*mag,1));
 
-            fluids = obj.stateToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
     end
         
 end%PROTECTED

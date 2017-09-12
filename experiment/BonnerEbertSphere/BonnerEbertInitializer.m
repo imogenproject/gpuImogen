@@ -140,7 +140,7 @@ classdef BonnerEbertInitializer < Initializer
                                 + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...   % kinetic energy
                                 + 0.5*squish(sum(mag .* mag, 1));              % magnetic energy                    
       
-            fluid = obj.stateToFluid(mass, mom, ener);
+            fluid = obj.rhoMomEtotToFluid(mass, mom, ener);
 
             statics = [];
             potentialField = [];
