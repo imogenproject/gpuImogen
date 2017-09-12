@@ -12,7 +12,7 @@ sigma_dust = fluids(2).particleSigma;
 mu_dust    = fluids(2).particleMu;
 
 cudaSourceRotatingFrame(fluids, run.frameTracking.omega dTime/2, xyvector);
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime]);
+cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime]);
 cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime/2, xyvector);
 
 % Assert boundary conditions
