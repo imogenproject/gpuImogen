@@ -43,7 +43,7 @@ for F = 1:nFuncs;
     outcome = iterateOnFunction(funcList{F}, D, R);
 
     switch outcome
-        case 1;  if mpi_amirank0(); fprintf('Tests of %s failed!\n', funcList{F}); result = 1;
+        case 1;  if mpi_amirank0(); fprintf('Tests of %s failed!\n', funcList{F}); result = 1; end
         case 0;  if mpi_amirank0(); fprintf('Tests of %s successful!\n', funcList{F}); end
         case -1; if mpi_amirank0(); fprintf('Test for function named %s not implemented\n', funcList{F}); end
         case -2; if mpi_amirank0(); fprintf('No function named %s...\n', funcList{F}); end
