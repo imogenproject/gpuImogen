@@ -84,7 +84,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
 
             geom = obj.geomgr;
             geom.makeBoxSize([1 1 1]);
-	    geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
+            geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
             
             %--- Initialization ---%
             statics         = [];

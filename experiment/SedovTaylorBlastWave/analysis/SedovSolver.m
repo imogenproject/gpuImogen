@@ -1,5 +1,5 @@
 classdef SedovSolver < handle
-    % The SedovSolver class is simply a dumping ground to collect together a few of the functions
+    % The SedovSolver class collects together several of the functions
     % involved in generating reference solutions to the Sedov-Taylor problem for Imogen
     % The implementation is per the following report from LANL:
     % ----------------
@@ -87,8 +87,23 @@ classdef SedovSolver < handle
             I2 = 2^(j-1)*(1*(j==1) + pi*(j==2) + pi*(j==3))*J2/(gamma-1);
             alpha = I1+I2;
         end
+        
+        function [r0, u0] = BlastRadius(E, t, rho0, gamma, j, alpha)
+            % [r0, u0] computes the radius & expansion rate at time t > 0.
+            w=0;
+            j2w = j+2-w;
 
-        function [rho vradial p] = FlowSolution(E, t, radii, rho0, gamma, j, alpha)
+            if nargin < 7
+                alpha = SedovSolver.findAlpha(E, rho0, gamma, j);
+            end
+            
+            % shock position (eq 14)
+            r0 = (E*t^2/(rho0*alpha))^(1/j2w);
+            % shock velocity
+            u0 = 2*r2/(t*j2w);
+        end
+
+        function [rho, vradial, p] = FlowSolution(E, t, radii, rho0, gamma, j, alpha)
             % [rho V p] = SolutionGenerator(E, t, radii, rho0, gamma, j) computes the exact solution
             % of the Sedov-Taylor explosion (see Kamm & Timmes 2007) of energy E at time t > 0 at
             % the radial points given by 'radii' with preshock fluid density rho0, polytropic index 
@@ -168,9 +183,10 @@ classdef SedovSolver < handle
             rhoboom = rho2 * x1.^(w*alpha0) .* x2.^(alpha3+alpha2*w) .* x3.^(alpha4+alpha1*w) .* x4.^(alpha5);
             Pboom = p2     * x1.^(j*alpha0) .* x3.^(alpha4+alpha1*(w-2)) .* x4.^(alpha5+1);
             
-            rho = rho0*ones(size(radii)); rho(split) = rhoboom;
+            rho = rho0*ones(size(radii));     rho(split) = rhoboom;
             vradial = zeros(size(radii)); vradial(split) = vboom;
-            p = zeros(size(radii));       p(split) = Pboom;
+            % We note that a small nonzero P is set, not zero...
+            p = 1e-8 * ones(size(radii));       p(split) = Pboom;
             
         end
         
