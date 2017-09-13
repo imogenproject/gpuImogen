@@ -27,7 +27,6 @@
 #include "debug_inserts.h"
 #endif
 
-#define USE_SSPRK
 
 // FUNCTION PLACES
 // HLLC 1st order step: L.700

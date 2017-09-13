@@ -19,6 +19,8 @@ typedef struct __FluidStepParams {
 	GeometryParams geometry;
 } FluidStepParams;
 
+#include "fluidMethod.h"
+
 // For kernels templated on upwind/corrector step
 #define RK_PREDICT 0
 #define RK_CORRECT 1

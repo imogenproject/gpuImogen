@@ -2,14 +2,15 @@
 
 include ../Make.config
 
-DEFINES = -DRECONSTRUCT_VELOCITY -DUNIX -D_FORCE_INLINES
-#-DFLOATFLUX
+DEFINES = -DUNIX -D_FORCE_INLINES
+#-DFLOATFLUX            - compute fluxes using floats instead of doubles
+#-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 
 NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
 # Debuggable code
 #NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
-# If you enjoy verbose assembler output
-#-Xptxas="-v"
+# Debuggable code with endless verbose statistics from ptxas
+#NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo -Xptxas="-v"
 
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include -I../mpi
 
@@ -37,6 +38,9 @@ base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_getslab
 
 fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones cflTimestep
 	echo "Done building fluid kernels."
+	gcc -o m2m m2m.c
+	./m2m > ../.fluidMethod
+	rm m2m
 
 magnets: cudaMHDKernels cudaFwdAverage cudaFwdDifference cudaMagPrep cudaMagW cudaMagTVD
 	echo "Done building MHD kernels"
