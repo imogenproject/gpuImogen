@@ -229,6 +229,10 @@ classdef GeometryManager < handle
             obj.pGeometryType = ENUM.GEOMETRY_SQUARE;
             obj.pInnerRadius = 1.0; % ignored
 
+            if isa(spacing, 'cell')
+               spacing = [spacing{1} spacing{2} spacing{3}]; 
+            end
+            
             if nargin >= 2;
                 if numel(zeropos) ~= 3; zeropos = [1 1 1]*zeropos(1); end
             else
