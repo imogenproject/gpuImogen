@@ -115,14 +115,8 @@ classdef DustyBoxAnalyzer < LinkedListNode;
         end
 
         function finalize(self, run, fluids, mag)
-        % delete the dustybox solver class
-        %disp('Vomiting output to console...');
-        %self.analysis
-        
-        result = struct('time',self.analysis(:,1),'dvExact', self.analysis(:,2), 'dvImogen', self.analysis(:,3), 'error', self.analysis(:,4));
-        save([run.paths.save '/drag_analysis.mat'], 'result');
-        
-        
+            result = struct('time',self.analysis(:,1),'dvExact', self.analysis(:,2), 'dvImogen', self.analysis(:,3), 'error', self.analysis(:,4));
+            save([run.paths.save '/drag_analysis.mat'], 'result');
         end
 
     end%PUBLIC
