@@ -52,9 +52,20 @@ function failed = starterRun(gpuSet)
 %debugSpin(); % will make all ranks spin
 %debugspin([list of rank #s]); // will make only those ranks spin
 
+    % When the GPU kernels are compiled, the Makefile drops integer zero into this
+    % file if SSPRK is not used and integer one if it is.
+    % SSPRK requires 4 halo cells, explicit midpoint requires 3.
+    % Safely default to 4 if somehow it doesn't exist.
+    try cfdMethod = csvread('.fluidMethod'); catch ohwell; cfdMethod = 1; end
+
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    haloSize = 4; dimensionDistribute = 1;
+    if cfdMethod == 0
+        haloSize = 3;
+    else
+        haloSize = 4;
+    end
+    dimensionDistribute = 1;
 
     teslaCards = selectGPUs(gpuSet);
 
