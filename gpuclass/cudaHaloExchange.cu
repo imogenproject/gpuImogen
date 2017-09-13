@@ -24,8 +24,6 @@
    circularity[...
  */
 
-#define HALO_DEPTH 4
-
 #ifdef STANDALONE_MEX_FUNCTION
 /* mexFunction call:
  * cudaHaloExchange(GPU array, direction, topology, exterior circularity) */
@@ -56,7 +54,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
  * narrays - number of arrays 
  * t       - parallel topology
  * xchgDir - array direction to synchronize */
-int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xchgDir)
+int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int xchgDir)
 {
 	int returnCode = CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	if(returnCode != SUCCESSFUL) { return returnCode; }
@@ -70,6 +68,13 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xc
 	int memDir;
 
 	int i;
+
+	int totalBlockAlloc = 0;
+	int arraysOffset[nArrays], leftCirc[nArrays], rightCirc[nArrays], blockSize[nArrays];
+	double *hostbuffer;
+
+	MGArray *phi = theta;
+	// Run through the arrays and learn how much we need to allocate.
 	for(i = 0; i < nArrays; i++) {
 		/* Be told if the left and right sides of the dimension are circular or not */
 		int leftCircular, rightCircular;
@@ -97,63 +102,95 @@ int exchange_MPI_Halos(MGArray *phi, int nArrays, ParallelTopology* topo, int xc
 
 		memDir = phi->currentPermutation[xchgDir]; // The actual in-memory direction we're gonna be exchanging
 
-		double *ptrHalo;
+		int haloDepth = phi->haloSize;
 
-		// Find the size of the swap buffer
-		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, HALO_DEPTH);
+		// Find the size of the swap buffer needed for this array
+		int numPerHalo = MGA_wholeFaceHaloNumel(phi, memDir, haloDepth);
 
-		cudaMallocHost((void **)&ptrHalo, 4*numPerHalo*sizeof(double));
-		returnCode = CHECK_CUDA_ERROR("cudaHostAlloc");
-		if(returnCode != SUCCESSFUL) return returnCode;
+		leftCirc[i] = leftCircular;
+		rightCirc[i] = rightCircular;
+		arraysOffset[i] = totalBlockAlloc; // the start index of the array's buffer is the current end
+		totalBlockAlloc += 4*numPerHalo;   // grow buffer to be alloc'd
+		blockSize[i] = numPerHalo;         // the size of each of the 4 blocks within an array buffer
+
+		phi++;
+	}
+
+	cudaMallocHost((void **)&hostbuffer, totalBlockAlloc * sizeof(double));
+	returnCode = CHECK_CUDA_ERROR("cudaHostAlloc");
+	if(returnCode != SUCCESSFUL) return returnCode;
+
+	double *ptrHalo;
+
+	phi = theta;
+	// Read all halos into common block buffer
+	for(i = 0; i < nArrays; i++) {
+		int haloDepth = phi->haloSize;
 
 		MPI_Comm commune = MPI_Comm_f2c(topo->comm);
 
+		ptrHalo = hostbuffer + arraysOffset[i];
+
 		double *ptmp = ptrHalo;
 		// Fetch left face
-		if(leftCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 0, HALO_DEPTH, &ptmp);
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+		if(leftCirc[i])
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 0, haloDepth, &ptmp);
+		if(returnCode != SUCCESSFUL) break;
 
-
-		ptmp = ptrHalo + numPerHalo;
+		ptmp = ptrHalo + blockSize[i];
 		// Fetch right face
-		if(rightCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 0, HALO_DEPTH, &ptmp);
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+		if(rightCirc[i])
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 0, haloDepth, &ptmp);
+		if(returnCode != SUCCESSFUL) break;
+		phi++;
+	}
 
-		// synchronize to make sure host sees what was uploaded
-		int j;
-		for(j = 0; j < phi->nGPUs; j++) {
-			cudaSetDevice(phi->deviceID[j]);
-			cudaDeviceSynchronize();
-		}
+	if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) {
+		cudaFreeHost((void **)hostbuffer);
+		return returnCode;
+	}
+
+	// synchronize to make sure host sees what was uploaded
+	// DANGER - this DOES assume
+	int j;
+	for(j = 0; j < theta->nGPUs; j++) {
+		cudaSetDevice(theta->deviceID[j]);
+		cudaDeviceSynchronize();
+	}
+
+	phi = theta;
+	for(i = 0; i < nArrays; i++) {
+		int haloDepth = phi->haloSize;
+		ptrHalo = hostbuffer + arraysOffset[i];
+		double *ptmp = ptrHalo;
 
 		mpi_exchangeHalos(topo, xchgDir, (void*)ptrHalo,
-				(void*)(ptrHalo + numPerHalo),\
-				(void*)(ptrHalo+2*numPerHalo),\
-				(void*)(ptrHalo+3*numPerHalo), numPerHalo, MPI_DOUBLE);
+				(void*)(ptrHalo + blockSize[i]),\
+				(void*)(ptrHalo+2*blockSize[i]),\
+				(void*)(ptrHalo+3*blockSize[i]), blockSize[i], MPI_DOUBLE);
 		MPI_Barrier(MPI_COMM_WORLD);
 
 		// write left face
-		ptmp = ptrHalo + 2*numPerHalo;
-		if(leftCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 1, HALO_DEPTH, &ptmp);
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+		ptmp = ptrHalo + 2*blockSize[i];
+		if(leftCirc[i])
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 0, 1, haloDepth, &ptmp);
+		if(returnCode != SUCCESSFUL) break;
 
-		ptmp = ptrHalo + 3*numPerHalo;
+		ptmp = ptrHalo + 3*blockSize[i];
 		// Fetch right face
-		if(rightCircular)
-			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 1, HALO_DEPTH, &ptmp);
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-
-		cudaFreeHost((void **)ptrHalo);
+		if(rightCirc[i])
+			returnCode = MGA_wholeFaceToLinear(phi, memDir, 1, 1, haloDepth, &ptmp);
+		if(returnCode != SUCCESSFUL) break;
 
 		// Move to the next array to exchange
 		phi++;
 	}
 
-	return SUCCESSFUL;
+	CHECK_IMOGEN_ERROR(returnCode);
 
+	cudaFreeHost((void **)hostbuffer);
+
+	return returnCode;
 }
 
 
