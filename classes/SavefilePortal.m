@@ -31,15 +31,19 @@ classdef SavefilePortal < handle
     
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-        function self = SavefilePortal(wd)
+        function self = SavefilePortal(wd, ttl)
             % SavefilePortal(directory) provides a unified way to access
             % all Imogen save data
             if nargin == 0; wd = pwd(); end
 
             self.changeDirectory(wd);
             self.rescanDirectory();
-            self.typeToLoad = 7;
-
+            if nargin > 1
+                self.setFrametype(ttl);
+            else
+                self.typeToLoad = 7;
+            end
+            
             self.setParallelMode(0);
         end
 
@@ -47,10 +51,10 @@ classdef SavefilePortal < handle
             if enable;
                 self.pParallelMode = 1;
                 if mpi_isinitialized() == 0;
-                    warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init() for sanity.');
+                    warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init()...');
                     mpi_init();
                 end
-            else;
+            else
                 self.pParallelMode = 0;
             end
         end
