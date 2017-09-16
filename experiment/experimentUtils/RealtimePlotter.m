@@ -292,7 +292,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             % Rearm myself
             p.iter = p.iter + self.iterationsPerCall;
-            p.active = 1;
+            p.armed = 1;
         end
 
         function emitMovieFrame(self, path, prefix)
