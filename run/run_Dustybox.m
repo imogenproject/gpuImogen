@@ -1,7 +1,7 @@
 % Wave advection simulation
 
 %grid = [512 512 1];
-grid = [64 1 1];
+grid = [32 1 1];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
@@ -20,7 +20,7 @@ run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 10;
 
 % Set a background speed at which the fluid is advected
-run.backgroundMach = .12;
+run.backgroundMach = .39;
 
 % Set the type of wave to be run.
 % One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
@@ -41,13 +41,14 @@ run.addNewFluid(1);
 
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
+run.fluidDetails(2).sigma = run.fluidDetails(2).sigma*1000;
 
 run.peripherals{end+1} = DustyBoxAnalyzer();
 
 run.writeFluid = 2;
   run.amplitude = 0;
   run.backgroundMach = 0;
-  run.setBackground(0.1, .001);
+  run.setBackground(.1, .001);
 
 run.alias= 'dustybox';
 
@@ -63,10 +64,25 @@ run.waveLinearity(0);
 run.waveStationarity(0);
 
 %--- Run tests ---%
-if (true)
+if true
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    AdvectionAnalysis(outpath, 1)
     if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
 end
 
+if run.numFluids == 1
+    AdvectionAnalysis(outpath, 1)
+end
+
+cd(outpath);
+load('drag_analysis.mat');
+
+figure(1); 
+hold off;
+plot(result.time, result.dvExact,'b-');
+hold on;
+plot(result.time, result.dvImogen,'rx');
+
+figure(2);
+hold off;
+plot(result.time, 1-result.dvImogen./result.dvExact);

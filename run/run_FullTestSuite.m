@@ -3,7 +3,7 @@
 
 TestResults.name = 'Imogen Master Test Suite';
 
-TestResultFilename = '~/Aug2017test_HLL_hirez.mat';
+TestResultFilename = '~/advect_emp';
 
 %--- Override: Run ALL the tests! ---%
 doALLTheTests = 0;
@@ -41,12 +41,12 @@ if mpi_amirank0();
 end
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 9;
-doubleblastDoublings= 9;
-dustyBoxDoublings   = 5;
-einfeldtDoublings   = 9;
-nohDoublings        = 5;
-sodDoublings        = 9;
+advectionDoublings  = 8;
+doubleblastDoublings= 5;
+dustyBoxDoublings   = 4;
+einfeldtDoublings   = 5;
+nohDoublings        = 8;
+sodDoublings        = 5;
 
 advection2DDoublings= 6;
 centrifugeDoublings = 6;
@@ -55,7 +55,11 @@ sedov2D_scales      = [1 2 4 8 16 24];
 sedov3D_scales      = [1 2 3 4 5];
 
 fm = FlipMethod();
-  fm.iniMethod = ENUM.CFD_XINJIN;
+  fm.iniMethod = ENUM.CFD_HLLC;
+
+exceptionList = {};
+
+startSimulationsTime = clock();
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
@@ -66,6 +70,7 @@ if doSonicAdvectStaticBG || doALLTheTests
         fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
     TestResult.advection.Xalign_mach0 = x;
     if mpi_amirank0(); disp('Results for advection against stationary background:'); disp(x); end
@@ -80,6 +85,7 @@ if doSonicAdvectMovingBG || doALLTheTests
         fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
         
     TestResult.advection.Xalign_mach0p5 = x;
@@ -95,6 +101,7 @@ if doSonicAdvectAngleXY || doALLTheTests
         fprintf('2D Advection test simulation barfed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
 
     TestResult.advection.XY = x;
@@ -111,6 +118,7 @@ if doEntropyAdvectStaticBG || doALLTheTests
         fprintf('Stationary entropy wave test simulation failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
 end
 if doEntropyAdvectMovingBG || doALLTheTests
@@ -121,6 +129,7 @@ if doEntropyAdvectMovingBG || doALLTheTests
         fprintf('Convected entropy wave test simulation failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
 end
 
@@ -133,6 +142,7 @@ if doEinfeldtTests || doALLTheTests
         fprintf('Einfeldt tube test has failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
     TestResult.einfeldt = x;
     if mpi_amirank0(); disp('Results for Einfeldt tube refinement:'); disp(x); end
@@ -147,6 +157,7 @@ if doSodTubeTests || doALLTheTests
         fprintf('Sod shock tube test has failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
     
     TestResult.sod.X = x;
@@ -161,6 +172,7 @@ if doNohTubeTests || doALLTheTests
         fprintf('Noh shock tube test has failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
     
     TestResult.sod.X = x;
@@ -175,6 +187,7 @@ if doCentrifugeTests || doALLTheTests
         disp('Centrifuge test has failed.');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
     end
 
     TestResult.centrifuge = x;
@@ -190,6 +203,7 @@ if doDoubleBlastTests || doALLTheTests
        disp('Double blast test has failed.');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
    end
    
    TestResult.doubleBlast = x;
@@ -205,6 +219,7 @@ if doDustyBoxes || doALLTheTests
        disp('Dusty box test (Mach .01) has failed.');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
    end
    TestResult.dustybox.slow = x;
    if mpi_amirank0(); disp('Results for M=.01 dusty box test:'); disp(x); end
@@ -214,6 +229,7 @@ if doDustyBoxes || doALLTheTests
        disp('Dusty box test (Mach 0.25) has failed.');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
    end
    TestResult.dustybox.mid = x;
    if mpi_amirank0(); disp('Results for M=.25 dusty box test:'); disp(x); end
@@ -223,6 +239,7 @@ if doDustyBoxes || doALLTheTests
        disp('Dusty box test (Mach 2) has failed.');
         prettyprintException(ME);
         x = 'FAILED';
+        exceptionList{end+1} = ME;
    end
    TestResult.dustybox.supersonic = x;
    if mpi_amirank0(); disp('Results for M=2.0 dusty box test:'); disp(x); end
@@ -248,6 +265,7 @@ if doSedovTests || doALLTheTests
             disp('2D Sedov-Taylor test has failed.');
             prettyprintException(ME);
             x = 'FAILED';
+            exceptionList{end+1} = ME;
         end
         TestResult.sedov2d = x;
     if mpi_amirank0(); disp('Results for 2D (cylindrical) Sedov-Taylor explosion:'); disp(x); end
@@ -261,6 +279,7 @@ if doSedovTests || doALLTheTests
             disp('3D Sedov-Taylor test has failed.');
             prettyprintException(ME);
             x = 'FAILED';
+            exceptionList{end+1} = ME;
         end
         TestResult.sedov3d = x;
         if mpi_amirank0(); disp('Results for 3D (spherical) Sedov-Taylor explosion:'); disp(x); end
@@ -268,10 +287,38 @@ if doSedovTests || doALLTheTests
 
 end
 
+endSimulationsTime = clock();
+
+
 %%%%%
 % Test standing shocks, HD and MHD, 1/2/3 dimensional
 
+if mpi_amirank0()
+    disp('========================================');
 
+    if exist([TestResultFilename '.mat']) ~= 0
+        disp(['!!! WARNING: filename "' TestResultFilename '.mat exists! Appending YYYYMMDD_HHMMSS.']);
+        disp('========================================');
+        TestResultFilename = [TestResultFilename date2ymdhms(startSimulationsTime)];
+    end
+    save([TestResultFilename '.mat'],'TestResult');
+
+    disp('Full test suite is finished running.'
+    t = etime(endSimulationsTime, startSimulationstime);
+    disp(['Total runtime of all simulations measured by rank 0 was' num2str(t) 'sec.']);
+    disp(['Simulation output is stored in file ' TestResultFilename])
+    if numel(exceptionList) > 0
+        disp(['A total of ' num2str(numel(exceptionList)) ' errors were encountered'];
+        for k = 1:numel(exceptionList)
+            disp('====================');
+            disp(['Error number ' num2str(k) ':']);
+            prettyprintException(exceptionList{k});
+        end
+    else
+        disp('No errors were reported by any simulations.');
+    end
+    disp('========================================');
+end
 
 %%% SOURCE TESTS???
 % Test constant gravity field, (watch compressible water slosh?)
@@ -285,8 +332,7 @@ end
 % Test rotating frame
 % USE CENTRIFUGE TEST
 
-if mpi_amirank0()
-    save(TestResultFilename,'TestResult');
-end
+
+
 
 

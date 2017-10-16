@@ -24,6 +24,8 @@ geom = GeometryManager(rez);
 geom.makeBoxSize([1 1 1]);
 geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
 
+result.N = rez;
+
 [x, y, z] = geom.ndgridSetIJK('pos');
 R = x.^2+y.^2; if rez(3) > 1; R = R + z.^2; end
 

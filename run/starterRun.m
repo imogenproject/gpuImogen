@@ -56,17 +56,12 @@ function failed = starterRun(gpuSet)
     % file if SSPRK is not used and integer one if it is.
     % SSPRK requires 4 halo cells, explicit midpoint requires 3.
     % Safely default to 4 if somehow it doesn't exist.
-    try cfdMethod = csvread('.fluidMethod'); catch ohwell; cfdMethod = 1; end
+    try haloSize = csvread('.fluidMethod'); catch ohwell; haloSize = 4; end
 
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
-    if cfdMethod == 0
-        haloSize = 3;
-    else
-        haloSize = 4;
-    end
-    dimensionDistribute = 1;
 
+    dimensionDistribute = 1;
     teslaCards = selectGPUs(gpuSet);
 
     gm.init(teslaCards, haloSize, dimensionDistribute);

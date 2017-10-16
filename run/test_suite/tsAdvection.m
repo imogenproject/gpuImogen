@@ -56,6 +56,7 @@ if prettyPictures
     rp.insertPause = 0;
     rp.firstCallIteration = 1;
     rp.iterationsPerCall = 10;
+    rp.spawnGUI = 1;
     run.peripherals{end+1} = rp;
 end
 if nargin == 8

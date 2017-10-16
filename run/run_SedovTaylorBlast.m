@@ -15,7 +15,7 @@ run.autoEndtime = 1;
 
 % One method of initializing the center of the blast: Deposit the energy equally
 % into cells whose radius is less than this
-run.depositRadiusCells(1.1);
+run.depositRadiusCells(3.1);
 
 run.ppSave.dim3 = 10;
 
@@ -29,8 +29,9 @@ rp = RealtimePlotter();
   rp.insertPause = 1;
   rp.iterationsPerCall = 25;
   rp.firstCallIteration = 1;
-rp.forceRedraw = 1;
-run.peripherals{end+1} = rp;
+  rp.forceRedraw = 1;
+  rp.spawnGUI = 1;
+%run.peripherals{end+1} = rp;
 
 
 %--- Run tests ---%
