@@ -6,7 +6,8 @@ DEFINES = -DUNIX -D_FORCE_INLINES
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo -Xptxas="-v"
+
 # Debuggable code
 #NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
 # Debuggable code with endless verbose statistics from ptxas
@@ -341,8 +342,12 @@ cudaSourceVTO.o: cudaSourceVTO.cu
 cudaSourceVTO: cudaCommon.o cudaSourceVTO.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
-cudaTestSourceComposite: cudaCommon.o cudaTestSourceComposite.o
-	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@
+cudaTestSourceComposite: cudaCommon.o cudaTestSourceComposite.o cudaGradientKernels.o
+	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaGradientKernels.o cudaCommon.o $(OUTPUTCMD) $@
+
+cudaGradientKernels.o: cudaGradientKernels.cu cudaGradientKernels.h
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaGradientKernels.cu -o cudaGradientKernels.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaGradientKernels.cpp
 
 cudaTestSourceComposite.o: cudaTestSourceComposite.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaTestSourceComposite.cu -o cudaTestSourceComposite.cpp

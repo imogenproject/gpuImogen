@@ -12,34 +12,12 @@
 
 #include "cudaCommon.h"
 #include "cudaSourceScalarPotential.h"
-
-#define GRADBLOCKX 18
-#define GRADBLOCKY 18
+#include "cudaGradientKernels.h"
 
 #define SRCBLOCKX 16
 #define SRCBLOCKY 16
 
 int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double omega, double dt, int spaceOrder, int temporalOrder);
-
-
-__global__ void writeScalarToVector(double *x, long numel, double f);
-
-// compute grad(phi) in XYZ or R-Theta-Z 
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient3D_h2(double *rho, double *phi, double *f_x, double *f_y, double *f_z, int3 arraysize);
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient3D_h4_partone(double *rho, double *phi, double *fx, double *fy, int3 arraysize);
-__global__ void  cukern_computeScalarGradient3D_h4_parttwo(double *rho, double *phi, double *fz, int3 arraysize);
-
-// compute grad(phi) in X-Y or R-Theta
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient2D_h2(double *rho, double *phi, double *fx, double *fy, int3 arraysize);
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient2D_h4(double *rho, double *phi, double *fx, double *fy, int3 arraysize);
-
-// Compute grad(phi) in X-Z or R-Z
-__global__ void  cukern_computeScalarGradientRZ_h2(double *rho, double *phi, double *fx, double *fz, int3 arraysize);
-__global__ void  cukern_computeScalarGradientRZ_h4(double *rho, double *phi, double *fx, double *fz, int3 arraysize);
 
 __global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
 
@@ -164,15 +142,6 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	int sub[6];
 
 	double *dx = &geom.h[0];
-	if(spaceOrder == 4) {
-		lambda[0] = dt/(12.0*dx[0]);
-		lambda[1] = dt/(12.0*dx[1]);
-		lambda[2] = dt/(12.0*dx[2]);
-	} else {
-		lambda[0] = dt/(2.0*dx[0]);
-		lambda[1] = dt/(2.0*dx[1]);
-		lambda[2] = dt/(2.0*dx[2]);
-	}
 
 	lambda[3] = rhoFullGravity;
 	lambda[4] = rhoNoG;
@@ -186,10 +155,16 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	lambda[9] = omega;
 	lambda[10]= dt;
 
-	int isThreeD = (fluid->dim[2] > 1);
+	//int isThreeD = (fluid->dim[2] > 1);
 	int isRZ = (fluid->dim[2] > 1) & (fluid->dim[1] == 1);
 
-	double *gradMem[fluid->nGPUs];
+	MGArray gradslab;
+	MGArray *gs = &gradslab;
+
+	worked = MGA_allocSlab(phi, gs, 3);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+	worked = computeCentralGradient(phi, gs, geom, spaceOrder, dt);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
     for(i = 0; i < fluid->nGPUs; i++) {
     	cudaSetDevice(fluid->deviceID[i]);
@@ -205,12 +180,14 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     	worked = CHECK_CUDA_ERROR("memcpy to symbol");
     	if(worked != SUCCESSFUL) break;
 
-    	cudaMalloc((void **)&gradMem[i], 3*sub[3]*sub[4]*sub[5]*sizeof(double));
+    	cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
+    	worked = CHECK_CUDA_ERROR("malloc devXYset");
+    	if(worked != SUCCESSFUL) break;
     }
 
     if(worked != SUCCESSFUL) return worked;
 
-    double *fpi, *ppi;
+    double *fpi;
 
     // Iterate over all partitions, and here we GO!
     for(i = 0; i < fluid->nGPUs; i++) {
@@ -222,77 +199,7 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
         arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 
-        blocksize = makeDim3(GRADBLOCKX, GRADBLOCKY, 1);
-        gridsize.x = arraysize.x / (blocksize.x - spaceOrder); gridsize.x += ((blocksize.x-spaceOrder) * gridsize.x < arraysize.x);
-        if(isRZ) {
-        	gridsize.y = arraysize.z / (blocksize.y - spaceOrder); gridsize.y += ((blocksize.y-spaceOrder) * gridsize.y < arraysize.z);
-        } else {
-        	gridsize.y = arraysize.y / (blocksize.y - spaceOrder); gridsize.y += ((blocksize.y-spaceOrder) * gridsize.y < arraysize.y);
-        }
-        gridsize.z = 1;
-
         fpi = fluid->devicePtr[i]; // save some readability below...
-        ppi = phi->devicePtr[i]; // WARNING: this could be garbage if spaceOrder == 0 and we rx'd no potential array
-
-        switch(spaceOrder) {
-        case 0:
-        	writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], 3*fluid->partNumel[i], 0.0);
-        	break;
-        case 2:
-        	if(isThreeD) {
-        		if(isRZ) {
-        			cukern_computeScalarGradientRZ_h2<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
-        			writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], fluid->partNumel[i], 0.0);
-        		} else {
-        			if(geom.shape == SQUARE) {
-        				cukern_computeScalarGradient3D_h2<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
-        			if(geom.shape == CYLINDRICAL) {
-        				cukern_computeScalarGradient3D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], gradMem[i]+fluid->partNumel[i]*2, arraysize); }
-        		}
-        	} else {
-        		if(geom.shape == SQUARE) {
-        			cukern_computeScalarGradient2D_h2<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
-        		if(geom.shape == CYLINDRICAL) {
-        			cukern_computeScalarGradient2D_h2<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
-
-        		writeScalarToVector<<<32, 256>>>(gradMem[i]+2*fluid->partNumel[i], fluid->partNumel[i], 0.0);
-        	}
-        	break;
-        case 4:
-        	if(isThreeD) {
-        		if(isRZ) {
-        			cukern_computeScalarGradientRZ_h4<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i] + 2*fluid->partNumel[i],  arraysize);
-        			writeScalarToVector<<<32, 256>>>(gradMem[i]+fluid->partNumel[i], fluid->partNumel[i], 0.0);
-        		} else {
-        			if(geom.shape == SQUARE) {
-        				cukern_computeScalarGradient3D_h4_partone<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
-        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i]+fluid->partNumel[i]*2, arraysize);
-        			}
-        			if(geom.shape == CYLINDRICAL) {
-        				cukern_computeScalarGradient3D_h4_partone<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize);
-        				cukern_computeScalarGradient3D_h4_parttwo<<<gridsize, blocksize>>>(fpi, ppi, gradMem[i]+fluid->partNumel[i]*2, arraysize);
-        			}
-        		}
-        	} else {
-        		if(geom.shape == SQUARE) {
-        			cukern_computeScalarGradient2D_h4<SQUARE><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
-        		if(geom.shape == CYLINDRICAL) {
-        			cukern_computeScalarGradient2D_h4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, ppi, gradMem[i], gradMem[i]+fluid->partNumel[i], arraysize); }
-
-        		writeScalarToVector<<<32, 256>>>(gradMem[i]+2*fluid->partNumel[i], fluid->partNumel[i], 0.0);
-
-        	}
-
-        	break;
-        default:
-        	PRINT_FAULT_HEADER;
-        	printf("Was passed spatial order parameter of %i, must be passed 0 (off), 2 (2nd order), or 4 (4th order)\n", spaceOrder);
-        	PRINT_FAULT_FOOTER;
-        	cudaFree(gradMem[i]);
-        	return ERROR_INVALID_ARGS;
-        }
-
-        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cukern_computeScalarGradient");
 
         // This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
         cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
@@ -323,15 +230,15 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         case 2:
         	if(isRZ) {
         		if(geom.shape == SQUARE) {
-        			cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_IMP<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_IMP<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	} else {
         		if(geom.shape == SQUARE) {
-        			cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_IMP<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_IMP<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	}
         	break;
@@ -339,16 +246,16 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         	if(isRZ) {
         		if(geom.shape == SQUARE) {
         			worked = ERROR_NOIMPLEMENT; break;
-        			cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			//cukern_sourceComposite_GL4<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_GL4<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	} else {
         		if(geom.shape == SQUARE) {
         			worked = ERROR_NOIMPLEMENT; break;
-        			cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			//cukern_sourceComposite_GL4<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_GL4<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	}
         	break;
@@ -356,16 +263,16 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         	if(isRZ) {
         		if(geom.shape == SQUARE) {
         			worked = ERROR_NOIMPLEMENT; break;
-        			cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			//cukern_sourceComposite_GL6<RZSQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_GL6<RZCYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	} else {
         		if(geom.shape == SQUARE) {
 					worked = ERROR_NOIMPLEMENT; break;
-        			cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			//cukern_sourceComposite_GL6<SQUARE><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		} else {
-        			cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gradMem[i], fluid->slabPitch[i]/8);
+        			cukern_sourceComposite_GL6<CYLINDRICAL><<<gridsize, blocksize>>>(fpi, devXYset[i], gs->devicePtr[i], fluid->slabPitch[i]/8);
         		}
         	}
         	break;
@@ -388,413 +295,15 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 
     int j; // This will halt at the stage failed upon if CUDA barfed above
     for(j = 0; j < i; j++) {
-    	cudaFree((void *)gradMem[j]);
     	cudaFree((void *)devXYset[j]);
     }
+    MGA_delete(gs);
 
     // Don't bother checking cudaFree if we already have an error caused above, it was just trying to clean up the barf
     if(worked == SUCCESSFUL)
     	worked = CHECK_CUDA_ERROR("cudaFree");
 
     return CHECK_IMOGEN_ERROR(worked);
-
-}
-
-/* Given a density, reads G1 and G2 (devLambda[5, 6]) and returns a factor to
- * rescale density by as follows:
- * RHOCRIT < rho          : 1
- * RHO_FULLG  < rho < RHOCRIT: rho*g1 - g2
- *           rho < RHO_FULLG : 0
- * This piecewise linear continuous function ramps gravity's
- * strength from 1 at/above RHO_FULLG down to 0 at/below RHO_NOG
- */
-__device__ double cukern_computeMondFactor(double rho)
-{
-double x = 1;
-return x;/*
-if(rho < RHO_FULLG) {
-	if(rho < RHO_NOG) {
-		x = 0;
-	} else {
-		x = rho*G1 - G2;
-	}
-}
-
-return x;
-*/
-}
-
-/* Second order methods compute dU/dx using the 2-point central derivative,
- *     dU/dx = [ -f(x-h) + f(x+h) ] / 2h + O(h^2)
- * Fourth order methods compute dU/dx using the 4-point central derivative,
- *     dU/dx = [ f(x-2h) - 8 f(x-h) + 8 f(x+h) - f(x+2h) ] / 12h + O(h^4)
- * applied independently to the directions of interest.
- * Phi-direction derivatives in cylindrical geometry acquire an additional factor of 1/r
- * because lambda computes dU/dtheta in this case, not (grad U).(theta-hat).
- */
-
-/* Computes the gradient of 3d array phi using the 2-point centered derivative,
- * and stores phi_x in fx, phi_y in fy, phi_z in fz.
- * All arrays (rho, phi, fx, fy, fz) must be of size arraysize.
- * In cylindrical geometry, f_x -> f_r,
- *                          f_y -> f_phi
- */
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient3D_h2(double *rho, double *phi, double *fx, double *fy, double *fz, int3 arraysize)
-{
-int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-int myX = threadIdx.x + (GRADBLOCKX-2)*blockIdx.x - 1;
-int myY = threadIdx.y + (GRADBLOCKY-2)*blockIdx.y - 1;
-
-if((myX > arraysize.x) || (myY > arraysize.y)) return;
-
-bool IWrite = (threadIdx.x > 0) && (threadIdx.x < (GRADBLOCKX-1)) && (threadIdx.y > 0) && (threadIdx.y < (GRADBLOCKY-1));
-IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
-
-myX = (myX + arraysize.x) % arraysize.x;
-myY = (myY + arraysize.y) % arraysize.y;
-
-int globAddr = myX + arraysize.x*myY;
-
-double deltaphi; // Store derivative of phi in one direction
-
-__shared__ double phiA[GRADBLOCKX*GRADBLOCKY];
-__shared__ double phiB[GRADBLOCKX*GRADBLOCKY];
-__shared__ double phiC[GRADBLOCKX*GRADBLOCKY];
-
-double *U; double *V; double *W;
-double *temp;
-double mFactor;
-
-U = phiA; V = phiB; W = phiC;
-
-// Preload lower and middle planes
-U[myLocAddr] = phi[globAddr + arraysize.x*arraysize.y*(arraysize.z-1)];
-V[myLocAddr] = phi[globAddr];
-
-__syncthreads();
-
-int z;
-int deltaz = arraysize.x*arraysize.y;
-for(z = 0; z < arraysize.z; z++) {
-  mFactor = cukern_computeMondFactor(rho[globAddr]);
-
-  if(z >= arraysize.z - 1) deltaz = - arraysize.x*arraysize.y*(arraysize.z-1);
-
-  if(IWrite) {
-    deltaphi         = LAMX*(V[myLocAddr+1]-V[myLocAddr-1]);
-    fx[globAddr]     = mFactor*deltaphi; // store px <- px - dt * rho dphi/dx;
-  }
-
-  if(IWrite) {
-  if(coords == SQUARE) {
-    deltaphi         = LAMY*(V[myLocAddr+GRADBLOCKX]-V[myLocAddr-GRADBLOCKX]);
-    }
-    if(coords == CYLINDRICAL) {
-    // In cylindrical coords, use dt/dphi * (delta-phi) / r to get d/dy
-    deltaphi         = LAMY*(V[myLocAddr+GRADBLOCKX]-V[myLocAddr-GRADBLOCKX]) / (RINNER + DELTAR*myX);
-    }
-    fy[globAddr]     = mFactor*deltaphi;
-  }
-
-  W[myLocAddr]       = phi[globAddr + deltaz]; // load phi(z+1) -> phiC
-  __syncthreads();
-  deltaphi           = LAMZ*(W[myLocAddr] - U[myLocAddr]);
-
-  if(IWrite) {
-    fz[globAddr]     = mFactor*deltaphi;
-  }
-
-  temp = U; U = V; V = W; W = temp; // cyclically shift them back
-  globAddr += arraysize.x * arraysize.y;
-
-}
-
-}
-
-/* Computes the gradient of 3d array phi using the 4-point centered derivative and
- * stores phi_x in fx, phi_y in fy, phi_z in fz.
- * All arrays (rho, phi, fx, fy, fz) must be of size arraysize.
- * In cylindrical geometry, f_x -> f_r,
- *                          f_y -> f_phi
- * This call must be invoked in two parts:
- * cukern_computeScalarGradient3D_h4_partone computes the X and Y (or r/theta) derivatives,
- * cukern_computeScalarGradient3D_h4_parttwo computes the Z derivative.
- */
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient3D_h4_partone(double *rho, double *phi, double *fx, double *fy, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
-	int myY = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
-
-	if((myX > (arraysize.x+1)) || (myY > (arraysize.y+1))) return;
-
-	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
-	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myY = (myY + arraysize.y) % arraysize.y;
-
-	int globAddr = myX + arraysize.x*myY;
-
-	double deltaphi; // Store derivative of phi in one direction
-
-	__shared__ double phishm[GRADBLOCKX*GRADBLOCKY];
-	double mFactor;
-
-	__syncthreads();
-
-	int z;
-	int deltaz = arraysize.x*arraysize.y;
-	for(z = 0; z < arraysize.z; z++) {
-		mFactor = cukern_computeMondFactor(rho[globAddr]);
-
-		phishm[myLocAddr] = phi[globAddr];
-
-		__syncthreads();
-
-		if(IWrite) {
-			deltaphi         = LAMX*(-phishm[myLocAddr+2]+8.0*phishm[myLocAddr+1]-8.0*phishm[myLocAddr-1]+phishm[myLocAddr-2]);
-			fx[globAddr]     = mFactor*deltaphi; // store px <- px - dt * rho dphi/dx;
-
-			if(coords == SQUARE) {
-				deltaphi         = LAMY*(-phishm[myLocAddr+2*GRADBLOCKX]+8*phishm[myLocAddr+GRADBLOCKX]-8*phishm[myLocAddr-GRADBLOCKX]+phishm[myLocAddr-2*GRADBLOCKX]);
-			}
-			if(coords == CYLINDRICAL) {
-				// In cylindrical coords, use dt/dphi * (delta-phi) / r to get d/dy
-				deltaphi         = LAMY*(-phishm[myLocAddr+2*GRADBLOCKX]+8*phishm[myLocAddr+GRADBLOCKX]-8*phishm[myLocAddr-GRADBLOCKX]+phishm[myLocAddr-2*GRADBLOCKX]) / (RINNER + DELTAR*myX);
-			}
-			fy[globAddr]     = mFactor*deltaphi;
-		}
-
-		globAddr += deltaz;
-	}
-}
-
-__global__ void  cukern_computeScalarGradient3D_h4_parttwo(double *rho, double *phi, double *fz, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
-	int myZ = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
-
-	if((myX > (arraysize.x+1)) || (myZ > (arraysize.z+1))) return;
-
-	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
-	IWrite = IWrite && (myX < arraysize.x) && (myZ < arraysize.z);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myZ = (myZ + arraysize.z) % arraysize.z;
-
-	int delta = arraysize.x*arraysize.y;
-
-	int globAddr = myX + delta*myZ;
-
-	double deltaphi; // Store derivative of phi in one direction
-
-	__shared__ double phishm[GRADBLOCKX*GRADBLOCKY];
-	double mFactor;
-
-	__syncthreads();
-
-	int y;
-	for(y = 0; y < arraysize.y; y++) {
-		mFactor = cukern_computeMondFactor(rho[globAddr]);
-
-		phishm[myLocAddr] = phi[globAddr];
-
-		if(IWrite) {
-			deltaphi         = LAMZ*(-phishm[myLocAddr+2*GRADBLOCKX]+8*phishm[myLocAddr+GRADBLOCKX]-8*phishm[myLocAddr-GRADBLOCKX]+phishm[myLocAddr-2*GRADBLOCKX]);
-			fz[globAddr]     = mFactor*deltaphi;
-		}
-		globAddr += arraysize.x;
-	}
-}
-
-/* Compute the gradient of 2d array phi with 2nd order accuracy; store the results in f_x, f_y
- *    In cylindrical geometry, f_x -> f_r,
- *                             f_y -> f_phi
- */
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient2D_h2(double *rho, double *phi, double *fx, double *fy, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-2)*blockIdx.x - 1;
-	int myY = threadIdx.y + (GRADBLOCKY-2)*blockIdx.y - 1;
-
-	if((myX > arraysize.x) || (myY > arraysize.y)) return;
-
-	bool IWrite = (threadIdx.x > 0) && (threadIdx.x < (GRADBLOCKX-1)) && (threadIdx.y > 0) && (threadIdx.y < (GRADBLOCKY-1));
-	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myY = (myY + arraysize.y) % arraysize.y;
-
-	int globAddr = myX + arraysize.x*myY;
-
-	double deltaphi; // Store derivative of phi in one direction
-	double mFactor; 
-	__shared__ double phiLoc[GRADBLOCKX*GRADBLOCKY];
-
-	phiLoc[myLocAddr] = phi[globAddr];
-
-	__syncthreads(); // Make sure loaded phi is visible
-
-	// coupling is exactly zero if rho <= rhomin
-	if(IWrite) {
-  		mFactor = cukern_computeMondFactor(rho[globAddr]);
-		// compute dt * (dphi/dx)
-		deltaphi         = LAMX*(phiLoc[myLocAddr+1]-phiLoc[myLocAddr-1]);
-		fx[globAddr] = mFactor*deltaphi;
-
-		// Calculate dt*(dphi/dy)
-		if(coords == SQUARE) {
-		deltaphi         = LAMY*(phiLoc[myLocAddr+GRADBLOCKX]-phiLoc[myLocAddr-GRADBLOCKX]);
-		}
-		if(coords == CYLINDRICAL) {
-		// Converts d/dphi into physical distance based on R
-		deltaphi         = LAMY*(phiLoc[myLocAddr+GRADBLOCKX]-phiLoc[myLocAddr-GRADBLOCKX]) / (RINNER + myX*DELTAR);
-		}
-		fy[globAddr]     = mFactor*deltaphi;
-	}
-
-}
-
-/* Compute the gradient of 2d array phi with 4th order accuracy; store the results in f_x, f_y
- *    In cylindrical geometry, f_x -> f_r,
- *                             f_y -> f_phi
- */
-template <geometryType_t coords>
-__global__ void  cukern_computeScalarGradient2D_h4(double *rho, double *phi, double *fx, double *fy, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
-	int myY = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
-
-	if((myX > arraysize.x) || (myY > arraysize.y)) return;
-
-	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
-	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myY = (myY + arraysize.y) % arraysize.y;
-
-	int globAddr = myX + arraysize.x*myY;
-
-	double deltaphi; // Store derivative of phi in one direction
-	double mFactor;
-	__shared__ double phiLoc[GRADBLOCKX*GRADBLOCKY];
-
-	phiLoc[myLocAddr] = phi[globAddr];
-
-	__syncthreads(); // Make sure loaded phi is visible
-
-	// coupling is exactly zero if rho <= rhomin
-	if(IWrite) {	
-  		mFactor = cukern_computeMondFactor(rho[globAddr]);
-		// compute dt * (dphi/dx)
-		deltaphi         = LAMX*(-phiLoc[myLocAddr+2] + 8*phiLoc[myLocAddr+1] - 8*phiLoc[myLocAddr-1] + phiLoc[myLocAddr-2]);
-		fx[globAddr] = mFactor*deltaphi;
-
-		// Calculate dt*(dphi/dy)
-		if(coords == SQUARE) {
-		deltaphi         = LAMY*(-phiLoc[myLocAddr+2*GRADBLOCKX] + 8*phiLoc[myLocAddr+1*GRADBLOCKX] - 8*phiLoc[myLocAddr-1*GRADBLOCKX] + phiLoc[myLocAddr-2*GRADBLOCKX]);
-		}
-		if(coords == CYLINDRICAL) {
-		// Converts d/dphi into physical distance based on R
-		deltaphi         = LAMY*(-phiLoc[myLocAddr+2*GRADBLOCKX] + 8*phiLoc[myLocAddr+1*GRADBLOCKX] - 8*phiLoc[myLocAddr-1*GRADBLOCKX] + phiLoc[myLocAddr-2*GRADBLOCKX])/(RINNER + myX*DELTAR);
-		}
-		fy[globAddr]     = mFactor*deltaphi;
-	}
-
-}
-
-/* Compute the gradient of R-Z array phi with 2nd order accuracy; store the results in f_x, f_z
- *    In cylindrical geometry, f_x -> f_r
- */
-__global__ void  cukern_computeScalarGradientRZ_h2(double *rho, double *phi, double *fx, double *fz, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-2)*blockIdx.x - 1;
-	int myY = threadIdx.y + (GRADBLOCKY-2)*blockIdx.y - 1;
-
-	if((myX > arraysize.x) || (myY > arraysize.z)) return;
-
-	bool IWrite = (threadIdx.x > 0) && (threadIdx.x < (GRADBLOCKX-1)) && (threadIdx.y > 0) && (threadIdx.y < (GRADBLOCKY-1));
-	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.z);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myY = (myY + arraysize.z) % arraysize.z;
-
-	int globAddr = myX + arraysize.x*myY;
-
-	double deltaphi; // Store derivative of phi in one direction
-	double mFactor;
-	__shared__ double phiLoc[GRADBLOCKX*GRADBLOCKY];
-
-	phiLoc[myLocAddr] = phi[globAddr];
-
-	__syncthreads(); // Make sure loaded phi is visible
-
-	// coupling is exactly zero if rho <= rhomin
-	if(IWrite) {
-  		mFactor = cukern_computeMondFactor(rho[globAddr]);
-		// compute dt * (dphi/dx)
-		deltaphi         = LAMX*(phiLoc[myLocAddr+1]-phiLoc[myLocAddr-1]);
-		fx[globAddr]     = mFactor*deltaphi;
-
-		// Calculate dt*(dphi/dz)
-		deltaphi         = LAMZ*(phiLoc[myLocAddr+GRADBLOCKX]-phiLoc[myLocAddr-GRADBLOCKX]);
-		fz[globAddr]     = mFactor*deltaphi;
-	}
-
-}
-
-/* Compute the gradient of RZ array phi with 4th order accuracy; store the results in f_x, f_y
- *    In cylindrical geometry, f_x -> f_r,
- */
-__global__ void  cukern_computeScalarGradientRZ_h4(double *rho, double *phi, double *fx, double *fz, int3 arraysize)
-{
-	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
-
-	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
-	int myY = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
-
-	if((myX > arraysize.x) || (myY > arraysize.z)) return;
-
-	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
-	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.z);
-
-	myX = (myX + arraysize.x) % arraysize.x;
-	myY = (myY + arraysize.z) % arraysize.z;
-
-	int globAddr = myX + arraysize.x*myY;
-
-	double deltaphi; // Store derivative of phi in one direction
-	double mFactor;
-	__shared__ double phiLoc[GRADBLOCKX*GRADBLOCKY];
-
-	phiLoc[myLocAddr] = phi[globAddr];
-
-	__syncthreads(); // Make sure loaded phi is visible
-
-	// coupling is exactly zero if rho <= rhomin
-	if(IWrite) {
-  		mFactor = cukern_computeMondFactor(rho[globAddr]);
-		// compute dt * (dphi/dx)
-		deltaphi         = LAMX*(-phiLoc[myLocAddr+2] + 8*phiLoc[myLocAddr+1] - 8*phiLoc[myLocAddr-1] + phiLoc[myLocAddr-2]);
-		fx[globAddr]     = mFactor*deltaphi;
-
-		// Calculate dt*(dphi/dz)
-		deltaphi         = LAMZ*(-phiLoc[myLocAddr+2*GRADBLOCKX] + 8*phiLoc[myLocAddr+1*GRADBLOCKX] - 8*phiLoc[myLocAddr-1*GRADBLOCKX] + phiLoc[myLocAddr-2*GRADBLOCKX]);
-		fz[globAddr]     = mFactor*deltaphi;
-	}
 
 }
 
@@ -824,7 +333,7 @@ __global__ void  cukern_computeScalarGradientRZ_h4(double *rho, double *phi, dou
    Rx: [nx 1 1] sized array
    Ry: [ny 1 1] sized array */
 
-#define JACOBI_ITER_MAX 4
+#define JACOBI_ITER_MAX 3
 #define NTH (SRCBLOCKX*SRCBLOCKY)
 
 /* Solves the combined equations of a rotating frame and gravity,
@@ -999,6 +508,8 @@ __global__ void  cukern_sourceComposite_IMP(double *fluidIn, double *Rvector, do
 	}
 }
 
+/* These coefficients define the Butcher tableau of the
+ * 4th order Gauss-Legendre quadrature method */
 #define GL4_C1 0.2113248654051871344705659794271924
 #define GL4_C2 0.7886751345948128655294340205728076
 #define GL4_A11 .25
@@ -1006,11 +517,10 @@ __global__ void  cukern_sourceComposite_IMP(double *fluidIn, double *Rvector, do
 #define GL4_A21 0.5386751345948128655294340205728076
 #define GL4_A22 .25
 
-/* Solves the combined equations of a rotating frame and gravity
- * in either SQUARE or CYLINDRICAL coordinates using 4th order
- * Gauss-Legendre quadrature: This requires simultaneous self-consistent
- * solution of 2N equations at 2 intermediate points, for N=2 (vx and vy)
- * followed by evaluation of the output sum.
+/* Solves the combined equations of a rotating frame and gravity in either
+ * SQUARE or CYLINDRICAL coordinates using 4th order Gauss-Legendre quadrature.
+ * This requires simultaneous solution of 2N equations at 2 intermediate points,
+ * for N=2 (vx and vy) followed by evaluation of the output sum.
  *
  * The implicit solve makes a forward Euler starter prediction before
  * applying Jacobi iterations to update in the order
@@ -1021,7 +531,6 @@ template <geometryType_t coords>
 __global__ void  cukern_sourceComposite_GL4(double *fluidIn, double *Rvector, double *gravgrad, long pitch)
 {
 	__shared__ double shar[4*SRCBLOCKX*SRCBLOCKY];
-	//__shared__ double px0[SRCBLOCKX*SRCBLOCKY], py0[SRCBLOCKX*SRCBLOCKY];
 
 	/* strategy: XY files, fill in X direction, step in Y direction; griddim.y = Nz */
 	int myx = threadIdx.x + SRCBLOCKX*blockIdx.x;
@@ -1074,9 +583,14 @@ __global__ void  cukern_sourceComposite_GL4(double *fluidIn, double *Rvector, do
 		// Generate a 1st order prediction for what the values will be using fwd euler
 		// This is worth roughly 1 iteration but as can be seen will take way less time
 		if((coords == SQUARE) || (coords == RZSQUARE)) {
-		/////
-		/////
-		/////
+			q1 = DT*OMEGA*(OMEGA*locX + 2.0*vyA) - gravgrad[0]; // delta-vx
+			q2 =  -DT*OMEGA*(OMEGA*locY - 2*vxA) - gravgrad[pitch]; // delta-vy
+
+			vxB = vxA + GL4_C2 * q1;
+			vyB = vxB + GL4_C2 * q2;
+
+			vxA += GL4_C1 * q1;
+			vyA += GL4_C1 * q2;
 		} else {
 			q1 = OMEGA*locX + vyA;
 			q2 = -vxA*(vyA + 2*OMEGA*locX);
@@ -1111,14 +625,17 @@ __global__ void  cukern_sourceComposite_GL4(double *fluidIn, double *Rvector, do
 				// Load azimuthal gravity gradient
 				deltaphi = gravgrad[pitch];
 
-				q1 = GL4_A11*vxA*(vyA+2*locX*OMEGA);
-				q2 = vxB*(vyB+2*locX*OMEGA); // Note we leave the GL quadrature coefficient off and can reuse q2
-				vdel          = -DT*(q1+GL4_A12*q2)/locX - GL4_C1 * deltaphi;
-				vyA = shar[tileaddr + NTH] + vdel;
+				q2 = vxB*(vyB+2*locX*OMEGA);
+				// Note we leave the GL quadrature coefficient off and can reuse q2
 
-				q1 = GL4_A21*vxA*(vyA+2*locX*OMEGA);
-				vdel          = -DT*(q1+GL4_A22*q2)/locX - GL4_C2 * deltaphi;
-				vyB = shar[tileaddr+NTH] + vdel;
+				//vdel          = -DT*(GL4_A11*2*locX*OMEGA*vxA+GL4_A12*q2)/locX - GL4_C1 * deltaphi;
+				//vyA = (shar[tileaddr + NTH] + vdel)/(1+DT*GL4_A11*vxA/locX)
+				vdel          = -DT*(GL4_A11*2*locX*OMEGA*vxA+GL4_A12*q2) - GL4_C1 * deltaphi * locX;
+				vyA = (shar[tileaddr + NTH]*locX + vdel)/(locX+DT*GL4_A11*vxA);
+
+				q1 = vxA*(vyA+2*locX*OMEGA);
+				vdel          = -DT*(GL4_A21*q1+GL4_A22*2*locX*OMEGA*vxB) - GL4_C2 * deltaphi * locX;
+				vyB = (shar[tileaddr+NTH]*locX + vdel)/(locX + DT*GL4_A11*vxA);
 			}
 
 		}
@@ -1594,23 +1111,6 @@ __global__ void cukern_cvtToConservativeVars(double *fluid, long partNumel, long
 		fluid[pitch] = Eint;
 
 		fluid += blockDim.x*gridDim.x;
-	}
-
-}
-
-// FIXME implement cvtGasdustToBarydelta
-
-// FIXME implement cvtBarydeltaToGasdust
-
-// Needed with the gradient calculators in 2D because they leave the empty directions uninitialized
-// Vomits the value f into array x, from x[0] to x[numel-1]
-__global__ void writeScalarToVector(double *x, long numel, double f)
-{
-	long a = threadIdx.x + blockDim.x*blockIdx.x;
-
-	for(; a < numel; a+= blockDim.x*gridDim.x) {
-		x[a] = f;
-
 	}
 
 }

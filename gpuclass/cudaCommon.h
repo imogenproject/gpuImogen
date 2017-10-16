@@ -1,6 +1,9 @@
 #ifndef CUDACOMMONH_
 #define CUDACOMMONH_
 
+#include "driver_types.h"
+#include "cuda_runtime_api.h"
+
 #include "mpi_common.h" 
 // These define Imogen's equation of state, giving total pressure and square of soundspeed as functions of the other variables
 // These parameters would normally be stored in a __device__ __constant__ array:
@@ -190,7 +193,9 @@ void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 /* MultiGPU Array allocation stuff */
 int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // Extracts a series of Matlab handles into MGArrays
 int      MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArray *mg);
+// FIXME this should return a status & take a ** to the value to return..
 MGArray *MGA_allocArrays(int N, MGArray *skeleton);
+int      MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs);
 int      MGA_duplicateArray(MGArray **dst, MGArray *src);
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
 void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);

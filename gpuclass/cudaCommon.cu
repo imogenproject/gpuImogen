@@ -12,6 +12,8 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
+#include "driver_types.h"
+
 #include "cudaCommon.h"
 #include "mpi_common.h"
 
@@ -484,6 +486,55 @@ for(i = 0; i < N; i++) {
 #endif
 
 	return m;
+}
+
+/* Given a *skeleton to use as a template, allocates a new array into nu[0],
+ * which is identical to *skeleton except that it has Nslabs slabs. The memory
+ * has proper CUDA striding (slab N+1 starts an even multiple of 256B after slab N does)
+ * and is not initialized in any way. */
+int MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs)
+{
+	int sub[6];
+	// Do the allocate-and-copy dance since we don't have a cudaRealloc that I know of
+	int i;
+	int worked;
+
+	*nu = *skeleton; // copy everything since nothing but the devicePtr[] & numSlabs will change
+
+	for(i = 0; i < skeleton->nGPUs; i++) {
+		cudaSetDevice(skeleton->deviceID[i]);
+		worked = CHECK_CUDA_ERROR("setdevice");
+		if(worked != SUCCESSFUL) break;
+
+		calcPartitionExtent(skeleton, i, &sub[0]);
+		// number of bytes per slab
+		int64_t slabsize = sub[3]*sub[4]*sub[5] * sizeof(double);
+		// round up to make a pleasantly CUDA-aligned amount
+		int64_t slabpitch = slabsize / 256;
+		slabpitch += (256*slabpitch < slabsize); slabpitch *= 256;
+		nu->slabPitch[i] = slabpitch; // just to be safe, this should be correct already
+
+		cudaMalloc((void **)&nu->devicePtr[i], slabpitch*Nslabs);
+		worked = CHECK_CUDA_ERROR("malloc");
+		if(worked != SUCCESSFUL) break;
+	}
+	nu->numSlabs = Nslabs;
+
+#ifdef ALLOCFREE_DEBUG
+printf((const char *)"======== MGA_allocSlab invoked\n");
+printf((const char *)"Creating    %i slabs\n", Nslabs);
+printf((const char *)"Template *: %x\n", skeleton);
+printf((const char *)"Dest *:     %x\n", mu);
+for(i = 0; i < N; i++) {
+	for(j = 0; j < mu->nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", mu->deviceID[j], mu->devicePtr[j]);
+}
+#endif
+
+	if(worked != SUCCESSFUL) {
+		printf("\n	!!! MGA_allocSlab is now bailing with error: Program probably crashing hard !!!\n");
+	}
+
+	return CHECK_IMOGEN_ERROR(worked);
 }
 
 int MGA_duplicateArray(MGArray **dst, MGArray *src)
@@ -1075,7 +1126,7 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 	if(topology != NULL) {
 
 		/* Reverse silly memory ordering */
-		int d = dir - 1;
+		//int d = dir - 1;
 		//int dmax = topology->nproc[d];
 
 		MPI_Comm commune = MPI_Comm_f2c(topology->comm);
@@ -1328,8 +1379,11 @@ int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom)
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
 
-/* returns true IFF arrays a and b have identical memory layouts,
- * this usually implies that temp array reallocations can be avoided */
+/* Returns true IFF arrays a and b have identical memory layouts,
+ * (= same exterior halo setting, haloSize, dim[i], & device IDs)
+ * This means that all same-cell indexing ops will be identical &
+ * may imply combining, or not having to reallocate, temp storage
+ * Does NOT check numSlabs */
 int MGA_arraysAreIdenticallyShaped(MGArray *a, MGArray *b)
 {
 	if((a == NULL) || (b == NULL)) return 0;
@@ -1340,7 +1394,7 @@ int MGA_arraysAreIdenticallyShaped(MGArray *a, MGArray *b)
 	int i;
 	for(i = 0; i < 3; i++) { if(a->dim[i] != b->dim[i]) return 0; } // same external dimension...
 	for(i = 0; i < a->nGPUs; i++) {
-		if(a->deviceID[i] != b->deviceID[i]) return 0;
+		if(a->deviceID[i] != b->deviceID[i]) return 0; // same device
 	}
 
 	return 1;
@@ -2288,17 +2342,8 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 		return ERROR_CRASH;
 	}
 
-	printf("Information about rx'd MGArray*:\n");
-
-	char pdStrings[4] = "XYZ";
-	printf("\tdim = <%i %i %i>\n\thalo size = %i\n\tpartition direction=%c\n", a->dim[0], a->dim[1], a->dim[2], a->haloSize, pdStrings[a->partitionDir-1]);
-	printf("Array partitioned across %i devices: [", a->nGPUs);
-	int u;
-	for(u = 0; u < a->nGPUs; u++) {
-		printf("%i%s", a->deviceID[u], u==(a->nGPUs-1) ? "]\n" : ", ");
-	}
-
-	printf("Block and grid dims: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
+	MGA_debugPrintAboutArray(a);
+	printf("Block and grid dims of kernel: <%i %i %i>, <%i %i %i>\n", blockdim.x, blockdim.y, blockdim.z, griddim.x, griddim.y, griddim.z);
 
     PRINT_FAULT_FOOTER;
 
@@ -2396,10 +2441,11 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
  */
 void dropMexError(const char *excuse, const char *infile, int atline)
 {
-	char *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
-	sprintf(turd, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
+	static char turd[512];
+	//conchar *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
+	snprintf(turd, 511, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
 	mexErrMsgTxt(turd);
-	free(turd);
+	//free(turd);
 }
 
 void printdim3(char *name, dim3 dim)
