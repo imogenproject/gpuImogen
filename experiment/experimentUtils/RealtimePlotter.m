@@ -20,6 +20,7 @@ classdef RealtimePlotter <  LinkedListNode
         
         iterationsPerCall;
         firstCallIteration;
+        firstCallTime;
 
         generateTeletextPlots;
 
@@ -56,11 +57,11 @@ classdef RealtimePlotter <  LinkedListNode
         pAxisTypeLabels = {'axis off','cell #','pixels','position'};
 
         pMovieNextFrame;
-	pMovieFramePrefix;
-
-	pCAct =  [9 3 3]/10;
-	pCEnab = [3 9 3]/10;
-	pCNeut = [94 94 94]/100;
+        pMovieFramePrefix;
+        
+        pCAct =  [9 3 3]/10;
+        pCEnab = [3 9 3]/10;
+        pCNeut = [94 94 94]/100;
     end %PROTECTED
     
     %===================================================================================================
@@ -78,6 +79,7 @@ classdef RealtimePlotter <  LinkedListNode
         
             self.iterationsPerCall  = 100;
             self.firstCallIteration = 1;
+            self.firstCallTime      = NaN;
 
             self.cut = -[1 1 1];
             self.indSubs = -[1 1 1;1 1 1;1 1 1];
@@ -154,7 +156,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGeometryMgrHandle = run.geometry;
             self.updateSubsets();
             
-            ticker = ImogenEvent([], self.firstCallIteration, [], @self.FrameAnalyzer);
+            ticker = ImogenEvent(self.firstCallTime, self.firstCallIteration, [], @self.FrameAnalyzer);
             ticker.armed = 1;
             run.attachEvent(ticker);
 
@@ -181,11 +183,11 @@ classdef RealtimePlotter <  LinkedListNode
 
             ap = 1;
             switch(self.plotmode); case 1; ap = 1; case 2; ap = 2; case 3; ap = 2; case 4; ap = 4; end
-
+            
             fprintf('%s.plotmode = %i;\n', rpn, int32(self.plotmode));
             fprintf('%s.cut = %s\n%s.indSubs = %s;\n', rpn, mat2str(self.cut), rpn, mat2str(self.indSubs));
-	    fprintf('%s.movieProps(%i, %i, ''%s'');\n', rpn, int32(self.outputMovieFrames), int32(self.pMovieNextFrame), self.pMovieFramePrefix);
-
+            fprintf('%s.movieProps(%i, %i, ''%s'');\n', rpn, int32(self.outputMovieFrames), int32(self.pMovieNextFrame), self.pMovieFramePrefix);
+            
             if outtype == 1
                 fieldnames = self.pstatic_ppfields;
                 for pltno = 1:ap
@@ -292,6 +294,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             % Rearm myself
             p.iter = p.iter + self.iterationsPerCall;
+            p.time = NaN; % TEST HACK FIXME 
             p.armed = 1;
         end
 
