@@ -4,21 +4,15 @@ function util_Frame2NCD(frame, nfile)
 d3 = @(v) {'nx',size(v,1),'ny',size(v,2),'nz',size(v,3')};
 
 d3_fixed = {'nx','ny','nz'};
+% or nr, ntheta, nz...
 
 th = frame.time.history;
 if isempty(frame.time.history); th = 0; end
 
-%printct=0;
-% open ncd handle
-% NOTE: Lots of commented fprintf statements in here because
-% this function is the output point for a LOT of data, and I have
-% found it to be enough to make some FSes barf on occasion
-%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 ncid = netcdf.create(nfile, '64BIT_OFFSET');
 
 % FIXME: check for r/w failure here
 
-%nc_def_dim(ncid, "dimname", value, &dimid);
 vecdim = netcdf.defDim(ncid, '3elem', 3); % this is dumb but it's historically locked...
 scaldim= netcdf.defDim(ncid, '1elem', 1);
 
@@ -27,7 +21,6 @@ dthist = netcdf.defDim(ncid, 'dthist', numel(th));
 tinfo  = netcdf.defDim(ncid, 'tinfo', 5);
 tstart = netcdf.defDim(ncid, 'tstart', length(frame.time.started));
 
-%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Define parallel substructure dimensions
 geomnx = netcdf.defDim(ncid, 'geomnx', size(frame.parallel.geometry,1));
 geomny = netcdf.defDim(ncid, 'geomny', size(frame.parallel.geometry,2));
@@ -43,13 +36,11 @@ dgridny = netcdf.defDim(ncid, 'dgridny', size(frame.dGrid{2},2));
 dgridnz = netcdf.defDim(ncid, 'dgridnz', size(frame.dGrid{3},3));
 simdim  = netcdf.defDim(ncid, 'simdim', length(frame.dim)); % good lord...
 
-%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % define grid dimensions
 nx = netcdf.defDim(ncid, 'nx', size(frame.mass,1));
 ny = netcdf.defDim(ncid, 'ny', size(frame.mass,2));
 nz = netcdf.defDim(ncid, 'nz', size(frame.mass,3));
 
-%nc_def_var(ncid, "varname", TYPE, numdims, ptr_to_dimid, &varid);
 % DEFINE ALL VARIABLES
 % Define time info substructure
 timeinfo_hist   = netcdf.defVar(ncid, 'timeinfo_hist', 'double', dthist);
@@ -79,7 +70,6 @@ momY = netcdf.defVar(ncid, 'momY', 'double', [nx ny nz]);
 momZ = netcdf.defVar(ncid, 'momZ', 'double', [nx ny nz]);
 ener = netcdf.defVar(ncid, 'ener', 'double', [nx ny nz]);
 
-%fprintf('CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 magstatus = netcdf.defVar(ncid, 'magstatus', 'double', scaldim);
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     % Defines a placeholder that marks magnetic arrays as absent
@@ -91,43 +81,32 @@ end
 
 netcdf.endDef(ncid);
 
-%fprintf('ENDED DEFINE MODE CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
-%nc_put_var_TYPE(ncid, varid, &data);
 % Serialize time substructure
 netcdf.putVar(ncid, timeinfo_hist, th);
 netcdf.putVar(ncid, timeinfo_scals, [frame.time.time;frame.time.iterMax;frame.time.timeMax;frame.time.wallMax;frame.time.iteration]);
 netcdf.putVar(ncid, timeinfo_tstart, frame.time.started);
 
-%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Serialize geometry info
 netcdf.putVar(ncid, parallel_geom, frame.parallel.geometry);
 netcdf.putVar(ncid, parallel_gdims, frame.parallel.globalDims);
 netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
 
-%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Serialize parameters and other small stuff
 netcdf.putVar(ncid, gammavar, frame.gamma(1));
 netcdf.putVar(ncid, aboutvar, frame.about);
 netcdf.putVar(ncid, versionvar, frame.ver);
 
-%fprintf(' CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 % Write dGrid information
 netcdf.putVar(ncid, dgrid_x, frame.dGrid{1});
 netcdf.putVar(ncid, dgrid_y, frame.dGrid{2});
 netcdf.putVar(ncid, dgrid_z, frame.dGrid{3});
-netcdf.putVar(ncid, dimvar, frame.dim); % ugh good grief aagain
+netcdf.putVar(ncid, dimvar, frame.dim); %
 
-%fprintf('WRITEMASS CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, mass, frame.mass);
-%fprintf('MOMX CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momX, frame.momX);
-%fprintf('MOMY CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momY, frame.momY);
-%fprintf('MOMZ CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, momZ, frame.momZ);
-%fprintf('ENER CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.putVar(ncid, ener, frame.ener);
-%fprintf('DONEOUTPUT CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     netcdf.putVar(ncid, magstatus, 0);
@@ -138,9 +117,7 @@ else
     netcdf.putVar(ncid, magZ, frame.magZ);
 end
 
-%fprintf('ABOUT TO CLOSE CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 netcdf.close(ncid);
-%fprintf('CLOSED FILE, util_Frame2NCD RETURNING CONSOLE PING %i\n',printct); printct = printct + 1; drawnow('update');
 
 end
 
