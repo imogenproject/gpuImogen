@@ -11,10 +11,10 @@ mu_gas     = fluids(1).particleMu;
 sigma_dust = fluids(2).particleSigma;
 mu_dust    = fluids(2).particleMu;
 
-% Utilize standard (A/2)(B)(A) operator split to acheive 2nd order time accuracy in the
+% Utilize standard (A/2)(B)(A/2) operator split to acheive 2nd order time accuracy in the
 % split terms 
 cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime]);
+cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, dia_dust, mass_dust, dTime, run.multifluidDragMethod]);
 cudaSourceCylindricalTerms(fluids, dTime/2, run.geometry);
 
 % Assert boundary conditions

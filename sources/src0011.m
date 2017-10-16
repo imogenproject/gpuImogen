@@ -8,9 +8,9 @@ mu_gas     = fluids(1).particleMu;
 sigma_dust = fluids(2).particleSigma;
 mu_dust    = fluids(2).particleMu;
 
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2]);
+cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2, run.multifluidDragMethod]);
 cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0);
-cudaSource2FluidDrag(fluids, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2]);
+cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2, run.multifluidDragMethod]);
 
 % Take care of any parallel synchronization we need to do to remain self-consistent
 for N = 1:numel(fluids);
