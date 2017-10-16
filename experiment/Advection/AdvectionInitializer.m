@@ -163,6 +163,8 @@ classdef AdvectionInitializer < Initializer
             self.wavenumber     = self.pWavenumber(:,copyfrom);
             self.setBackground(self.pDensity(1,copyfrom), self.pPressure(1,copyfrom));
             self.fluidDetails(end+1) = fluidDetailModel('10um_iron_balls');
+
+	    self.numFluids = self.numFluids + 1; 
         end
 
     end%GET/SET
