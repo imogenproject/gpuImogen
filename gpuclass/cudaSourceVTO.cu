@@ -41,7 +41,7 @@ __global__ void cukern_SourceVacuumTaffyOperator_CylRRF(double *base, double mom
  *	    [\rho  ]   [0	                                                    ]
  * \partial_t [\rho v] ~ [-\alpha \rho v \theta(\rho - \rho_c)		         ]
  *	    [Etot  ]   [(-\alpha \rho v.v - \beta (P - \rho T_0)\theta(\rho - \rho_c)]
- * if density is less than \rho_c, momentum exponentially decays to zero
+ * if density is less than \rho_c, momentum exponentially decays to zero (in inertial frame)
  * and temperature decays to T_0.
  * i.e., regions evacuated below a sufficiently small density stop moving & become isothermal.
  *
@@ -69,7 +69,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     double *fltargs = mxGetPr(prhs[1]);
     int N = mxGetNumberOfElements(prhs[1]);
     if(N != 4) {
-	DROP_MEX_ERROR("Require [dt alpha beta] in 2nd argument: Got other than 3 values\n");
+	DROP_MEX_ERROR("Require [dt alpha beta frame_omega] in 2nd argument: Got other than 4 values\n");
     }
 
     double dt    = fltargs[0];
@@ -99,7 +99,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			status = ERROR_INVALID_ARGS;
 		}
 		if(status != SUCCESSFUL) {
-			PRINT_FAULT_HEADER; printf("Unable to fetch fluids(%i).MINMASS property! Abort run.\n", fluidct);
+			PRINT_FAULT_HEADER;
+			printf("Unable to fetch fluids(%i).MINMASS property! Abort run.\n", fluidct);
 			PRINT_FAULT_FOOTER;
 			DROP_MEX_ERROR("Crashing.\n");
 		}
@@ -158,6 +159,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 			case SQUARE:
 				PRINT_FAULT_HEADER;
 				printf("VTO operator cannot currently handle rotating frame in square coordinates.\n");
+				returnCode = ERROR_NOIMPLEMENT;
 				PRINT_FAULT_FOOTER;
 				break;
 			case CYLINDRICAL:
@@ -169,6 +171,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 			gridsize.y = 1;
 			cukern_SourceVacuumTaffyOperator_IRF<<<gridsize, blocksize>>>(fluid->devicePtr[i], exp(-alpha*dt), exp(-beta*dt), criticalDensity, minimumDensity);
 		}
+		if(returnCode != SUCCESSFUL) return returnCode;
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "Applying cylindrical source term: i=device#\n");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	}
@@ -218,7 +221,7 @@ __global__ void cukern_SourceVacuumTaffyOperator_CylRRF(double *base, double mom
 			v = v + vphi_rest;
 			w=w*momfactor;
 
-			P = (E - .5*v0)/rho; // T
+			P = (E - .5*v0)/rho; // = T / (gamma-1)
 
 			// decay away density?
 			f0 = rho*rhofactor;

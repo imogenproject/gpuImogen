@@ -15,6 +15,8 @@
 #include "cudaCommon.h"
 #include "cudaStatics.h"
 
+#define ENFORCE_FLUIDMIN
+
 /* THIS FUNCTION:
    cudaStatics is used in the imposition of several kinds of boundary conditions
    upon arrays. Given a list of indices I, coefficients C and values V, it
@@ -521,8 +523,14 @@ if(a*direct > 0) {
 		a = base[tix+4]; if(normdir == 1) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } base += slabNumel; // px
 		a = base[tix+4]; if(normdir == 2) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } base += slabNumel; // py
 		a = base[tix+4]; if(normdir == 3) { p1 = a; base[2-tix] = p2 = rho*restFrmSpeed[2-tix]; } else { base[2-tix] = a; } // pz
-		base[2-tix-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;;
+		base[2-tix-3*slabNumel] = E + .5*(p2-p1)*(p2+p1)/rho;
 	}
+
+	// The potential for evacuating flows created by this mode of operation can result in crappy behavior
+	// We need to re-enforce
+#ifdef ENFORCE_FLUIDMIN
+
+#endif
 
 }
 

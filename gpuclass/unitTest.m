@@ -126,9 +126,6 @@ function outcome = testCudaArrayAtomic(res)
     cudaArrayAtomic(Xg, 0, 3);
     if any(Xg.array(:) ~= X(:) ); fprintf('  !!! RANK %i: Test failed: removing NaN, res=%ix%ix%i\n', r, res(1),res(2), res(3) ); fail = 1; end
 
-%ERRORFAKE
-if r == 1; fail = 1; end
-
     outcome = fail;
 end
 

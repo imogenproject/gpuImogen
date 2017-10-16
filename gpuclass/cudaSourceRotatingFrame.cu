@@ -92,7 +92,6 @@ int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double om
 		worked = CHECK_CUDA_ERROR("cudaSetDevice");
 		if(worked != SUCCESSFUL) break;
 
-
 		// Upload rotation parameters
 		cudaMemcpyToSymbol((const void *)devLambda, &lambda[0], 2*sizeof(double), 0, cudaMemcpyHostToDevice);
 		worked = CHECK_CUDA_ERROR("memcpy to symbol");
@@ -110,7 +109,7 @@ int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double om
 		if(worked != SUCCESSFUL) break;
 
 		blocksize = makeDim3(128, 1, 1);
-                gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
+		gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
 		gridsize.y = gridsize.z = 1;
 		cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluidXY->dim[0], devXYset[i], sub[0], sub[3]);
 		worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
