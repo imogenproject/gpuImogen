@@ -50,6 +50,8 @@ classdef Initializer < handle
         numFluids;
 
 	VTOSettings;    % [alpha beta] or blank
+
+	checkpointSteps;
         
         geomgr;         % GeometryManager class
     end %PUBLIC
