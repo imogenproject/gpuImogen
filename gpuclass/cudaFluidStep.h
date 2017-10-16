@@ -37,6 +37,15 @@ typedef struct __FluidStepParams {
 #define TIMESCHEME_SSPRK_A 8
 #define TIMESCHEME_SSPRK_B 16
 
+// SSPRK_A timestep is a full forward euler
+#define TIMESCHEME_EULER TIMESCHEME_SSPRK_A
+
+// TIMESCHEME_RK3_A coincides with TIMESCHEME_SSPRK_A
+#define TIMESCHEME_RK3_A TIMESCHEME_SSPRK_A
+#define TIMESCHEME_RK3_B 24
+#define TIMESCHEME_RK3_C 32
+
+
 #ifdef DEBUGMODE
 int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, mxArray **dbOutput);
 #else

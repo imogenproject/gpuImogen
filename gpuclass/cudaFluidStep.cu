@@ -27,6 +27,8 @@
 #include "debug_inserts.h"
 #endif
 
+// If defined, HLLC kernels check and enforce minimum density/temperature limits
+#define CFD_ENFORCE_MINVALS
 
 // FUNCTION PLACES
 // HLLC 1st order step: L.700
@@ -139,7 +141,6 @@ __constant__ __device__ int    arrayParams[4];
 
 cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3 gridsize, dim3 blocksize, double *fluidBase, double *tempmem, double dt);
 
-
 #ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
@@ -251,7 +252,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	//     g P / rho > g rho_min^(g-1)
 	// (g-1) e / rho > rho_min^(g-1)
 	//             e > rho rho_min^(g-1)/(g-1)
-	gamHost[4] = 1e-5;//powl(rhomin, gamma-1.0)/(gamma-1.0);
+	gamHost[4] = 1e-5 / (gamma-1);//powl(rhomin, gamma-1.0)/(gamma-1.0); - minimum einternal
 	gamHost[5] = 1.0 - .5*gamma;
 	gamHost[6] = ALFVEN_CSQ_FACTOR - .5*(gamma-1.0)*gamma;
 	gamHost[7] = gamma/(gamma-1.0); // pressure to energy flux conversion for ideal gas adiabatic EoS
@@ -424,7 +425,11 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #ifdef DEBUGMODE
 			numarrays = 6 + DBG_NUMARRAYS;
 #else
+#ifdef USE_RK3
+			numarrays = 11;
+#else
 			numarrays = 6;
+#endif
 #endif
 			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
 			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
@@ -448,7 +453,11 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #ifdef USE_SSPRK
 #define TSFACTOR 1.0
 #else
+#ifdef USE_RK3
+#define TSFACTOR 1.0
+#else
 #define TSFACTOR 0.5
+#endif
 #endif
 				// Fire off the fluid update step
 				if(params.stepMethod == METHOD_HLL) {
@@ -457,34 +466,32 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #ifdef DEBUGMODE
 				returnDebugArray(fluid, 1, wStepValues, dbOutput);
 #endif
-
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
-					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_1storder");
-				} else { // hllc
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
-					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 				}
+				cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 1, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], TSFACTOR*lambda);
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_1storder");
 #undef TSFACTOR
 				if(returnCode != SUCCESSFUL) return returnCode;
 
-#ifdef DBG_FIRSTORDER // Run at 1st order: dump upwind values straight back to output arrays
+#ifdef DBG_FIRSTORDER // Run at 1st order: dump first order values straight back to output arrays
 				printf("WARNING: Operating at first order for debug purposes!\n");
 				for(i = 0; i < fluid->nGPUs; i++) {
 					cudaSetDevice(fluid->deviceID[i]);
 					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[i], cudaMemcpyDeviceToDevice);
 				}
-#else // runs at 2nd order
+#else // runs at higher order
 
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
-
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
-					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLL_2ndorder");
-				} else { // hllc
-					cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
-					returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_2ndorder");
 				}
+				ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_2ndorder");
+
+#ifdef USE_RK3
+				ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 3, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i]+5*fluid->slabPitch[i]/8, lambda);
+				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_3rdorder");
+#endif
+
 
 				if(returnCode != SUCCESSFUL) return returnCode;
 #ifdef DBG_SECONDORDER
@@ -557,6 +564,10 @@ int releaseTemporaryMemory(double **m, MGArray *ref)
 
 cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3 gridsize, dim3 blocksize, double *fluidBase, double *tempmem, double dt)
 {
+
+	/* NOTE: Be very careful re: the constant prefactors on dt here
+	 * Some of these (e.g. SSPRK stage 2, and RK3 stage 3) also have prefactors embedded in the kernel!
+	 */
 	if(algo == METHOD_HLL) {
 		if(order == 1) {
 			switch(stepdirect) {
@@ -579,7 +590,8 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 		}
 	}
 	if(algo == METHOD_HLLC) {
-		if(order == 1) {
+		switch(order) {
+		case 1: // predictor
 #ifdef USE_SSPRK
 			switch(stepdirect) {
 			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
@@ -590,16 +602,28 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_SSPRK_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
 			}
 #else
+#ifdef USE_RK3
 			switch(stepdirect) {
-			case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
-			case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
-			case FLUX_Z: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
-			case FLUX_RADIAL: cukern_HLLC_1storder<FLUX_RADIAL><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
-			case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
-			case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_RK3_A><<<gridsize, blocksize>>>(fluidBase, tempmem, dt); break;
+			}
+#else
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_1storder<FLUX_X><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
+			case FLUX_Y: cukern_HLLC_1storder<FLUX_Y><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
+			case FLUX_Z: cukern_HLLC_1storder<FLUX_Z><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
+			case FLUX_RADIAL: cukern_HLLC_1storder<FLUX_RADIAL><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
+			case FLUX_THETA_213: cukern_HLLC_1storder<FLUX_THETA_213><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
+			case FLUX_THETA_231: cukern_HLLC_1storder<FLUX_THETA_231><<<gridsize, blocksize>>>(fluidBase, tempmem, .5*dt); break;
 			}
 #endif
-		} else { // corrector
+#endif
+		break;
+		case 2: // corrector
 #ifdef USE_SSPRK
 			switch(stepdirect) {
 			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
@@ -608,6 +632,16 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
 			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
 			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_SSPRK_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			}
+#else
+#ifdef USE_RK3
+			switch(stepdirect) {
+			case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
+			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_RK3_B><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
 			}
 #else
 			switch(stepdirect) {
@@ -619,6 +653,20 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 			case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_RK2><<<gridsize, blocksize>>>(tempmem, fluidBase, dt); break;
 			}
 #endif
+#endif
+			break;
+			case 3: // RK3 final stage
+#ifdef USE_RK3
+				switch(stepdirect) {
+				case FLUX_X: cukern_HLLC_2ndorder<FLUX_X+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				case FLUX_Y: cukern_HLLC_2ndorder<FLUX_Y+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				case FLUX_Z: cukern_HLLC_2ndorder<FLUX_Z+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				case FLUX_RADIAL: cukern_HLLC_2ndorder<FLUX_RADIAL+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				case FLUX_THETA_213: cukern_HLLC_2ndorder<FLUX_THETA_213+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				case FLUX_THETA_231: cukern_HLLC_2ndorder<FLUX_THETA_231+TIMESCHEME_RK3_C><<<gridsize, blocksize>>>(tempmem, fluidBase, 2*dt); break;
+				}
+#endif
+				break;
 		}
 	}
 	return cudaSuccess;
@@ -715,6 +763,11 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 	for(; j < DEV_NY; j += blockDim.y) {
 		/* LOAD VARIABLES: CONSTANT APPROXIMATION -> NO RECONSTRUCTION STEP */	
 		A = Qin[0             ]; /* rho; Load the q_i variables */
+#ifdef HLLC_ENFORCE_MINVALS
+		if(A < FLUID_MINMASS) {
+			A = Qin[0] = FLUID_MINMASS;
+		}
+#endif
 		B = Qin[  DEV_SLABSIZE]; /* E */
 		switch(fluxDirection) {
 		case FLUX_X: /* Variables are in normal order [px py pz] */
@@ -740,7 +793,15 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 		/* Convert to primitive variables */
 		F = 1.0/A;			
 
+
 		B -= .5*(C*C+D*D+E*E)*F; /* internal energy */
+#ifdef HLLC_ENFORCE_MINVALS
+		if(B*F < FLUID_MINTEMP) {
+			B = A*FLUID_MINTEMP;
+			Qin[DEV_SLABSIZE] = .5*(C*C+D*D+E*E)*F + B;
+		}
+#endif
+
 		C *= F; /* velocity */
 		D *= F;
 		E *= F;
@@ -959,8 +1020,6 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 // Second-order HLLC uses 10 blocks
 #define N_SHMEM_BLOCKS_SO 10
 
-
-
 template <unsigned int fluxScheme>
 __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 {
@@ -1031,6 +1090,11 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 	for(; j < DEV_NY; j += blockDim.y) {
 		/* LOAD VARIABLES AND PERFORM MUSCL RECONSTRUCTION */	
 		A = Qin[0             ]; /* Load the q_i variables */
+#ifdef HLLC_ENFORCE_MINVALS
+		if(A < FLUID_MINMASS) {
+			A = Qin[0] = FLUID_MINMASS;
+		}
+#endif
 		B = Qin[  DEV_SLABSIZE];
 		switch(fluxDirection) {
 		case FLUX_X: /* Variables are in normal order [px py pz] */
@@ -1055,6 +1119,12 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		F = 1.0/A;			
 
 		B -= .5*(C*C+D*D+E*E)*F; /* internal energy */
+#ifdef HLLC_ENFORCE_MINVALS
+		if(B*F < FLUID_MINTEMP) {
+			B = A*FLUID_MINTEMP;
+			Qin[DEV_SLABSIZE] = .5*(C*C+D*D+E*E)*F + B;
+		}
+#endif
 #ifdef RECONSTRUCT_VELOCITY
 		C *= F; /* velocity */
 		D *= F;
@@ -1295,15 +1365,15 @@ DBGSAVE(1, E);
 			case FLUX_THETA_213 + TIMESCHEME_RK2:
 			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
 			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
-			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA; // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA; // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA;
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA;
 			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA;
 			break;
 			case FLUX_THETA_231 + TIMESCHEME_RK2: // NOTE in this case lambda was rescaled to lambda / r_center
 			Qout[0]              -= lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
 			Qout[DEV_SLABSIZE]   -= lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
-			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[2*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
 			Qout[4*DEV_SLABSIZE] -= lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
 			break;
 			// SSPRK PREDICTOR TIME SCHEME (out = in + tau f'(in))
@@ -1340,18 +1410,18 @@ DBGSAVE(1, E);
 			case FLUX_THETA_213 + TIMESCHEME_SSPRK_A:
 			Qout[0]              = Qin[0]             -lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA;
 			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA;
-			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA; // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA; // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA;
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA;
 			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA;
 			break;
 			case FLUX_THETA_231 + TIMESCHEME_SSPRK_A: // NOTE in this case lambda was rescaled to lambda / r_center
 			Qout[0]              = Qin[0]             -lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]);
 			Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]);
-			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]); // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]); // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]);
+			Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]);
 			Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]);
 			break;
-			// SSPRK CORRECTOR TIME SCHEME (out = .5*[in + out + tau*f'(in)] )
+			// EXPLICIT TRAPEZOID CORRECTOR TIME SCHEME (out = .5*[in + out + tau*f'(in)] )
 			case FLUX_X + TIMESCHEME_SSPRK_B:
 			Qout[0]              = .5*(Qin[0]              + Qout[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
 			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]   + Qout[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
@@ -1379,24 +1449,124 @@ DBGSAVE(1, E);
 			Qout[0]              = .5*(Qin[0]            + Qout[0]             - lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]));
 			Qout[DEV_SLABSIZE]   = .5*(Qin[DEV_SLABSIZE]  +Qout[DEV_SLABSIZE]  - lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]));
 			Qout[2*DEV_SLABSIZE] = .5*(Qin[2*DEV_SLABSIZE]+Qout[2*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS6]
-			                                 -cylgeomA*(double)shblk[IL+BOS6]
-			                                 -cylgeomC*(shptr[BOS2]+shptr[BOS3]))); // (P dt / r) source term);
+			                                                                               -cylgeomA*(double)shblk[IL+BOS6]
+			                                                                               -cylgeomC*(shptr[BOS2]+shptr[BOS3]))); // (P dt / r) source term);
 			Qout[3*DEV_SLABSIZE] = .5*(Qin[3*DEV_SLABSIZE]+Qout[3*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8])); // Note from earlier in fcn,
 			Qout[4*DEV_SLABSIZE] = .5*(Qin[4*DEV_SLABSIZE]+Qout[4*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9])); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
 			break;
 			case FLUX_THETA_213 + TIMESCHEME_SSPRK_B:
 			Qout[0]              = .5*(Qout[0]            + Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA);
 			Qout[DEV_SLABSIZE]   = .5*(Qout[DEV_SLABSIZE] + Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA);
-			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA); // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA); // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA);
+			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA);
 			Qout[4*DEV_SLABSIZE] = .5*(Qout[4*DEV_SLABSIZE]+Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA);
 			break;
 			case FLUX_THETA_231 + TIMESCHEME_SSPRK_B: // NOTE in this case lambda was rescaled to lambda / r_center
 			Qout[0]              = .5*(Qout[0]            + Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
 			Qout[DEV_SLABSIZE]   = .5*(Qout[DEV_SLABSIZE]  +Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
-			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6])); // FIXME sub rho vr vtheta dt / r
-			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8])); // FIXME add rho vtheta^2 dt / r
+			Qout[3*DEV_SLABSIZE] = .5*(Qout[3*DEV_SLABSIZE]+Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qout[2*DEV_SLABSIZE] = .5*(Qout[2*DEV_SLABSIZE]+Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
 			Qout[4*DEV_SLABSIZE] = .5*(Qout[4*DEV_SLABSIZE]+Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+
+			// remember 'in' is tempmem and 'out' is y0
+			// RK3 STAGE TWO: (in[5-9] = .75 * out + .25 * in[0-4] + .25*tau*f'(in)] )
+			case FLUX_X + TIMESCHEME_RK3_B:
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+			case FLUX_Y + TIMESCHEME_RK3_B:
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+			case FLUX_Z + TIMESCHEME_RK3_B:
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+
+			case FLUX_RADIAL + TIMESCHEME_RK3_B:
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]             - lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]));
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE]  - lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]));
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS6]
+			                                                                              -cylgeomA*(double)shblk[IL+BOS6]
+			                                                                              -cylgeomC*(shptr[BOS2]+shptr[BOS3]))); // (P dt / r) source term);
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8])); // Note from earlier in fcn,
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9])); // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+			break;
+			case FLUX_THETA_213 + TIMESCHEME_RK3_B:
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA);
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE] - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA);
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA);
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA);
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA);
+			break;
+			case FLUX_THETA_231 + TIMESCHEME_RK3_B: // NOTE in this case lambda was rescaled to lambda / r_center
+			Qin[5*DEV_SLABSIZE] = .75*Qout[0]              + .25*(Qin[0]            - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]));
+			Qin[6*DEV_SLABSIZE] = .75*Qout[DEV_SLABSIZE]   + .25*(Qin[DEV_SLABSIZE]  -lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]));
+			Qin[8*DEV_SLABSIZE] = .75*Qout[3*DEV_SLABSIZE] + .25*(Qin[3*DEV_SLABSIZE]-lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]));
+			Qin[7*DEV_SLABSIZE] = .75*Qout[2*DEV_SLABSIZE] + .25*(Qin[2*DEV_SLABSIZE]-lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]));
+			Qin[9*DEV_SLABSIZE] = .75*Qout[4*DEV_SLABSIZE] + .25*(Qin[4*DEV_SLABSIZE]-lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]));
+			break;
+
+
+			// remember 'in' is tempmem and 'out' is y0
+			// this stage must be passed &tempmem[5*DEV_SLABSIZE]!
+			// RK3 STAGE THREE: out = .333 * out + .666 * (in[0-4] + tau*f'(in)] )
+			// WARNING this must have lambda doubled as can be seen below!
+			case FLUX_X + TIMESCHEME_RK3_C:
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]))/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]))/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]))/3.0;
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]))/3.0;
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]))/3.0;
+			break;
+			case FLUX_Y + TIMESCHEME_RK3_C:
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]))/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]))/3.0;
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]))/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]))/3.0;
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]))/3.0;
+
+			break;
+			case FLUX_Z + TIMESCHEME_RK3_C:
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]))/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]))/3.0;
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]))/3.0;
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]))/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]))/3.0;
+			break;
+			// Because we use qin to calc derivs, we must write qin = .5(qin + qout + f'(qin))
+			case FLUX_RADIAL + TIMESCHEME_RK3_C:
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * (cylgeomB*(double)shptr[BOS7]-cylgeomA*(double)shblk[IL+BOS7]))/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * (cylgeomB*(double)shptr[BOS5]-cylgeomA*(double)shblk[IL+BOS5]))/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS6]
+			                                                                                -cylgeomA*(double)shblk[IL+BOS6]
+			                                                                                -cylgeomC*(shptr[BOS2]+shptr[BOS3])))/3.0; // (P dt / r) source term);
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS8]-cylgeomA*(double)shblk[IL+BOS8]))/3.0; // Note from earlier in fcn,
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * (cylgeomB*(double)shptr[BOS9]-cylgeomA*(double)shblk[IL+BOS9]))/3.0; // cylgeomC is rescaled by 1/2 since we average cell's left & right pressures
+			break;
+			case FLUX_THETA_213 + TIMESCHEME_RK3_C:
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]) / cylgeomA)/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]) / cylgeomA)/3.0;
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]) / cylgeomA)/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]) / cylgeomA)/3.0;
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]) / cylgeomA)/3.0;
+			break;
+			case FLUX_THETA_231 + TIMESCHEME_RK3_C: // NOTE in this case lambda was rescaled to lambda / r_center
+			Qout[0]              = (Qout[0]              + 2*Qin[0]              - lambda * ((double)shptr[BOS7]-(double)shblk[IL+BOS7]))/3.0;
+			Qout[DEV_SLABSIZE]   = (Qout[DEV_SLABSIZE]   + 2*Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS5]-(double)shblk[IL+BOS5]))/3.0;
+			Qout[3*DEV_SLABSIZE] = (Qout[3*DEV_SLABSIZE] + 2*Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS6]-(double)shblk[IL+BOS6]))/3.0;
+			Qout[2*DEV_SLABSIZE] = (Qout[2*DEV_SLABSIZE] + 2*Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS8]-(double)shblk[IL+BOS8]))/3.0;
+			Qout[4*DEV_SLABSIZE] = (Qout[4*DEV_SLABSIZE] + 2*Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS9]-(double)shblk[IL+BOS9]))/3.0;
 			break;
 
 			}
@@ -1471,6 +1641,7 @@ __device__ SpeedBounds computeEinfeldtBounds(double rhoL, double vL, double PL, 
 		return sb;
 	}
 }
+
 
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
@@ -2209,6 +2380,7 @@ __global__ void cukern_XinJinHydro_step(double *Qbase, double *Qstore, double *C
 
 }
 
+
 template <unsigned int PCswitch>
 __global__ void cukern_XinJinMHD_step(double *Qbase, double *Qstore, double *mag, double *Cfreeze, double lambda)
 {
@@ -2376,6 +2548,20 @@ __global__ void cukern_PressureSolverHydro(double *state, double *gasPressure)
 
 	while(x < DAN) {
 		rho = state[x      ];
+		#ifdef CFD_ENFORCE_MINVALS
+		if(rho < FLUID_MINMASS) {
+			P = FLUID_MINMASS/rho;
+			rho = state[x] = FLUID_MINMASS;
+			// invent mass whole-cloth but hold velocity/temperature constant
+			E   = state[x + DEV_SLABSIZE] = P*state[x + DEV_SLABSIZE];
+			z   = state[x+2*DEV_SLABSIZE] = P*state[x+2*DEV_SLABSIZE];
+			momsq = z*z;
+			z   = state[x+3*DEV_SLABSIZE] = P*state[x+3*DEV_SLABSIZE];
+			momsq += z*z;
+			z   = state[x+4*DEV_SLABSIZE] = P*state[x+4*DEV_SLABSIZE];
+			momsq += z*z;
+		} else {
+		#endif
 		E   = state[x + DEV_SLABSIZE];
 		z   = state[x+2*DEV_SLABSIZE];
 		momsq = z*z;
@@ -2383,18 +2569,21 @@ __global__ void cukern_PressureSolverHydro(double *state, double *gasPressure)
 		momsq += z*z;
 		z   = state[x+4*DEV_SLABSIZE];
 		momsq += z*z;
-		P = FLUID_GM1 * (E - .5*momsq/rho);
-
-		// If negative pressure happens because it's reached Mach 1000, just inflate
-		// the goddamn pressure a little bit
-		// I'm done fighting this bullshit
-		if(P < rho * FLUID_MINTEMP) {
-			P = FLUID_MINTEMP*rho;
-			state[x+DEV_SLABSIZE] = (.5*momsq/rho) + P / FLUID_GM1;
-			gasPressure[x] = P;
-		} else {
-			gasPressure[x] = P;
+		#ifdef CFD_ENFORCE_MINVALS
 		}
+		#endif
+
+		P = E - .5*momsq/rho;
+
+#ifdef CFD_ENFORCE_MINVALS
+		if(P < rho * FLUID_MINTEMP) {
+			P = FLUID_MINTEMP*rho; // actually e_internal
+			state[x+DEV_SLABSIZE] = (.5*momsq/rho) + P;
+			gasPressure[x] = P * FLUID_GM1;
+		} else {
+			gasPressure[x] = P * FLUID_GM1;
+		}
+#endif
 
 		x += hx;
 	}
