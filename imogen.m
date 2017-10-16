@@ -28,6 +28,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       establishes all of the save directories for the run, creating whatever directories are
     %       needed in the process.
     run = initialize(ini);
+    run.save.logPrint('---------- Preparing physics subsystems\n');
 
     if isfield(IC, 'amResuming'); RESTARTING = true; else RESTARTING = false; end
 
@@ -38,7 +39,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.saveIniSettings(ini);
 
     mpi_barrier();
-    run.save.logPrint('---------- Transferring arrays to GPU(s)\n');
+    run.save.logPrint('----- Transferring arrays to GPU(s)\n');
 
     if RESTARTING
         run.save.logPrint('   Accessing restart data files\n');
@@ -68,8 +69,6 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
     mpi_errortest(collectiveFailure);
 
-    run.save.logPrint('---------- Preparing physics subsystems\n');
-
     writeSimInitializer(run, IC);
     %--- Pre-loop actions ---%
     run.initialize(IC, mag);
@@ -98,16 +97,15 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     run.time.recordWallclock();
 
-    checkpoint = 0;
-
-    if checkpoint
+    if run.checkpointInterval
+        run.save.logPrint(['Checkpointing enabled, interval ' num2str(run.checkpointInterval) ' steps.']);
         backupData = dumpCheckpoint(run);
     end
 
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
-        if checkpoint && mod(run.time.iteration, checkpoint) == (checkpoint-1)
+        if run.chkpointThisIter()
             backupData = dumpCheckpoint(run);
         end
 
@@ -117,9 +115,14 @@ function outdirectory = imogen(srcData, resumeinfo)
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
 
-        if checkpoint && checkPhysicality(run.fluid)
+	if run.VTOSettings(1)
+	    cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3), run.frameTracking.omega], run.geometry);
+        end
+
+        if run.checkpointInterval && checkPhysicality(run.fluid)
             restoreCheckpoint(run, backupData);
         end
+
         run.time.step();
         run.pollEventList(run.fluid, mag);
     end

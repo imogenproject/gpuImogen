@@ -48,6 +48,8 @@ classdef Initializer < handle
         frameParameters;% .omega, rotateCenter, centerVelocity
 	fluidDetails;
         numFluids;
+
+	VTOSettings;    % [alpha beta] or blank
         
         geomgr;         % GeometryManager class
     end %PUBLIC

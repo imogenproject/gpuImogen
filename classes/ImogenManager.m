@@ -44,7 +44,14 @@ classdef ImogenManager < handle
         %--- Source/Sink or nonideal behavior control
         selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
         potentialField; % Manages a scalar potential                                PotentialFieldManager
-        frameTracking;  %                                                            FrameTracker class
+        frameTracking;  %                                                           FrameTracker class
+
+	multifluidDragMethod; % 0 = explicit midpt, 1 = RK4, 2 = exponential midpt  integer
+	compositeSrcOrders; 
+
+        VTOSettings; % 
+
+        checkpointInterval;
 
         %--- Saving/output
         image;          % Manages image generation and saving.                      ImageManager
@@ -136,6 +143,10 @@ classdef ImogenManager < handle
             obj.matlab      = ver('matlab');
             obj.pureHydro   = 0;
             obj.cfdMethod   = 2; % HLLC
+
+	    obj.VTOSettings = 0; % disables unless enabled in initialize.m
+
+	    obj.checkpointInterval = 0;  % disables unless enabled
         end
 
         function setNumFluids(obj, N)
@@ -224,7 +235,10 @@ classdef ImogenManager < handle
             
         end
         
-        
+        function yn = chkpointThisIter(obj)
+            yn = obj.checkpointInterval & mod(obj.time.iteration, obj.checkpointInterval) == (obj.checkpointInterval-1);
+	end
+
 %________________________________________________________________________________________ appendInfo
 % Appends an info string and value to the info cell array.
 % * info    the information string                                                        srt

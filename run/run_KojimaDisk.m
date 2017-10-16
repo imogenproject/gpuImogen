@@ -26,7 +26,10 @@ run.bcMode.y        = ENUM.BCMODE_CONSTANT;
 run.bcMode.z        = ENUM.BCMODE_CONSTANT;
 
 run.pureHydro = true;
-run.cfl = .7;
+run.cfl = .45;
+
+run.VTOSettings = [1 1];
+run.checkpointSteps = 100;
 
 run.info        = 'Kojima disk simulation';
 run.notes       = '';

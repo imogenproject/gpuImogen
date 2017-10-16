@@ -23,6 +23,25 @@ run.geometry = GeometryManager(ini.geometry.globalDomainRez);
 run.geometry.deserialize(ini.geometry);
 
 run.setNumFluids(ini.numFluids);
+if ini.numFluids > 1
+    run.multifluidDragMethod = 2;
+    if mpi_amirank0();
+    disp('TEST HACK WARNING');
+    disp('    initialize.m:27 set multifluid drag method to expeuler.')
+    end
+end
+
+run.compositeSrcOrders = [2 4];
+if mpi_amirank0()
+    disp('TEST HACK NOTICE');
+    disp('    initialize.m:37 set cudaSourceComposite space order to 4, time order to 6.');
+end
+
+if ~isempty(ini.checkpointSteps)
+    run.checkpointInterval = ini.checkpointSteps(1);
+end
+
+run.checkpointInterval = 50;
 
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
@@ -36,6 +55,13 @@ if isfield(ini, 'peripherals')
     run.attachPeripheral(ini.peripherals);
 end
 
+%% .VTOSettings Vaccum Taffy Operator (background quiescence enforcement) settings
+if ~isempty(ini.VTOSettings)
+    run.VTOSettings = [1 ini.VTOSettings];
+    if mpi_amirank0()
+        disp(['Vacuum Taffy Operator enabled: ' mat2str(ini.VTOSettings)]);
+    end
+end
 
 %% .bcMode                      Edge condition modes
 try
