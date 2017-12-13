@@ -22,6 +22,7 @@
 
 // Local defs
 #include "cudaCommon.h"
+#include "cudaStatics.h"
 #include "cudaFluidStep.h"
 #ifdef DEBUGMODE
 #include "debug_inserts.h"
@@ -111,13 +112,15 @@ __constant__ __device__ double fluidQtys[12];
 
 //#define LIMITERFUNC fluxLimiter_Zero
 //#define LIMITERFUNC fluxLimiter_minmod
-#define LIMITERFUNC fluxLimiter_Osher
+#define LIMITERFUNC fluxLimiter_Ospre
 //#define LIMITERFUNC fluxLimiter_VanLeer
 //#define LIMITERFUNC fluxLimiter_superbee
 
-//#define SLOPEFUNC slopeLimiter_Osher
+//#define SLOPEFUNC slopeLimiter_vanAlbada
+//#define SLOPEFUNC slopeLimiter_MC
+#define SLOPEFUNC slopeLimiter_Ospre
 //#define SLOPEFUNC slopeLimiter_Zero
-#define SLOPEFUNC slopeLimiter_minmod
+//#define SLOPEFUNC slopeLimiter_minmod
 //#define SLOPEFUNC slopeLimiter_VanLeer
 
 #define FLUID_GAMMA   fluidQtys[0]
@@ -323,7 +326,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			ref.dim[0] = ref.nGPUs;
 			ref.haloSize = 0;
 			MGArray *cfreeze[2];
-			cfreeze[0] = MGA_allocArrays(1, &ref);
+			returnCode = MGA_allocArrays(&cfreeze[0], 1, &ref);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			// Compute pressure & local freezing speed
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -472,6 +476,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #undef TSFACTOR
 				if(returnCode != SUCCESSFUL) return returnCode;
 
+
 #ifdef DBG_FIRSTORDER // Run at 1st order: dump first order values straight back to output arrays
 				printf("WARNING: Operating at first order for debug purposes!\n");
 				for(i = 0; i < fluid->nGPUs; i++) {
@@ -479,6 +484,15 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 					cudaMemcpy(fluid[0].devicePtr[i], wStepValues[i], 5*fluid[0].slabPitch[i], cudaMemcpyDeviceToDevice);
 				}
 #else // runs at higher order
+
+// FIXME awful hack
+				MGArray fluidB[5];
+				int qwer;
+				for(qwer = 0; qwer < 5; qwer++) {
+					fluidB[qwer] = fluid[qwer];
+					fluidB[qwer].devicePtr[0] = wStepValues[0] + haParams[3]*qwer;
+					}
+				returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
 
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
@@ -984,8 +998,8 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 			case FLUX_THETA_231:// NOTE lambda was rescaled in this path to lambda / r_center
 				Qout[0]              = Qin[0           ]   - lambda * ((double)shptr[BOS0]-(double)shblk[IL+BOS0]);
 				Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS1]-(double)shblk[IL+BOS1]);
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]); // FIXME subtract dt rho vr vtheta / r
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]); // FIXME add rho dt vphi^2/r
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]);
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]);
 				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]);
 				break;
 			case FLUX_RADIAL:
@@ -1000,8 +1014,8 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 			case FLUX_THETA_213: // p_theta
 				Qout[0]              = Qin[0           ]   - lambda * ((double)shptr[BOS0]-(double)shblk[IL+BOS0]) / cylgeomA;
 				Qout[DEV_SLABSIZE]   = Qin[DEV_SLABSIZE]   - lambda * ((double)shptr[BOS1]-(double)shblk[IL+BOS1]) / cylgeomA;
-				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]) / cylgeomA; // FIXME subtract dt rho vr vtheta / r
-				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]) / cylgeomA; // FIXME add rho dt vphi^2/r
+				Qout[3*DEV_SLABSIZE] = Qin[3*DEV_SLABSIZE] - lambda * ((double)shptr[BOS2]-(double)shblk[IL+BOS2]) / cylgeomA;
+				Qout[2*DEV_SLABSIZE] = Qin[2*DEV_SLABSIZE] - lambda * ((double)shptr[BOS3]-(double)shblk[IL+BOS3]) / cylgeomA;
 				Qout[4*DEV_SLABSIZE] = Qin[4*DEV_SLABSIZE] - lambda * ((double)shptr[BOS4]-(double)shblk[IL+BOS4]) / cylgeomA;
 				break;
 			}
