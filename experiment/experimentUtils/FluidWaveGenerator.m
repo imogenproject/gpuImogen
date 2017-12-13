@@ -83,13 +83,12 @@ classdef FluidWaveGenerator < handle
             vz = squish(self.waveVel(3,:,:,:));
         end
 
-        function mom = waveVelocity(self)
-        % mom = waveMomentum() is a utility that computes the conserved momentum variable that
-        % Imogen runs on from the wave density/velocity functions
-            mom = zeros(size(self.waveVel));
-            mom(1,:,:,:) = squish(self.waveVel(1,:,:,:),'onlyleading');
-            mom(2,:,:,:) = squish(self.waveVel(2,:,:,:),'onlyleading');
-            mom(3,:,:,:) = squish(self.waveVel(3,:,:,:),'onlyleading');
+        function vel = waveVelocity(self)
+        % vel = waveVelocity() is a utility that computes the velocity primitive
+            vel = zeros(size(self.waveVel));
+            vel(1,:,:,:) = squish(self.waveVel(1,:,:,:),'onlyleading');
+            vel(2,:,:,:) = squish(self.waveVel(2,:,:,:),'onlyleading');
+            vel(3,:,:,:) = squish(self.waveVel(3,:,:,:),'onlyleading');
         end
         
         function mom = waveMomentum(self)
@@ -112,9 +111,12 @@ classdef FluidWaveGenerator < handle
         % I'm prototyping, we'll check for sanity once this turkey takes off
         % Evaluate sonic waves propagating in the direction of k
         % This always uses the +\hat{k} sense; Reverse the wave direction via k -> -k
-        function sonicInfinitesmal(self, drho, k)
+        function [omega, evector] = sonicInfinitesmal(self, drho, k)
             self.updateDerivedConstants();
 
+            omega = self.cs0 * norm(k);
+            evector = [1, self.cs0 / self.pRho, self.cs0^2];
+            
             self.waveRho = self.pRho + drho;
             khat = k / norm(k);
 
@@ -125,14 +127,16 @@ classdef FluidWaveGenerator < handle
             self.waveVel(3,:,:,:) = self.pV(3) + khat(3)*dv;
 
             self.wavePressure = self.pP + self.cs0^2 * drho;
-                
         end
 
         % Integrate the exact sonic characteristic
-        function sonicExact(self, drho, k)
+        function [omega, evector] = sonicExact(self, drho, k)
             self.updateDerivedConstants();
-            gm1d2 = (self.pGamma-1)/2;
+            
+            omega = self.cs0 * norm(k);
+            evector = [1, self.cs0 / self.pRho, self.cs0^2];
 
+            gm1d2 = (self.pGamma-1)/2;
             khat = k / norm(k);
 
             self.waveRho = self.pRho + drho;
@@ -146,8 +150,53 @@ classdef FluidWaveGenerator < handle
             self.wavePressure = self.polyK*(self.pRho + drho).^self.pGamma;
         end
 
+        function [omega, evec] = dustyLinear(self, amp, phase, k, forfluid, kDrag, eigensense)
+            % Make and solve the 5x5 matrix
+            kDrag = kDrag * self.pRho(1)*self.pRho(1) / (self.pRho(1)+self.pRho(2));
+            [M, m2] = self.dustyMatrix(self.pRho(1), norm(k), self.pGamma(1), self.pP(1), self.pRho(2), kDrag);
+            cs = sqrt(self.pGamma(1)*self.pP(1) / self.pRho(1));
+            
+            [eigvecs, eigvals] = eig(M);
+            % pick the forward-going eigenvalue
+            for N = 1:5;
+                % pick the antisense-propagating wave
+                if (eigensense == 1) && (imag(eigvals(N,N)) < -1e-9); break; end
+                % pick the evanescent wave
+                if (eigensense == 0) && (abs(real(eigvals(N,N))) < 1e-12) && (imag(eigvals(N,N)) < 0); break; end
+                % pick the prosense-propagating wave
+                if (eigensense == -1) && (imag(eigvals(N,N)) > 1e-9); break; end
+            end
+            
+            omega = -1i*eigvals(N,N);
+            evec = eigvecs(:,N); % [drho dv dP dpsi du]'
+            evec = evec/evec(1);
+            
+            -kDrag / real(omega)
+            
+            %evecb./evec
+            if forfluid == 1; q = conj(evec(1)); else q = conj(evec(4)); end
+            %if forfluid == 1; q = evec(1); else q = evec(4); end
+            self.waveRho = self.pRho(forfluid) + imag(q*amp*exp(1i*phase));
+            
+            khat = k / norm(k);
+            if forfluid == 1; q = conj(evec(2)); else q = conj(evec(5)); end
+            %if forfluid == 1; q = evec(2); else q = evec(5); end
+            dv = imag(q*amp*exp(1i*phase));
+            self.waveVel = zeros([3 size(dv)]);
+            self.waveVel(1,:,:,:) = self.pV(1,1) + khat(1)*dv;
+            self.waveVel(2,:,:,:) = self.pV(2,1) + khat(2)*dv;
+            self.waveVel(3,:,:,:) = self.pV(3,1) + khat(3)*dv;
+
+            % This is meaningful only for the gas, obviously.
+            if forfluid == 1
+                self.wavePressure = self.pP(1) + imag(conj(evec(3))*amp*exp(1i*phase));
+            else
+                self.wavePressure = self.pP(2) * ones(size(self.waveRho));
+            end
+        end
+        
         % Entropy wave is linear and has no approximate form
-        function entropyExact(self, drho, k)
+        function [omega, evector] = entropyExact(self, drho, k)
             self.updateDerivedConstants();
             self.waveRho = self.pRho + drho;
             
@@ -157,8 +206,11 @@ classdef FluidWaveGenerator < handle
             self.waveVel(3,:,:,:) = self.pV(3);
             
             self.wavePressure = self.pP * ones(size(self.waveRho));
+            
+            omega = 0;
+            evector = [1 0 0];
         end
-
+        
     end%PUBLIC
     
     %===================================================================================================
@@ -176,6 +228,36 @@ classdef FluidWaveGenerator < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
+        function [M,m2] = dustyMatrix(rho, wavek, gam, P, psi, kd)
+            c0 = sqrt(gam*P/rho);
+            w0 = c0*wavek;
+
+            M = [...
+                0,        -w0,   0, 0,          0;...
+                0, -kd*1i/rho, -w0, 0,  kd*1i/rho;...
+                0,        -w0,   0, 0,          0;...
+                0,          0,   0, 0,     -w0*psi/rho;...
+                0,  kd*1i/psi,   0, 0, -kd*1i/psi];
+            
+            M = -[0,   rho*1i*wavek,            0, 0,            0;...
+                  0,        -kd/rho, 1i*wavek/rho, 0,       kd/rho;...
+                  0, 1i*wavek*gam*P,            0, 0,            0;...
+                  0,              0,            0, 0, psi*1i*wavek;...
+                  0,         kd/psi,            0, 0,      -kd/psi];
+              
+              m2 = [0, -1i*wavek, 0, 0; -1i*c0^2*wavek, -kd/rho, 0, kd/psi; 0, 0, 0, -1i*wavek; 0, kd/rho, 0, -kd/psi];
+              
+        end
+        
+        function M0 = dustyMatrix_nonnormalized(rho, k, gam, P, psi, td)
+            M0 = ...
+[ 0,                   -k*rho,      0, 0,                        0;...
+  0, -(psi*td*1i)/(psi + rho), -k/rho, 0,  (psi*td*1i)/(psi + rho);...
+  0,                 -P*gam*k,      0, 0,                        0;...
+  0,                        0,      0, 0,                   -k*psi;...
+  0,  (rho*td*1i)/(psi + rho),      0, 0, -(rho*td*1i)/(psi + rho)];
+
+        end
     end%PROTECTED
     
 end%CLASS

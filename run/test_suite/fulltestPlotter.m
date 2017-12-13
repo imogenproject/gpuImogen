@@ -1,9 +1,8 @@
 function fulltestPlotter(FTR, doquad)
 % > FTR : Full Test Result structure saved by the test suite
 
-plotno = 0;
+plotno = 1;
 maxplot = 1;
-figure();
 
 if nargin < 2
     doquad = input('Plot figures in 2x2 matrix? ');
@@ -23,7 +22,7 @@ if isfield(FTR,'advection')
     end
     
     if isfield(FTR.advection, 'Xalign_mach0p5')
-        plotno = prepNextPlot(maxplot, plotno);
+        %plotno = prepNextPlot(maxplot, plotno);
         plotAdvecOutput(FTR.advection.Xalign_mach0p5);
         title('X advection, n = [1 0 0], moving bg');
         stylizePlot(gca());
@@ -31,7 +30,7 @@ if isfield(FTR,'advection')
     
     if isfield(FTR.advection, 'XY')
         plotno = prepNextPlot(maxplot, plotno);
-        plotAdvecOutput(FTR.advection.XY);
+        plotAdvecXYOutput(FTR.advection.XY);
         title('Cross-grid advection, n = [4 5 0]');
         stylizePlot(gca());
     end
@@ -50,6 +49,14 @@ if isfield(FTR,'sod')
     plotno = prepNextPlot(maxplot, plotno);
     plotSod(FTR.sod.X)
     title('Sod tube convergence results');
+    stylizePlot(gca());
+end
+
+if isfield(FTR,'noh')
+    % Plot the Sod tube results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotNoh(FTR.noh.X)
+    title('Noh tube convergence results');
     stylizePlot(gca());
 end
 
@@ -89,7 +96,11 @@ end
 
 function p = prepNextPlot(maxplot, plotno)
 p = plotno + 1;
-if p > maxplot; figure(); p = 1; end
+if p > maxplot;
+    x = figure();
+    x.Position = [x.Position(1:2) 700 400];
+    p = 1;
+end
 
 if maxplot > 1; subplot(2,2,p); end
 
@@ -107,14 +118,18 @@ end
 
 function plotAdvecOutput(q)
 
-plot(log2(q.N), log2(q.err1),'r-x'); % one norm
-plot(log2(q.N), log2(q.err2),'g-x'); % 2 norm
-plot(log2(q.N), .5*(log2(q.err1(1)) + log2(q.err2(1))) - 2*log2(q.N/q.N(1)),'k-'); % reference slope of -2
+plot(log2(q.N), log2(q.L1),'r-x'); % one norm
+plot(log2(q.N), log2(q.L2),'g-x'); % 2 norm
+plot(log2(q.N), .5*(log2(q.L1(1)) + log2(q.L2(1))) - 2*log2(q.N/q.N(1)),'k-'); % reference slope of -2
 
 xlabel('log_2(# pts)');
-ylabel('log_2(norm(\rho - \rho_{exact})');
+ylabel('log_2[|\rho - \rho_{exact}|/|\delta \rho_{ini}|]');
 
 legend(['1-norm, avg slope ' num2str(q.L1_Order)], ['2-norm, avg slope ' num2str(q.L2_Order)], 'Reference 2nd order slope');
+
+end
+
+function plotAdvecXYOutput(q)
 
 end
 
@@ -139,14 +154,18 @@ legend('M_{ini} = .01', 'M_{ini} = .25', 'M_{ini} = 2.0', '10^{-5} error','10^{-
 
 end
 
+function plotDustywave(q)
+
+end
+
 function plotEinfeldt(q)
 
 plot(log2(q.N), log2(q.L1),'r-x');
 plot(log2(q.N), log2(q.L2),'g-x');
 plot(log2(q.N), .5*(log2(q.L1(1)) + log2(q.L2(1))) - log2(q.N/q.N(1)),'k-');
 
-xlabel('Log_2(# pts)');
-ylabel('log_2(norm(\rho - \rho_{exact})');
+xlabel('log_2(# pts)');
+ylabel('log_2(|\rho - \rho_{exact}|)');
 
 legend('1-Norm','2-Norm','reference -1 slope');
 
@@ -154,12 +173,25 @@ end
 
 function plotSod(q)
 
-plot(log2(q.res), log2(q.L1),'r-x');
-plot(log2(q.res), log2(q.L2),'g-x');
-plot(log2(q.res), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.res/q.res(1)),'k-');
+plot(log2(q.N), log2(q.L1),'r-x');
+plot(log2(q.N), log2(q.L2),'g-x');
+plot(log2(q.N), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.N/q.N(1)),'k-');
 
 xlabel('log_2(# pts)');
-ylabel('log_2(norm(\rho - \rho_{exact}))');
+ylabel('log_2(|\rho - \rho_{exact}|)');
+
+legend('1-Norm','2-Norm','Reference slope of -1');
+
+end
+
+function plotNoh(q)
+
+plot(log2(q.N), log2(q.L1),'r-x');
+plot(log2(q.N), log2(q.L2),'g-x');
+plot(log2(q.N), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.N/q.N(1)),'k-');
+
+xlabel('log_2(# pts)');
+ylabel('log_2(|\rho - \rho_{ref}|)');
 
 legend('1-Norm','2-Norm','Reference slope of -1');
 
@@ -168,8 +200,8 @@ end
 function plotDoubleBlast(q)
 plot(log2(q.N), log2(q.L1),'r-x');
 plot(log2(q.N), log2(q.L2),'g-x');
-plot(log2(q.N), .5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.N/q.N(1)),'k-');
-xlabel('Refinement steps');
+plot(log2(q.N), 2+.5*(log2(q.L1(1))+log2(q.L2(1))) - 1*log2(q.N/q.N(1)),'k-');
+xlabel('log_2(# pts)');
 ylabel('|\rho - \rho_{max refinement}|');
 
 legend('1-norm','2-norm','Reference slope of -1');
@@ -206,12 +238,12 @@ end
 legend(leg, 'Location','EastOutside')
 
 % Plot the t=end metrics to show convergence of final solution
-plot(1:N,log2(q.L1(:,end)),'r-x');
-plot(1:N,log2(q.L2(:,end)),'b-o');
+plot(3+(1:N),log2(q.L1(:,end)),'r-x');
+plot(3+(1:N),log2(q.L2(:,end)),'b-o');
 
 legend('L_1 norm','L_2 norm');
-xlabel('log_2(n/32)');
-ylabel('log_2(norm(\rho - \rho_{ini}))');
+xlabel('log_2(# pts)');
+ylabel('log_2(|\rho - \rho_{ini}|)');
 
 end
 

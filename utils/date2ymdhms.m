@@ -6,6 +6,6 @@ end
 
 e = int32(d);
 
-x = fprintf('%04i%02i%02i_%2i%2i%2i', e(1), e(2), e(3), e(4), e(5), e(6));
+x = sprintf('%04i%02i%02i_%02i%02i%02i', e(1), e(2), e(3), e(4), e(5), e(6));
 
 end

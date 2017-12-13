@@ -17,6 +17,7 @@ classdef AdvectionInitializer < Initializer
     
     properties(SetAccess = private, GetAccess = public);
         waveOmega;           % Omega is calculated from dispersion relation and K
+        waveEigenvector;     % The wave eigenvector used to initialize the sim
     end
     
     %===============================================================================================
@@ -42,7 +43,8 @@ classdef AdvectionInitializer < Initializer
     end %PROTECTED
     
     properties (Dependent = true)
-        amplitude; phase; backgroundMach; wavenumber; cycles; writeFluid;
+        amplitude; phase; backgroundMach;
+        wavenumber; cycles; writeFluid;
     end
     
     %===============================================================================================
@@ -72,7 +74,7 @@ classdef AdvectionInitializer < Initializer
             obj.mode.fluid      = true;
             obj.mode.magnet     = false;
             obj.mode.gravity    = false;
-            obj.cfl             = 0.45;
+            obj.cfl             = 0.85;
             obj.iterMax         = 1000;
             obj.ppSave.dim1     = 10;
             obj.ppSave.dim3     = 25;
@@ -201,27 +203,40 @@ classdef AdvectionInitializer < Initializer
 
             tMax = [];
             
-            for fluidCt = 1:size(obj.pAmplitude,2)
+            if obj.numFluids > 1
+                % zeros are gas velocity then dust velocity
+                dragConstant = dustyBoxDragTime(obj.fluidDetails, obj.pDensity(1), obj.pDensity(2), 0, 0, obj.gamma(1), obj.pPressure(1));
+            end
+            
+            for fluidCt = 1:obj.numFluids            
                 % Calculate the background velocity
                 % FIXME HACK HACK HACK using wrong EoS if fluidCt != 1...
                 % FIXME note that P = rho kb T / mu extremely small if mu is dust-like
-                c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,fluidCt)/obj.pDensity(1,fluidCt)  ); % The infinitesmal soundspeed
+                %c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,fluidCt)/obj.pDensity(1,fluidCt)  ); % The infinitesmal soundspeed of gas'
+                c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,1)/obj.pDensity(1,1)  ); % The infinitesmal soundspeed of gas
 
-                if obj.pAmplitude(1,fluidCt) ~= 0
+                if obj.pAmplitude(1,1) ~= 0
                     % omega = c_wave k
                     % \vec{k} = \vec{N} * 2pi ./ \vec{L} = \vec{N} * 2pi ./ [1 ny/nx nz/nx]
                     rez   = geo.globalDomainRez;
-                    K     = 2*pi*obj.pWavenumber(:,fluidCt) ./ ([1; rez(2)/rez(1); rez(3)/rez(1)] * obj.boxLength);
+                    K     = 2*pi*obj.pWavenumber(:,1) ./ ([1; rez(2)/rez(1); rez(3)/rez(1)] * obj.boxLength);
                     obj.pWaveK(:,fluidCt) = K;
                     KdotX = K(1)*xGrid + K(2)*yGrid + K(3)*zGrid; % K.X is used much.
+                    
+                    % For debugging, this plops down a finite subset of the oscillating waveform
+                    % so we have spatial locality to distinguish between forward/static/backward going
+                    % waves
+                    %KdotX = K(2)*yGrid + K(3)*zGrid; % K.X is used much
+                    %pik = ((xGrid > .25) & (xGrid < .5));
+                    %KdotX(pik) = K(1)*xGrid(pik)+ K(2)*yGrid(pik) + K(3)*zGrid(pik); % K.X is used much.
                     
                     if obj.pUseStationaryFrame
                         bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude(1,fluidCt), obj.gamma(1,fluidCt))*K/norm(K);
                     else
-                        bgvelocity = c_s * obj.pBackgroundMach(:,fluidCt);
+                        bgvelocity = c_s * obj.pBackgroundMach;
                     end
                     
-                    FW = FluidWaveGenerator(obj.pDensity(1,fluidCt), bgvelocity, obj.pPressure(1,fluidCt), obj.backgroundB, obj.gamma(1,fluidCt));
+                    FW = FluidWaveGenerator(obj.pDensity, bgvelocity, obj.pPressure, obj.backgroundB, obj.gamma);
                     
                     % Someday we'll do magnetic fields again...
                     if strcmp(obj.waveType, 'sonic') && norm(obj.backgroundB) > 0
@@ -230,18 +245,32 @@ classdef AdvectionInitializer < Initializer
                     end
                     
                     if strcmp(obj.waveType, 'entropy')
-                        amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,fluidCt));
-                        FW.entropyExact(amp, K);
+                        amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,1));
+                        [omega, evector] = FW.entropyExact(amp, K);
                         omega = norm(obj.pWaveK(1,fluidCt))*sqrt(obj.gamma(1,fluidCt));
                     elseif strcmp(obj.waveType, 'sonic')
-                        amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,fluidCt));
-                        if obj.pBeLinear; FW.sonicInfinitesmal(amp, K); else
-                            FW.sonicExact(amp, K); end
                         
-                        omega = norm(obj.pWaveK(1,fluidCt))*sqrt(obj.gamma(1,fluidCt)); % FIXME do not assume this is normalized
+                        if obj.numFluids == 1
+                            amp = abs(obj.pAmplitude(1,1)) * cos(KdotX + obj.pPhase(1,1));
+                            if obj.pBeLinear
+                                [omega, evector] = FW.sonicInfinitesmal(amp, K);
+                            else
+                                [omega, evector] = FW.sonicExact(amp, K);
+                            end
+                        else
+                            [omega, evector] = FW.dustyLinear(abs(obj.pAmplitude(1,1)), KdotX + obj.pPhase(1,1), K, fluidCt, dragConstant, 1);
+                        end
+                    elseif strcmp(obj.waveType, 'dustydamp')
+                        if obj.numFluids ~= 2
+                            error(['Fatal: ''dustydamp'' selected as wave type, but have ' num2str(self.numFluids) ' fluids, not exactly two fluids.']);
+                        end
+                        % This is the third nontrivial eigenvalue of DustyWave,
+                        % This mode is evanescent and not generally of interest...
+                        amp = abs(obj.pAmplitude(1,fluidCt)) * cos(KdotX + obj.pPhase(1,fluidCt));
+                        [omega, evector] = FW.dustyLinear(amp, K, fluidCt, 0);
                     elseif strcmp(obj.waveType, 'fast ma')
-                        [waveEigenvector, omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
-                        waveEigenvector(8) = c_s^2 * waveEigenvector(1);
+                        [evector, omega] = eigenvectorMA(1, c_s^2, velocity, B0, K, 2);
+                        evector(8) = c_s^2 * evector(1);
                     end
                     
                     mass = FW.waveRho;
@@ -255,6 +284,7 @@ classdef AdvectionInitializer < Initializer
                     ener = ener * obj.pPressure(1,fluidCt) / (obj.fluidDetails(fluidCt).gamma-1);
                     
                     omega = 2*pi; % HACK HACK HACK
+                    evector = [1 0 0 1 0];
                     K = [1 0 0]; % HACK HACK HACK
                 end
 
@@ -262,6 +292,7 @@ classdef AdvectionInitializer < Initializer
                 fluids(fluidCt).details = obj.fluidDetails(fluidCt);
 
                 obj.waveOmega = omega;
+                obj.waveEigenvector = evector;
                 wavespeed     = omega / norm(K);
             
                 % forward speed = background speed + wave speed; Sim time = length/speed, length \eq 1

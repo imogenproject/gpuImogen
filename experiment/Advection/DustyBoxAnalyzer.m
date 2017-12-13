@@ -94,6 +94,7 @@ classdef DustyBoxAnalyzer < LinkedListNode;
             tFinal = sum(run.time.history);
             
             if 1
+                % Apply out-of-the-box ODE solver with most stringent error tolerances...
                 opts = odeset('Reltol',1e-13,'AbsTol',1e-14);
                 [tout, yout] = ode113(self.solver.f, [0 tFinal], self.solver.solution(1,2),opts);
                 dv_exact = yout(end);

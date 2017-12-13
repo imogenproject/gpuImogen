@@ -1,4 +1,4 @@
-function autopsy = AdvectionAnalysis(directory, runParallel);
+function autopsy = DustywaveAnalysis(directory, runParallel);
 
 dir0 = pwd();
 cd(directory);
@@ -16,19 +16,16 @@ S.setParallelMode(runParallel);
 S.setFrametype(7); % Access 3D data frame by frame
 
 % Pick out the wavevector
+omega = IC.ini.omega; 
 Kvec = IC.ini.pWaveK;
 Kmag = norm(Kvec);
 Khat = Kvec / Kmag;
-
-% Compute displacments of a fine grid of characteristic amplitudes
-erange = IC.ini.amplitude*(-1.0001:.0001:1.0001)*IC.ini.pDensity;
-
-c0 = sqrt(IC.ini.gamma * IC.ini.pPressure / IC.ini.pDensity);
+evec = IC.ini.waveEigenvector;
 
 % Calculate the initial phases we'll use to project the result onto the
 % full simulation grid
 geo = GeometryManager(IC.ini.geometry.globalDomainRez);
-geo.makeBoxSize(1); % fixme hack we should get this from the savefile portal
+geo.makeBoxSize(1); % FIXME HACK we should get this from the savefile portal
 % not assume it
 geo.makeBoxOriginCoord([-.5 -.5 -.5]);
 
@@ -44,31 +41,17 @@ rhoerr_L1 = []; rhoerr_L2 = [];
 velerr_L1 = []; velerr_L2 = [];
 frameT = [];
 
-% Since we know the initial function is a sine, write down the critical
-% time
-tCritical = 2/((IC.ini.gamma + 1)*c0*Kmag*IC.ini.amplitude);
-
 % Iterating over all frames in sequence,
 for N = 1:S.numFrames();
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
-    t = sum(F.time.history) * norm(IC.ini.pWavenumber);
+    t = sum(F.time.history);
     
-    % Compute the displacement of a reference wave through circular BCs 
-    % Parameterized by original phase
-    rng = 0:.0001:.9999;
-    if strcmp(IC.ini.waveType, 'sonic')
-        backMap = CharacteristicAnalysis1D(rng, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*rng), t);
-    elseif strcmp(IC.ini.waveType, 'entropy')
-        backMap = CharacteristicAnalysis1D_entropy(rng, 1, IC.ini.pDensity, c0, machParallel, IC.ini.gamma, IC.ini.amplitude*cos(2*pi*rng), t);
-    end
-
-    % Map this onto the full 3D space by referring to original phases
-    rhoAnalytic = interp1(2*pi*rng, backMap, mod(KdotX,2*pi),'pchip');
-
+    rhogt = IC.ini.pRho(1) + imag(amp*evec(1)*exp(1i*KotX - 1i*omega*t));
+    
     % The moment of truth: calculate the 1- and 2-norms
-    delta = rhoAnalytic - F.mass;
+    delta = rhogt - F.mass;
     if runParallel; delta = geo.withoutHalo(delta); end
 
     if sum(F.time.history) >= tCritical;
@@ -81,10 +64,6 @@ for N = 1:S.numFrames();
     rhoerr_L1(N) =      mpi_sum(norm(delta(:),1)  ) / mpi_sum(numel(delta)) ;
     rhoerr_L2(N) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));
 end
-
-% Normalize by the L1/L2 measurement of the original perturbation
-rhoerr_L1 = rhoerr_L1 / (4*IC.ini.amplitude);
-rhoerr_L2 = rhoerr_L2 / (sqrt(pi)*IC.ini.amplitude);
 
 autopsy.T = frameT;
 autopsy.resolution = size(F.mass);
