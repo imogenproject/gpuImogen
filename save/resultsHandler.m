@@ -26,11 +26,6 @@ function resultsHandler(saveEvent, run, fluids, mag)
     iteration = run.time.iteration;
     saveState = 1*(iteration == 0) +2*(run.save.done == true);
 
-% HACK HACK AHCK
-mass = fluids(1).mass;
-mom = fluids(1).mom;
-ener = fluids(1).ener;
-
     %-----------------------------------------------------------------------------------------------
     % Save Data to File
     %------------------
@@ -60,11 +55,28 @@ ener = fluids(1).ener;
 
             %--- Save slice if active ---%
             if (run.save.ACTIVE(i)) % Iff saving this slice type,
+                mass = fluids(1).mass;
+                mom = fluids(1).mom;
+                ener = fluids(1).ener;
+
                 sl.mass = run.save.getSaveSlice(mass.array, i);
                 sl.momX = run.save.getSaveSlice(mom(1).array, i);
                 sl.momY = run.save.getSaveSlice(mom(2).array, i);
                 sl.momZ = run.save.getSaveSlice(mom(3).array, i);
                 sl.ener = run.save.getSaveSlice(ener.array, i);
+                
+                if numel(fluids) > 1
+                    % FIXME HACK I'm extending this burning turd to work with 2 fluids
+                    mass = fluids(2).mass;
+                    mom = fluids(2).mom;
+                    ener = fluids(2).ener;
+                    
+                    sl.mass2 = run.save.getSaveSlice(mass.array, i);
+                    sl.momX2 = run.save.getSaveSlice(mom(1).array, i);
+                    sl.momY2 = run.save.getSaveSlice(mom(2).array, i);
+                    sl.momZ2 = run.save.getSaveSlice(mom(3).array, i);
+                    sl.ener2 = run.save.getSaveSlice(ener.array, i);
+                end
                 
                 if (run.magnet.ACTIVE && ~isempty(mag(1).array))
                     sl.magX = run.save.getSaveSlice(mag(1).array, i);
@@ -107,7 +119,6 @@ ener = fluids(1).ener;
                 if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                 try
-%                  brainDamagedIdioticWorkaround(sliceName, sl);
                     switch(run.save.format);
                         case ENUM.FORMAT_MAT; eval([sliceName '= sl;']); save(fileName, sliceName);
                         case ENUM.FORMAT_NC;  util_Frame2NCD(sl, [fileName '.nc']);
@@ -233,7 +244,7 @@ ener = fluids(1).ener;
     end
 
     % Save images
-    run.image.imageSaveHandler(mass, mom, ener, mag);
+    run.image.imageSaveHandler(fluids(1).mass, fluids(1).mom, fluids(1).ener, mag);
     
 end
 

@@ -57,6 +57,26 @@ frame.momZ = netcdf.getVar(ncid, v);
 v = netcdf.inqVarID(ncid, 'ener');
 frame.ener = netcdf.getVar(ncid, v);
 
+% netcdf-matlab is... not very smart.
+try
+    v = netcdf.inqVarID(ncid, 'mass2');
+catch
+    v = -1234;
+end
+
+if v ~= -1234
+    v = netcdf.inqVarID(ncid, 'mass2');
+    frame.mass2 = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'momX2');
+    frame.momX2 = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'momY2');
+    frame.momY2 = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'momZ2');
+    frame.momZ2 = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'ener2');
+    frame.ener2 = netcdf.getVar(ncid, v);
+end
+
 try
     v = netcdf.inqVarID(ncid, 'magstatus');
     magstat = ncread(nfile,'magstatus');

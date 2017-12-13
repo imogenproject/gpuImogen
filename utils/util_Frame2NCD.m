@@ -70,6 +70,16 @@ momY = netcdf.defVar(ncid, 'momY', 'double', [nx ny nz]);
 momZ = netcdf.defVar(ncid, 'momZ', 'double', [nx ny nz]);
 ener = netcdf.defVar(ncid, 'ener', 'double', [nx ny nz]);
 
+% HACK FIXME - the burning turd around resultsHandler.m:75 is here present.
+% HACK - I don't have time to setup proper arbitrary-fluid-count handling, hacked to 2.
+if isfield(frame, 'mass2')
+    mass2 = netcdf.defVar(ncid, 'mass2', 'double', [nx ny nz]);
+    momX2 = netcdf.defVar(ncid, 'momX2', 'double', [nx ny nz]);
+    momY2 = netcdf.defVar(ncid, 'momY2', 'double', [nx ny nz]);
+    momZ2 = netcdf.defVar(ncid, 'momZ2', 'double', [nx ny nz]);
+    ener2 = netcdf.defVar(ncid, 'ener2', 'double', [nx ny nz]);
+end
+
 magstatus = netcdf.defVar(ncid, 'magstatus', 'double', scaldim);
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     % Defines a placeholder that marks magnetic arrays as absent
@@ -107,6 +117,14 @@ netcdf.putVar(ncid, momX, frame.momX);
 netcdf.putVar(ncid, momY, frame.momY);
 netcdf.putVar(ncid, momZ, frame.momZ);
 netcdf.putVar(ncid, ener, frame.ener);
+
+if isfield(frame, 'mass2')
+    netcdf.putVar(ncid, mass2, frame.mass2);
+    netcdf.putVar(ncid, momX2, frame.momX2);
+    netcdf.putVar(ncid, momY2, frame.momY2);
+    netcdf.putVar(ncid, momZ2, frame.momZ2);
+    netcdf.putVar(ncid, ener2, frame.ener2);
+end
 
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)
     netcdf.putVar(ncid, magstatus, 0);

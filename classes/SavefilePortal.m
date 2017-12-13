@@ -185,6 +185,10 @@ classdef SavefilePortal < handle
             self.savefileList = enumerateSavefiles();
             self.popdir();
         end
+        
+        function S = getInitializerFile(self)
+           S = load([self.savefileDirectory  '/ini_settings.mat']);
+        end
 
     end%PUBLIC
     
