@@ -142,11 +142,10 @@ classdef ImogenManager < handle
             obj.pAbortFile  = '/state.itf';
             obj.matlab      = ver('matlab');
             obj.pureHydro   = 0;
-            obj.cfdMethod   = 2; % HLLC
+            obj.cfdMethod   = ENUM.CFD_HLLC;
 
-	    obj.VTOSettings = 0; % disables unless enabled in initialize.m
-
-	    obj.checkpointInterval = 0;  % disables unless enabled
+            obj.VTOSettings = 0; % disables unless enabled in initialize.m
+            obj.checkpointInterval = 0;  % disables unless enabled
         end
 
         function setNumFluids(obj, N)
