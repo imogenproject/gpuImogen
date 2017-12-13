@@ -45,7 +45,7 @@ run.ppSave.dim3 = 100;
 rp = RealtimePlotter();
   rp.plotmode = 7;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.iterationsPerCall = 100;
   rp.firstCallIteration = 1;
 %run.peripherals{end+1} = rp;
@@ -62,7 +62,7 @@ run.waveStationarity(0);
 if (true)
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    AdvectionAnalysis(outpath, 1)
+    SoundAdvectionAnalysis(outpath, 1);
     if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
 end
 

@@ -3,7 +3,7 @@
 %--- Initialize test ---%
 grid = [512 512 1];
 run                 = ImplosionInitializer(grid);
-run.iterMax         = 250;
+run.iterMax         = 2500;
 
 obj.Mcorner         = 0.125;
 obj.Pcorner         = 0.14;
@@ -20,7 +20,7 @@ run.ppSave.dim2     = 10;
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
 %run.peripherals{end+1} = rp;

@@ -1,12 +1,11 @@
 % Run Sod shock tube test.
 
 %--- Initialize test ---%
-grid = [12800 1 1];
+grid = [2560 1 1];
 run             = RiemannProblemInitializer(grid);
 
 run.demo_SodTube();
 
-run.cfl = .4;
 run.iterMax     = 3*run.timeMax*grid(1)/run.cfl; % This will give steps max ~ 1.2x required
 
 run.bcMode = ENUM.BCMODE_CONSTANT;
@@ -25,17 +24,16 @@ rp = RealtimePlotter();
   rp.iterationsPerCall = 20;
   rp.spawnGUI = 1;
   rp.forceRedraw = 1;
-run.peripherals{end+1} = rp;
+%run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 2; % hllc
+fm.iniMethod = ENUM.CFD_HLLC;
 run.peripherals{end+1} = fm;
 
 run.saveFormat = ENUM.FORMAT_MAT;
 
 %--- Run tests ---%
-if (true)
     icfile = run.saveInitialCondsToFile();
-    imogen(icfile);
-end
+    outpath = imogen(icfile);
+
 

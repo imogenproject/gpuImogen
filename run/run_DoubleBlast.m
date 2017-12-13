@@ -17,20 +17,19 @@ run.pMid        = .01;
 
 run.ppSave.dim2 = 5;
 
-run.cfl = 0.7;
-
 % Generate realtime output of simulation results.
 rp = RealtimePlotter();
   rp.plotmode = 1;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.forceRedraw = 1;
+  rp.spawnGUI = 1;
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
-run.peripherals{end+1} = rp;
+%run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+fm.iniMethod = ENUM.CFD_HLLC;
 run.peripherals{end+1} = fm;
 
 %--- Run tests ---%

@@ -1,5 +1,5 @@
 %function result = tsCentrifuge(iniResolution, doublings, w0)
-iniResolution = [64 64 1];
+iniResolution = [512 512 1];
 doublings = 1; % will run from 32x32 to 2Kx2K
 w0 = 1.5;
 % The centrifuge test provides an effective test for Imogen's rotating frame
@@ -13,11 +13,11 @@ w0 = 1.5;
 
 grid = iniResolution;
 run                 = CentrifugeInitializer(grid);
-run.iterMax         = 50;
+run.iterMax         = 50000;
 
 tDynamic = 2*pi/w0;
 
-run.timeMax = 3*tDynamic;
+run.timeMax = 15*tDynamic;
 
 run.image.interval  = 100;
 %run.image.speed     = true;
@@ -41,18 +41,19 @@ run.rho0            = 1; % Sets the density at r >= 1 & the BC for the centrifug
 run.P0              = 1;
 run.minMass         = 1e-5; % enforced minimum density
 run.frameParameters.omega= 0; % The rate at which the frame is rotating
-run.eqnOfState      = run.EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
+run.eqnOfState      = run.EOS_ADIABATIC;
+% EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
 
 run.pureHydro = true;
-run.cfl = .40;
 
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 1;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
+  rp.spawnGUI = 1;
   rp.iterationsPerCall = 10;
   rp.firstCallIteration = 1;
-%run.peripherals{end+1} = rp;
+run.peripherals{end+1} = rp;
 
 run.info        = 'Testing centrifuged fluid equilibrium against rotating frame';
 run.notes       = '';
@@ -67,7 +68,7 @@ result.paths={};
 for N = 1:doublings
     % Run test
     disp(['Running at resolution: ',mat2str(grid)]);
-    run.geometry.setup(grid);
+    run.geomgr.setup(grid);
     
     icfile   = run.saveInitialCondsToFile();
     outdir   = imogen(icfile);

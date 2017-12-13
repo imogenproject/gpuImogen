@@ -1,7 +1,7 @@
 % Run a Noh shock tube test.
 
 %--- Initialize test ---%
-grid = [3072 1 1];
+grid = [1024 1 1];
 run  = NohTubeInitializer(grid);
 
 run.rho0 = 1;
@@ -33,7 +33,7 @@ run.peripherals{end+1} = rp;
 
 
 fm = FlipMethod();
-fm.iniMethod = ENUM.CFD_XINJIN;
+fm.iniMethod = ENUM.CFD_HLLC;
 run.peripherals{end+1} = fm;
 
 run.saveFormat = ENUM.FORMAT_MAT;
