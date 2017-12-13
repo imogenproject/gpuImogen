@@ -26,7 +26,8 @@ run.pMid        = .01;
 
 run.ppSave.dim3 = 25;
 
-run.cfl = 0.7;
+run.cfl = 0.85;
+run.checkpointSteps = 50;
 
 if prettyPictures
     rp = RealtimePlotter();

@@ -19,7 +19,7 @@ run             = RiemannProblemInitializer(grid);
 run.timeMax     = .92*.5/((1+M)*sqrt(gamma));
 run.iterMax     = 99999;
 
-run.cfl 	    = .75;
+run.checkpointSteps = 50;
 
 run.setupEinfeldt(M, gamma)
 run.bcMode.x    = ENUM.BCMODE_CONSTANT;
@@ -33,8 +33,9 @@ if prettyPictures
     rp = RealtimePlotter();
     rp.plotmode = 1;
     rp.plotDifference = 0;
-    rp.insertPause = 0;
+    rp.insertPause = 1;
     rp.firstCallIteration = 1;
+    rp.spawnGUI = 1;
     rp.iterationsPerCall = 25;
     run.peripherals{end+1} = rp;
 end
@@ -68,7 +69,7 @@ for R = 1:doublings;
     T = sum(f.time.history);
     X = ((1:run.geomgr.globalDomainRez(1))' + .5)/run.geomgr.globalDomainRez(1) - .5;
 
-    [rho, v, P] = einfeldtSolution(X, 1, M*sqrt(gamma), 1, run.gamma, T);
+    [rho, v, P] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
 
     result.N(end+1) = run.geomgr.globalDomainRez(1);
     result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.geomgr.globalDomainRez(1);

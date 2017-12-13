@@ -16,11 +16,10 @@ run  = NohTubeInitializer(grid);
 run.rho0 = 1;
 run.r0 = -0.8;
 run.v0 = -1;
-run.M0 = 14;
+run.M0 = 4;
 
 NT = NohTubeExactPlanar(run.rho0, 1, run.M0);
 
-run.cfl = .7;
 run.timeMax     = NT.shockTimeGivenPosition(run.r0, -run.r0);
 run.iterMax     = 250000;
 
@@ -29,20 +28,21 @@ run.info        = 'Noh shock tube test.';
 
 run.useHalfspace([1 0 0]);
 
-run.ppSave.dim3 = 100;
+run.ppSave.dim3 = 10;
 
 if prettyPictures
     rp = RealtimePlotter();
     rp.plotmode = 4;
     rp.plotDifference = 0;
     rp.insertPause = 1;
+    rp.forceRedraw = 1;
     rp.firstCallIteration = 1;
     rp.iterationsPerCall = 10;
     rp.spawnGUI = 1;
     run.peripherals{end+1} = rp;
 
 end
-if nargin == 5
+if nargin == 4
     run.peripherals{end+1} = methodPicker;
 end
 
@@ -79,7 +79,7 @@ for N = 1:doublings
     
     delta = rhoSim - rhoExact;
     
-    wig = 22;
+    wig = 1;
     result.N(N)  = numel(delta(wig:end));
     result.L1(N) = norm(delta(wig:end)/(numel(delta(wig:end))), 1);
     result.L2(N) = norm(delta(wig:end)/(numel(delta(wig:end))), 2);

@@ -41,7 +41,7 @@ classdef KelvinHelmholtzInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
+            obj.cfl              = 0.85;
             obj.iterMax          = 1500;
             obj.mach             = 0.25;
             obj.activeSlices.xy  = true;

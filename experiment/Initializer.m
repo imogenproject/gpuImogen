@@ -46,12 +46,12 @@ classdef Initializer < handle
         peripherals;
 
         frameParameters;% .omega, rotateCenter, centerVelocity
-	fluidDetails;
+        fluidDetails;
         numFluids;
-
-	VTOSettings;    % [alpha beta] or blank
-
-	checkpointSteps;
+        
+        VTOSettings;    % [alpha beta] or blank
+        
+        checkpointSteps;
         
         geomgr;         % GeometryManager class
     end %PUBLIC
@@ -60,8 +60,8 @@ classdef Initializer < handle
     properties (Dependent = true) %                                            D E P E N D E N T [P]
         fades;
         saveSlicesSpecified; % Specifies if save slices have been specified.
-	gamma; % Compat: feeds through to .fluidDetails(1).gamma
-	minMass; % Compat: feeds through to .fluidDetails(1).minMass
+        gamma; % Compat: feeds through to .fluidDetails(1).gamma
+        minMass; % Compat: feeds through to .fluidDetails(1).minMass
     end %DEPENDENT
         
 %===================================================================================================
@@ -115,8 +115,8 @@ classdef Initializer < handle
             obj.frameParameters.velocity = [0 0 0];
 
             obj.numFluids = 1;
-	    obj.fluidDetails = fluidDetailModel();
-	    obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
+            obj.fluidDetails = fluidDetailModel();
+            obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
@@ -172,7 +172,7 @@ classdef Initializer < handle
         function result = get.cfl(obj)
            if isempty(obj.cfl)
                if obj.mode.magnet;      result = 0.35;
-               else                     result = 0.7;
+               else                     result = 0.85;
                end
            else result = obj.cfl;
            end

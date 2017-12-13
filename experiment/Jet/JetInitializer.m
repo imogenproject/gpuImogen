@@ -41,9 +41,6 @@ classdef JetInitializer < Initializer
     end %PROTECTED
     
     
-    
-    
-    
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
@@ -56,7 +53,7 @@ classdef JetInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
+            obj.cfl              = 0.85;
             obj.iterMax          = 250;
             obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.y         = ENUM.BCMODE_CONSTANT;

@@ -16,7 +16,8 @@
 
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
-//#include "cflTimestep.h"
+
+#include "fluidMethod.h"
 
 
 /* THIS FUNCTION:
@@ -160,6 +161,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     plhs[0] = mxCreateNumericArray (2, outputDims, mxDOUBLE_CLASS, mxREAL);
 
     double *timeStep = mxGetPr(plhs[0]);
+
+    if((meth == 1) || (meth == 2)) { // HLL or HLLC
+    	trueMin = trueMin / 2;
+    	// Waves cannot be let to go more than HALF a cell: otherwise in principle two waves could collide,
+    	// and emit a fast-moving signal that might propagate back to the fluxing interface.
+    	// The method is, however, likely to be stable up to a twice this timestep. But likely is NOT good enough.
+    }
+#ifndef USE_SSPRK
+    trueMin = trueMin / 2;
+    // If we are using explicit midpoint, the timestep must be halved again to remain TVD
+#endif
     timeStep[0] = trueMin;
 
 }

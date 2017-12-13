@@ -31,7 +31,7 @@ classdef KarmanStreetInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
+            obj.cfl              = 0.85;
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;

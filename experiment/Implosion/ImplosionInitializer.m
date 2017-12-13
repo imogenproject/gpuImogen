@@ -35,10 +35,10 @@ classdef ImplosionInitializer < Initializer
             obj.runCode          = 'IMPLOSION';
             obj.info             = 'Implosion symmetry test';
             obj.pureHydro        = true;
+	    obj.cfl              = 0.85;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
             obj.iterMax          = 1500;
             obj.activeSlices.xy  = true;
             obj.ppSave.dim2      = 25;
@@ -90,7 +90,7 @@ classdef ImplosionInitializer < Initializer
 
             % Define the properties of the perturbed corner
             mass(corn) = obj.Mcorner;
-            ener(corn)    = obj.Pcorner;
+            ener(corn) = obj.Pcorner;
 
             % Calculate the energy density array
             ener = ener/(obj.gamma - 1) ...           % internal

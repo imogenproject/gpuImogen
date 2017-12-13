@@ -36,6 +36,8 @@ run.bcMode.x        = ENUM.BCMODE_CONSTANT;
 run.bcMode.y        = ENUM.BCMODE_CONSTANT;
 run.bcMode.z        = ENUM.BCMODE_CIRCULAR;
 
+run.checkpointSteps = 50;
+
 run.edgeFraction    = 1; % Sets the radius of the simulation to
 % (1+this) times the size of the centrifuged region
 run.gamma           = 5/3; % Sets the adiabatic index for fluid evolution
@@ -48,7 +50,6 @@ run.frameParameters.omega= 0; % The rate at which the frame is rotating
 run.eqnOfState      = run.EOS_ADIABATIC; % EOS_ISOTHERMAL or EOS_ADIABATIC or EOS_ISOCHORIC
 
 run.pureHydro = true;
-run.cfl = .40;
 
 if prettyPictures
     rp = RealtimePlotter();
