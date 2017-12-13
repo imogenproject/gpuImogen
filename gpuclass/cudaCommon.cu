@@ -45,7 +45,10 @@ bool sanityCheckTag(const mxArray *tag)
 	int tagsize = mxGetNumberOfElements(tag);
 
 	// This cannot possibly be valid
-	if(tagsize < GPU_TAG_LENGTH) return false;
+	if(tagsize < GPU_TAG_LENGTH) {
+		printf("Tag length is %i < min possible valid length of %i. Dumping.\n", tagsize, GPU_TAG_LENGTH);
+		return false;
+	}
 
 	int nx = x[GPU_TAG_DIM0];
 	int ny = x[GPU_TAG_DIM1];
@@ -54,7 +57,10 @@ bool sanityCheckTag(const mxArray *tag)
 	// Null array OK
 	if((nx == 0) && (ny == 0) && (nz == 0) && (tagsize == GPU_TAG_LENGTH)) return true;
 
-	if((nx < 0) || (ny < 0) || (nz < 0)) return false;
+	if((nx < 0) || (ny < 0) || (nz < 0)) {
+		printf("One or more indices was of negative size. Dumping.\n");
+		return false;
+	}
 
 	int halo         = x[GPU_TAG_HALO];
 	int partitionDir = x[GPU_TAG_PARTDIR];
@@ -63,6 +69,8 @@ bool sanityCheckTag(const mxArray *tag)
 	int permtag      = x[GPU_TAG_DIMPERMUTATION];
 
 	int circlebits   = x[GPU_TAG_CIRCULARBITS];
+
+	int vecpart      = x[GPU_TAG_VECTOR_COMPONENT];
 
 	// Some basic does-this-make-sense
 	if(nDevs < 1) {
@@ -74,6 +82,7 @@ bool sanityCheckTag(const mxArray *tag)
 		return false;
 	}
 	if(halo < 0) { // not reasonable.
+		printf((const char *)"Tag halo value is %i < 0 which is absurd. Dumping.\n", halo);
 		return false;
 	}
 
@@ -90,6 +99,11 @@ bool sanityCheckTag(const mxArray *tag)
 		printf((const char *)"halo sharing bits have value %i, valid range is 0-63!\n", circlebits);
 		return false;
 
+	}
+
+	if((vecpart < 0) || (vecpart > 3)) {
+		printf((const char *)"vector component has value %i, must be 0 (scalar) or 1/2/3 (x/y/z)!\n", vecpart);
+		return false;
 	}
 
 	if((partitionDir < 1) || (partitionDir > 3)) {
@@ -109,6 +123,7 @@ bool sanityCheckTag(const mxArray *tag)
 	// CUDA device #s are nonnegative, and it is nonsensical that there would be over 16 of them.
 	for(j = 0; j < nDevs; j++) {
 		if((x[2*j] < 0) || (x[2*j] >= MAX_GPUS_USED)) {
+			printf((const char *)"Going through .deviceID: Found %i < 0 or > %i is impossible. Dumping.\n", x[2*j], MAX_GPUS_USED);
 			return false;
 		}
 	}
@@ -262,6 +277,8 @@ int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 	mg->permtag = tag[GPU_TAG_DIMPERMUTATION];
     MGA_permtagToNums(mg->permtag, &mg->currentPermutation[0]);
 
+    mg->vectorComponent = tag[GPU_TAG_VECTOR_COMPONENT];
+
     mg->circularBoundaryBits = tag[GPU_TAG_CIRCULARBITS];
 
 	int sub[6];
@@ -295,9 +312,10 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 	tag[GPU_TAG_HALO]    = mg->haloSize;
 	tag[GPU_TAG_PARTDIR] = mg->partitionDir;
 	tag[GPU_TAG_NGPUS]   = mg->nGPUs;
-	tag[GPU_TAG_EXTERIORHALO]   = mg->addExteriorHalo;
-	tag[GPU_TAG_DIMPERMUTATION] = mg->permtag;
-	tag[GPU_TAG_CIRCULARBITS] = mg->circularBoundaryBits;
+	tag[GPU_TAG_EXTERIORHALO]    = mg->addExteriorHalo;
+	tag[GPU_TAG_DIMPERMUTATION]  = mg->permtag;
+	tag[GPU_TAG_CIRCULARBITS]    = mg->circularBoundaryBits;
+	tag[GPU_TAG_VECTOR_COMPONENT]= mg->vectorComponent;
 
 	int i;
 	for(i = 0; i < mg->nGPUs; i++) {
@@ -431,15 +449,18 @@ int MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArra
  * size and partitioning match that of skeleton. If skeleton is a slab referent, new arrays
  * are real arrays the size of one slab (numSlabs = 1).
  */
-MGArray *MGA_allocArrays(int N, MGArray *skeleton)
+int MGA_allocArrays(MGArray **ret, int N, MGArray *skeleton)
 {
 	// Do some preliminaries,
 	MGArray *m = (MGArray *)malloc(N*sizeof(MGArray));
+	if(m == NULL) {
+		PRINT_FAULT_HEADER;
+		printf("Unable to malloc(N*sizeof(MGArray); N = %i", N);
+		PRINT_FAULT_FOOTER;
+		return ERROR_NOMEM;
+	}
 
-	int i;
-	int j;
-
-	int sub[6];
+	int i, j, worked, sub[6];
 
 	/* If we are passed a slab array (e.g. the second slab of a 5-slab set),
 	 * allocate this array to be a single-slab array (i.e. assume that unless
@@ -460,6 +481,8 @@ MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 		// allocate new memory
 		for(j = 0; j < skeleton->nGPUs; j++) {
 			cudaSetDevice(m[i].deviceID[j]);
+			worked = CHECK_CUDA_ERROR("MGA_allocArrays: cudaMalloc");
+			if(worked != SUCCESSFUL) break;
 			m[i].devicePtr[j] = 0x0;
 
 			// Check this, because the user may have merely set .haloSize = PARTITION_CLONED
@@ -472,8 +495,15 @@ MGArray *MGA_allocArrays(int N, MGArray *skeleton)
 			if(m[i].numSlabs > 1) num2alloc = m[i].slabPitch[j];
 
 			cudaMalloc((void **)&m[i].devicePtr[j], num2alloc);
-			CHECK_CUDA_ERROR("MGA_createReturnedArrays: cudaMalloc");
+			worked = CHECK_CUDA_ERROR("MGA_allocArrays: cudaMalloc");
+			if(worked != SUCCESSFUL) break;
 		}
+		if(worked != SUCCESSFUL) break;
+	}
+
+	if(worked != SUCCESSFUL) {
+		printf("GPU array allocation process failed: device identifier %i, array %i/%i\n", j, i, N);
+		PRINT_FAULT_FOOTER;
 	}
 
 #ifdef ALLOCFREE_DEBUG
@@ -485,7 +515,8 @@ for(i = 0; i < N; i++) {
 }
 #endif
 
-	return m;
+	*ret = m;
+	return SUCCESSFUL;
 }
 
 /* Given a *skeleton to use as a template, allocates a new array into nu[0],
@@ -542,12 +573,14 @@ int MGA_duplicateArray(MGArray **dst, MGArray *src)
 	int status = SUCCESSFUL;
 	if((src == NULL) || (dst == NULL)) {
 		PRINT_FAULT_HEADER;
-		printf("Null src argument passed to MGA_duplicateArray\n");
+		printf("Null src argument passed to MGA_duplicateArray. Crashing.\n");
 		PRINT_FAULT_FOOTER;
 		return ERROR_NULL_POINTER;
 	}
+
 	if(dst[0] == NULL) {
-		dst[0] = MGA_allocArrays(1, src);
+		status = MGA_allocArrays(&dst[0], 1, src);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) return status;
 	}
 
 	int i;
@@ -573,7 +606,9 @@ int MGA_duplicateArray(MGArray **dst, MGArray *src)
  */
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton)
 {
-	MGArray *m = MGA_allocArrays(N, skeleton);
+
+	MGArray *m;
+	int status = MGA_allocArrays(&m, N, skeleton);
 
 	int i;
 
@@ -1063,16 +1098,14 @@ int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator op
 			return returnCode;
 		}
 	} else {
-		out[0] = MGA_allocArrays(1, &clone);
+		 returnCode = MGA_allocArrays(&out[0], 1, &clone);
+		 if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) { return returnCode; }
 	}
 
 	// Call per-partition reductions
 	for(i = 0; i < in->nGPUs; i++) {
 		returnCode = MGA_partitionReduceDimension(in, out[0], operate, dir, i);
-
-		if(returnCode != SUCCESSFUL) {
-			return CHECK_IMOGEN_ERROR(returnCode);
-		}
+		if(returnCode != SUCCESSFUL) { return CHECK_IMOGEN_ERROR(returnCode); }
 	}
 
 	if(dir == in->partitionDir) {
@@ -1115,7 +1148,8 @@ int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator o
 			return returnCode;
 		}
 	} else {
-		out[0] = MGA_allocArrays(1, &clone);
+		returnCode = MGA_allocArrays(&out[0], 1, &clone);
+		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) { return returnCode; }
 	}
 
 	/* All ranks flatten to 1D in reduce dimension in parallel */
@@ -2393,9 +2427,8 @@ int checkCudaError(const char *where, const char *fname, int lname)
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-	printf("========== FAULT FROM CUDA API (%s:%i), RANK %i\n", fname, lname, myrank);
-	printf("cudaCheckError was non-success when polled at %s (%s:%i) by rank %i: %s -> %s\n", where, fname, lname, myrank, errorName(epicFail), cudaGetErrorString(epicFail));
-	PRINT_FAULT_FOOTER;
+	printf("Rank %i | In (%s:%i): === FAULT FROM CUDA API ===\n", myrank, fname, lname, myrank);
+	printf("\tcudaCheckError reported %s: %s\n", errorName(epicFail), cudaGetErrorString(epicFail));
 
 	return ERROR_CUDA_BLEW_UP;
 }

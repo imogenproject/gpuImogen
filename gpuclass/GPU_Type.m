@@ -51,6 +51,12 @@ classdef GPU_Type < handle
             if(obj.allocated == true) GPU_free(obj); end
         end % Destructor
 
+        function updateVectorComponent(self, newComponent)
+            % Pokes the vector component part of the mga data list
+	    % used by gpu-imogen to set up the vector components to make BCs work right
+	    self.GPU_MemPtr(11) = int64(newComponent);
+	end
+
         function set.array(obj, arrin)
             % Goofus doesn't care if he leaks memory
             % Gallant always cleans up after himself
@@ -146,7 +152,7 @@ classdef GPU_Type < handle
         function clearArray(obj)
             if obj.allocated; GPU_free(obj.GPU_MemPtr); end
             obj.allocated = false;
-            obj.GPU_MemPtr = int64(zeros([1 10]));
+            obj.GPU_MemPtr = int64(zeros([1 11]));
             obj.asize = [0 0 0];
             obj.numdims = 2;
         end

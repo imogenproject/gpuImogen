@@ -31,6 +31,7 @@ classdef FluidArray < ImogenArray
             obj.initializeDependentArrays(component, id, manager, statics);
 
             if numel(array) > 0; obj.initialArray(squish(array)); end
+            obj.pArray.updateVectorComponent(component);
 
             if strcmpi(id, ENUM.MASS)
                 obj.threshold   = manager.MASS_THRESHOLD;

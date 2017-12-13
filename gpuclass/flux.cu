@@ -10,8 +10,6 @@
 
 #include "flux.h"
 
-int setFluidBoundaries(MGArray *x, int nArrays, int dir);
-
 //int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod, int geomType, double Rinner)
 int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order)
 {
@@ -46,7 +44,7 @@ if(flag_1D) {
 
 	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-	returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
+	returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 	return CHECK_IMOGEN_ERROR(returnCode);
@@ -63,7 +61,10 @@ if(order > 0) { /* If we are doing forward sweep */
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
+			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
+			int dp;
+			dp = (nowDir == 1) ? 2 : 1;
+			//returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, dp);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -87,8 +88,11 @@ if(order > 0) { /* If we are doing forward sweep */
 
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, nowDir);
+			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+			int dp;
+			dp = (nowDir == 1) ? 2 : 1;
+			//returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, dp);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}

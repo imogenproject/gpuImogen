@@ -12,7 +12,7 @@ classdef FluidManager < handle
         MINMASS;                  % Minimum allowed mass value.                         double
         MASS_THRESHOLD;           % Threshold above which gravity solver functions.     double
         thresholds;               % Threshold values for gravitational fluxing.         struct
-        viscosity;                % Artificial viscosity object.                        ArtificialViscosity
+        viscosity;                % Artificial viscosity object.                 ArtificialViscosity
         limiter;                  % Flux limiters to use for each flux direction.       cell(3)
 
         radiation;                % Radiative emission properties for this fluid        Radiation
@@ -161,7 +161,7 @@ classdef FluidManager < handle
             P = (self.gamma - 1) * (self.ener.array - .5*(self.mom(1).array.^2+self.mom(2).array.^2+self.mom(3).array.^2)./self.mass.array);
         end
 
-%___________________________________________________________________________________________________ initialize
+%________________________________________________________________________________________ initialize
         function initialize(self, mag)
             self.viscosity.preliminary();
             self.radiation.initialize(self.parent, self, mag);

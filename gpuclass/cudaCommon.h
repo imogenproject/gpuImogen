@@ -63,8 +63,12 @@ typedef struct {
 #define PARTITION_Z 3
 
 // Never ever don't use these
-        // NOTE: If this length is changed you MUST change
-#define GPU_TAG_LENGTH 10
+        // NOTE: If this length is changed you MUST also update:
+        // sanityCheckTag
+        // deserializeTagToMGArray
+        // serializeMGArrayToTag
+
+#define GPU_TAG_LENGTH 11
 #define GPU_TAG_DIM0 0
 #define GPU_TAG_DIM1 1
 #define GPU_TAG_DIM2 2
@@ -75,6 +79,7 @@ typedef struct {
 #define GPU_TAG_EXTERIORHALO 7
 #define GPU_TAG_DIMPERMUTATION 8
 #define GPU_TAG_CIRCULARBITS 9
+#define GPU_TAG_VECTOR_COMPONENT 10
 
         // These mask the bits in the MGArray.circularBoundaryBits field
 #define MGA_BOUNDARY_XMINUS 1
@@ -113,18 +118,19 @@ typedef struct {
      * When there is only 1 node in our partitioning direction, GeometryManager will NOT supply halo cells and it is
      * necessary that we do. When there is more than 1, the higher-level partitioning will supply
      * halo cells at the outside boundaries so we should not add them.
-     * Ergo, this value is TRUE iff there is exactly one rank in the partition direction.
-     */
+     *
+     * Ergo, THIS IS TRUE IFF THERE IS EXACTLY ONE RANK IN THE PARTITION DIRECTION
+     * As mentioned at haloSize: This indicates whether MGA needs to add an exterior
+     * halo if true (typical of mpi-serial operation) or not (typical of mpi-parallel
+     * where the MPI partitioning has already added it)*/
     int addExteriorHalo;
-    // As mentioned at haloSize: This indicates whether MGA needs to add an exterior
-    // halo if true (typical of mpi-serial operation) or not (typical of mpi-parallel
-    // where the MPI partitioning has already added it)
 
-    int permtag;
     // Unique integer that compactly represents the 6 possible tuple->linear mappings
     // of a 3D array
-    int currentPermutation[3];
+    int permtag;
+
     // Marks which memory stride is associated with each physical direction
+    int currentPermutation[3];
 
     int nGPUs; // Number of devices this MGA lives on: \elem [1, MAX_GPUS_USED].
     int deviceID[MAX_GPUS_USED]; // for indexes [0, ..., MAX_GPUS_USED-1], appropriate value for cudaSetDevice() etc
@@ -138,6 +144,9 @@ typedef struct {
     // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
     const mxArray *matlabClassHandle;
     int mlClassHandleIndex;
+
+    // zero = scalar, 1/2/3 = x/y/z or r/theta/z: Used in BCs mainly
+    int vectorComponent;
     } MGArray;
 
 /* An in-place overwrite of an MGArray is a nontrivial thing. The following explains how to do it successfully:
@@ -194,7 +203,7 @@ void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // Extracts a series of Matlab handles into MGArrays
 int      MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArray *mg);
 // FIXME this should return a status & take a ** to the value to return..
-MGArray *MGA_allocArrays(int N, MGArray *skeleton);
+int      MGA_allocArrays(MGArray **ret, int N, MGArray *skeleton);
 int      MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs);
 int      MGA_duplicateArray(MGArray **dst, MGArray *src);
 MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
@@ -263,6 +272,7 @@ void dropMexError(const char *excuse, const char *infile, int atline);
 #define ERROR_GET_GPUTAG_FAILED -103
 #define ERROR_DESERIALIZE_GPUTAG_FAILED -104
 #define ERROR_NOIMPLEMENT -105
+#define ERROR_NOMEM -106
 
 #define ERROR_CUDA_BLEW_UP -1000
 
@@ -335,7 +345,7 @@ if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
 return fluxLimiter_minmod(2*derivL, derivR);
 }
 
-__device__ __inline__ double fluxLimiter_Osher(double A, double B)
+__device__ __inline__ double fluxLimiter_Ospre(double A, double B)
 {
 double r = A*B;
 if(r <= 0.0) return 0.0;
@@ -348,6 +358,8 @@ __device__ __inline__ double fluxLimiter_Zero(double A, double B) { return 0.0; 
 /* These differ in that they return _HALF_ of the (limited) difference,
  * i.e. the projection from i to i+1/2 assuming uniform widths of cells i and i+1
  */
+
+// 0.5 * van Leer slope limiter fcn = AB/(A+B)
 __device__ __inline__ double slopeLimiter_VanLeer(double derivL, double derivR)
 {
 double r;
@@ -366,6 +378,7 @@ if(derivL * derivR < 0) return 0.0;
 if(fabsf(derivL) > fabsf(derivR)) { return .5*derivR; } else { return .5*derivL; }
 }
 #else
+// .5 * minmod slope limiter fcn = min(A/2,B/2)
 __device__ __inline__ float slopeLimiter_minmod(double derivL, double derivR)
 {
 if(derivL * derivR < 0) return 0.0;
@@ -374,6 +387,7 @@ if(fabs(derivL) > fabs(derivR)) { return .5*derivR; } else { return .5*derivL; }
 }
 #endif
 
+// .5 * superbee slope limiter fcn = ...
 __device__ __inline__ double slopeLimiter_superbee(double derivL, double derivR)
 {
 if(derivL * derivR < 0) return 0.0;
@@ -382,7 +396,8 @@ if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
 return .5*fluxLimiter_minmod(2*derivL, derivR);
 }
 
-__device__ __inline__ double slopeLimiter_Osher(double A, double B)
+// 0.5 * ospre slope limiter fcn = .75*A*B*(A+B)/(A^2+AB+B^2)
+__device__ __inline__ double slopeLimiter_Ospre(double A, double B)
 {
 double R = A*B;
 if(R > 0) {
@@ -390,6 +405,27 @@ if(R > 0) {
 	return .75*R*S/(S*S-R);
 	}
 return 0.0;
+}
+
+// 0.5 * van albada limiter fcn = .5*A*B*(A+B)/(A^2+B^2)
+__device__ __inline__ double slopeLimiter_vanAlbada(double A, double B)
+{
+double R = A*B;
+if(R < 0) return 0;
+return .5*R*(A+B)/(A*A+B*B);
+}
+
+// 0.5 * monotized central limiter fcn = min(A, B, (A+B)/4)
+__device__ __inline__ double slopeLimiter_MC(double A, double B)
+{
+	if(A*B <= 0) return 0;
+	double R = B/A;
+    double S = .25+.25*R;
+	//max(0, min(b, .25(a+b), a))
+
+	S = (S < R) ? S : R;
+	S = (S < 1) ? S : 1.0;
+	return S*A;
 }
 
 __device__ __inline__ double slopeLimiter_Zero(double A, double B) { return 0.0; }

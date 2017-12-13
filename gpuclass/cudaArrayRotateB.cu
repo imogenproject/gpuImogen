@@ -150,7 +150,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 		if((j == 0) || reallocatePerArray) {
 			if((exchangeCode != -1) || (psi != NULL)) {
-				nuClone = MGA_allocArrays(1, &trans);
+				returnCode = MGA_allocArrays(&nuClone, 1, &trans);
 			}
 		}
 
@@ -241,6 +241,7 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 			phi[0] = *nuClone; // Nuke original MGArray
 
 			phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
+			phi->vectorComponent = tmp.vectorComponent; /* retain original vector component. */
 
 			for(i = 0; i < trans.nGPUs; i++) {
 				phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers

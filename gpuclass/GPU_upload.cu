@@ -29,6 +29,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	m.haloSize = 0;
 	m.partitionDir = PARTITION_X;
 	m.addExteriorHalo = 1;
+	m.vectorComponent = 0; // default, poke using GPU_Type.updateVectorComponent(n)
 	int forceClone = 0;
 
 	if(nrhs >= 3) {

@@ -209,7 +209,7 @@ classdef ImogenArray < handle
         % Applies the static conditions for the ImogenArray to the data array. This method is called during
         % array assignment (set.array).
         function applyBoundaryConditions(obj, direction)
-            cudaStatics(obj, 8, direction);
+            cudaStatics(obj, 8, obj.pManager.parent.geometry, direction);
         end
         
         %___________________________________________________________________________________________________ setupBoundaries
