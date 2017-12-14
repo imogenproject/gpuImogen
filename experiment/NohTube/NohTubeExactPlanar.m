@@ -168,10 +168,21 @@ classdef NohTubeExactPlanar < handle
         end
         
         function vsh1 = computeSecondShockSpeed(self)
+            c0 = sqrt(self.gamma*self.P0/self.rho0);
             phi = (self.gamma-1+2/self.pMach^2)/(self.gamma+1);
             rho1 = self.rho0/phi;
             P1   = self.P0 * (self.gamma*(2*self.pMach^2 - 1)+1)/(self.gamma+1);
-            vsh1 = sqrt(self.gamma*P1/rho1);
+            gp1 = self.gamma+1;
+            gm1 = self.gamma-1;
+            
+            vin  = self.pMach*c0*(phi-1);
+            % Solve RP(preshock) again yielding the double-shocked values
+            c = sqrt(self.gamma*P1/rho1);
+            m0 = vin/c;
+            msq = m0^2;
+            %rho2 = rho1*(4+msq*gp1-m0*sqrt(16+msq*gp1*gp1))/(4+2*msq*gm1);
+            vsh1  = c*((3-self.gamma)*m0 + sqrt(16 + gp1*gp1*msq))/4;
+            
         end
     end%PUBLIC
     
