@@ -2,7 +2,7 @@
 
 include ../Make.config
 
-DEFINES = -DUNIX -D_FORCE_INLINES
+DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 
@@ -111,8 +111,8 @@ fluid_standalone: cudaFluidStep.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
 	mex $(MEX_OPTS) -c cudaFluidStep.cpp
 
-cudaFluidStep: fluid_standalone
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+cudaFluidStep: fluid_standalone cudaStaticsFcn.o
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o cudaStaticsFcn.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaFluidStep.o
 
 # Statics / boundary condition settings
