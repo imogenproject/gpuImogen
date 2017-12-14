@@ -7,4 +7,8 @@ gpuclass/.cproject
 gpuclass/.settings
 mpi/.cproject
 mpi/.project
-
+.cproject
+.fluidMethod
+.externalToolBuilders
+.project
+.settings
