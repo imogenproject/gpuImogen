@@ -24,6 +24,11 @@ rp = RealtimePlotter();
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
 %run.peripherals{end+1} = rp;
+ma = MassConservationAnalyzer();
+  ma.stepsPerCheck = 1;
+  ma.plotResult = 1;
+run.peripherals{end+1} = ma;
+
 
 %--- Run tests ---%
 if (true)
