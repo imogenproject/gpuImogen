@@ -30,7 +30,7 @@ col2_x0 = 2*eos+halfColWidth;
 
 slicePanelHeight= 2*eos + 5*bsh+eos;
 ctrlPanelHeight =  eos+4*bsh+eos;
-plotPanelHeight = max(eos+9*bsh+2*eos, slicePanelHeight+eos+ctrlPanelHeight);
+plotPanelHeight = max(eos+10*bsh+2*eos, slicePanelHeight+eos+ctrlPanelHeight);
 specPanelHeight = eos+bsh+bh+eos+bh;
 moviePanelHeight = eos+bsh+bh+bh+eos;
 
@@ -88,7 +88,7 @@ button = uicontrol(worldPanel,'Style','pushbutton','String','print cfg in term',
 %=======================================================================================================
 % Left panel
 plotPanel = uipanel(fig,'Title','Plot control', 'units', 'pixels', 'position', [col1_x0 (3*eos+specPanelHeight+moviePanelHeight) halfColWidth plotPanelHeight]);
-    listHeight = 6*bsh-eos;
+    listHeight = 7*bsh-eos;
     fullw = halfColWidth - 2*eos;
     y0 = eos + listHeight;
 
@@ -101,9 +101,9 @@ plotPanel = uipanel(fig,'Title','Plot control', 'units', 'pixels', 'position', [
 
     % control to set plot's source fluid
     % FIXME implement callbacks for these in RTP...
-    button = uicontrol(plotPanel,'Style','pushbutton','String','--','value',-1,'position',[eos (y0+eos) 5*charW bh],'callback',@RTP.gcbSetPlotFluidsrc);
+    button = uicontrol(plotPanel,'Style','pushbutton','String','--','UserData',-1,'position',[eos (y0+eos) 5*charW bh],'callback',@RTP.gcbSetPlotFluidsrc);
     txt    = uicontrol(plotPanel,'Style','text',      'String','Fluid: N','Tag','fluidnumbertxt','position',[(eos+5*charW+bs) (y0+eos-5) (fullw-10*charW) bh]);
-    button = uicontrol(plotPanel,'Style','pushbutton','String','++','value',1,'position',[(fullw+eos-5*charW) (y0+eos) 5*charW bh],'callback',@RTP.gcbSetPlotFluidsrc);
+    button = uicontrol(plotPanel,'Style','pushbutton','String','++','UserData',1,'position',[(fullw+eos-5*charW) (y0+eos) 5*charW bh],'callback',@RTP.gcbSetPlotFluidsrc);
 
     % control to set plot's qty to plot
     % FIXME identify what this passes in
@@ -114,6 +114,7 @@ plotPanel = uipanel(fig,'Title','Plot control', 'units', 'pixels', 'position', [
     lis = uicontrol(plotPanel, 'Style','listbox',     'String','rho|px|py|pz|vx|vy|vz|Etotal|Pressure|Temp','min',0,'max',1,'tag','qtylistbox','position', [eos eos listWidth listHeight], 'callback', @RTP.gcbChoosePlotQuantity);
 
 % These are arrayed right of the list and fluid # selector
+    button = uicontrol(plotPanel, 'Style','togglebutton','String','equal axes','tag','eqaxesbutton','position',[tost (eos+6*bsh) tWidth bh], 'callback', @RTP.gcbToggleEqualAxes);
     button = uicontrol(plotPanel, 'Style','togglebutton','String','V field','tag','velfieldbutton','position',[tost (eos+5*bsh) tWidth bh], 'callback', @RTP.gcbToggleVelocityField);
     % Alternate axis labelling (none, pixels, position)
     button = uicontrol(plotPanel, 'Style','pushbutton','String','axis off','tag','axeslabelsbutton','position',[tost (eos+4*bsh) tWidth bh], 'callback', @RTP.gcbCycleAxisLabels);

@@ -52,7 +52,7 @@ classdef RealtimePlotter <  LinkedListNode
         pDisplayedPlotOffset;
 
         pstatic_colorchars = 'rgbcmykw';
-        pstatic_ppfields = {'fluidnum','what','logscale','slice','plottype','grid','cbar','axmode','velvecs','vv_scale','vv_decfac','vv_weight','vv_color','vv_type'};
+        pstatic_ppfields = {'fluidnum','what','logscale','slice','plottype','grid','cbar','axmode','velvecs','vv_scale','vv_decfac','vv_weight','vv_color','vv_type','equalaxes','dynrange'};
 
         pAxisTypeLabels = {'axis off','cell #','pixels','position'};
 
@@ -87,7 +87,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.generateTeletextPlots = 0; % FIXME: set this depending on availability of graphics
             self.forceRedraw           = 0;
         
-            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0,'axmode',0,'velvecs',0,'vv_scale',1,'vv_decfac',10,'vv_weight',1,'vv_color',8,'vv_type',1);
+            self.plotProps = struct('fluidnum',1,'what',1,'logscale',0,'slice',1,'plottype',1,'grid',0,'cbar',0,'axmode',0,'velvecs',0,'vv_scale',1,'vv_decfac',10,'vv_weight',1,'vv_color',8,'vv_type',1,'equalaxes',0,'dynrange',[0 0]);
             self.plotProps(2:4) = self.plotProps(1);
 
             self.spawnGUI           = 0;
@@ -110,14 +110,18 @@ classdef RealtimePlotter <  LinkedListNode
                 whos
                 error('Did not receive correct number of args: RealtimePlotter.vectorToPlotprops(index 1...4, vector);');
             end
-            if numel(v) ~= 14
+            if numel(v) ~= 17
                 whos
-                error('Attempt to use RealtimePlotter.vectorToPlotprops() but input numeric vector does not have 14 elements.');
+                error('Attempt to use RealtimePlotter.vectorToPlotprops() but input numeric vector does not have 17 elements.');
             end
 
             fields = self.pstatic_ppfields;
             for k = 1:numel(fields)
-                self.plotProps(id).(fields{k}) = v(k);
+                if k < 16
+                    self.plotProps(id).(fields{k}) = v(k);
+                else
+                    self.plotProps(id).(fields{k}) = v(k:end);
+                end
             end
         end
 
@@ -192,7 +196,7 @@ classdef RealtimePlotter <  LinkedListNode
                 fieldnames = self.pstatic_ppfields;
                 for pltno = 1:ap
                     for fname = 1:numel(fieldnames);
-                        fprintf('%s.plotProps(%i).%s = %i; ', rpn, int32(pltno), fieldnames{fname}, int32(self.plotProps(pltno).(fieldnames{fname})));
+                        fprintf('%s.plotProps(%i).%s = [%s]; ', rpn, int32(pltno), fieldnames{fname}, num2str(self.plotProps(pltno).(fieldnames{fname})));
                         if mod(fname, 4) == 0; fprintf('\n'); end
                     end
                     fprintf('\n');
@@ -200,9 +204,12 @@ classdef RealtimePlotter <  LinkedListNode
             else
                 fieldnames = self.pstatic_ppfields;
                 for pltno = 1:ap
-                    psv = [];
+                    psv = zeros([1 17]);
+                    nd = 1;
                     for fname = 1:numel(fieldnames)
-                        psv(end+1) = self.plotProps(pltno).(fieldnames{fname});
+                        q = self.plotProps(pltno).(fieldnames{fname});
+                        psv(nd:(nd+numel(q)-1)) = q;
+                        nd = nd + numel(q);
                     end
                     fprintf('%s.vectorToPlotprops(%i, [%s]);\n', rpn, int32(pltno), num2str(psv));
                 end
@@ -258,6 +265,8 @@ classdef RealtimePlotter <  LinkedListNode
         
         function FrameAnalyzer(self, p, run, fluids, ~)
             self.drawGfx(run, fluids);
+            
+            tfin = sum(run.time.history);
             
             if self.insertPause;
                 if self.spawnGUI
@@ -329,7 +338,8 @@ classdef RealtimePlotter <  LinkedListNode
             case 3; Q = fluid.mom(2).array(u,v,w); % py
             case 4; Q = fluid.mom(3).array(u,v,w);% pz
             case 5; Q = fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w); %vx 
-            case 6; Q = fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w); %vy
+            case 6; 
+                Q = fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w); %vy
             case 7; Q = fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w); %vz
             case 8; Q = fluid.ener.array(u,v,w); %etotal
             case 9; % pressure
@@ -358,6 +368,7 @@ classdef RealtimePlotter <  LinkedListNode
             end
 
             Q = squish(Q); % flatten for return
+            
         end
 
         function pickSubplot(self, plotnumber, plotmode)
@@ -383,8 +394,10 @@ classdef RealtimePlotter <  LinkedListNode
                 if decor.axmode == 2; axval = -axval; end
                 % case 3 is the default
                 if decor.logscale
+                    %q = fft(q); q = abs(q(2:16));
                     semilogy(axval, q)
                 else
+                    %q = fft(q); q = abs(q(2:16));
                     plot(axval, q);
                 end
                 if decor.axmode == 0; axis off; else; axis on; end
@@ -428,6 +441,8 @@ classdef RealtimePlotter <  LinkedListNode
                 if decor.axmode == 0; axis off; else; axis on; end
                 
                 if decor.cbar; colorbar; end
+                
+                if decor.equalaxes; qq = gca(); qq.DataAspectRatio = [1 1 1]; end
             end
         end
 
@@ -560,12 +575,13 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUIPlotsNeedRedraw = 1;
         end
         function gcbSetPlotFluidsrc(self, src, data) % called by the --/++ arrows by 'FLUID: N'
+	    % data is +1 or -1
             F = self.plotProps(self.pGUISelectedPlotnum).fluidnum;
-            if src.Value < 0;
+            if src.UserData < 0;
                 F = F - 1;
                 if F < 1; F = 1; end
             end
-            if src.Value > 0;
+            if src.UserData > 0;
                 F = F + 1;
                 if F > self.pNumFluids; F = self.pNumFluids; end
             end
@@ -659,6 +675,19 @@ classdef RealtimePlotter <  LinkedListNode
                 src.BackgroundColor = self.pCEnab;
             else
                 src.String = 'linear';
+                src.BackgroundColor = self.pCNeut;
+            end
+            self.pGUIPlotsNeedRedraw = 1;
+        end
+        function gcbToggleEqualAxes(self, src, data)
+            if src.Value == 1; L = 1; else; L = 0; end
+            self.plotProps(self.pGUISelectedPlotnum).equalaxes = L;
+
+            if L % yes equal axes: green button
+                src.String = 'equal axes';
+                src.BackgroundColor = self.pCEnab;
+            else
+                src.String = 'equal axes';
                 src.BackgroundColor = self.pCNeut;
             end
             self.pGUIPlotsNeedRedraw = 1;
@@ -841,7 +870,7 @@ classdef RealtimePlotter <  LinkedListNode
 
 	    % vector field?
 	    x = findobj('tag','velfieldbutton');
-	    if pp.velvecs; x.Value = 1; x.BackgroundColor = self.PCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
+	    if pp.velvecs; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
 
 	    % plot qty box
 	    x = findobj('tag','qtylistbox');

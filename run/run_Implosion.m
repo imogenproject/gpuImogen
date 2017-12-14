@@ -16,11 +16,11 @@ run.notes           = '';
 run.ppSave.dim2     = 10;
 
 % The following tracks the asymmetry of the implosion over time
-
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
   rp.insertPause = 1;
+  rp.spawnGUI = 1;
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
 %run.peripherals{end+1} = rp;
@@ -28,7 +28,6 @@ ma = MassConservationAnalyzer();
   ma.stepsPerCheck = 1;
   ma.plotResult = 1;
 run.peripherals{end+1} = ma;
-
 
 %--- Run tests ---%
 if (true)
