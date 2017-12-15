@@ -15,9 +15,11 @@ run.autoEndtime = 1;
 
 % One method of initializing the center of the blast: Deposit the energy equally
 % into cells whose radius is less than this
-run.depositRadiusCells(3.1);
+% Accepts special key values in 2D of 0 (point ini), sqrt(2)/2 (5 cells), 1.5 (9 cells), sqrt(2.5) (13 cells)
+% Accepts special key values in 3D of 0 (point ini), sqrt(2)/2 (7 cells), 1.5 (27 cells) 
+run.depositRadiusCells(0);
 
-run.ppSave.dim3 = 10;
+run.ppSave.dim3 = 50;
 
 run.alias   = '';
 run.info    = 'Sedov-Taylor blast wave test.';
@@ -33,17 +35,20 @@ rp = RealtimePlotter();
   rp.spawnGUI = 1;
 %run.peripherals{end+1} = rp;
 
+fm = FlipMethod();
+fm.iniMethod = ENUM.CFD_HLLC;
+fm.toMethod = ENUM.CFD_HLL;
+fm.atstep = 20;
+run.peripherals{end+1} = fm;
 
 %--- Run tests ---%
 if (true)
+    run.depositRadiusCells(sqrt(2.5));
     icfile = run.saveInitialCondsToFile();
     outdir = imogen(icfile);
 % FIXME: This should be implemented as an in-situ analyzer to avoid massive I/O if actual
 % examination of output data is not desired.
     howdo = analyzeSedovTaylor(outdir, 1);
-
-    if mpi_amirank0()
-        disp(howdo)
-    end
+    
 end
 

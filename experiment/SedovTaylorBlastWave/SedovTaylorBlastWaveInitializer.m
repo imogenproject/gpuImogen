@@ -40,7 +40,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.4;
+            obj.cfl              = 0.85;
             obj.iterMax          = 10000;
             obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.y         = ENUM.BCMODE_CONSTANT;
@@ -109,13 +109,64 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             %--- Calculate Radial Distance ---%
             [X, Y, Z] = geom.ndgridSetIJK('pos');
             distance  = sqrt(X.*X/(geom.d3h(1)^2) + Y.*Y/(geom.d3h(2)^2) + Z.*Z/(geom.d3h(3)^2));
+            %distance  = sqrt(X.*X + Y.*Y + Z.*Z);
 
             %--- Find the correct energy density Ec = Eblast / (# deposit cells) ---%
+            ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
+            
             % FIXME: Note that this is still 'wrong' in that it fails to integral average
             % However the error lies in high-harmonics of the distribution,
             % not the actual amount of energy - that is exactly correct and is most important for
             % Seeing to it that the 
             % WARNING: This works because we know from above that the coordinate zero is integer...
+            if obj.geomgr.globalDomainRez(3) == 1 % 2D
+                if obj.pDepositRadius == 0
+                    ener(distance == 0) = obj.pBlastEnergy / prod(obj.geomgr.d3h);
+                end
+                % In the center & 4 cells adjacent
+                if obj.pDepositRadius == sqrt(2)/2
+                    edens = obj.pBlastEnergy / (prod(obj.geomgr.d3h)*pi/2);
+                    ener(abs(distance) < 1e-10 )   = edens * 1;
+                    ener(abs(distance -1) < 1e-10) = edens * 0.142699081698724;
+                end
+                % into a 3x3 square
+                if obj.pDepositRadius == 1.5
+                    edens = obj.pBlastEnergy / (prod(obj.geomgr.d3h)*1.5^2*pi);
+                    ener(abs(distance) < 1e-10)           = edens * 1;
+                    ener(abs(distance - 1) < 1e-10)       = edens * 0.971739827458322;
+                    ener(abs(distance - sqrt(2)) < 1e-10) = edens * 0.545406040185937;
+                end
+                % 3x3 square + 4 tips
+                if obj.pDepositRadius == sqrt(2.5)
+                    edens = obj.pBlastEnergy / (prod(obj.geomgr.d3h)*2.5*pi);
+                    ener(abs(distance) < 1e-10)           = edens * 1;
+                    ener(abs(distance - 1) < 1e-10)       = edens * 1;
+                    ener(abs(distance - sqrt(2)) < 1e-10) = edens * 0.6591190225020152;
+                    ener(abs(distance - 2) < 1e-10)       = edens * 0.0543763859916054;
+                end
+            else
+                 % into one cell
+                 if obj.pDepositRadius == 0
+                     ener(abs(distance) < 1e-10) = obj.pBlastEnergy / prod(obj.geomgr.d3h);
+                 end
+                 % into 7 cells
+                 if(obj.pDepositRadius == sqrt(2))/2
+                     edens = obj.pBlastEnergy / ( 1.480960979386122 * prod(obj.geomgr.d3h) );
+                     ener(abs(distance) < 1e-10)     = edens * 0.96506885821499755;
+                     ener(abs(distance - 1) < 1e-10) = edens * 0.08598202019518745;
+                 end
+                 % into 27 cells
+                 if(obj.pDepositRadius == 1.5)
+                     edens = obj.pBlastEnergy / (14.137166941154067 * prod(obj.geomgr.d3h) );
+                     ener(abs(distance) < 1e-10)           = edens;
+                     ener(abs(distance - 1) < 1e-10)       = 0.942907515183537 * edens;
+                     ener(abs(distance - sqrt(2)) < 1e-10) = 0.508788505510933 * edens;
+                     ener(abs(distance - sqrt(3)) < 1e-10) = 0.171782472990205 * edens;
+                 end
+            end
+            
+            if 0
+            
             gv = floor(-obj.pDepositRadius-1):ceil(obj.pDepositRadius+1);
             if obj.geomgr.globalDomainRez(3) == 1 % 2D
                 [xctr, yctr] = ndgrid(gv,gv);
@@ -126,13 +177,15 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             end
  
             nDepositCells = numel(find(activeCells));
-
+            ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.geomgr.d3h));
+            
+            end
             obj.sedovAlphaValue = obj.pSedovAlpha; % Public parameter that will be saved
             obj.sedovExplosionEnergy = obj.pBlastEnergy;
             
             %--- Determine Energy Distribution ---%
-            ener            = 1e-8*mass/(obj.gamma-1); % Default to approximate zero pressure
-            ener(distance < obj.pDepositRadius) = obj.pBlastEnergy / (nDepositCells*prod(obj.geomgr.d3h));
+            
+            
 
             fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
         end

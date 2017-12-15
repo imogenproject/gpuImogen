@@ -12,6 +12,8 @@ run         = SedovTaylorBlastWaveInitializer(grid);
 
 run.autoEndtime = 1; % Automatically run until Rblast = 0.45
 
+run.depositRadiusCells(sqrt(2.5));
+
 run.alias   = 'SEDOV_ts';
 run.info    = 'Sedov-Taylor blast wave convergence test.';
 run.notes   = 'Eblast=1, box diameter = [1 1 1], Rend = 0.45';
@@ -27,8 +29,8 @@ result.rhoL2 = [];
 ydim = [];
 
 fm = FlipMethod();
-  fm.iniMethod = 2; % hllc
-  fm.toMethod = 1; % hll
+  fm.iniMethod = ENUM.CFD_HLLC;
+  fm.toMethod = ENUM.CFD_HLL;
   fm.atstep = 20;
 run.peripherals{end+1} = fm;
 
