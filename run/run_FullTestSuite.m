@@ -3,10 +3,10 @@
 
 TestResults.name = 'Imogen Master Test Suite';
 
-TestResultFilename = '~/advect_emp';
+TestResultFilename = '~/fulltest';
 
 %--- Override: Run ALL the tests! ---%
-doALLTheTests = 0;
+doALLTheTests = 1;
 realtimePictures = 0;
 
 %--- Individual selects ---%
@@ -16,13 +16,15 @@ doSonicAdvectMovingBG   = 0;
 doSonicAdvectAngleXY    = 0;
 doEntropyAdvectStaticBG = 0;
 doEntropyAdvectMovingBG = 0;
+doDustyWaveStaticBG     = 0;
+doDustyWaveMovingBG     = 0;
 
 % 1D tests
 doSodTubeTests        = 0;
 doEinfeldtTests       = 0;
 doDoubleBlastTests    = 0;
 doNohTubeTests        = 0;
-doDustyBoxes          = 1;
+doDustyBoxes          = 0;
 
 % 2D tests
 doCentrifugeTests     = 0;
@@ -42,20 +44,23 @@ end
 
 % Picks how far we take the scaling tests
 advectionDoublings  = 8;
-doubleblastDoublings= 5;
-dustyBoxDoublings   = 4;
-einfeldtDoublings   = 5;
-nohDoublings        = 8;
-sodDoublings        = 5;
+doubleblastDoublings= 10;
+dustyBoxDoublings   = 7;
+einfeldtDoublings   = 7;
+nohDoublings        = 7;
+sodDoublings        = 7;
 
 advection2DDoublings= 6;
 centrifugeDoublings = 6;
 sedov2D_scales      = [1 2 4 8 16 24];
 
-sedov3D_scales      = [1 2 3 4 5];
+sedov3D_scales      = [1];
+
 
 fm = FlipMethod();
-  fm.iniMethod = ENUM.CFD_HLLC;
+  fm.iniMethod = ENUM.CFD_HLL;
+  %fm.toMethod = ENUM.CFD_HLLC;
+  %fm.atstep = 3;
 
 exceptionList = {};
 
@@ -94,9 +99,9 @@ end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doALLTheTests
-    if mpi_amirank0(); disp('Testing sound advection in 2D across moving background'); end
+    if mpi_amirank0(); disp('Testing sound advection''s prefactor in 2D'); end
     try
-        x = tsAdvection('sonic',[baseResolution baseResolution 1], [5 3 0], [0 0 0], .4387, advection2DDoublings, realtimePictures, fm);
+        x = tsCrossAdvect('sonic', [1536 1536 1], [11 11 0], [0 0 0], [0 0 0], realtimePictures, fm);
     catch ME
         fprintf('2D Advection test simulation barfed.\n');
         prettyprintException(ME);
@@ -133,11 +138,25 @@ if doEntropyAdvectMovingBG || doALLTheTests
     end
 end
 
+%--- Test the dusty wave solution ---%
+if doDustyWaveStaticBG || doALLTheTests
+    if mpi_amirank0(); disp('Testing dustywave with static BG'); end
+    try
+        x = tsDustywave([baseResolution 1 1], advectionDoublings, 0.1, realtimePictures, fm);
+    catch ME
+        fprintf('Dustywave test failed.\n');
+        prettyprintException(ME);
+        x = 'FAILED';
+        exceptionList{end+1} = ME;
+    end
+    TestResult.advection.Dustywave_static = x;
+end
+
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
 if doEinfeldtTests || doALLTheTests
     if mpi_amirank0(); disp('Testing convergence of Einfeldt tube'); end
     try
-        x = tsEinfeldt(baseResolution, 1.4, 5.5, einfeldtDoublings, realtimePictures, fm);
+        x = tsEinfeldt(baseResolution, 1.4, 4, einfeldtDoublings, realtimePictures, fm);
     catch ME
         fprintf('Einfeldt tube test has failed.\n');
         prettyprintException(ME);
@@ -175,8 +194,8 @@ if doNohTubeTests || doALLTheTests
         exceptionList{end+1} = ME;
     end
     
-    TestResult.sod.X = x;
-    if mpi_amirank0(); disp('Results for Sod tube refinement:'); disp(x); end
+    TestResult.noh.X = x;
+    if mpi_amirank0(); disp('Results for Noh tube refinement:'); disp(x); end
 end
 
 if doCentrifugeTests || doALLTheTests
@@ -303,12 +322,12 @@ if mpi_amirank0()
     end
     save([TestResultFilename '.mat'],'TestResult');
 
-    disp('Full test suite is finished running.'
-    t = etime(endSimulationsTime, startSimulationstime);
-    disp(['Total runtime of all simulations measured by rank 0 was' num2str(t) 'sec.']);
+    disp('Full test suite is finished running.');
+    t = etime(endSimulationsTime, startSimulationsTime);
+    disp(['Total runtime of all simulations measured by rank 0 was' num2str(t) ' sec.']);
     disp(['Simulation output is stored in file ' TestResultFilename])
     if numel(exceptionList) > 0
-        disp(['A total of ' num2str(numel(exceptionList)) ' errors were encountered'];
+        disp(['A total of ' num2str(numel(exceptionList)) ' errors were encountered']);
         for k = 1:numel(exceptionList)
             disp('====================');
             disp(['Error number ' num2str(k) ':']);

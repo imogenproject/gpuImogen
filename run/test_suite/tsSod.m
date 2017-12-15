@@ -39,7 +39,7 @@ end
 
 result.L1    = [];
 result.L2    = [];
-result.res   = [];
+result.N     = [];
 result.paths = {};
 
 for p = 1:doublings;
@@ -63,7 +63,7 @@ for p = 1:doublings;
 
     result.L2(p)    = sqrt(mpi_sum(norm(u.mass(:,1)-X.mass',2).^2) / mpi_sum(numel(X.mass)) );
     result.L1(p)    = mpi_sum(norm(u.mass(:,1)-X.mass',1)) / mpi_sum(numel(X.mass));
-    result.res(p)   = run.geomgr.globalDomainRez(direct);
+    result.N(p)   = run.geomgr.globalDomainRez(direct);
     result.paths{p} = outpath;
 
 end
