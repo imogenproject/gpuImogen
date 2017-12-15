@@ -62,7 +62,7 @@ run.waveStationarity(0);
 if (true)
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    SoundAdvectionAnalysis(outpath, 1);
+    SonicAdvectionAnalysis(outpath, 1);
     if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
 end
 
