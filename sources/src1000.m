@@ -3,10 +3,12 @@ function source1000(run, fluids, mag, tFraction)
 
 dTime = tFraction * run.time.dTime;
 
-if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    [uv, vv, ~] = run.geometry.ndgridVecs('pos');
-    xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1);
-    cudaSourceCylindricalTerms(fluids, dTime, run.geometry);
+[uv, vv, ~] = run.geometry.ndgridVecs('pos');
+%xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1);
+cudaSourceCylindricalTerms(fluids, dTime, run.geometry);
+
+if run.radiation.active
+    run.radiation.opticallyThinSolver(fluids, run.magnet, dTime);
 end
 
 % Assert boundary conditions

@@ -74,8 +74,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
             obj.treadmill        = false;
-            obj.cfl              = 0.5;
-            obj.iterMax          = 10;
+            obj.iterMax          = 100;
             obj.bcMode.x         = ENUM.BCMODE_CONSTANT;
             obj.bcMode.y         = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z         = ENUM.BCMODE_CIRCULAR;
@@ -118,179 +117,177 @@ classdef RadiatingShockInitializer < Initializer
         
 %________________________________________________________________________ calculateInitialConditions
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-        % Returns the initial conditions for a corrugation shock wave according to the settings for
-        % the initializer.
-        % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
-        potentialField = [];
-        selfGravity = [];        
-        geom = obj.geomgr;
-        
+            % Returns the initial conditions for a corrugation shock wave according to the settings for
+            % the initializer.
+            % USAGE: [mass, mom, ener, mag, statics, run] = getInitialConditions();
+            potentialField = [];
+            selfGravity = [];
+            geom = obj.geomgr;
+            geom.makeDimNotCircular(1);
+            
+            rad = RadiationSubInitializer();
 
-        geom.makeDimNotCircular(1);
+            rad.type                      = ENUM.RADIATION_OPTICALLY_THIN;
+            rad.exponent                  = obj.radTheta;
 
-	rad = RadiationSubInitializer();
-
-        rad.type                      = ENUM.RADIATION_OPTICALLY_THIN;
-        rad.exponent                  = obj.radTheta;
-
-        rad.initialMaximum            = 1; % We do not use these, instead
-        rad.coolLength                = 1; % We let the cooling function define dx
-        rad.strengthMethod            = 'preset';
-        rad.setStrength               = obj.radBeta;
-
-        statics = []; % We'll set this eventually...
-
-        % Gets the jump solution, i.e. preshock and adiabatic postshock solutions
-        if obj.alfvenMach < 0
-            jump = HDJumpSolver (obj.sonicMach, obj.theta, obj.gamma);
-            obj.pureHydro = 1;
-        else
-            jump = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
-            obj.pureHydro = 0;
-            obj.mode.magnet = true;
-        end
-        radflow = RadiatingFlowSolver(jump.rho(2), jump.v(1,2), ...
-           jump.v(2,2), jump.B(1,2), jump.B(2,2), ...
-           jump.Pgas(2), obj.gamma, obj.radBeta, obj.radTheta, 0);
-
-        radflow.numericalSetup(2, 2);
-
-        L_c = radflow.coolingLength(jump.v(1,2));
-        T_c = radflow.coolingTime(jump.v(1,2));
-
-        radflow.setCutoff('thermal',obj.Tcutoff);
-
-        flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
-        flowValues   = radflow.solutionTable();
-
-        fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
-
-        fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
-
-        geom.makeBoxSize(flowEndpoint / fracFlow); % Box length
-        
-        
-       % obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
-
-        [vecX, vecY, vecZ] = geom.ndgridVecs();
-
-        rez = geom.globalDomainRez;
-        % Identify the preshock, radiating and cold gas layers.
-        preshock =  (vecX < rez(1)*obj.fractionPreshock);
-        postshock = (vecX >= rez(1)*obj.fractionPreshock);
-        postshock = postshock & (vecX < rez(1)*(1-obj.fractionCold));
-        coldlayer = (vecX >= rez(1)*(1-obj.fractionCold));
-
-        numPre = rez(1)*obj.fractionPreshock;
-        Xshock = geom.d3h(1)*numPre;
-
-        % Generate blank slates
-        [mass, mom, mag, ener] = geom.basicFluidXYZ();
-
-        % Fill in preshock values of uniform flow
-        mass(preshock,:,:) = jump.rho(1);
-        ener(preshock,:,:) = jump.Pgas(1);
-        mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
-        mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
-        mag(1,:,:,:) = jump.B(1,1);
-        mag(2,preshock,:,:) = jump.B(2,1);
-
-
-        % Get interpolated values for the flow
-        flowValues(:,1) = flowValues(:,1) + Xshock;
-        xinterps = (vecX-.5)*geom.d3h(1);
-        minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
-        %px is exactly constant
-        pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
-        %bx is exactly constant
-        byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps,'cubic');
-        Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps,'cubic');
-
-        for xp = find(postshock)
-            mass(xp,:,:) = minterp(xp);
-            mom(2,xp,:,:) = pyinterp(xp);
-            mag(2,xp,:,:) = byinterp(xp);
-            ener(xp,:,:)  = Pinterp(xp);
-        end
- 
-        % Fill in cold gas layer adiabatic values again
-        endstate = flowValues(end,:);
-
-        mass(coldlayer,:,:) = endstate(2);
-        % px is constant
-        mom(2,coldlayer,:,:) = endstate(2)*endstate(4);
-        % bx is constant 
-        mag(2,coldlayer,:,:) = endstate(6);
-        ener(coldlayer,:,:) = endstate(7);
-
-        %----------- BOOST TRANSFORM ---------%
-        dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
-        yboost = mass*dvy;
-        mom(2,:,:,:) = squish(mom(2,:,:,:)) + yboost;
-
-        %----------- SALT TO SEED INSTABILITIES -----------%
-	% Salt everything from half the preshock region to half the cooling region.
-	fracRadiate = 1.0-obj.fractionPreshock-obj.fractionCold;
-	Xsalt = (vecX >= (.5*rez(1)*obj.fractionPreshock)) & (vecX < rez(1)*(obj.fractionPreshock + .5*fracRadiate));
-
+            rad.initialMaximum            = 1; % We do not use these, instead
+            rad.coolLength                = 1; % We let the cooling function define dx
+            rad.strengthMethod            = 'preset';
+            rad.setStrength               = obj.radBeta;
+            
+            statics = []; % We'll set this eventually...
+            
+            % Gets the jump solution, i.e. preshock and adiabatic postshock solutions
+            if obj.alfvenMach < 0
+                jump = HDJumpSolver (obj.sonicMach, obj.theta, obj.gamma);
+                obj.pureHydro = 1;
+            else
+                jump = MHDJumpSolver(obj.sonicMach, obj.alfvenMach, obj.theta, obj.gamma);
+                obj.pureHydro = 0;
+                obj.mode.magnet = true;
+            end
+            radflow = RadiatingFlowSolver(jump.rho(2), jump.v(1,2), ...
+                jump.v(2,2), jump.B(1,2), jump.B(2,2), ...
+                jump.Pgas(2), obj.gamma, obj.radBeta, obj.radTheta, 0);
+            
+            radflow.numericalSetup(2, 2);
+            
+            L_c = radflow.coolingLength(jump.v(1,2));
+            T_c = radflow.coolingTime(jump.v(1,2));
+            
+            radflow.setCutoff('thermal',obj.Tcutoff);
+            
+            flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
+            flowValues   = radflow.solutionTable();
+            
+            fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
+            
+            fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
+            
+            geom.makeBoxSize(flowEndpoint / fracFlow); % Box length
+            
+            
+            % obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
+            
+            [vecX, vecY, vecZ] = geom.ndgridVecs();
+            
+            rez = geom.globalDomainRez;
+            % Identify the preshock, radiating and cold gas layers.
+            preshock =  (vecX < rez(1)*obj.fractionPreshock);
+            postshock = (vecX >= rez(1)*obj.fractionPreshock);
+            postshock = postshock & (vecX < rez(1)*(1-obj.fractionCold));
+            coldlayer = (vecX >= rez(1)*(1-obj.fractionCold));
+            
+            numPre = rez(1)*obj.fractionPreshock;
+            Xshock = geom.d3h(1)*numPre;
+            
+            % Generate blank slates
+            [mass, mom, mag, ener] = geom.basicFluidXYZ();
+            
+            % Fill in preshock values of uniform flow
+            mass(preshock,:,:) = jump.rho(1);
+            ener(preshock,:,:) = jump.Pgas(1);
+            mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
+            mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
+            mag(1,:,:,:) = jump.B(1,1);
+            mag(2,preshock,:,:) = jump.B(2,1);
+            
+            
+            % Get interpolated values for the flow
+            flowValues(:,1) = flowValues(:,1) + Xshock;
+            xinterps = (vecX-.5)*geom.d3h(1);
+            minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
+            %px is exactly constant
+            pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
+            %bx is exactly constant
+            byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps,'cubic');
+            Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps,'cubic');
+            
+            for xp = find(postshock)
+                mass(xp,:,:) = minterp(xp);
+                mom(2,xp,:,:) = pyinterp(xp);
+                mag(2,xp,:,:) = byinterp(xp);
+                ener(xp,:,:)  = Pinterp(xp);
+            end
+            
+            % Fill in cold gas layer adiabatic values again
+            endstate = flowValues(end,:);
+            
+            mass(coldlayer,:,:) = endstate(2);
+            % px is constant
+            mom(2,coldlayer,:,:) = endstate(2)*endstate(4);
+            % bx is constant
+            mag(2,coldlayer,:,:) = endstate(6);
+            ener(coldlayer,:,:) = endstate(7);
+            
+            %----------- BOOST TRANSFORM ---------%
+            dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
+            yboost = mass*dvy;
+            mom(2,:,:,:) = squish(mom(2,:,:,:)) + yboost;
+            
+            %----------- SALT TO SEED INSTABILITIES -----------%
+            % Salt everything from half the preshock region to half the cooling region.
+            fracRadiate = 1.0-obj.fractionPreshock-obj.fractionCold;
+            Xsalt = (vecX >= (.5*rez(1)*obj.fractionPreshock)) & (vecX < rez(1)*(obj.fractionPreshock + .5*fracRadiate));
+            
             switch (obj.perturbationType)
                 % RANDOM Seeds ____________________________________________________________________
                 case RadiatingShockInitializer.RANDOM
-%                    phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
-%                    amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
-
-%                    amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
-%                    amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
-%                    amp(:,1,1) = 0; % no common-mode seed
-
-%                    perturb = zeros(10, obj.grid(2), obj.grid(3));
-%                    for xp = 1:size(perturb,1)
-%                        perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squish(amp(1,:,:).*exp(1i*phase(1,:,:)))));
-%                    end
-                     junk = obj.seedAmplitude*(rand(size(mass))-.5);
-                     mass(Xsalt,:,:) = mass(Xsalt,:,:) + junk(Xsalt,:,:);
+                    %phase = 2*pi*rand(10,obj.grid(2), obj.grid(3));
+                    %amp   = obj.seedAmplitude*ones(1,obj.grid(2), obj.grid(3))*obj.grid(2)*obj.grid(3);
+                    
+                    %amp(:,max(4, obj.randomSeed_spectrumLimit):end,:) = 0;
+                    %amp(:,:,max(4, obj.randomSeed_spectrumLimit):end) = 0;
+                    %amp(:,1,1) = 0; % no common-mode seed
+                    
+                    %perturb = zeros(10, obj.grid(2), obj.grid(3));
+                    %for xp = 1:size(perturb,1)
+                    %    perturb(xp,:,:) = sin(xp*2*pi/20)^2 * real(ifft(squish(amp(1,:,:).*exp(1i*phase(1,:,:)))));
+                    %end
+                    junk = obj.seedAmplitude*(rand(size(mass))-.5);
+                    mass(Xsalt,:,:) = mass(Xsalt,:,:) + junk(Xsalt,:,:);
                 case RadiatingShockInitializer.COSINE
                     [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude*cos(2*pi*(Y - 1)/(obj.grid(2) - 1)) ...
-                                    .*sin(pi*(X - 1)/(delta - 1));
-                % COSINE Seeds ____________________________________________________________________
-                case RadiatingShockInitializer.COSINE_2D 
+                        .*sin(pi*(X - 1)/(delta - 1));
+                    % COSINE Seeds ____________________________________________________________________
+                case RadiatingShockInitializer.COSINE_2D
                     [X, Y, Z] = ndgrid(1:delta, 1:obj.grid(2), 1:obj.grid(3));
                     perturb = obj.seedAmplitude ...
-                                *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
-                                 + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...
-                                 .*sin(pi*(X - 1)/(delta - 1));
-
-                % Unknown Seeds ___________________________________________________________________
-                 otherwise
+                        *( cos(2*pi*obj.cos2DFrequency*(Y - 1)/(obj.grid(2) - 1)) ...
+                        + cos(2*pi*obj.cos2DFrequency*(Z - 1)/(obj.grid(3) - 1)) ) ...
+                        .*sin(pi*(X - 1)/(delta - 1));
+                    
+                    % Unknown Seeds ___________________________________________________________________
+                otherwise
                     error('Imogen:CorrugationShockInitializer', ...
-                          'Uknown perturbation type. Aborted run.');
+                        'Uknown perturbation type. Aborted run.');
             end
-
-%            seeds = seedIndices(mine);
-%
-%            mass(seedIndices,:,:) = squish( mass(seedIndices,:,:) ) + perturb;
+            
+            %            seeds = seedIndices(mine);
+            %
+            %            mass(seedIndices,:,:) = squish( mass(seedIndices,:,:) ) + perturb;
             % Add seed to mass while maintaining self-consistent momentum/energy
             % This will otherwise take a dump on e.g. a theta=0 shock with
             % a large density fluctuation resulting in negative internal energy
-%            mom(1,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(1,1);
-%            mom(2,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(2,1);
-        
+            %            mom(1,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(1,1);
+            %            mom(2,seedIndices,:,:) = squish(mass(seedIndices,:,:)) * jump.v(2,1);
+            
             ener = ener/(obj.gamma-1) + ...
-               .5*squish(sum(mom.^2,1))./mass + .5*squish(sum(mag.^2,1));
-
-            statics = StaticsInitializer(geom); 
-
+                .5*squish(sum(mom.^2,1))./mass + .5*squish(sum(mag.^2,1));
+            
+            statics = StaticsInitializer(geom);
+            
             %statics.setFluid_allConstantBC(mass, ener, mom, 1);
             %statics.setMag_allConstantBC(mag, 1);
-
+            
             %statics.setFluid_allConstantBC(mass, ener, mom, 2);
             %statics.setMag_allConstantBC(mag, 2);
-
-
+            
+            
             fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
-
-	    fluids(1).details.radiation = rad;
+            
+            obj.radiation = rad;
         end
 
 

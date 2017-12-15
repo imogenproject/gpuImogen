@@ -32,6 +32,7 @@ classdef Initializer < handle
         timeMax;        % Maximum simulation time before run exits.         double
         treadmill;      % Treadmilling direction, inactive if empty.        string
         viscosity;      % Viscosity sub initializer object.                 ViscositySubInitializer
+        radiation;      % radiation sub-initializer
         logProperties;  % List of class properties to include in run.log    cell
         fluxLimiter;    % Specifies the flux limiter(s) to use.             struct
 

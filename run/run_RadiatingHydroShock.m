@@ -6,8 +6,8 @@ run         = RadiatingShockInitializer(grid);
 
 run.iterMax     = 200000;
 run.theta       = 0;
-run.sonicMach   = 10;
-run.cfl = 0.8;
+run.sonicMach   = 3;
+
 
 run.machY_boost = 0;
 
@@ -20,13 +20,13 @@ run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical fre-free Bremsstrahlung 
-run.radTheta = .5;
+run.radTheta = -.4;
 
 % With the whole X length of the grid taken as 1, these set the length of the equilibrium
 % preshock & cold gas layers; Default values are .25 and .1 respectively
 % Low-theta (~ <.2) shocks undergo large-amplitude breathing modes and require a large cold gas
 % layer to let the large-amplitude downstream waves propagate away
-run.fractionPreshock = 0.1;
+run.fractionPreshock = 0.2;
 run.fractionCold     = 0.5;
 
 % This sets the temperature relative to the preshock temperature at which radiation rate is clamped

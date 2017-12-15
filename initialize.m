@@ -24,24 +24,27 @@ run.geometry.deserialize(ini.geometry);
 
 run.setNumFluids(ini.numFluids);
 if ini.numFluids > 1
-    run.multifluidDragMethod = 2;
+    run.multifluidDragMethod = 1;
     if mpi_amirank0();
     disp('TEST HACK WARNING');
-    disp('    initialize.m:27 set multifluid drag method to expeuler.')
+    disp('    initialize.m:27 set multifluid drag method to rk4.')
     end
 end
 
 run.compositeSrcOrders = [2 4];
 if mpi_amirank0()
     disp('TEST HACK NOTICE');
-    disp('    initialize.m:37 set cudaSourceComposite space order to 4, time order to 6.');
+    disp(['    initialize.m:37 set cudaSourceComposite space order to ' num2str(run.compositeSrcOrders(1)) ', time order to ' num2str(run.compositeSrcOrders(2)) '.']);
 end
 
 if ~isempty(ini.checkpointSteps)
     run.checkpointInterval = ini.checkpointSteps(1);
+else
+    if mpi_amirank0();
+        disp('WARNING')
+        disp('No checkpoint interval given, checkpointing disabled')
+    end
 end
-
-run.checkpointInterval = 50;
 
 %% ===== GPU settings ===== %%
 if (ini.pureHydro == true) || (ini.pureHydro == 1)
@@ -53,6 +56,14 @@ end
 % Insert members of ini.peripherals{} using run.attachPeripheral().
 if isfield(ini, 'peripherals')
     run.attachPeripheral(ini.peripherals);
+end
+
+%% ===== Radiation settings =====%%
+if ~isempty(ini.radiation)
+    run.radiation.readSubInitializer(ini.radiation);
+    if mpi_amirank0()
+        disp('Radiation subsystem enabled.');
+    end
 end
 
 %% .VTOSettings Vaccum Taffy Operator (background quiescence enforcement) settings

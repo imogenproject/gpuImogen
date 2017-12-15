@@ -83,10 +83,15 @@ classdef ImogenArray < handle
                 warning('Warning: obj.initialArray() called when array already initialized.');
             end
             
-            for d = 1:3;
-                if obj.gridSize(d) > 3;
-                    obj.applyBoundaryConditions(d);
+            if ~isempty(obj.pManager.parent)
+                for d = 1:3;
+                    if obj.gridSize(d) > 3;
+                        obj.applyBoundaryConditions(d);
+                    end
                 end
+            else
+                %warning('Danger - ImogenArray created with no parent ImogenManager: This will crash if BCs are ever set.');
+                % this makes a bloody mess of the unit tester
             end
         end
         

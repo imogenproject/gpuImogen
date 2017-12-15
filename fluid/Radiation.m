@@ -18,7 +18,9 @@ classdef Radiation < handle
         setStrength;
         solve;          % Handle to raditaion function for simulation.              @func
 
-	pureHydro; % copy from run.pureHydro
+        pureHydro; % copy from run.pureHydro
+        
+        active;
     end%PUBLIC
     
 %===================================================================================================
@@ -34,19 +36,22 @@ classdef Radiation < handle
             obj.strength = 1;
             obj.exponent = 0.5;
             obj.type     = ENUM.RADIATION_NONE;
+            obj.active   = 0;
         end
         
     end%GET/SET
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-        function readSubInitializer(obj, fluid, SI)
+        function readSubInitializer(obj, SI)
 	    obj.type                 = SI.type;
 	    obj.exponent             = SI.exponent;
 	    obj.initialMaximum       = SI.initialMaximum;
 	    obj.coolLength           = SI.coolLength;
 	    obj.strengthMethod       = SI.strengthMethod;
 	    obj.setStrength          = SI.setStrength;
+        
+        if strcmp(obj.type, ENUM.RADIATION_NONE) == 0; obj.active = 1; end
 	end
 
         function initialize(obj, run, fluid, mag)
@@ -87,17 +92,17 @@ classdef Radiation < handle
 
                 if mpi_amirank0(); fprintf('Radiation strength: %f\n', obj.strength); end
             end
-
+            
             if strcmp(obj.strengthMethod,'coollen')
-	        forceStop_ParallelIncompatible();
+                forceStop_ParallelIncompatible();
                 % FIXME: must have *global* psi(1,0,0) available.
                 vpre = mom(1).array(1,1,1) / mass.array(1,1,1); % preshock vx
-
+                
                 ppost = .75*.5*vpre^2; % strong shock approximation
                 rhopost = 4;
                 obj.strength = (.25*vpre/obj.coolLength) * 4^(obj.exponent-2) * ppost^(1-obj.exponent);
-
-fprintf('Radiation strength: %f\n', obj.strength);
+                
+                fprintf('Radiation strength: %f\n', obj.strength);
             end
 
 	    obj.pureHydro = run.pureHydro;
@@ -113,7 +118,7 @@ fprintf('Radiation strength: %f\n', obj.strength);
 % Solver for free radiation.
 % FIXME remove hard-coded T=1.05*T_0 temperature cutoff, yuck... 
         function result = opticallyThinSolver(obj, fluid, mag, dTime)
-            cudaFreeRadiation(fluid.mass, fluid.mom(1), fluid.mom(2), fluid.mom(3), fluid.ener, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [fluid.gamma obj.exponent obj.strength * dTime 1.05 obj.pureHydro]);
+            cudaFreeRadiation(fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [fluid.gamma obj.exponent obj.strength * dTime 1.05 obj.pureHydro]);
         end
         
     end%PUBLIC

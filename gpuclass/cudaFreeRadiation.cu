@@ -64,12 +64,17 @@ __constant__ __device__ double radparam[8];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-	if ((nrhs != 9) || (nlhs > 1))
-		mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(rho, px, py, pz, E, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(rho, px, py, pz, E, bx, by , bz, [gamma theta beta*dt Tmin isPureHydro]\n");
+	if ((nrhs != 5) || (nlhs > 1))
+		mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(FluidManager, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(FluidManager, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 
 	CHECK_CUDA_ERROR("Entering cudaFreeRadiation");
 
-	double *inputParams = mxGetPr(prhs[8]);
+	double *inputParams = mxGetPr(prhs[4]);
+	int ne = mxGetNumberOfElements(prhs[4]);
+	if(ne != 5) {
+		printf("Parameter vector (arg 5) to cudaFreeRadiation has %i arguments and not 5. Error.\n", ne);
+		DROP_MEX_ERROR("Aborting.");
+	}
 
 	double gam      = inputParams[0];
 	double exponent = inputParams[1];
@@ -77,18 +82,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	double minTemp  = inputParams[3];
 	int isHydro     = (int)inputParams[4] != 0;
 
-	MGArray f[8];
+	MGArray f[8]; // 0..4 = fluid, 5..7 = B
 	int worked;
 
+	worked = MGA_accessFluidCanister(prhs[0], 0, &f[0]);
+        // This returns [rho E px py pz] in arrays [0...4],
+	// We need [rho px py pz E] to avoid reordering BS in the kernel caller
+	MGArray s;
+	s = f[1];
+	f[1] = f[2];
+	f[2] = f[3];
+	f[3] = f[4];
+	f[4] = s;
+
+
 	if( isHydro == false ) {
-		worked = MGA_accessMatlabArrays(prhs, 0, 7, &f[0]);
-	} else {
-		worked = MGA_accessMatlabArrays(prhs, 0, 4, &f[0]);
+		worked = MGA_accessMatlabArrays(prhs, 1, 3, &f[5]);
+		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+			DROP_MEX_ERROR("failed to access GPU arrays entering cudaFreeRadiation.\n");
+		}
 	}
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("failed to access GPU arrays entering cudaFreeRadiation.\n"); }
 
 	MGArray *dest = NULL;
-	/* If NULL, radiation is applied to fluid.
+	/* If NULL, radiation is applied to fluid using given timestep
 	 * It not NULL, radiation RATE is written to dest */
 	if(nlhs == 1) {
 		dest = MGA_createReturnedArrays(plhs, 1, &f[0]);

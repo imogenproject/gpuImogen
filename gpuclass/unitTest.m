@@ -187,9 +187,12 @@ function fail = testCudaFreeRadiation(res)
         Tmin = 0.2;
 
         Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
-
+        
+        FM = FluidManager();
+        FM.DEBUG_uploadData(rho, Ehydro, px, py, pz);
+        
         % RADIATION RATE -- HYDRODYNAMIC
-        rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest 1 0 1]));
+        rtest = GPU_Type(cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest 1 0 1]));
         rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
 
         if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
@@ -200,7 +203,7 @@ function fail = testCudaFreeRadiation(res)
         tau = .1*.5/max(rtest.array(:));
 
         % RADIATION LOSS -- HYDRODYNAMIC
-        cudaFreeRadiation(rhod, pxd, pyd, pzd, Ehydrod, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
+        cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest tau Tmin 1]);
         P0 = gm1*(Ehydro - T);
 
         % Apply the various algorithms here
@@ -222,15 +225,19 @@ function fail = testCudaFreeRadiation(res)
         Pf(COLD) = P0(COLD);
         Enew = T + Pf/gm1;
 
-        if max(abs(Enew(:) - Ehydrod.array(:))) > 1e-12;
-		fail = 1;
-		fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
-	end
+        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12;
+            fail = 1;
+            fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
+        end
+        clear FM;
 
+        FM = FluidManager();
+        FM.DEBUG_uploadData(rho, Emhd, px, py, pz);
+        
         Emhdd = GPU_Type(Emhd); % Reload internal energy array
 
         % RADIATION RATE -- MAGNETOHYDRODYNAMIC
-        rtest = GPU_Type(cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest 1 0 0]));
+        rtest = GPU_Type(cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest 1 0 0]));
         rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
 
         if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
@@ -241,7 +248,7 @@ function fail = testCudaFreeRadiation(res)
         % RADIATION LOSS -- MAGNETOHYDRODYNAMIC
         tau = .01*.5/max(rtest.array(:));
 
-        cudaFreeRadiation(rhod, pxd, pyd, pzd, Emhdd, bxd, byd, bzd, [5/3 thtest tau Tmin 0]);
+        cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest tau Tmin 0]);
         P0 = gm1*(Emhd - T - B);
 
         % Apply the various algorithms here
@@ -264,10 +271,11 @@ function fail = testCudaFreeRadiation(res)
 
         Enew = T + B + Pf/gm1;
 
-        if max(abs(Enew(:) - Emhdd.array(:))) > 1e-12;
+        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12;
                 fail = 1;
-                fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %i\n', mpi_myrank(), thtest);
+                fprintf('   !!! RANK %i: Failed calculating radiation loss in MHD gas. Theta: %i\n', mpi_myrank(), thtest);
         end
+        clear FM;
     end
 
 end

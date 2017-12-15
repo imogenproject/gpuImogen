@@ -37,17 +37,17 @@ classdef ImogenManager < handle
         %--- Core operations: Timestep control, conservative CFD/MHD
         time;           % Manages temporal actions.                                 TimeManager
         fluid;          % Manages fluid routines.                                   FluidManager
-        % radiation removed: This is a per-fluid property
+        radiation;      % Radiative emission                                        Radiation
         magnet;         % Manages magnetic routines.                                MagnetManager
         geometry;       % Parallel behavior/semantics/global geometry handler       GeometryManager
 
         %--- Source/Sink or nonideal behavior control
-        selfGravity;    % Manages dynamic self-graivty solver.                      GravityManager
+        selfGravity;    % Manages dynamic self-gravity solver.                      GravityManager
         potentialField; % Manages a scalar potential                                PotentialFieldManager
         frameTracking;  %                                                           FrameTracker class
-
-	multifluidDragMethod; % 0 = explicit midpt, 1 = RK4, 2 = exponential midpt  integer
-	compositeSrcOrders; 
+        
+        multifluidDragMethod; % 0 = explicit midpt, 1 = RK4, 2 = exponential midpt  integer
+        compositeSrcOrders;
 
         VTOSettings; % 
 
@@ -122,6 +122,7 @@ classdef ImogenManager < handle
             obj.time        = TimeManager();                obj.time.parent         = obj;
             obj.save        = SaveManager();                obj.save.parent         = obj;
             obj.image       = ImageManager();               obj.image.parent        = obj;
+            obj.radiation   = Radiation();
 
             obj.potentialField = PotentialFieldManager();   obj.potentialField.parent = obj;
             obj.selfGravity = GravityManager();             obj.selfGravity.parent  = obj;
@@ -172,6 +173,7 @@ classdef ImogenManager < handle
                       for n = 1:numel(f)
                           f(n).initialize(mag);
                       end
+            obj.radiation.initialize(obj, obj.fluid, obj.magnet);
             obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
             obj.potentialField.initialize(IC.potentialField);
             obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);

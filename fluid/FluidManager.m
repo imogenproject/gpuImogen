@@ -15,8 +15,6 @@ classdef FluidManager < handle
         viscosity;                % Artificial viscosity object.                 ArtificialViscosity
         limiter;                  % Flux limiters to use for each flux direction.       cell(3)
 
-        radiation;                % Radiative emission properties for this fluid        Radiation
-    
         checkCFL;
         isDust;
 
@@ -49,7 +47,6 @@ classdef FluidManager < handle
 % Creates a new FluidManager instance.
         function self = FluidManager() 
             self.viscosity     = ArtificialViscosity();
-            self.radiation     = Radiation();
             self.fluidName     = 'some_gas';
             % Set defaults
             self.checkCFL      = 1;
@@ -113,15 +110,11 @@ classdef FluidManager < handle
             self.gamma         = details.gamma;
 
             % We assume these will be set to meaningful values if needed (multiphase flow / radiation)
-            if isfield(details,'sigma'); self.particleSigma = details.sigma; else; self.particleSigma = 1.0; end
-            if isfield(details,'mu'); self.particleMu = details.mu; else; self.particleMu = 1.0; end
+            if isfield(details,'sigma'); self.particleSigma = details.sigma; else self.particleSigma = 1.0; end
+            if isfield(details,'mu'); self.particleMu = details.mu; else self.particleMu = 1.0; end
 
             if isfield(details,'isDust');   self.isDust     = details.isDust;   end
             if isfield(details,'checkCFL'); self.checkCFL   = details.checkCFL; end
-
-            if isfield(details,'radiation');
-                self.radiation.readSubInitializer(self, details.radiation);
-            end
         end
         
         function DEBUG_uploadData(self, rho, E, px, py, pz)
@@ -164,7 +157,6 @@ classdef FluidManager < handle
 %________________________________________________________________________________________ initialize
         function initialize(self, mag)
             self.viscosity.preliminary();
-            self.radiation.initialize(self.parent, self, mag);
 
             for i = 1:numel(self)
                 self(i).viscosity.preliminary();

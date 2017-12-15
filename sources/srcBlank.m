@@ -1,7 +1,10 @@
 function srcBlank(run, fluids, mag, tFraction)
-% This function sources 
+% This function sources nothing (except maybe radiation)
 
-dtime = run.time.dTime * tFraction;
+dTime = run.time.dTime * tFraction;
 
+if run.radiation.active
+    run.radiation.opticallyThinSolver(fluids, mag, dTime);
+end
 
 end
