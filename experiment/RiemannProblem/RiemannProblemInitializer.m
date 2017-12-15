@@ -36,7 +36,6 @@ classdef RiemannProblemInitializer < Initializer
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
-            obj.cfl              = 0.7;
             obj.iterMax          = 150;
             obj.ppSave.dim1      = 10;
             obj.ppSave.dim3      = 25;
@@ -106,7 +105,7 @@ classdef RiemannProblemInitializer < Initializer
             self.gamma = 1.4;
             self.timeMax = 0.2;
 
-	    self.setupRiemann1D([1 0 0 0 1], [0.125 0 0 0 .1]);
+            self.setupRiemann1D([1 0 0 0 1], [0.125 0 0 0 .1]);
         end
 
         function setupEinfeldt(self, mach, gam)
@@ -114,22 +113,22 @@ classdef RiemannProblemInitializer < Initializer
             self.orientate(0,0,0);
 
             if (numel(mach) == 4) && (numel(gam) == 4)
-	        % Use the Einfeldt [rho,m,n,e] formula to specify ICs
-	        self.gamma = 1.4;
+                % Use the Einfeldt [rho,m,n,e] formula to specify ICs
+                self.gamma = 1.4;
                 el = mach; er = gam;
-
-		left = [el(1) el(2) el(3) 0 0];
-		right = [er(1) er(2) er(3) 0 0];
-		% Calculate P
-		left(5) = (el(4) - el(1)*(el(2)^2+el(3)^2)) / (self.gamma-1);
-		right(5) = (er(4) - er(1)*(er(2)^2+er(3)^2)) / (self.gamma-1);
-		if (left(5) < 0) || (right(5) < 0)
-		    fprintf('Fatal problem: Einfeldt test initial conditions specify negative pressure.\n');
+                
+                left = [el(1) el(2) el(3) 0 0];
+                right = [er(1) er(2) er(3) 0 0];
+                % Calculate P
+                left(5) = (el(4) - .5*el(1)*(el(2)^2+el(3)^2)) / (self.gamma-1);
+                right(5) = (er(4) - .5*er(1)*(er(2)^2+er(3)^2)) / (self.gamma-1);
+                if (left(5) < 0) || (right(5) < 0)
+                    fprintf('Fatal problem: Einfeldt test initial conditions specify negative pressure.\n');
                     mpi_errortest(1);
-		else
-		    mpi_errortest(0);
-		end
-	    else
+                else
+                    mpi_errortest(0);
+                end
+            else
                 self.gamma = gam;
                 c0 = sqrt(gam);
                 left = [1 -c0*mach(1) 0 0 1];
@@ -142,9 +141,9 @@ classdef RiemannProblemInitializer < Initializer
                     left(4) = mach(3)*c0;
                     right(4)= mach(3)*c0;
                 end
-	    end
-        
-	    self.setupRiemann1D(left, right);
+            end
+            
+            self.setupRiemann1D(left, right);
         end
 
         function setupRiemann1D(self, Uleft, Uright)
