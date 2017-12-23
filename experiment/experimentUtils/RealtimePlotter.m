@@ -355,13 +355,13 @@ classdef RealtimePlotter <  LinkedListNode
             case 103; % YZ velocity
                 Q = { fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 104; % 
-                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{2}(u,v,w)};
             case 105;
-                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{3}(u,v,w)};
             case 106;
-                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry, fluid.parent.frameTracking);
+                QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{2}(u,v,w), QQ{3}(u,v,w)};
             default;
                 error(['Fatal: received value of ' num2str(what) ' that is unhandled.']);

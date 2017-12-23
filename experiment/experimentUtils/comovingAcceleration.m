@@ -1,4 +1,4 @@
-function A = comovingAcceleration(fluid, gravPot, geometry, frame)
+function A = comovingAcceleration(fluid, gravPot, geometry)
 
 P = fluid.calcPressureOnCPU();
 rho = fluid.mass.array;
@@ -17,8 +17,8 @@ if geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     A = { P1 ./ rho + G1.*gravon, P2 ./ rho + G2.*gravon, P3 ./ rho + G3.*gravon};
     
     vphi = fluid.mom(2).array ./ rho;
-    if frame.omega ~= 0
-        vphi = vphi + radius * frame.omega;
+    if geometry.frameRotationomega ~= 0
+        vphi = vphi + radius * geometry.frameRotationOmega;
     end
     
     A{2} = A{2} + vphi.^2 ./ radius;
