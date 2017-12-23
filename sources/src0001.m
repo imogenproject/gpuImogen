@@ -10,6 +10,10 @@ mu_dust    = fluids(2).particleMu;
 
 cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime, run.multifluidDragMethod]);
 
+if run.radiation.active
+    run.radiation.opticallyThinSolver(fluids, run.magnet, dTime);
+end
+
 % Assert boundary conditions
 for N = 1:numel(fluids)
     fluids(N).setBoundaries(1);

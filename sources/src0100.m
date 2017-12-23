@@ -5,8 +5,12 @@ dTime = tFraction * run.time.dTime;
 
 if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     [uv, vv, ~] = run.geometry.ndgridVecs('pos');
-    xyvector = GPU_Type([ (uv-run.frameTracking.rotateCenter(1)) (vv-run.frameTracking.rotateCenter(2)) ], 1);
-    cudaSourceRotatingFrame(fluids, run.frameTracking.omega, dTime, xyvector);
+    xyvector = GPU_Type([ (uv-run.geometry.frameRotationCenter(1)) (vv-run.geometry.RotationCenter(2)) ], 1);
+    cudaSourceRotatingFrame(fluids, run.geometry.frameOmega, dTime, xyvector);
+end
+
+if run.radiation.active
+    run.radiation.opticallyThinSolver(fluids, run.magnet, dTime);
 end
 
 % Assert boundary conditions

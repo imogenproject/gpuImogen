@@ -24,10 +24,10 @@ run.geometry.deserialize(ini.geometry);
 
 run.setNumFluids(ini.numFluids);
 if ini.numFluids > 1
-    run.multifluidDragMethod = 1;
+    run.multifluidDragMethod = 4;
     if mpi_amirank0();
     disp('TEST HACK WARNING');
-    disp('    initialize.m:27 set multifluid drag method to rk4.')
+    disp('    initialize.m:27 set multifluid drag method to logtrap.')
     end
 end
 

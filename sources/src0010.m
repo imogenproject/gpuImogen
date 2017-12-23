@@ -12,6 +12,10 @@ for N = 1:numel(fluids);
     fluids(N).synchronizeHalos(3, [0 1 1 1 1]);
 end
 
+if run.radiation.active
+    run.radiation.opticallyThinSolver(fluids, run.magnet, dTime);
+end
+
 % Assert boundary conditions
 for N = 1:numel(fluids)
     fluids(N).setBoundaries(1);

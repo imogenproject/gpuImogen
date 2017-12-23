@@ -44,7 +44,6 @@ classdef ImogenManager < handle
         %--- Source/Sink or nonideal behavior control
         selfGravity;    % Manages dynamic self-gravity solver.                      GravityManager
         potentialField; % Manages a scalar potential                                PotentialFieldManager
-        frameTracking;  %                                                           FrameTracker class
         
         multifluidDragMethod; % 0 = explicit midpt, 1 = RK4, 2 = exponential midpt  integer
         compositeSrcOrders;
@@ -132,8 +131,6 @@ classdef ImogenManager < handle
 
             obj.attachPeripheral(obj.save); % temporary?
 
-            obj.frameTracking = FrameTracker();
-
             obj.paths       = Paths();
             obj.info        = cell(30,2);
             obj.infoIndex   = 1;
@@ -176,7 +173,15 @@ classdef ImogenManager < handle
             obj.radiation.initialize(obj, obj.fluid, obj.magnet);
             obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
             obj.potentialField.initialize(IC.potentialField);
-            obj.frameTracking.initialize(obj, IC.ini.frameParameters, f(1).mass, f(1).ener, f(1).mom);
+            
+            obj.geometry.frameRotationCenter = IC.ini.frameParameters.rotateCenter;
+            obj.geometry.frameRotationOmega  = IC.ini.frameParameters.omega;
+            
+            if obj.geometry.frameRotationOmega ~= 0
+                j = obj.geometry.frameRotationOmega;
+                obj.geometry.frameRotationOmega = 0;
+                source_alterFrameRotation(obj, f, j);
+            end
         end
         
 %_____________________________________________________________________________________ postliminary

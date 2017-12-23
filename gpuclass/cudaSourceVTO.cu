@@ -28,9 +28,9 @@ __device__ __constant__ int arrayparams[4];
 
 __device__ __constant__ double devGeom[4];
 #define GEOM_V0    devGeom[0]
-#define GEOM_DV0    devGeom[1]
+#define GEOM_DV0   devGeom[1]
 #define GEOM_V1    devGeom[2]
-#define GEOM_DV1    devGeom[3]
+#define GEOM_DV1   devGeom[3]
 
 
 __global__ void cukern_SourceVacuumTaffyOperator_IRF(double *base, double momfactor, double rhofactor, double rhoCrit, double rhoMin);
@@ -57,7 +57,7 @@ __global__ void cukern_SourceVacuumTaffyOperator_CylRRF(double *base, double mom
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
-    if ((nrhs != 3) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt alpha beta, omega], GeometryManager)\n");
+    if ((nrhs != 3) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSourceVTO(FluidManager, [dt, alpha, beta], GeometryManager)\n");
 
     if(CHECK_CUDA_ERROR("entering cudaSourceVTO") != SUCCESSFUL) { DROP_MEX_ERROR("Failed before entry to cudaSourceVTO."); }
 
@@ -68,14 +68,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     double *fltargs = mxGetPr(prhs[1]);
     int N = mxGetNumberOfElements(prhs[1]);
-    if(N != 4) {
-	DROP_MEX_ERROR("Require [dt alpha beta frame_omega] in 2nd argument: Got other than 4 values\n");
+    if(N != 3) {
+	DROP_MEX_ERROR("Require [dt alpha beta] in 2nd argument: Got other than 3 values\n");
     }
 
     double dt    = fltargs[0];
     double alpha = fltargs[1];
     double beta  = fltargs[2];
-    double frameW= fltargs[3];
     double rho_c = 0;
 
     GeometryParams geo = accessMatlabGeometryClass(prhs[2]);
@@ -105,12 +104,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 			DROP_MEX_ERROR("Crashing.\n");
 		}
 
-		status = sourcefunction_VacuumTaffyOperator(&fluid[0], dt, alpha, beta, frameW, rho_c, geo);
+		status = sourcefunction_VacuumTaffyOperator(&fluid[0], dt, alpha, beta, rho_c, geo);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("vacuum taffy operator dumping: failed to apply source terms.");
 	}
 }
 
-int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double frameOmega, double minimumDensity, GeometryParams geo)
+int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double minimumDensity, GeometryParams geo)
 {
 	int returnCode = SUCCESSFUL;
 	int apHost[4];
@@ -118,6 +117,8 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 	double criticalDensity = 5*minimumDensity;
 
 	int sub[6];
+
+
 
 	int i;
 	for(i = 0; i < fluid->nGPUs; i++) {
@@ -134,10 +135,10 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 		returnCode = CHECK_CUDA_ERROR("Parameter constant upload");
 		if(returnCode != SUCCESSFUL) return returnCode;
 	
-		hostGeomInfo[0] = -frameOmega*geo.x0;
-		hostGeomInfo[1] = -frameOmega*geo.h[0];
-		hostGeomInfo[2] = -frameOmega*geo.y0;
-		hostGeomInfo[3] = -frameOmega*geo.h[1];
+		hostGeomInfo[0] = -geo.frameOmega*geo.x0;
+		hostGeomInfo[1] = -geo.frameOmega*geo.h[0];
+		hostGeomInfo[2] = -geo.frameOmega*geo.y0;
+		hostGeomInfo[3] = -geo.frameOmega*geo.h[1];
 		cudaMemcpyToSymbol((const void *)devGeom, &hostGeomInfo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
 	}
 
@@ -151,7 +152,7 @@ int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, 
 		// Rest walks Y/Z
 		dim3 blocksize(128, 1, 1);
 
-		if(frameOmega != 0.0) {
+		if(geo.frameOmega != 0.0) {
 			int n_yz = sub[4]*sub[5];
 			gridsize.x = ROUNDUPTO(sub[3], 128)/128;
 			gridsize.y = n_yz >= 32 ? 32 : n_yz;

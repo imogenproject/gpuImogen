@@ -367,11 +367,8 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 	// the inertial rest frame zero (imposed if inward flow is attempted)
 	// is not zero in the rotating frame:
 
-	// HACK FIXME this should be a passed param, not hardcode
-	double hackedOmega = 1.0;
-
-	for(i = 0; i < 3; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*hackedOmega; }
-	for(i = 3; i < 6; i++) { rfVelocity[i] = -(geom->Rinner + (fluid->dim[0]-6+i)*geom->h[0])*hackedOmega;  }
+	for(i = 0; i < 3; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*geom->frameOmega; }
+	for(i = 3; i < 6; i++) { rfVelocity[i] = -(geom->Rinner + (fluid->dim[0]-6+i)*geom->h[0])*geom->frameOmega;  }
 
 	for(i = 0; i < fluid->nGPUs; i++) {
 		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction

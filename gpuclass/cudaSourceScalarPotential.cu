@@ -80,20 +80,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     int numFluids = mxGetNumberOfElements(prhs[0]);
     int fluidct;
-// FIXME require separate rhomin/rho_fullg per fluid becuase they will generally have distinct characteristic scales of density.
+
     for(fluidct = 0; fluidct < numFluids; fluidct++) {
     	worked = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
-    	// FIXME check if this barfed?
+    	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+
     	mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
     	if(flprop != NULL) {
     		rhoMinimum = *((double *)mxGetPr(flprop));
     	} else {
     		worked = ERROR_NULL_POINTER;
+    		break;
     	}
-    	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+
     	worked = sourcefunction_ScalarPotential(&fluid[0], &phi, dt, geom, rhoMinimum, rhoFull);
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
     }
+
+    if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSourceScalarPotential failed"); }
 
 }
 

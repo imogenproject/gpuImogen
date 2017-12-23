@@ -1446,7 +1446,8 @@ __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel)
 }
 
 /* Synchronizes the halo regions between data partitions of a[0] to a[n-1].
- * Does nothing if a[i].haloSize == 0 or a[i].nGPUs == 1. */
+ * Does nothing if a[i].haloSize == 0 or a[i].nGPUs == 1.
+ * returns error if something failed, or SUCCESSFUL */
 int MGA_exchangeLocalHalos(MGArray *a, int n)
 {
 	int i, j, jn, jp;
@@ -2245,6 +2246,9 @@ GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 
 	g.Rinner = derefXdotAdotB_scalar(geoclass, "pInnerRadius", NULL);
 	derefXdotAdotB_vector(geoclass, "d3h", NULL, &g.h[0], 3);
+
+	derefXdotAdotB_vector(geoclass, "frameRotationCenter", NULL, &g.frameRotateCenter[0], 3);
+	g.frameOmega = derefXdotAdotB_scalar(geoclass, "frameRotationOmega", NULL);
 
 	int shapenum = derefXdotAdotB_scalar(geoclass, "pGeometryType", NULL);
 

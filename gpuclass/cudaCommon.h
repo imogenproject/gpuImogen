@@ -41,6 +41,9 @@ typedef struct __GeometryParams {
 	double Rinner; // Only for cylindrical geometry
 	               // The inner coordinate of the whole-host partition
 
+	double frameRotateCenter[3];
+	double frameOmega;
+
 	// TODO: add allocatable vectors here for variable spacing in the future
 } GeometryParams;
 

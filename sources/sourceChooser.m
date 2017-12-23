@@ -4,11 +4,10 @@ function S = sourceChooser(run, fluids, mag)
 % and chooses an appropriate source function to call at runtime without
 % the overhead of this process in a generic source.m file.
 
-if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL; useCyl = 1; else; useCyl = 0; end
-if run.frameTracking.omega ~= 0; useRF  = 1; else; useRF  = 0; end
-if run.potentialField.ACTIVE;    usePhi = 1; else; usePhi = 0; end
-if numel(run.fluid) > 1;         use2F  = 1; else; use2F  = 0; end
-
+if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL; useCyl = 1; else useCyl = 0; end
+if run.geometry.frameRotationOmega ~= 0; useRF  = 1; else useRF  = 0; end
+if run.potentialField.ACTIVE;    usePhi = 1; else usePhi = 0; end
+if numel(run.fluid) > 1;         use2F  = 1; else use2F  = 0; end
 
 % radiation? handle by 2fluid?
 %cyl	rf	phi	2f	rad	| SOLUTION		

@@ -109,14 +109,16 @@ function outdirectory = imogen(srcData, resumeinfo)
             backupData = dumpCheckpoint(run);
         end
 
+        srcFunc(run, run.fluid, mag, 0.5);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, 1);
-        srcFunc(run, run.fluid, mag, 2.0);
+        srcFunc(run, run.fluid, mag, 1.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         %flux(run, run.fluid, mag, -1);
+        srcFunc(run, run.fluid, mag, 0.5);
 
-	if run.VTOSettings(1)
-	    cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3), run.frameTracking.omega], run.geometry);
+        if run.VTOSettings(1)
+            cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
         end
 
         if run.checkpointInterval && checkPhysicality(run.fluid)

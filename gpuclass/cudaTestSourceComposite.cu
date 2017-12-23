@@ -17,7 +17,7 @@
 #define SRCBLOCKX 16
 #define SRCBLOCKY 16
 
-int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double omega, double dt, int spaceOrder, int temporalOrder);
+int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int temporalOrder);
 
 __global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
 
@@ -77,7 +77,7 @@ __constant__ __device__ int devIntParams[3];
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
-	if ((nrhs!=5) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaTestSourceComposite(FluidManager, phi, GeometryManager, [rhomin, rho_fullg, omega, dt, spaceorder], [xvector yvector])\n");
+	if ((nrhs!=5) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaTestSourceComposite(FluidManager, phi, GeometryManager, [rhomin, rho_fullg, dt, spaceorder], [xvector yvector])\n");
 
 	CHECK_CUDA_ERROR("entering cudaSourceRotatingFrame");
 
@@ -89,18 +89,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	 * FIXME: that seems the only reasonable way to avoid partitioning hell
 	 */
 	double *scalars = mxGetPr(prhs[3]);
-	if(mxGetNumberOfElements(prhs[3]) != 6) {
+	if(mxGetNumberOfElements(prhs[3]) != 5) {
 		PRINT_FAULT_HEADER;
-		printf("The 4th argument must be a five element vector: [rho_nog, rho_fullg, omega, dt, space order, temporal order]. It contains %i elements.\n", mxGetNumberOfElements(prhs[3]));
+		printf("The 4th argument must be a five element vector: [rho_nog, rho_fullg, dt, space order, temporal order]. It contains %i elements.\n", mxGetNumberOfElements(prhs[3]));
 		PRINT_FAULT_FOOTER;
 		DROP_MEX_ERROR("Invalid arguments, brah!");
 	}
-	double omega = scalars[2];
-	double dt    = scalars[3];
+
 	double rhonog= scalars[0];
 	double rhofg = scalars[1];
-	int spaceOrder    = (int)scalars[4];
-	int timeOrder     = (int)scalars[5];
+	double dt    = scalars[2];
+	int spaceOrder    = (int)scalars[3];
+	int timeOrder     = (int)scalars[4];
 	GeometryParams geom = accessMatlabGeometryClass(prhs[2]);
 
 	int status;
@@ -121,14 +121,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 
-		status = sourcefunction_Composite(&fluid[0], &gravPot, &xyvec, geom, rhonog, rhofg, omega, dt, spaceOrder, timeOrder);
+		status = sourcefunction_Composite(&fluid[0], &gravPot, &xyvec, geom, rhonog, rhofg, dt, spaceOrder, timeOrder);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
 	}
 
 }
 
 
-int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double omega, double dt, int spaceOrder, int timeOrder)
+int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int timeOrder)
 {
 	dim3 gridsize, blocksize;
 	int3 arraysize;
@@ -152,7 +152,7 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     lambda[7] = geom.Rinner; // This is actually overwritten per partition below
     lambda[8] = dx[1];
 
-	lambda[9] = omega;
+	lambda[9] = geom.frameOmega;
 	lambda[10]= dt;
 
 	//int isThreeD = (fluid->dim[2] > 1);

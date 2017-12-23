@@ -23,6 +23,9 @@ classdef GeometryManager < handle
                             % input domain (excluding halo).
 
         edgeInterior; % Marks if [left/right, x/y/z] side is interior (circular) or exterior (maybe not)
+        
+        frameRotationCenter;
+        frameRotationOmega;
     end % Private
 
     properties (SetAccess = private, GetAccess = public)
@@ -75,6 +78,9 @@ classdef GeometryManager < handle
 
             obj.setup(globalResolution);
             obj.geometrySquare([0 0 0], [1 1 1]); % Set default geometry to cartesian, unit spacing
+            
+            obj.frameRotationCenter = [0 0 0];
+            obj.frameRotationOmega = 0;
         end
 
         function package = serialize(self)

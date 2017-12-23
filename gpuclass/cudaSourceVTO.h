@@ -8,6 +8,6 @@
 #ifndef CUDASOURCEVTO_H_
 #define CUDASOURCEVTO_H_
 
-int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double frameOmega, double criticalDensity, GeometryParams geo);
+int sourcefunction_VacuumTaffyOperator(MGArray *fluid, double dt, double alpha, double beta, double criticalDensity, GeometryParams geo);
 
 #endif /* CUDASOURCEVTO_H_ */

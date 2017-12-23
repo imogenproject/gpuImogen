@@ -24,26 +24,39 @@ __constant__ double devLambda[16]; // for gradient calculator kernels
 
 #define PI 3.141592653589793
 
-#define EXPO_TRAPEZOID
+//#define EXPO_TRAPEZOID
+
+//#define EXPO_DOTR
 
 // This will vomit out data to console every single call
-// designed for use with 32x1x1 test simulation
 //#define DBGPRINT
+// This will account for the pressure gradient and solve v' = -kv + a
+//#define ACCOUNT_GRADP
 
 int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, GeometryParams geo, double gam, double sigmaGas, double muGas, double sigmaDust, double muDust, double dt, int method);
 
 int solveDragEMP(MGArray *gas, MGArray *dust, double dt);
 int solveDragRK4(MGArray *gas, MGArray *dust, double dt);
+int solveDragExponentialEuler(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt);
+int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt);
+
 int solveDragExponentialMidpt(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt);
 
 int prepareForERK2(MGArray *gas, MGArray *dust, MGArray *tempMem, GeometryParams geom, int spaceOrder, double scalingParameter);
 int findMidGradP2(MGArray *gas, MGArray *tempMem, GeometryParams geom, int spaceOrder, double scalingParameter);
+
+void dbgPrint(MGArray *gas, MGArray *dust, MGArray *t, int who, int idx);
 
 template <bool ONLY_DV_INI>
 __global__ void cukern_GasDustDrag_full(double *gas, double *dust, double *tmpmem, int srcBlock, int dstBlock, int N);
 __global__ void cukern_GasDustDrag_Epstein(double *gas, double *dust, double *vrel, int N);
 template <bool resetAccumulator>
 __global__ void cukern_GasDustDrag_linearTime(double *gas, double *dust, double *tmpmem, int srcBlock, int kBlock, int N);
+
+// shell call for inner loop of above kernel
+template <bool resetAccumulator>
+__device__ void cukern_GasDustDrag_linearCore(double *gas, double *dust, double *tmpmem, int srcBlock, int kBlock, int N);
+
 
 __global__ void cukern_findInitialDeltaV(double *g, double *d, double *dv, unsigned long partNumel);
 
@@ -58,9 +71,12 @@ __global__ void cukern_SolveRK_final(double *tmpmem, int i, double B, double W, 
 
 __global__ void cukern_applyFinalDeltaV(double *g, double *d, double *dv_final, unsigned long partNumel);
 
-__global__ void cukern_ExponentialEulerHalf(double *gas, double *dust, double *tmpmem, double t, unsigned long partNumel);
+__global__ void cukern_ExponentialEulerIntermediate(double *gas, double *dust, double *tmpmem, double t, unsigned long partNumel);
 __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, double *tmpmem);
 __global__ void cukern_exponentialTrapezoid(double *gas, double *dust, double t, double *tmpmem);
+__global__ void cukern_ETD1RK(double *gas, double *dust, double t, double *tmpmem);
+
+__global__ void cukern_LogTrapSolve(double *gas, double *dust, double t, double *tmpmem, int partNumel);
 
 // Accept the following drag models:
 // (1) full      : Use full Epstein+Stokes calculation with interpolation between all 4 quadrants
@@ -104,7 +120,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	size_t ne = mxGetNumberOfElements(prhs[2]);
 	if(ne != 6) {
 		PRINT_FAULT_HEADER;
-		printf("2nd argument to cudaSource2FluidDrag must have 6 elements:\n[sigmaGas muGas sigmaDust muDust dt (method: 0=midpt, 1=rk4, 2=exponential)]\nGiven argument has %i instead.\n", ne);
+		printf("3rd argument to cudaSource2FluidDrag must have 6 elements:\n[sigmaGas muGas sigmaDust muDust dt (method: 0=midpt, 1=rk4, 2=exponential)]\nGiven argument has %i instead.\n", ne);
 		PRINT_FAULT_FOOTER;
 		DROP_MEX_ERROR("Crashing.");
 	}	
@@ -180,12 +196,48 @@ int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, GeometryParams g
 	case 1: // RK4
 		statusCode = CHECK_IMOGEN_ERROR(solveDragRK4(fluidA, fluidB, dt));
 		break;
-	case 2: // ERK2
-		statusCode = CHECK_IMOGEN_ERROR(solveDragExponentialMidpt(fluidA, fluidB, geo, gam, dt));
+	case 2: // ETD1RK
+		statusCode = CHECK_IMOGEN_ERROR(solveDragExponentialEuler(fluidA, fluidB, geo, gam, dt));
+		break;
+	case 3: //
+		statusCode = ERROR_NOIMPLEMENT;
+		break;
+	case 4: // log trapezoid method
+		statusCode = CHECK_IMOGEN_ERROR(solveDragLogTrapezoid(fluidA, fluidB, geo, gam, dt));
 		break;
 	}
 	
 	return statusCode;
+}
+
+/* Helps track the state of the integrator when debugging w/o needing cuda-gdb
+ * i.e. a slightly more sophisticated printf()-debug
+ * gas, dust, t are the five-MGArray pointers to gas, dust and tmp storage
+ * who: bit 1 = print about gas, 2 = about dust, 4 = about tmp
+ * idx: the linear index of the cell to print about
+ */
+void dbgPrint(MGArray *gas, MGArray *dust, MGArray *t, int who, int idx)
+{
+	double *hstcpy = (double *)malloc(gas->slabPitch[0]*5);
+
+	int qq = gas->slabPitch[0]/8;
+	if(who & 1) {
+		cudaMemcpy((void *)hstcpy, (const void *)gas->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
+		printf("Gas input state: [%e %e %e %e %e]\n", hstcpy[idx+0*qq], hstcpy[idx+1*qq], hstcpy[idx+2*qq], hstcpy[idx+3*qq], hstcpy[idx+4*qq]);
+	}
+
+	if(who & 2) {
+		cudaMemcpy((void *)hstcpy, (const void *)dust->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
+		printf("Dust input state: [%e %e %e %e %e]\n", hstcpy[idx+0*qq], hstcpy[idx+1*qq], hstcpy[idx+2*qq], hstcpy[idx+3*qq], hstcpy[idx+4*qq]);
+	}
+
+	if(who & 4) {
+		cudaMemcpy((void *)hstcpy, (const void *)t->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
+		printf("tmp memory state: [%e %e %e %e %e]\n", hstcpy[idx+0*qq], hstcpy[idx+1*qq], hstcpy[idx+2*qq], hstcpy[idx+3*qq], hstcpy[idx+4*qq]);
+	}
+
+	free(hstcpy);
+
 }
 
 /* Solves the action of gas-dust drag for one dust using the explicit midpoint method
@@ -269,8 +321,7 @@ for(i = 0; i < n; i++) {
 	cudaFree((void *)tmpmem[i]);
 }
 
-return SUCCESSFUL; // FIXME: check this once its working
-
+return CHECK_IMOGEN_ERROR(statusCode);
 }
 
 /* Solves the action of the gas-dust drag for one dust using the 4th order RK method of Kutta (1903)
@@ -379,7 +430,7 @@ for(i = 0; i < n; i++) {
 	cudaFree((void *)tmpmem[i]);
 }
 
-return statusCode;
+return CHECK_IMOGEN_ERROR(statusCode);
 }
 
 /* Solves the gas-dust drag equations using the 2nd order Explicit Exponential Runge-Kutta method
@@ -395,168 +446,289 @@ return statusCode;
  * (i.e. the effect of drag heating in altering pressure gradients is neglectable) if drag is strong
  * enough to require calling this method.
  * formally order 2, stiff order 2, L-stable */
-int solveDragExponentialMidpt(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt)
+int solveDragExponentialEuler(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt)
 {
-int n = gas->nGPUs;
+	int dbprint = 0;
+	int n = gas->nGPUs;
 
-double *g; double *d;
-double *tempPtr;
+	double *g; double *d;
+	double *tempPtr;
 
-int statusCode = SUCCESSFUL;
+	int statusCode = SUCCESSFUL;
 
-MGArray tmpMem;
-MGArray *gs = &tmpMem;
+	MGArray tmpMem;
+	MGArray *gs = &tmpMem;
 
-statusCode = MGA_allocSlab(gas, gs, 6);
-if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
+	statusCode = MGA_allocSlab(gas, gs, 6);
+	if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
 
-int i;
-int BS = 96;
+	int i;
+	int BS = 96;
 
-// for kernels not requiring finite differencing
-dim3 linblock(BS, 1, 1);
-dim3 lingrid(32, 1, 1);
+	// for kernels not requiring finite differencing
+	dim3 linblock(BS, 1, 1);
+	dim3 lingrid(32, 1, 1);
 
-// for kernels that do need to do FD
-dim3 fdgrid(4, 4, 1);
-dim3 fdblock(16, 16, 1);
+	// for kernels that do need to do FD
+	dim3 fdgrid(4, 4, 1);
+	dim3 fdblock(16, 16, 1);
 
-// Emits [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
-statusCode = prepareForERK2(gas, dust, gs, geo, 2, fluidGamma - 1);
+	// Emits [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
+	statusCode = prepareForERK2(gas, dust, gs, geo, 2, fluidGamma - 1);
 
-#ifdef DBGPRINT
-	double *hstcpy = (double *)malloc(gas->slabPitch[0]*5);
-	cudaMemcpy((void *)hstcpy, (const void *)gas->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("Gas input state: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-	cudaMemcpy((void *)hstcpy, (const void *)dust->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("Dust input state: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-	cudaMemcpy((void *)hstcpy, (const void *)gs->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("post-prep tmp st: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-#endif
+	if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
 
-int velblock = 0;
-int kblock = 0;
+	int velblock = 0;
+	int kblock = 0;
 
-double tPredict, tFull;
-#ifdef EXPO_TRAPEZOID
-tPredict = dt;
-tFull = 0.5*dt; // this may look bass ackward but it's correct
-#else
-tPredict = .5*dt;
-tFull = dt;
-#endif
+	for(i = 0; i < n; i++) {
+		long NE = gas->partNumel[i];
 
-int doExpEuler = 0;
+		// avoid launching tons of threads for small problems
+		lingrid.x = 32;
+		if(ROUNDUPTO(NE, BS)/BS < 32) {
+			lingrid.x = ROUNDUPTO(NE, BS)/BS;
+		}
 
-for(i = 0; i < n; i++) {
-	long NE = gas->partNumel[i];
+		cudaSetDevice(gas->deviceID[i]);
+		g = gas->devicePtr[i];
+		d = dust->devicePtr[i];
+		tempPtr = tmpMem.devicePtr[i];
 
-	// avoid launching tons of threads for small problems
-	lingrid.x = 32;
-	if(ROUNDUPTO(NE, BS)/BS < 32) {
-		lingrid.x = ROUNDUPTO(NE, BS)/BS;
+		// Use u_0 and dv_tr to compute the drag eigenvalue at t=0
+		// overwrite the |dv_tr| value (block 0) with K
+		cukern_GasDustDrag_linearTime<true><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_GasDustDrag_linearTime");
+		if(statusCode != SUCCESSFUL) break;
+
+		if(dbprint) { dbgPrint(gas, dust, gs, 4, 6); }
+
+		// Use 1st order exponential time differencing (exponential euler)
+		cukern_ETD1RK<<<lingrid, linblock>>>(g, d, dt, tempPtr);
+
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_ExponentialEulerHalf");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
+
 	}
 
-	cudaSetDevice(gas->deviceID[i]);
-	g = gas->devicePtr[i];
-	d = dust->devicePtr[i];
-	tempPtr = tmpMem.devicePtr[i];
+	// Make sure node's internal boundaries are consistent
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) MGA_exchangeLocalHalos(gas  + 1, 4);
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) MGA_exchangeLocalHalos(dust + 1, 4);
 
-	// This part is accomplished by the prepareForERK2 call above
-	// Compute the initial specific internal energy, scalar |dv_timereversed|, & pressure gradient
-	//cukern_exponentialDragSetup<<<fdgrid, fdblock>>>(g, d, tempPtr, gas->partNumel[i]);
-	//statusCode = CHECK_CUDA_LAUNCH_ERROR(fdblock, fdgrid, gas, i, "cukern_exponentialDragSetup");
-	//if(statusCode != SUCCESSFUL) break;
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) MGA_delete(gs);
 
-	// Use u_0 and dv_tr to compute the drag eigenvalue at t=0
-	// overwrite the |dv_tr| value (block 0) with K
-	cukern_GasDustDrag_linearTime<true><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
-	statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_GasDustDrag_linearTime");
-	if(statusCode != SUCCESSFUL) break;
-#ifdef DBGPRINT
-	cudaMemcpy((void *)hstcpy, (const void *)gs->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("post-lint tmp st: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
+	return statusCode;
+}
+
+// TODO
+/* Implement Exponential Time Differencing, 2nd order RK:
+ * y_1   = exp(h L) y_0 + h phi_1(h L) f(t=0)
+ * y_n+1 = exp(h L) y_0 + h (phi_1(h L) - phi_2(h L)) f(t=0) + h phi_2(h L) f(t=1)
+ *
+ *L = -k
+ *-> y_1 = exp(-k t) y_0 + t (exp(-k t)-1) / (-k t) f_0
+ *-> y_1 = exp(-k t) y_0 + f_0 (1 - exp(-k t)) / k
+ *-> y_1 = f_0 / k + (y_0 - f_0/k) exp(-k t)
+ *
+ *y_n+1 = exp(-k t) y_0 + f_0 (-(exp(-k t)-1)/k - (exp(-k t)-1-kt)/(k^2 t)) + f_1 (exp(-kt)-1-k t)/k^2t
+ *y_n+1 = exp(-k t) y_0 + f_0/k + (f_0-f_1)/k^2t + f_0/k - f_1/k + (-f_0/k - f_0/k^2t + f_1/k^2t) exp(-k t)
+ *y_n+1 = exp(-k t) y_0 + (2f_0-f_1)/k -f_0/k exp(-kt) + (f_0-f_1)/k^2t - (f_0 - f_1) exp(-k t)/k^2t
+ *y_n+1 = (2f_0-f_1)/k + (y_0-f_0/k) exp(-kt) + (f_0-f_1)(1-exp(-kt))/k^2t
+ *y_n+1 = y_0 exp(-kt) + f_0(2/k - exp(-kt)/k + 1/k^2t -exp(-kt)/k^2t) + f_1(-1/k + exp(-kt)/k^2t)
+ */
+int solveDragETDRK2(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt)
+{
+	int n = gas->nGPUs;
+	int dbprint = 0;
+
+	double *g; double *d;
+	double *tempPtr;
+
+	int statusCode = SUCCESSFUL;
+
+	MGArray tmpMem;
+	MGArray *gs = &tmpMem;
+
+	statusCode = MGA_allocSlab(gas, gs, 6);
+	if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
+
+	int i;
+	int BS = 96;
+
+	// for kernels not requiring finite differencing
+	dim3 linblock(BS, 1, 1);
+	dim3 lingrid(32, 1, 1);
+
+	// for kernels that do need to do FD
+	dim3 fdgrid(4, 4, 1);
+	dim3 fdblock(16, 16, 1);
+
+	// Emits [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
+	statusCode = prepareForERK2(gas, dust, gs, geo, 2, fluidGamma - 1);
+
+	if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
+
+	int velblock = 0;
+	int kblock = 0;
+
+	for(i = 0; i < n; i++) {
+		long NE = gas->partNumel[i];
+
+		// avoid launching tons of threads for small problems
+		lingrid.x = 32;
+		if(ROUNDUPTO(NE, BS)/BS < 32) {
+			lingrid.x = ROUNDUPTO(NE, BS)/BS;
+		}
+
+		cudaSetDevice(gas->deviceID[i]);
+		g = gas->devicePtr[i];
+		d = dust->devicePtr[i];
+		tempPtr = tmpMem.devicePtr[i];
+
+		// Use u_0 and dv_tr to compute the drag eigenvalue at t=0
+		// overwrites the |dv_tr| value (block 0) with K
+		// replace [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
+		// with    [K      , u_0, P_x, P_y, P_z] into temp memory at gs
+		cukern_GasDustDrag_linearTime<true><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_GasDustDrag_linearTime");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 4, 6); }
+
+		// Use the eigenvalue from t=0 to advance to t=1/2
+		//   Output only new uint & dv values from this stage,
+		//   We do this only do re-evaluate the pressure gradient & eigenvalue at the midpoint
+		//   This reads K from register 0 and overwrites it with dv_half
+		// overwrite [K      , u_0,   P_x, P_y, P_z] into temp memory at gs
+		// with      [dv_new , u_new, P_x, P_y, P_z] into temp memory at gs
+		cukern_ExponentialEulerIntermediate<<<lingrid, linblock>>>(g, d, tempPtr, dt, gas->partNumel[i]);
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "doing cukern_ExponentialEulerIntermediate");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 4, 6); }
+	}
+
+
+	// call grad-p resolver
+	statusCode = findMidGradP2(gas, gs, geo, 2, fluidGamma - 1);
+	if(dbprint) { dbgPrint(gas, dust, gs, 4, 6); }
+
+#ifdef EXPO_TRAPEZOID
+	velblock = 5; // exp euler wrote it here instead if doing trapezoid to avoid overwriting original k
 #endif
 
-	// Use the eigenvalue from t=0 to advance to t=1/2
-	//   Output only new uint & dv values from this stage,
-	//   We do this only do re-evaluate the pressure gradient & eigenvalue at the midpoint
-	//   This reads K from register 0 and overwrites it with dv_half
+	for(i = 0; i < n; i++) {
+		long NE = gas->partNumel[i];
 
-	if(doExpEuler) {
+		// avoid launching tons of threads for small problems
+		lingrid.x = 32;
+		if(ROUNDUPTO(NE, BS)/BS < 32) {
+			lingrid.x = ROUNDUPTO(NE, BS)/BS;
+		}
+
+		cudaSetDevice(gas->deviceID[i]);
+		g = gas->devicePtr[i];
+		d = dust->devicePtr[i];
+		tempPtr = tmpMem.devicePtr[i];
+
+		// accumulates new k onto original k, such that block 0 is now (k0 + k1)...
+#ifdef EXPO_TRAPEZOID
+		cukern_GasDustDrag_linearTime<false><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
+#else
+		cukern_GasDustDrag_linearTime<true><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
+#endif
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_GasDustDrag_linearTime");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 4, 6); }
+		// Use averaged pressure gradient and k value to compute timestep.
+		// we divide t by 2 since we simply summed the k values previously
 		cukern_exponentialMidpoint<<<lingrid, linblock>>>(g, d, dt, tempPtr);
-	} else {
-		cukern_ExponentialEulerHalf<<<lingrid, linblock>>>(g, d, tempPtr, tPredict, gas->partNumel[i]);
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_exponentialMidpoint");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 3, 6); }
 	}
-	statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_ExponentialEulerHalf");
-	if(statusCode != SUCCESSFUL) break;
-#ifdef DBGPRINT
-	cudaMemcpy((void *)hstcpy, (const void *)gs->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("post-eehf tmp st: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-#endif
+	// Make sure node's internal boundaries are consistent
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 4);
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(dust + 1, 4);
+
+	if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_delete(gs);
+
+	return statusCode;
+
 }
 
-if(doExpEuler == 0) {
-// call grad-p resolver
-statusCode = findMidGradP2(gas, gs, geo, 2, fluidGamma - 1);
-#ifdef DBGPRINT
-	cudaMemcpy((void *)hstcpy, (const void *)gs->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("post-gradp_hf st: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-#endif
 
-#ifdef EXPO_TRAPEZOID
-velblock = 5; // exp euler wrote it here instead if doing trapezoid to avoid overwriting original k
-#endif
+/* Compute:
+ * u_0        = P(y_0)
+ * k_0        = KD(y_0, u_0)
+ * (y_1, u_1) = y_0 exp(-k_0 t)
+ * k_1        = KD(y_1, u_1)
+ * y_n+1      = y_0 exp(-0.5(k_0 + k_1)t)
+ */
+int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams geo, double fluidGamma, double dt)
+{
+	int n = gas->nGPUs;
+	int dbprint = 0;
 
-for(i = 0; i < n; i++) {
-	long NE = gas->partNumel[i];
+	double *g; double *d;
+	double *tempPtr;
 
-	// avoid launching tons of threads for small problems
-	lingrid.x = 32;
-	if(ROUNDUPTO(NE, BS)/BS < 32) {
-		lingrid.x = ROUNDUPTO(NE, BS)/BS;
+	int statusCode = SUCCESSFUL;
+
+	MGArray tmpMem;
+	MGArray *gs = &tmpMem;
+
+	statusCode = MGA_allocSlab(gas, gs, 6);
+	if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
+
+	int i;
+	int BS = 96;
+
+	// for kernels not requiring finite differencing
+	dim3 linblock(BS, 1, 1);
+	dim3 lingrid(32, 1, 1);
+
+	// for kernels that do need to do FD
+	dim3 fdgrid(4, 4, 1);
+	dim3 fdblock(16, 16, 1);
+
+	// Emits [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
+	statusCode = prepareForERK2(gas, dust, gs, geo, 2, fluidGamma - 1);
+
+	if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
+
+	int velblock = 0;
+	int kblock = 0;
+
+	for(i = 0; i < n; i++) {
+		long NE = gas->partNumel[i];
+
+		// avoid launching tons of threads for small problems
+		lingrid.x = 32;
+		if(ROUNDUPTO(NE, BS)/BS < 32) {
+			lingrid.x = ROUNDUPTO(NE, BS)/BS;
+		}
+
+		cudaSetDevice(gas->deviceID[i]);
+		g = gas->devicePtr[i];
+		d = dust->devicePtr[i];
+		tempPtr = tmpMem.devicePtr[i];
+
+		cukern_LogTrapSolve<<<lingrid, linblock>>>(g, d, dt, tempPtr, gas->partNumel[i]);
+		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "doing cukern_ExponentialEulerIntermediate");
+		if(statusCode != SUCCESSFUL) break;
+		if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
 	}
 
-	cudaSetDevice(gas->deviceID[i]);
-	g = gas->devicePtr[i];
-	d = dust->devicePtr[i];
-	tempPtr = tmpMem.devicePtr[i];
+// Make extra sure node's internal boundaries are consistent
+if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 5);
+if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(dust + 1, 4);
 
-	// accumulates new k onto original k, such that block 0 is now (k0 + k1)...
-#ifdef EXPO_TRAPEZOID
-	cukern_GasDustDrag_linearTime<false><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
-#else
-	cukern_GasDustDrag_linearTime<true><<<lingrid, linblock>>>(g, d, tempPtr, velblock, kblock, gas->partNumel[i]);
-#endif
-	statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_GasDustDrag_linearTime");
-	if(statusCode != SUCCESSFUL) break;
-#ifdef DBGPRINT
-	cudaMemcpy((void *)hstcpy, (const void *)gs->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("second t0 st: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-#endif
-	// Use averaged pressure gradient and k value to compute timestep.
-	// we divide t by 2 since we simply summed the k values previously
-	cukern_exponentialMidpoint<<<lingrid, linblock>>>(g, d, tFull, tempPtr);
-	statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "cukern_exponentialMidpoint");
-	if(statusCode != SUCCESSFUL) break;
-#ifdef DBGPRINT
-	cudaMemcpy((void *)hstcpy, (const void *)gas->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("Gas input state: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-	cudaMemcpy((void *)hstcpy, (const void *)dust->devicePtr[0], gas->slabPitch[0]*5, cudaMemcpyDeviceToHost);
-	printf("Dust input state: [%e %e %e %e %e]\n", hstcpy[0], hstcpy[32], hstcpy[64], hstcpy[96], hstcpy[128]);
-	free(hstcpy);
-#endif
+if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_delete(gs);
+
+return statusCode;
 }
-}
-// Make sure node's internal boundaries are consistent
-MGA_exchangeLocalHalos(gas  + 1, 4);
-MGA_exchangeLocalHalos(dust + 1, 4);
 
-MGA_delete(gs);
 
-return SUCCESSFUL; // FIXME: check this once its working
-
-}
 
 /* This function returns the Stokes coefficient, scaled by 1/2
  * This parameter is experimentally measured except for the low-Re regime */
@@ -564,7 +736,7 @@ __device__ double drag_coeff(double Re)
 {
 	if(Re < 1) {
 		// 24 / Re
-		return 12 / Re;
+		return 12 / (Re+1e-15);
 	}
 	if(Re > 7.845084191866316e+02) {
 		// .44
@@ -732,19 +904,32 @@ __global__ void cukern_GasDustDrag_linearTime(double *gas, double *dust, double 
 {
 	int i = threadIdx.x + blockIdx.x*blockDim.x;
 
-	double rhoA, rhoB;   // gas and dust densities respectively
-	double magdv;	// magnitude velocity difference
-	double uSpecific;	// specific internal energy density
-	double k0;	// Relative acceleration (d/dt of vrel) divided by vrel
-	double sigma0;
-	double kEpstein, kStokes, Re;
+
 
 	gas  += i;
 	dust += i;
 	tmpmem += i;
 
 	for(; i < N; i+= blockDim.x*gridDim.x) {
-		magdv = tmpmem[srcBlock*FLUID_SLABPITCH];
+		cukern_GasDustDrag_linearCore<resetAccumulator>(gas, dust, tmpmem, srcBlock, kBlock, N);
+		gas += blockDim.x*gridDim.x;
+		dust += blockDim.x*gridDim.x;
+		tmpmem += blockDim.x*gridDim.x;
+	}
+
+}
+
+template <bool resetAccumulator>
+__device__ void cukern_GasDustDrag_linearCore(double *gas, double *dust, double *tmpmem, int srcBlock, int kBlock, int N)
+{
+double rhoA, rhoB;   // gas and dust densities respectively
+	double magdv;	// magnitude velocity difference
+	double uSpecific;	// specific internal energy density
+	double k0;	// Relative acceleration (d/dt of vrel) divided by vrel
+	double sigma0;
+	double kEpstein, kStokes, Re;
+
+	magdv = tmpmem[srcBlock*FLUID_SLABPITCH];
 
 		rhoA = gas[0];
 		rhoB = dust[0];
@@ -768,11 +953,10 @@ __global__ void cukern_GasDustDrag_linearTime(double *gas, double *dust, double 
 			tmpmem[kBlock*FLUID_SLABPITCH] += k0;
 		}
 
-		gas += blockDim.x*gridDim.x;
-		dust += blockDim.x*gridDim.x;
-		tmpmem += blockDim.x*gridDim.x;
-	}
+		tmpmem[2*FLUID_SLABPITCH] = Re;
+
 }
+
 
 /* Computes initial magnitude velocity ("w") into dv[0] and u_internal initial into dv[slabPitch]
  * and computes Uint_ini (e_internal / rho evaluated at original |w|) into dv[2*slabNumel] */
@@ -1006,7 +1190,7 @@ while(x < partNumel) {
     * this is an L-stable method for the drag equation
 * Our only interest in solving this is to re-evaluate the linear operation matrix at t_half
     * Linear matrix is diag([k_n k_n k_n]) -> require only |dv_half| to re-call gasDustDrag */
-__global__ void cukern_ExponentialEulerHalf(double *gas, double *dust, double *tmpmem, double t, unsigned long partNumel)
+__global__ void cukern_ExponentialEulerIntermediate(double *gas, double *dust, double *tmpmem, double t, unsigned long partNumel)
 {
 	int x = threadIdx.x + blockIdx.x*blockDim.x;
 	gas    += x;
@@ -1028,7 +1212,11 @@ __global__ void cukern_ExponentialEulerHalf(double *gas, double *dust, double *t
 		// load & compute time-reversed delta-vx
 		rhoginv= 1.0 / gas[0];
 		a0     = tmpmem[2*FLUID_SLABPITCH];
+#ifdef EXPO_DOTR
 		dv_i   = (gas[2*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i   = (gas[2*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#endif
 
 		// compute decay of this value
 		a0    *= rhoginv / k;
@@ -1041,25 +1229,28 @@ __global__ void cukern_ExponentialEulerHalf(double *gas, double *dust, double *t
 
 		// Repeat the above for the other two components
 		a0     = tmpmem[3*FLUID_SLABPITCH];
+#ifdef EXPO_DOTR
 		dv_i   = (gas[3*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i   = (gas[3*FLUID_SLABPITCH])*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#endif
 		a0    *= rhoginv/k;
 		dv_t   = a0 + (dv_i - a0)*exp(-t*k);
 		dvsq  += dv_t*dv_t;
 		duint += k*a0*a0*t - 2*a0*(dv_i - a0)*expm1(-k*t) - (dv_i - a0)*(dv_i - a0)*expm1(-2*k*t);
 
 		a0     = tmpmem[4*FLUID_SLABPITCH];
+#ifdef EXPO_DOTR
 		dv_i   = (gas[4*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i   = (gas[4*FLUID_SLABPITCH])*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#endif
 		a0    *= rhoginv/k;
 		dv_t   = a0 + (dv_i - a0)*exp(-t*k);
 		dvsq  += dv_t*dv_t;
 		duint += k*a0*a0*t - 2*a0*(dv_i - a0)*expm1(-k*t) - (dv_i - a0)*(dv_i - a0)*expm1(-2*k*t);
 
-
-#ifdef EXPO_TRAPEZOID
-		tmpmem[5*FLUID_SLABPITCH] = sqrt(dvsq); // generate outputs: store new dv in block 6, increment original temperature
-#else
 		tmpmem[0] = sqrt(dvsq); // overwrite in place
-#endif
 		tmpmem[FLUID_SLABPITCH]  += GAMMAM1 * duint * rhoginv;
 
 		// advance ptrs
@@ -1088,7 +1279,7 @@ __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, 
 //	double rhodinv; // 1/rho_dust
 	double dv_i;    // element of delta-v
 	double k;       // drag eigenvalue
-	double a0;      // element of accel = gradient(P)/rho_gas
+	double dpdt;      // element of accel = gradient(P)/rho_gas
 	double dv_t;    // updated delta v. not sure if needed independently...
 	double pdustsq; // use to track accumulated transfer of total energy
 	double vstick;  // barycentric velocity of gas-dust system
@@ -1102,13 +1293,21 @@ __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, 
 
 		pdustsq = -dust[2*FLUID_SLABPITCH] * dust[2*FLUID_SLABPITCH];
 		vstick  = (gas[2*FLUID_SLABPITCH]+dust[2*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
-		a0      = tmpmem[2*FLUID_SLABPITCH];
-		dv_i    = (gas[2*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[2*FLUID_SLABPITCH];
+#else
+		dpdt = 0;
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[2*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[2*FLUID_SLABPITCH])*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#endif
 		// load k, solve driven linear system
 		k       = tmpmem[0];
 
-		a0     *= rhoginv;
-		dv_t    = a0/k + (dv_i - a0/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
 
 		// recalculate new differential velocities
 		gas[2*FLUID_SLABPITCH] = gas[0]*vstick + dv_t*mu;
@@ -1119,10 +1318,16 @@ __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, 
 		// do Y direction
 		pdustsq -= dust[3*FLUID_SLABPITCH]*dust[3*FLUID_SLABPITCH];
 		vstick  = (gas[3*FLUID_SLABPITCH]+dust[3*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
-		a0      = tmpmem[3*FLUID_SLABPITCH];
-		dv_i    = (gas[3*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
-		a0     *= rhoginv;
-		dv_t    = a0/k + (dv_i - a0/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[3*FLUID_SLABPITCH];
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[3*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[3*FLUID_SLABPITCH])*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#endif
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
 		gas[3*FLUID_SLABPITCH]     = gas[0]*vstick + dv_t*mu;
 		dust[3*FLUID_SLABPITCH]= q = dust[0]*vstick - dv_t*mu;
 		pdustsq += q*q;
@@ -1130,16 +1335,22 @@ __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, 
 		// do Z direction
 		pdustsq -= dust[4*FLUID_SLABPITCH]*dust[4*FLUID_SLABPITCH];
 		vstick  = (gas[4*FLUID_SLABPITCH]+dust[4*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
-		a0      = tmpmem[4*FLUID_SLABPITCH];
-		dv_i    = (gas[4*FLUID_SLABPITCH] + t*a0)*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
-		a0     *= rhoginv;
-		dv_t    = a0/k + (dv_i - a0/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[4*FLUID_SLABPITCH];
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[4*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[4*FLUID_SLABPITCH])*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
+#endif
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
 		gas[4*FLUID_SLABPITCH]  = gas[0]*vstick + dv_t*mu;
 		dust[4*FLUID_SLABPITCH] = q = dust[0]*vstick - dv_t*mu;
 		pdustsq += q*q;
 
 		// From conservation of total energy we have that the gas total energy decreases by whatever
-		// amount the dust kinetic energy rises; Under (Mdust >> M_atoms) the gas gets ~100% of heating
+		// amount the dust kinetic energy rises; Under (M_dust >> M_atom) the gas gets ~100% of heating
 		gas[FLUID_SLABPITCH] -= .5*pdustsq / dust[0];
 
 		// advance ptrs
@@ -1148,6 +1359,262 @@ __global__ void cukern_exponentialMidpoint(double *gas, double *dust, double t, 
 		dust += blockDim.x*gridDim.x;
 		tmpmem += blockDim.x*gridDim.x;
 	}
+}
+
+
+
+
+
+/*(5) [(gas_state), (dust_state)] = exponentialMidpt(gas_state, dust_state, k_hf, P_x, P_y, P_z)
+    * compute time-reversed elements of dv a 3rd time (memory & memory BW precious, v_i = (p_i - 2 P_i t)/rho cheap as dirt)
+    * advance to drag-applied dv values dv_i <- -P_i/(k_hf rho) + (dv_i + P_i/(k_hf rho))*exp(-k_hf t)
+    * compute new u_specific? or let d/dt(Etotal) = 0 do the job? does that still work?
+    * overwrite gas_state/dust_state using updated values
+        * ...
+ */
+__global__ void cukern_ETD1RK(double *gas, double *dust, double t, double *tmpmem)
+{
+	int x = threadIdx.x + blockIdx.x*blockDim.x;
+	gas    += x;
+	dust   += x;
+	tmpmem += x;
+
+	double rhoginv; // 1/rho_gas
+//	double rhodinv; // 1/rho_dust
+	double dv_i;    // element of delta-v
+	double k;       // drag eigenvalue
+	double dpdt;      // element of accel = gradient(P)/rho_gas
+	double dv_t;    // updated delta v. not sure if needed independently...
+	double pdustsq; // use to track accumulated transfer of total energy
+	double vstick;  // barycentric velocity of gas-dust system
+	double mu;      // reduced mass
+	double q;       // scratchpad variable
+
+	while(x < FLUID_SLABPITCH) {
+		// load & compute time-reversed delta-vx and stick velocity
+		rhoginv = 1.0 / gas[0];
+		mu      = gas[0]*dust[0]/(gas[0]+dust[0]);
+
+		pdustsq = -dust[2*FLUID_SLABPITCH] * dust[2*FLUID_SLABPITCH];
+		vstick  = (gas[2*FLUID_SLABPITCH]+dust[2*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[2*FLUID_SLABPITCH];
+#else
+		dpdt = 0;
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[2*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[2*FLUID_SLABPITCH])*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+#endif
+		// load k, solve driven linear system
+		k       = tmpmem[0];
+
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+
+		// recalculate new differential velocities
+		gas[2*FLUID_SLABPITCH] = gas[0]*vstick + dv_t*mu;
+		dust[2*FLUID_SLABPITCH] = q = dust[0]*vstick - dv_t*mu;
+		// accumulate change in dust kinetic energy
+		pdustsq += q*q; //
+
+		// do Y direction
+		pdustsq -= dust[3*FLUID_SLABPITCH]*dust[3*FLUID_SLABPITCH];
+		vstick  = (gas[3*FLUID_SLABPITCH]+dust[3*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[3*FLUID_SLABPITCH];
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[3*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[3*FLUID_SLABPITCH])*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+#endif
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+		gas[3*FLUID_SLABPITCH]     = gas[0]*vstick + dv_t*mu;
+		dust[3*FLUID_SLABPITCH]= q = dust[0]*vstick - dv_t*mu;
+		pdustsq += q*q;
+
+		// do Z direction
+		pdustsq -= dust[4*FLUID_SLABPITCH]*dust[4*FLUID_SLABPITCH];
+		vstick  = (gas[4*FLUID_SLABPITCH]+dust[4*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+#ifdef ACCOUNT_GRADP
+		dpdt      = -tmpmem[4*FLUID_SLABPITCH];
+#endif
+#ifdef EXPO_DOTR
+		dv_i    = (gas[4*FLUID_SLABPITCH] - t*dpdt)*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
+#else
+		dv_i    = (gas[4*FLUID_SLABPITCH])*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
+#endif
+		dpdt     *= mu*rhoginv;
+		dv_t    = dpdt/k + (dv_i - dpdt/k)*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+		gas[4*FLUID_SLABPITCH]  = gas[0]*vstick + dv_t*mu;
+		dust[4*FLUID_SLABPITCH] = q = dust[0]*vstick - dv_t*mu;
+		pdustsq += q*q;
+
+		// From conservation of total energy we have that the gas total energy decreases by whatever
+		// amount the dust kinetic energy rises; Under (M_dust >> M_atom) the gas gets ~100% of heating
+		gas[FLUID_SLABPITCH] -= .5*pdustsq / dust[0];
+
+		// advance ptrs
+		x +=  blockDim.x*gridDim.x;
+		gas += blockDim.x*gridDim.x;
+		dust += blockDim.x*gridDim.x;
+		tmpmem += blockDim.x*gridDim.x;
+	}
+}
+
+
+
+
+
+
+/* Assuming the temp registers are preloaded with
+ * [dv_0 u_0 Px Py Pz]
+ * First call drag solve to get
+ * [dv_0 u_0 Px Py Pz k_0]
+ * Then solve ETD1RK to get dv_1, u_1:
+ * [dv_1 u_1 Px Py Pz k_0]
+ * call drag solve with accumulate=yes set to get
+ * [dv_1 u_1 Px Py Pz (k_0+k_1)]
+ * solve the log integral to find y_n+1
+ */
+__global__ void cukern_LogTrapSolve(double *gas, double *dust, double t, double *tmpmem, int partNumel)
+{
+
+
+	double rhoginv; // 1/rho_gas
+//	double rhodinv; // 1/rho_dust
+	double dv_i;    // element of delta-v
+	double k;       // drag eigenvalue
+	double pdustsq; // element of accel = gradient(P)/rho_gas
+	double dv_t;    // updated delta v. not sure if needed independently...
+	double dvsq; // use to track accumulated transfer of total energy
+	double vstick;  // barycentric velocity of gas-dust system
+	double mu;      // reduced mass
+	double q;       // scratchpad variable
+	double duint;
+
+	int x = threadIdx.x + blockIdx.x*blockDim.x;
+	gas    += x;
+	dust   += x;
+	tmpmem += x;
+
+	// Use ETDRK1 to approximate y_1 to first order
+	while(x < FLUID_SLABPITCH) {
+		/* Assuming the temp registers are preloaded with
+		 * [dv_0 u_0 Px Py Pz] */
+		// call drag eigenvalue solver.
+		cukern_GasDustDrag_linearCore<true>(gas, dust, tmpmem, 0, 5, partNumel);
+
+		/* temp contents:
+		 * [dv_0 u_0 Px Py Pz k_0]
+		 */
+		k      = tmpmem[5*FLUID_SLABPITCH];
+
+		dv_i   = tmpmem[0];
+		dv_t   = dv_i*exp(-t*k);
+
+		// accumulate new delta-v^2
+		dvsq   = dv_t*dv_t;
+		// accumulate drag heating
+		duint  = dv_i*dv_i*expm1(-2*k*t);
+
+		tmpmem[0] = sqrt(dvsq);
+		tmpmem[FLUID_SLABPITCH] += duint;
+
+		/* temp contents:
+		 * [dv_1 u_1 Px Py Pz k_0]
+		 */
+		// call drag eigenvalue solver: add to k in register 5
+		cukern_GasDustDrag_linearCore<false>(gas, dust, tmpmem, 0, 5, partNumel);
+		/* temp contents:
+		 * [dv_1 u_1 Px Py Pz (k_0+k_1)]
+		 */
+
+		// Cleverly reverse our way to t=1/2 and compute one more measurement of k...
+
+		// reverse original decay
+		if(1) {
+		//dv_i = dv_t*exp(t*k);
+		tmpmem[FLUID_SLABPITCH] -= duint;
+
+		// apply halfstep of new (k_0+k_1):
+		k = .25*(tmpmem[5*FLUID_SLABPITCH]);
+
+		dv_t   = dv_i*exp(-t*k);
+
+		// accumulate new delta-v^2
+		dvsq   = dv_t*dv_t;
+		// accumulate drag heating
+		duint  = dv_i*dv_i*expm1(-2*k*t);
+
+		tmpmem[0] = sqrt(dvsq);
+		tmpmem[FLUID_SLABPITCH] += duint;
+
+		// store k_half in register 0
+		cukern_GasDustDrag_linearCore<true>(gas, dust, tmpmem, 0, 0, partNumel);
+
+		// Richardson extrapolation formula for trapezoid method yields this formula
+		// Note formula is convex combination of stable values and therefore unconditionally stable
+		// if 2nd order
+		k = (0.16666666666666666667 *tmpmem[5*FLUID_SLABPITCH] +  0.66666666666666666667*tmpmem[0]);
+		// if 3rd order
+		//k = (0.21428571428571428571*tmpmem[5*FLUID_SLABPITCH] + 0.57142857142857142857*tmpmem[0]);
+		// if 1st order
+		//k = tmpmem[0];
+		} else {
+			k = .5*tmpmem[5*FLUID_SLABPITCH];
+		}
+
+		// load & compute time-reversed delta-vx and stick velocity
+		rhoginv = 1.0 / gas[0];
+		mu      = gas[0]*dust[0]/(gas[0]+dust[0]);
+
+		pdustsq = -dust[2*FLUID_SLABPITCH] * dust[2*FLUID_SLABPITCH];
+		vstick  = (gas[2*FLUID_SLABPITCH]+dust[2*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+		dv_i    = (gas[2*FLUID_SLABPITCH])*rhoginv - dust[2*FLUID_SLABPITCH]/dust[0];
+		dv_t    = dv_i*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+
+		// recalculate new differential velocities
+		gas[2*FLUID_SLABPITCH] = gas[0]*vstick + dv_t*mu;
+		dust[2*FLUID_SLABPITCH] = q = dust[0]*vstick - dv_t*mu;
+		// accumulate change in dust kinetic energy
+		pdustsq += q*q; //
+
+		// do Y direction
+		pdustsq -= dust[3*FLUID_SLABPITCH]*dust[3*FLUID_SLABPITCH];
+		vstick  = (gas[3*FLUID_SLABPITCH]+dust[3*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+		dv_i    = (gas[3*FLUID_SLABPITCH])*rhoginv - dust[3*FLUID_SLABPITCH]/dust[0];
+
+		dv_t    = dv_i*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+		gas[3*FLUID_SLABPITCH]     = gas[0]*vstick + dv_t*mu;
+		dust[3*FLUID_SLABPITCH]= q = dust[0]*vstick - dv_t*mu;
+		pdustsq += q*q;
+
+		// do Z direction
+		pdustsq -= dust[4*FLUID_SLABPITCH]*dust[4*FLUID_SLABPITCH];
+		vstick  = (gas[4*FLUID_SLABPITCH]+dust[4*FLUID_SLABPITCH]) / (gas[0] + dust[0]);
+		dv_i    = (gas[4*FLUID_SLABPITCH])*rhoginv - dust[4*FLUID_SLABPITCH]/dust[0];
+
+		dv_t    = dv_i*exp(-t*k); // I assume it will auto-optimize this into one transcendental evaluation
+		gas[4*FLUID_SLABPITCH]  = gas[0]*vstick + dv_t*mu;
+		dust[4*FLUID_SLABPITCH] = q = dust[0]*vstick - dv_t*mu;
+		pdustsq += q*q;
+
+		// From conservation of total energy we have that the gas total energy decreases by whatever
+		// amount the dust kinetic energy rises; Under (M_dust >> M_atom) the gas gets ~100% of heating
+		gas[FLUID_SLABPITCH] -= .5*pdustsq / dust[0];
+
+		// advance ptrs
+		x +=  blockDim.x*gridDim.x;
+		gas += blockDim.x*gridDim.x;
+		dust += blockDim.x*gridDim.x;
+		tmpmem += blockDim.x*gridDim.x;
+	}
+
+
 }
 
 
@@ -1411,7 +1878,11 @@ __global__ void  cukern_prepareForERK3D_h2(double *gas, double *dust, double *em
 
 			// need time-reversed dv = (vgas - vdust) + t*(deltaP / rho)
 			//                       = ((pgas + t deltaP)/rhogas - pdust/rhodust
+#ifdef EXPO_DOTR
 			dv = (gas[globAddr+2*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#else
+			dv = (gas[globAddr+2*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 			dvsq = dv*dv; // accumulate |dv_tr|
 		}
 
@@ -1424,7 +1895,11 @@ __global__ void  cukern_prepareForERK3D_h2(double *gas, double *dust, double *em
 				deltaP         = LAMY*(V[myLocAddr+GRADBLOCKX]-V[myLocAddr-GRADBLOCKX]) / (RINNER + DELTAR*myX);
 			}
 			em[globAddr + 3*FLUID_SLABPITCH] = deltaP;
+#ifdef EXPO_DOTR
 			dv = (gas[globAddr+3*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+3*FLUID_SLABPITCH]/dust[globAddr];
+#else
+			dv = (gas[globAddr+3*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+3*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 			dvsq += dv*dv;
 		}
 
@@ -1435,7 +1910,11 @@ __global__ void  cukern_prepareForERK3D_h2(double *gas, double *dust, double *em
 		if(IWrite) {
 			deltaP           = LAMZ*(W[myLocAddr] - U[myLocAddr]);
 			em[globAddr + 4*FLUID_SLABPITCH] = deltaP;
+#ifdef EXPO_DOTR
 			dv = (gas[globAddr+4*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
+#else
+			dv = (gas[globAddr+4*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 			dvsq += dv*dv;
 		}
 
@@ -1584,7 +2063,11 @@ __global__ void  cukern_prepareForERK2D_h2(double *gas, double *dust, double *em
 		dv = (gas[globAddr+4*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
 		dvsq = dv*dv;
 
+#ifdef EXPO_DOTR
 		dv = (gas[globAddr+2*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#else
+		dv = (gas[globAddr+2*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 		dvsq += dv*dv;
 		// Calculate dt*(dphi/dy)
 		if(coords == SQUARE) {
@@ -1595,9 +2078,12 @@ __global__ void  cukern_prepareForERK2D_h2(double *gas, double *dust, double *em
 			deltaP         = LAMY*(locPress[myLocAddr+GRADBLOCKX]-locPress[myLocAddr-GRADBLOCKX]) / (RINNER + myX*DELTAR);
 		}
 		em[globAddr+3*FLUID_SLABPITCH] = deltaP;
-		em[globAddr+4*FLUID_SLABPITCH] = 0.0; // FIXME is this needed?... yes it is I think, solver blindly reads all 3 dmis.
-
+		em[globAddr+4*FLUID_SLABPITCH] = 0.0;
+#ifdef EXPO_DOTR
 		dv = (gas[globAddr+3*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+3*FLUID_SLABPITCH]/dust[globAddr];
+#else
+		dv = (gas[globAddr+3*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+3*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 		dvsq += dv*dv;
 
 		em[globAddr] = sqrt(dvsq);
@@ -1693,13 +2179,21 @@ __global__ void  cukern_prepareForERKRZ_h2(double *gas, double *dust, double *em
 		deltaP         = LAMX*(pressLoc[myLocAddr+1]-pressLoc[myLocAddr-1]);
 		em[globAddr + 2*FLUID_SLABPITCH] = deltaP;
 
+#ifdef EXPO_DOTR
 		dv = (gas[globAddr+2*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#else
+		dv = (gas[globAddr+2*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+2*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 		dvsq += dv*dv;
 
 		// Calculate dt*(dphi/dz)
 		deltaP         = LAMZ*(pressLoc[myLocAddr+GRADBLOCKX]-pressLoc[myLocAddr-GRADBLOCKX]);
 		em[globAddr + 4*FLUID_SLABPITCH] = deltaP;
+#ifdef EXPO_DOTR
 		dv = (gas[globAddr+4*FLUID_SLABPITCH]+dragparams[7]*deltaP)/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
+#else
+		dv = (gas[globAddr+4*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
+#endif
 		dvsq += dv*dv;
 
 		em[globAddr] = sqrt(dvsq); // magnitude delta-v with time reversed pressure gradient
