@@ -244,8 +244,8 @@ classdef Initializer < handle
 
                 for z = 1:numel(fluids)
                     fluids(z).details = obj.fluidDetails(z);
-		    fluids(z).details.minMass = mpi_max(fluids(z).details.minMass);
-		end
+                    fluids(z).details.minMass = mpi_max(fluids(z).details.minMass);
+                end
 
             end
 
