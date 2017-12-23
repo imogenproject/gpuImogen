@@ -1,9 +1,9 @@
 function result = tsDustywave(iniResolution, doublings, kcouple, prettyPictures, methodPicker)
-%doublings = 7; % will run from 32x1 to 2Kx1
-%w0 = 1.5;
-% The double blast wave test is a classic test for the shock-capturing codes
-% testing the ability to handle very strong (M >> 1) shocks, as well
-% as colliding shocks
+% >> iniResolution: [nx 1 1]
+% >> doublings: run from 2^0 to 2^(doublings-1) in nx
+% >> kcouple: normalized coupling constant k/re[omega]
+% >> prettyPictures: RealtimePlotter if desired
+% >> methodPicker: from run_FullTestSuite if desired
 
 if nargin < 4
     prettyPictures = 0;
@@ -12,7 +12,6 @@ end
 grid = iniResolution;
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
-% run.timeMax     = 0.038; % set by run.cycles
 run.iterMax     = 50000;
 
 run.alias       = '';
@@ -20,15 +19,14 @@ run.info        = '1D Double Blast Wave test.';
 run.notes       = '';
 
 run.ppSave.dim3 = 25;
-run.cfl = 0.45;
 
 % Set a background speed at which the fluid is advected
-run.backgroundMach = -0;
+run.backgroundMach = 0;
 
 % for 2 fluids, sonic is the coupled propagating mode
 % the evanescent mode is 'dustydamp.'
 run.waveType = 'sonic';
-run.amplitude = .0001;
+run.amplitude = .001;
 
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 %                      .01                    roughly 140dB
@@ -36,7 +34,7 @@ run.amplitude = .0001;
 % number of transverse wave periods in Y and Z directions
 run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
-run.cycles = 32;
+run.cycles = 16;
 
 run.addNewFluid(1);
 
@@ -55,16 +53,9 @@ run.writeFluid = 2;
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
-  
-fm = FlipMethod(); % 1 = HLL, 2 = HLLC, 3 = XJ
-  fm.iniMethod = 2; 
-%  fm.toMethod = 2;
-%  fm.atstep = -1;
-run.peripherals{end+1} = fm;
 
-
-if prettyPictures
-    rp = RealtimePlotter();
+if 1
+  rp = RealtimePlotter();
   rp.plotmode = 5;
   rp.plotDifference = 0;
   rp.insertPause = 1;
@@ -75,17 +66,17 @@ if prettyPictures
   rp.spawnGUI = 1;
   
   rp.plotmode = 4;
-rp.cut = [round(grid(1)/2), 1, 1];
-rp.indSubs = [1 1 grid(1);1 1 1;1 1 1];
-rp.movieProps(0, 0, 'RTP_');
-rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-
-%run.peripherals{end+1} = rp;
+  rp.cut = [round(grid(1)/2), 1, 1];
+  rp.indSubs = [1 1 grid(1);1 1 1;1 1 1];
+  rp.movieProps(0, 0, 'RTP_');
+  rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
+  rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
+  rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
+  rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
+run.peripherals{end+1} = rp;
 
 end
+
 if nargin == 5
     run.peripherals{end+1} = methodPicker;
 end
@@ -140,8 +131,8 @@ for N = 1:doublings;
      w0 = -conj(ic.ini.waveOmega);
      tau = sum(F.time.history);
         
-    if prettyPictures
-        figure(1);
+    if 1
+        figure(1); % plot absolute errors
 
         hold off;
         % gas rho
@@ -158,7 +149,7 @@ for N = 1:doublings;
         
         figure(2);
 
-        hold off;
+        hold off; % plot absolute errors
         % gas rho
         plot((F.mass - ic.ini.pDensity(1))/ic.ini.amplitude(1),'ro'); 
         hold on;
@@ -203,6 +194,8 @@ if doublings > 1
         result.L1_linear(N) = mpi_sum(norm([lin_drho_g(:); rat*lin_drho_d(:)],1)  ) / mpi_sum(numel(ng)) ;
         result.L2_linear(N) = sqrt(mpi_sum(norm([lin_drho_g(:); rat*lin_drho_d(:)],2)^2) / mpi_sum(numel(ng)));
     end
+    result.L1 = result.L1 / ic.ini.amplitude(1);
+    result.L2 = result.L2 / ic.ini.amplitude(1);
 else
     result.N  = numel(rhoGbar);
     lin_drho_g = rhoGs{N} - (1 + imag(ic.ini.amplitude(1) *ev(1) * exp(1i*(phases{N} - w0*tau))));

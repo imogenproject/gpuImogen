@@ -34,6 +34,16 @@ if isfield(FTR,'advection')
         title('Cross-grid advection, n = [4 5 0]');
         stylizePlot(gca());
     end
+    
+    if isfield(FTR.advection, 'dustywave_k0p1')
+        % Plot dusty wave results
+        plotno = prepNextPlot(maxplot, plotno);
+        plotDustywave(FTR.advection.dustywave_k0p1);
+        plotDustywave(FTR.advection.dustywave_k1);
+        plotDustywave(FTR.advection.dustywave_k25);
+        title('Accuracy of dustywave solutions');
+        stylizePlot(gca());
+    end
 end
 
 if isfield(FTR,'einfeldt')
@@ -155,6 +165,15 @@ legend('M_{ini} = .01', 'M_{ini} = .25', 'M_{ini} = 2.0', '10^{-5} error','10^{-
 end
 
 function plotDustywave(q)
+
+plot(log2(q.N), log2(q.L1),'r-x'); % one norm
+plot(log2(q.N), log2(q.L2),'g-x'); % 2 norm
+plot(log2(q.N), .5*(log2(q.L1(1)) + log2(q.L2(1))) - 2*log2(q.N/q.N(1)),'k-'); % reference slope of -2
+
+xlabel('log_2(# pts)');
+ylabel('log_2[|\rho - \rho_{exact}|/|\delta \rho_{ini}|]');
+
+legend('1-norm', '2-norm', 'Reference 2nd order slope');
 
 end
 
