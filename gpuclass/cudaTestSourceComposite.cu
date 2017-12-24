@@ -1024,7 +1024,6 @@ __global__ void  cukern_sourceComposite_RK4(double *fluidIn, double *Rvector, do
 }
 
 
-
 /* Simple kernel:
  * Given in[0 ... (nodeN-1)], copies the segment in[partX0 ... (partX0 + partNX -1)] to out[0 ... (partNX-1)]
  * and helpfully wraps addresses circularly

@@ -1837,10 +1837,6 @@ __global__ void cudaMGHaloSyncY_p2p(double *L, double *R, int nx, int nyL, int n
 
 }
 
-/* FIXME: These kernels are NOT particularly efficient
- * FIXME: But they account for very little time vs actual compute kernels
- */
-
 /* bit 0 = 0: left; bit 0 = 1: right
  * bit 1 = 0: read; bit 1 = 1: write to phi's halo
  */
@@ -2241,7 +2237,6 @@ int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *flui
 GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 {
 	GeometryParams g;
-
 	double v[3];
 
 	g.Rinner = derefXdotAdotB_scalar(geoclass, "pInnerRadius", NULL);
@@ -2261,7 +2256,6 @@ GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 	g.x0 = v[0];
 	g.y0 = v[1];
 	g.z0 = v[2];
-
 
 	return g;
 }
