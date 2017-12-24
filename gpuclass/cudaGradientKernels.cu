@@ -439,17 +439,21 @@ __global__ void  cukern_computeScalarGradient2D_h4(double *phi, double *fx, doub
 {
 	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
 
+	// decrement two
 	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
 	int myY = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
 
-	if((myX > arraysize.x) || (myY > arraysize.y)) return;
+	// keep two past
+	if((myX > (arraysize.x+1)) || (myY > (arraysize.y+1))) return;
 
+	// net result: this tile has a buffer of two on every side;
+	// mask out two cells around the edges
 	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
 	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.y);
 
+	// wrap circularly & translate to global address
 	myX = (myX + arraysize.x) % arraysize.x;
 	myY = (myY + arraysize.y) % arraysize.y;
-
 	int globAddr = myX + arraysize.x*myY;
 
 	double deltaphi; // Store derivative of phi in one direction
@@ -525,17 +529,20 @@ __global__ void  cukern_computeScalarGradientRZ_h4(double *phi, double *fx, doub
 {
 	int myLocAddr = threadIdx.x + GRADBLOCKX*threadIdx.y;
 
+	// move two left
 	int myX = threadIdx.x + (GRADBLOCKX-4)*blockIdx.x - 2;
 	int myY = threadIdx.y + (GRADBLOCKY-4)*blockIdx.y - 2;
 
-	if((myX > arraysize.x) || (myY > arraysize.z)) return;
+	// keep two past
+	if((myX > (arraysize.x+1)) || (myY > (arraysize.z+1))) return;
 
+	// mask out two edge cells in all directions
 	bool IWrite = (threadIdx.x > 1) && (threadIdx.x < (GRADBLOCKX-2)) && (threadIdx.y > 1) && (threadIdx.y < (GRADBLOCKY-2));
 	IWrite = IWrite && (myX < arraysize.x) && (myY < arraysize.z);
 
+	// circularly wrap & compute global translation
 	myX = (myX + arraysize.x) % arraysize.x;
 	myY = (myY + arraysize.z) % arraysize.z;
-
 	int globAddr = myX + arraysize.x*myY;
 
 	double deltaphi; // Store derivative of phi in one direction
