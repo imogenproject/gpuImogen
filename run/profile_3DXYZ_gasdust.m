@@ -1,11 +1,11 @@
 % Wave advection simulation
 
-grid = [2048 1 1];
+grid = [256 256 128];
 %grid = [32 1 1];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
-run.iterMax     = 20000;
+run.iterMax     = 6;
 run.info        = '2-fluid advection test';
 run.notes       = 'basic testbed for 2-fluid drag code';
 
@@ -52,33 +52,12 @@ run.writeFluid = 2;
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
-
+  
 fm = FlipMethod();
-  fm.iniMethod = ENUM.CFD_HLLC; 
+  fm.iniMethod = ENUM.CFD_HLLC;
 %  fm.toMethod = ENUM.CFD_HLLC;
 %  fm.atstep = -1;
 run.peripherals{end+1} = fm;
-
-rp = RealtimePlotter();
-  rp.plotmode = 5;
-  rp.plotDifference = 0;
-  rp.insertPause = 1;
-  rp.forceRedraw = 1;
-  rp.iterationsPerCall = 1;
-  rp.firstCallIteration = 1;
-  rp.firstCallTime = 1;
-  rp.spawnGUI = 1;
-  
-  rp.plotmode = 4;
-rp.cut = [round(grid(1)/2), 1, 1];
-rp.indSubs = [1 1 grid(1);1 1 1;1 1 1];
-rp.movieProps(0, 0, 'RTP_');
-rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-
-run.peripherals{end+1} = rp;
 
 run.waveLinearity(0);
 run.waveStationarity(0);

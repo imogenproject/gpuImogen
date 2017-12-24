@@ -26,7 +26,6 @@ run.bcMode.y        = ENUM.BCMODE_CONSTANT;
 run.bcMode.z        = ENUM.BCMODE_CONSTANT;
 
 run.pureHydro = true;
-run.cfl = .45;
 
 run.VTOSettings = [1 1];
 run.checkpointSteps = 100;
@@ -44,7 +43,7 @@ rp = RealtimePlotter();
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+fm.iniMethod = ENUM.CFD_HLL;
 run.peripherals{end+1} = fm;
 
 run.image.parallelUniformColors = true;

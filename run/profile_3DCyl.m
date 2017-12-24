@@ -34,13 +34,12 @@ run.bcMode.y        = ENUM.BCMODE_CIRCULAR;
 run.bcMode.z        = ENUM.BCMODE_OUTFLOW; %ENUM.BCMODE_CONSTANT;
 
 run.pureHydro = true;
-run.cfl = .45;
 
 run.info        = 'Kojima disk simulation';
 run.notes       = '';
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+ifm.iniMethod = ENUM.CFD_HLL;
 run.peripherals{end+1} = fm;
 
 run.image.parallelUniformColors = true;

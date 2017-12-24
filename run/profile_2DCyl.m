@@ -30,7 +30,6 @@ run.bcMode.y        = ENUM.BCMODE_CIRCULAR;
 run.bcMode.z        = ENUM.BCMODE_CIRCULAR; % irrelevant to 2D_XY
 
 run.pureHydro = true;
-run.cfl = .45;
 
 run.info        = 'Kojima disk simulation';
 run.notes       = '';
@@ -49,7 +48,7 @@ rp.plotmode = 4;
 %run.peripherals{end+1}=rp;
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+fm.iniMethod = ENUM.CFD_HLL;
 run.peripherals{end+1} = fm;
 
 run.image.parallelUniformColors = true;

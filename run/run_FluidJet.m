@@ -40,7 +40,7 @@ rp = RealtimePlotter();
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 2; % hllc
+fm.iniMethod = ENUM.CFD_HLLC;
 run.peripherals{end+1} = fm;
 
 %--- Run tests ---%

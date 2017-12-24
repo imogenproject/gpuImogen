@@ -49,9 +49,9 @@ rp = RealtimePlotter();
   rp.iterationsPerCall = 100;
   rp.firstCallIteration = 1;
 %run.peripherals{end+1} = rp;
-fm = FlipMethod(); % 1 = HLL, 2 = HLLC, 3 = XJ
-  fm.iniMethod = 2; 
-%  fm.toMethod = 2;
+fm = FlipMethod();
+  fm.iniMethod = ENUM.CFD_HLLC; 
+%  fm.toMethod = ENUM.CFD_HLLC;
 %  fm.atstep = -1;
 run.peripherals{end+1} = fm;
 
