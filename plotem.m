@@ -4,12 +4,17 @@ p2 = 3;
 
 if exist('run')
 
+thingA = run.fluid(1).mom(1).array./run.fluid(1).mass.array;
+thingB = run.fluid(1).mom(2).array./run.fluid(1).mass.array;
+
+%thingA = log10(abs(thingA));
+%thingB = log10(abs(thingB));
 
 if numel(find(size(run.fluid(1).mass.array) > 1)) > 1 % 2d
     eint = run.fluid(1).ener.array - .5*(run.fluid(1).mom(1).array.^2+run.fluid(1).mom(2).array.^2+run.fluid(1).mom(3).array.^2)./run.fluid(1).mass.array;
     subplot(2,2,3); imagesc(squeeze(log10(run.fluid(1).mass.array))); title('log10[mass]'); colorbar;
-    subplot(2,2,1); imagesc(squeeze(run.fluid(1).mom(1).array./run.fluid(1).mass.array)); title('v(1)'); colorbar;
-    subplot(2,2,2); imagesc(squeeze(run.fluid(1).mom(2).array./run.fluid(1).mass.array)); title('v(2)'); colorbar;
+    subplot(2,2,1); imagesc(squeeze(thingA)); title('v(1)'); colorbar;
+    subplot(2,2,2); imagesc(squeeze(thingB)); title('v(2)'); colorbar;
     subplot(2,2,4); imagesc(squeeze(eint./run.fluid(1).mass.array)); title('T'); colorbar;
 else
     if numel(run.fluid) > 1; MF = 1; else; MF = 0; end
