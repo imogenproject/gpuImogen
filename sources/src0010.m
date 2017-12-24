@@ -3,7 +3,7 @@ function src0010(run, fluids, mag, tFraction)
 
 dTime = run.time.dTime * tFraction;
 
-cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0);
+cudaSourceScalarPotential(fluids, run.potentialField.field, run.geometry, [dTime, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0]);
 
 % Take care of any parallel synchronization we need to do to remain self-consistent
 for N = 1:numel(fluids);

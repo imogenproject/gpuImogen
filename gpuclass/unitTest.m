@@ -571,7 +571,7 @@ pz = pz + Fz * dt;
 GM = GeometryManager(res);
 GM.makeBoxSize(.01*res);
 
-cudaSourceScalarPotential(FM, phiD, dt, GM, rho_nograv, rho_fullgrav);
+cudaSourceScalarPotential(FM, phiD, GM, [dt, rho_nograv, rho_fullgrav]);
 a = max(px(:) - FM.mom(1).array(:));
 b = max(py(:) - FM.mom(2).array(:));
 c = max(pz(:) - FM.mom(3).array(:));

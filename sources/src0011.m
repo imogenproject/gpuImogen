@@ -12,7 +12,7 @@ cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_du
 if run.radiation.active
     run.radiation.opticallyThinSolver(fluids, run.magnet, dTime); % This commutes with scalar potential 
 end
-cudaSourceScalarPotential(fluids, run.potentialField.field, dTime, run.geometry, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0);
+cudaSourceScalarPotential(fluids, run.potentialField.field, run.geometry, [dTime, run.fluid(1).MINMASS, run.fluid(1).MINMASS * 0]);
 cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2, run.multifluidDragMethod]);
 
 % Take care of any parallel synchronization we need to do to remain self-consistent
