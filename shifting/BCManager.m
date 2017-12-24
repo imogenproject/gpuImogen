@@ -143,7 +143,7 @@ classdef BCManager < handle
                         case ENUM.BCMODE_CONSTANT,    arrayObj.edgeshifts{n,i} = @constant_shift;
                         case ENUM.BCMODE_LINEAR,      arrayObj.edgeshifts{n,i} = @linear_shift;
                         case ENUM.BCMODE_MIRROR,      arrayObj.edgeshifts{n,i} = @mirror_shift;
-			case ENUM.BCMODE_STATIC,      arrayObj.edgeshifts{n,i} = @constant_shift; % FIXME: This is wrong...
+                        case ENUM.BCMODE_STATIC,      arrayObj.edgeshifts{n,i} = @constant_shift; % FIXME: This is wrong...
                         case ENUM.BCMODE_FADE,        arrayObj.edgeshifts{n,i} = @fade_shift;
                         case ENUM.BCMODE_FLIP,        arrayObj.edgeshifts{n,i} = @flip_shift;
                         case ENUM.BCMODE_TRANSPARENT, arrayObj.edgeshifts{n,i} = @transparent_shift;
