@@ -323,7 +323,7 @@ classdef RealtimePlotter <  LinkedListNode
             switch sliceID
                 case 1; u = self.pSubsX; v = self.cut(2); w = self.cut(3); % x
                 case 2; u = self.cut(1); v = self.pSubsY; w = self.cut(3); % y
-                case 3; u = self.cut(1); v = self.cut(2); v = self.pSubsZ; % z
+                case 3; u = self.cut(1); v = self.cut(2); w = self.pSubsZ; % z
                 case 4; u = self.pSubsX; v = self.pSubsY; w = self.cut(3); % xy
                 case 5; u = self.pSubsX; v = self.cut(2); w = self.pSubsZ; % xz
                 case 6; u = self.cut(1); v = self.pSubsY; w = self.pSubsZ; % yz
@@ -336,18 +336,18 @@ classdef RealtimePlotter <  LinkedListNode
             case 1; Q = fluid.mass.array(u,v,w); % rho
             case 2; Q = fluid.mom(1).array(u,v,w); % px
             case 3; Q = fluid.mom(2).array(u,v,w); % py
-            case 4; Q = fluid.mom(3).array(u,v,w);% pz
+            case 4; Q = fluid.mom(3).array(u,v,w); % pz
             case 5; Q = fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w); %vx 
-            case 6; 
-                Q = fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w); %vy
+            case 6; Q = fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w); %vy
             case 7; Q = fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w); %vz
             case 8; Q = fluid.ener.array(u,v,w); %etotal
             case 9; % pressure
                 Q = fluid.calcPressureOnCPU();
                 Q = Q(u,v,w);
             case 10;% temperature
+	        kmu = fluid.particleMu / 1.381e-23;
                 Q = fluid.calcPressureOnCPU();
-                Q = Q(u,v,w)./fluid.mass.array(u,v,w);
+                Q = kmu * Q(u,v,w)./fluid.mass.array(u,v,w);
             case 101; % XY velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 102; % XZ velocity
@@ -368,7 +368,6 @@ classdef RealtimePlotter <  LinkedListNode
             end
 
             Q = squish(Q); % flatten for return
-            
         end
 
         function pickSubplot(self, plotnumber, plotmode)
