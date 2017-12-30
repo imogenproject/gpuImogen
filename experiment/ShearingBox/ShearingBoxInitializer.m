@@ -14,16 +14,14 @@ classdef ShearingBoxInitializer < Initializer
         Mstar; % mass and radius of the star
         Rstar;
         
-        Sigma; % surface mass density at r=(inner radius + outer radius)/2
-               % actually initializes if 2D, 
-               % vertically-integrated with isothermal EOS is 3D
-               
-        dustFraction;
+        Sigma; % surface gas mass density at r=(inner radius + outer radius)/2
+        dustFraction; % scales initial rho_dust = dustFraction x rho_gas
         
         densityExponent; % Sigma(r) = [r/(r- + r+)]^densityExponent: canonically 1.5
+        temperatureExponent; % omega ~ r^-q: canonically 1.5 (NSG, no radial pressure gradient)
         
-        rotationExponent; % omega ~ r^-q: canonically 1.5
-        
+	densityCutoffFraction;
+
         useZMirror;
     end %PUBLIC
 
@@ -48,7 +46,7 @@ classdef ShearingBoxInitializer < Initializer
             self.iterMax          = 300;
             self.bcMode.x         = ENUM.BCMODE_CONSTANT; % FIXME wrong use outflow...
             self.bcMode.y         = ENUM.BCMODE_CIRCULAR;
-            self.bcMode.z         = ENUM.BCMODE_OUTFLOW;
+            self.bcMode.z         = ENUM.BCMODE_CONSTANT;
             
             self.pureHydro = 1;
             
@@ -57,7 +55,9 @@ classdef ShearingBoxInitializer < Initializer
             self.Sigma = 1;
             self.dustFraction = .01;
             self.densityExponent = -1.5;
-            self.rotationExponent = -0.5;
+            self.temperatureExponent = -0.5;
+
+	    self.densityCutoffFraction = 1e-6;
             
             self.gravity.constant = 1;
             self.Mstar            = 1;
@@ -97,7 +97,7 @@ classdef ShearingBoxInitializer < Initializer
                 end
             else
                 if nz > 1
-                    self.bcMode.z = ENUM.BCMODE_OUTFLOW;
+                    self.bcMode.z = ENUM.BCMODE_CONSTANT;
                 else
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
@@ -130,18 +130,15 @@ classdef ShearingBoxInitializer < Initializer
                     dr = (width) / geo.globalDomainRez(1);
                     
                     if nz > 1
-                        error('nz>1 broken with shearing bxo for now.');
-                        
                         nz = geo.globalDomainRez(3);
-                        availz = dr * nz;
-                        needz = round(.5*(2 - self.useZMirror) * diskInfo.rout * (1+self.edgePadding) * diskInfo.aspRatio);
+                        %availz = dr * nz;
                         
-                        if availz < needz
-                            dz = dr * needz / availz;
-                            if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
-                        else
+                        %if availz < needz
+                        %    dz = dr * needz / availz;
+                        %    if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
+                        %else
                             dz = dr;
-                        end
+                        %end
                         
                         % For vertical mirror, offset Z=0 by three cells to agree with mirror BC that has 3 ghost cells
                         if self.useZMirror; z0 = -3*dz; else z0 = -round(nz/2)*dz; end
@@ -157,34 +154,54 @@ classdef ShearingBoxInitializer < Initializer
             
             r_c = (self.innerRadius + self.outerRadius)/2;
             
-            % Pick G so that orbital period is unity
-            %self.gravity.constant = 4*pi^2*r_c^3 / self.Mstar;\
+            radpts = radpts / r_c; % normalize radius
+	    zpts = zpts / r_c;     % normalize height
+
             self.gravity.constant = 6.673e-11;
-            cs_0 = 800;
+            cs_0 = 800; % isothermal c_s picked rather arbitrarily...
             
             GM = self.gravity.constant * self.Mstar;
             
-            if nz == 1    
-                mass = self.Sigma * (radpts./r_c).^self.densityExponent;
-                vel     = geo.zerosXYZ(geo.VECTOR);
-                vel(2,:,:,:) = sqrt(GM) ./ sqrt(radpts);
-                Eint = cs_0^2 * mass / .56; % FIXME HACK
-                
-                fluids(1) = self.rhoVelEintToFluid(mass, vel, Eint);
-                self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen');
-                
-                mass = mass * self.dustFraction;
-                Eint = .0001*geo.onesXYZ(geo.SCALAR);
-                fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
-                self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-            else
-                error('3d not supported yet lolz');
-            end
+            % Calculate the isothermal thin-disk scale height H = c_isothermal / omega_kepler;
+	    w0 = sqrt(GM/r_c^3);
+	    h0 = cs_0 / w0;
+
+            scaleHeight = cs_0 *radpts.^(1.5+.5*self.temperatureExponent) / sqrt(GM);
             
-            omegaInner = sqrt(GM / self.innerRadius^3);
-            omegaOuter = sqrt(GM / self.outerRadius^3);
+            % calculate rho at midplane
+	    q = (-self.temperatureExponent - 3 + 2*self.densityExponent)/2;
+	    rho_0 = self.Sigma / (sqrt(2*pi)*h0);
+	    rho_mp = rho_0 * radpts.^q;
+
+	    phi_0 = -GM / r_c;
+
+	    deltaphi = -phi_0*(1/sqrt(radpts.^2 + zpts.^2) - 1./radpts);
+	    mass = rho_mp .* exp(deltaphi .* radpts.^self.temperatureExponent / cs_0^2);
+
+            % asymptotic result for very thin disk (H/R << 1) = vertical gaussian
+            %mass = self.Sigma * (radpts./r_c).^self.densityExponent .* exp(-(zpts./scaleHeight).^2/2) ./(scaleHeight * sqrt(2*pi));
+
+            self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen'); 
+            self.fluidDetails(1).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
+            vel     = geo.zerosXYZ(geo.VECTOR);
+
+            vel(2,:,:,:) = r_c*radpts.*sqrt((cs_0^2*q/r_c^2)*radpts.^(self.temperatureExponent-2) + w0^2*radpts.^-3); 
+            velB = sqrt(GM) ./ sqrt(radpts);
+            Eint = cs_0^2 * mass .* radpts.^self.temperatureExponent / (self.fluidDetails(1).gamma-1); % FIXME HACK
+            
+            fluids(1) = self.rhoVelEintToFluid(mass, vel, Eint);
+
+            % assume uniform dispersal of dust through gas
+            mass = mass * self.dustFraction;
+            self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
+            self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
+            Eint = mass * (.01*cs_0)^2 / (self.fluidDetails(2).gamma - 1);
+            fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
+            
+            velInner = sqrt(GM / self.innerRadius);
+            velOuter = sqrt(GM / self.outerRadius);
             self.frameParameters.rotateCenter = [0 0 0];
-            self.frameParameters.omega = .5*(omegaOuter + omegaInner);
+            self.frameParameters.omega = (velInner + velOuter)/(self.innerRadius + self.outerRadius);
             
             % run for 100 years (@ this orbital radius)
             self.timeMax = 100*2*pi/self.frameParameters.omega;
@@ -201,8 +218,8 @@ classdef ShearingBoxInitializer < Initializer
             
             potentialField = PotentialFieldInitializer();
 
-            sphericalR = sqrt(radpts.^2 + zpts.^2);
-            potentialField.field = -self.gravity.constant*self.Mstar./sphericalR;
+            sphericalR = r_c*sqrt(radpts.^2 + zpts.^2);
+            potentialField.field = -GM ./ sphericalR;
             
             % Constructs a single-parameter softened potential -a/sqrt(r^2 + r0^2) inside pointRadius to avoid
             % a singularity approaching r=0; 'a' is chosen sqrt(2) to match external 1/r
