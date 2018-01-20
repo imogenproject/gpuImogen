@@ -202,10 +202,6 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         fpi = fluid->devicePtr[i]; // save some readability below...
 
         // This section extracts the portions of the supplied partition-cloned [X;Y] vector relevant to the current partition
-        cudaMalloc((void **)&devXYset[i], (sub[3]+sub[4])*sizeof(double));
-        worked = CHECK_CUDA_ERROR("cudaMalloc");
-        if(worked != SUCCESSFUL) break;
-
         blocksize = makeDim3(128, 1, 1);
         gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
         gridsize.y = gridsize.z = 1;

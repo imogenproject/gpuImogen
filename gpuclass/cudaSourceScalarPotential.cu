@@ -152,7 +152,7 @@ int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, Geom
     MGArray gradientStorage;
     worked = MGA_allocSlab(fluid, &gradientStorage, 3);
     if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
-    worked = computeCentralGradient(phi, &gradientStorage, geom, 2, dt);
+    worked = computeCentralGradient(phi, &gradientStorage, geom, 4, dt);
     if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
     double *gs;
