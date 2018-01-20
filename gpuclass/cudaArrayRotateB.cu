@@ -238,10 +238,10 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 		if(psi == NULL) { // Overwrite original data:
 			MGArray tmp = phi[0];
-			phi[0] = *nuClone; // Nuke original MGArray
+			phi[0] = trans; // Nuke original MGArray
 
-			phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
-			phi->vectorComponent = tmp.vectorComponent; /* retain original vector component. */
+			//phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
+			//phi->vectorComponent = tmp.vectorComponent; /* retain original vector component. */
 
 			for(i = 0; i < trans.nGPUs; i++) {
 				phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers
