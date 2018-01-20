@@ -16,11 +16,11 @@ if run.geometry.pGeometryType == ENUM.GEOMETRY_SQUARE
         % Remember the original kinetic energy density which includes the original w0 term
         T0 = fluids(x).mom(1).array.^2 + fluids(x).mom(2).array.^2;
         % Alter the momentum arrays
-        fluids(x).mom(1).array = fluids(x).mom(1).array + fluids(x).mass.array.*Y;
-        fluids(x).mom(2).array = fluids(x).mom(2).array - fluids(x).mass.array.*X;
+        fluids(x).mom(1).array_NewBC(fluids(x).mom(1).array + fluids(x).mass.array.*Y);
+        fluids(x).mom(2).array_NewBC(fluids(x).mom(2).array - fluids(x).mass.array.*X);
         % Update energy density to reflect changed KE density
-        fluids(x).ener.array = fluids(x).ener.array ...
-            + .5*(fluids(x).mom(1).array.^2+fluids(x).mom(2).array.^2 - T0)./fluids(x).mass.array;
+        fluids(x).ener.array_NewBC(fluids(x).ener.array ...
+            + .5*(fluids(x).mom(1).array.^2+fluids(x).mom(2).array.^2 - T0)./fluids(x).mass.array);
     end
     run.geometry.frameOmega = newOmega;
 end
@@ -40,9 +40,9 @@ if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     % Remember the original kinetic energy density which includes the original w0 term
     T0 = fluids(x).mom(2).array.^2;
     % Alter the momentum arrays
-    fluids(x).mom(2).array = fluids(x).mom(2).array - fluids(x).mass.array.*R*deltaOmega;
+    fluids(x).mom(2).array_NewBC(fluids(x).mom(2).array - fluids(x).mass.array.*R*deltaOmega)
     % Update energy density to reflect changed KE density
-    fluids(x).ener.array = fluids(x).ener.array + .5*(fluids(x).mom(2).array.^2 - T0)./fluids(x).mass.array;
+    fluids(x).ener.array_NewBC(fluids(x).ener.array + .5*(fluids(x).mom(2).array.^2 - T0)./fluids(x).mass.array);
     end
     
     run.geometry.frameRotationOmega = newOmega;

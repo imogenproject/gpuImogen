@@ -181,7 +181,17 @@ classdef ImogenManager < handle
                 j = obj.geometry.frameRotationOmega;
                 obj.geometry.frameRotationOmega = 0;
                 source_alterFrameRotation(obj, f, j);
+                
+                % If the frame was boosted, we need to rebuild any statics in use
+                % FIXME this should check if static BCs are actually in use
+                %for n=1:numel(f)
+                %    f(n).mom(1).setupBoundaries(); 
+                %    f(n).mom(2).setupBoundaries();
+                %    f(n).mom(3).setupBoundaries();
+                %    f(n).ener.setupBoundaries();
+                %end
             end
+            
         end
         
 %_____________________________________________________________________________________ postliminary

@@ -102,6 +102,14 @@ classdef ImogenArray < handle
             end
         end
         
+        function array_NewBC(obj, value)
+            obj.pArray.array = value;
+            obj.setupBoundaries();
+            for d = 1:3; % Do not try to force BCs in a nonfluxable direction
+               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+            end
+        end
+        
         %___________________________________________________________________________________________________ GS: gridSize
         % Specifies the grid size of the data array.
         function result = get.gridSize(obj)
