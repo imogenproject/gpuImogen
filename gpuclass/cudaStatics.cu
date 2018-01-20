@@ -123,7 +123,7 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	/* The statics describe "solid" structures which we force the grid to have */
 	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
 	if(gpuStatics == NULL) {
-		printf("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
 	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
@@ -135,7 +135,7 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
 	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
 	if(offsets == NULL) {
-		printf("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
 	double *offsetcount = mxGetPr(offsets);
@@ -161,7 +161,7 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
 	if(bcModes == NULL) {
-		printf("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
+		PRINT_SIMPLE_FAULT("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
 		return ERROR_INVALID_ARGS;
 	}
 
@@ -200,16 +200,12 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 			}
 		}
 		free(bs);
+		if(worked != SUCCESSFUL) break;
 	}
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
-	return SUCCESSFUL;
+	return CHECK_IMOGEN_ERROR(worked);
 }
 
-
-/* FIXME: This is terrible.
- * FIXME: MGArray needs to provision carrying its own boundary condition metadata around somehow.
- */
 int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
@@ -233,14 +229,14 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
 	if(boundaryData == NULL) {
-		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
+		PRINT_SIMPLE_FAULT("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
 		return ERROR_INVALID_ARGS;
 	}
 
 	/* The statics describe "solid" structures which we force the grid to have */
 	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
 	if(gpuStatics == NULL) {
-		printf("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
 	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
@@ -252,7 +248,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
 	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
 	if(offsets == NULL) {
-		printf("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
 	double *offsetcount = mxGetPr(offsets);
@@ -284,7 +280,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
 	if(bcModes == NULL) {
-		printf("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
+		PRINT_SIMPLE_FAULT("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
 		return ERROR_INVALID_ARGS;
 	}
 
@@ -322,8 +318,10 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 			}
 
 			if(strcmp(bs, "wall") == 0) {
+				PRINT_FAULT_HEADER;
 				printf("Wall BC is not implemented!\n");
-				return ERROR_INVALID_ARGS;
+				PRINT_FAULT_FOOTER;
+				worked = ERROR_INVALID_ARGS;
 			}
 
 			if(strcmp(bs, "outflow") == 0) {
@@ -331,6 +329,8 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 					worked = setOutflowCondition(&phi, geo, d, direction);
 				}
 			}
+			// whatever we just did, check...
+			if(worked != SUCCESSFUL) break;
 
 		}
 		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
@@ -377,6 +377,9 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 			cudaMemcpyToSymbol((const void *)restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
 		}
 	}
+
+	status = CHECK_CUDA_ERROR("__constant__ uploads for outflow condition");
+	if(status != SUCCESSFUL) return status;
 
 	switch(memdir) {
 	case 1: // x
@@ -658,7 +661,7 @@ if(a*direct > 0) {
 }
 
 
-/* Sets the given array+AMD's boundary in the following manner:
+/* Sets the given array's boundary in the following manner:
    side      -> 0 = negative edge  1 = positive edge
    direction -> 1 = X	      2 = Y               3 = Z*
    sas       -> 0 = symmetrize      1 => antisymmetrize
@@ -666,12 +669,12 @@ if(a*direct > 0) {
 
  *: As passed, assuming ImogenArray's indexPermute has been handled for us.
  */
-
-void callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable)
+int callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable)
 {
 	unsigned int nx = domainRez.x;
 	unsigned int ny = domainRez.y;
 	unsigned int nz = domainRez.z;
+	int problem = 0;
 
 	switch(ktable) {
 	// 0-15: X direction
@@ -689,28 +692,52 @@ void callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int kt
 	case 16: cukern_yminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 17: cukern_yminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 18: cukern_extrapolateFlatConstBdyYMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 19: mexErrMsgTxt("Fatal: This boundary condition (y-minus, linear) has not been implemented yet."); break;
-
+	case 19:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (y-minus, linear) has not been implemented yet.\n");
+		break;
 	case 24: cukern_yplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 25: cukern_yplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 26: cukern_extrapolateFlatConstBdyYPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 27: mexErrMsgTxt("Fatal: This boundary condition (y-plus, linear) has not been implemented yet."); break;
+	case 27:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (y-plus, linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
 
 	// 32-40: Z direction
 	case 32: cukern_zminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 33: cukern_zminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 34: cukern_extrapolateFlatConstBdyZMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 35: mexErrMsgTxt("Fatal: This boundary condition (z-minus linear) has not been implemented yet."); break;
+	case 35:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (z-minus linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
 
 	case 40: cukern_zplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 41: cukern_zplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
 	case 42: cukern_extrapolateFlatConstBdyZPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 43: mexErrMsgTxt("Fatal: This boundary condition (z-plus linear) has not been implemented yet."); break;
+	case 43:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (z-plus linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
 
 	default:
+		problem = ERROR_INVALID_ARGS;
+		PRINT_FAULT_HEADER;
 		printf("ERROR: callBCKernel invoked with INVALID ktable argument of %i\n", ktable);
+		PRINT_FAULT_FOOTER;
 		break;
 
+	}
+
+	if(problem == SUCCESSFUL) {
+	    return CHECK_CUDA_ERROR("callBCKernel call");
+	} else {
+		return problem;
 	}
 
 }
@@ -753,8 +780,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 		calcPartitionExtent(phi, i, sub);
 
 		dim3 rez; rez.x = sub[3]; rez.y = sub[4]; rez.z = sub[5];
-		callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
-		returnCode = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 8*side + 16*(direction-1), "In setBoundarySAS; integer -> cukern table index");
+		returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
 		if(returnCode != SUCCESSFUL) return returnCode;
 	} else {
 		// If the BC isn't on a face that's aimed in the partitioned direction,
@@ -781,9 +807,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 			if(returnCode != SUCCESSFUL) return returnCode;
 
 			dim3 rez; rez.x = sub[3]; rez.y = sub[4]; rez.z = sub[5];
-			callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
-
-			returnCode = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, sas + 8*side + 16*(direction-1), "In setBoundarySAS; integer -> cukern table index");
+			returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
 			if(returnCode != SUCCESSFUL) return returnCode;
 		}
 

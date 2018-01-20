@@ -2473,10 +2473,8 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 void dropMexError(const char *excuse, const char *infile, int atline)
 {
 	static char turd[512];
-	//conchar *turd = (char *)malloc(strlen(excuse) + strlen(infile) + 32);
-	snprintf(turd, 511, "The crap hit the fan: %s\nLocation was %s:%i", excuse, infile, atline);
+	snprintf(turd, 511, "Bad news bears:\n\t%s\n\tLocation was %s:%i", excuse, infile, atline);
 	mexErrMsgTxt(turd);
-	//free(turd);
 }
 
 void printdim3(char *name, dim3 dim)

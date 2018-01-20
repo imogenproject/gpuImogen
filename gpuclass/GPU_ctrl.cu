@@ -14,7 +14,7 @@
 
 #include "cudaCommon.h"
 
-// static paramaters
+// static parameters
 
 void printAboutDevice(cudaDeviceProp info, int devno)
 {
@@ -46,7 +46,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int nDevices;
 	cudaGetDeviceCount(&nDevices);
 	int returnCode = CHECK_CUDA_ERROR("GPU_ctrl(): cudaGetDeviceCount doesn't even work.\nIf occurring apropos of nothing, this appears to occur if Matlab was open,\nhad acquired a context, and the system was ACPI suspended.\n");
-	if(returnCode != SUCCESSFUL) return;
+	if(returnCode != SUCCESSFUL) DROP_MEX_ERROR("GPU_ctrl failed at entry.");
 
 	mexLock(); // It would be Bad if this disappeared on us at any point.
 
@@ -160,9 +160,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			cudaSetDevice(i);
 			cudaDeviceReset();
 			printf("Done.\n");
+			returnCode = CHECK_CUDA_ERROR("device reset");
+			if(returnCode != SUCCESSFUL) break;
 			}
-
-
 	}
 	if(strcmp(c, "memory") == 0) {
 		size_t freemem; size_t totalmem;
@@ -179,12 +179,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		int i;
 		for(i = 0; i < nDevices; i++) {
 			cudaSetDevice(i);
-			CHECK_CUDA_ERROR("cudaSetDevice()");
-			fail =  cudaMemGetInfo(&freemem, &totalmem);
-			CHECK_CUDA_ERROR("cudaMemGetInfo()");
+			returnCode = CHECK_CUDA_ERROR("cudaSetDevice()");
+			if(returnCode != SUCCESSFUL) break;
+
+			cudaMemGetInfo(&freemem, &totalmem);
+			returnCode = CHECK_CUDA_ERROR("cudaMemGetInfo()");
+			if(returnCode != SUCCESSFUL) break;
 
 			d[i] = freemem; d[i+nDevices] = totalmem;
-
 		}
 	}
 	if(strcmp(c,"createStreams") == 0) { /* FIXME lines 186-217 are new/untested and are about as safe as letting grandma drive your your Shelby GTX */
@@ -220,6 +222,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			cudaStreamDestroy(*streams);
 			streams++;
 		}
+	}
+
+	if(returnCode != SUCCESSFUL) {
+		DROP_MEX_ERROR("Operation of GPU_ctrl failed: Causing interpreter error.");
 	}
 
 }
