@@ -31,6 +31,8 @@ function resultsHandler(saveEvent, run, fluids, mag)
     %------------------
     if run.save.saveData
 
+        gm = GPUManager.getInstance();
+
         fileSuffix         = run.paths.iterationToString(iteration);
 
         run.save.firstSave = false; % Update for later saves.
@@ -40,6 +42,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
         sl.about  = run.about;
         sl.ver    = run.version;
         sl.iter   = iteration;
+	sl.amtHalo= gm.useHalo;
             
         for i = find(run.save.ACTIVE)
             switch (i)

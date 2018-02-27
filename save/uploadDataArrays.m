@@ -32,6 +32,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     for F = 1:numel(FieldSource.fluids)
         fluid(F) = FluidManager();
         % HACK HACK HACK this should be in some other init place
+	fluid(F).MINMASS        = FieldSource.ini.minMass;
         fluid(F).MASS_THRESHOLD = FieldSource.ini.thresholdMass;
         fluid(F).parent         = run;
 
