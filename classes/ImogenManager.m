@@ -174,6 +174,11 @@ classdef ImogenManager < handle
             obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
             obj.potentialField.initialize(IC.potentialField);
             
+            if obj.potentialField.ACTIVE == 0
+                obj.compositeSrcOrders(1) = 0;
+                % disable potential field deriv calculation if not used
+            end
+            
             obj.geometry.frameRotationCenter = IC.ini.frameParameters.rotateCenter;
             obj.geometry.frameRotationOmega  = IC.ini.frameParameters.omega;
             

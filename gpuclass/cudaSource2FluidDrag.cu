@@ -694,6 +694,9 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams geo, doubl
 	// Emits [|dv_tr|, u_0, P_x, P_y, P_z] into temp memory at gs
 	statusCode = prepareForERK2(gas, dust, gs, geo, 2, fluidGamma - 1);
 
+	int fuckoff = dbgfcn_CheckArrayVals(gs, 5, 1);
+		if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
+
 	if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
 
 	int velblock = 0;
@@ -714,10 +717,18 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams geo, doubl
 		tempPtr = tmpMem.devicePtr[i];
 
 		cukern_LogTrapSolve<<<lingrid, linblock>>>(g, d, dt, tempPtr, gas->partNumel[i]);
+
 		statusCode = CHECK_CUDA_LAUNCH_ERROR(linblock, lingrid, gas, i, "doing cukern_ExponentialEulerIntermediate");
 		if(statusCode != SUCCESSFUL) break;
 		if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
 	}
+
+	cudaDeviceSynchronize();
+
+	fuckoff = dbgfcn_CheckFluidVals(gas, 1);
+	if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
+	fuckoff = dbgfcn_CheckFluidVals(dust, 1);
+	if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
 
 // Make extra sure node's internal boundaries are consistent
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 5);
@@ -1647,8 +1658,8 @@ __global__ void  cukern_prepareForERK2D_h4(double *phi, double *fx, double *fy, 
 __global__ void  cukern_prepareForERKRZ_h2(double *gas, double *dust, double *em, int3 arraysize);
 __global__ void  cukern_prepareForERKRZ_h4(double *phi, double *fx, double *fz, int3 arraysize);
 
-#define GRADBLOCKX 18
-#define GRADBLOCKY 18
+#define GRADBLOCKX 16
+#define GRADBLOCKY 16
 
 // scalingParameter / 2h or /12h depending on spatial order of scheme
 #define LAMX devLambda[0]
@@ -1723,11 +1734,11 @@ int prepareForERK2(MGArray *gas, MGArray *dust, MGArray *tempMem, GeometryParams
 		int3 arraysize; arraysize.x = sub[3]; arraysize.y = sub[4]; arraysize.z = sub[5];
 		dim3 blocksize(GRADBLOCKX, GRADBLOCKY, 1);
 		gridsize.x = arraysize.x / (blocksize.x - spaceOrder);
-		gridsize.x += ((blocksize.x-spaceOrder) * gridsize.x < arraysize.x);
+		gridsize.x += ((blocksize.x-spaceOrder) * gridsize.x < arraysize.x) * 1 ;
 		if(isRZ) {
 			gridsize.y = arraysize.z / (blocksize.y - spaceOrder); gridsize.y += ((blocksize.y-spaceOrder) * gridsize.y < arraysize.z);
 		} else {
-			gridsize.y = arraysize.y / (blocksize.y - spaceOrder); gridsize.y += ((blocksize.y-spaceOrder) * gridsize.y < arraysize.y);
+			gridsize.y = arraysize.y / (blocksize.y - spaceOrder); gridsize.y += ((blocksize.y-spaceOrder) * gridsize.y < arraysize.y) * 1;
 		}
 		gridsize.z = 1;
 
@@ -1747,7 +1758,7 @@ int prepareForERK2(MGArray *gas, MGArray *dust, MGArray *tempMem, GeometryParams
 		case 2:
 			if(isThreeD) {
 				if(isRZ) {
-					cukern_prepareForERKRZ_h2<<<gridsize, blocksize>>>(gasPtr, tmpPtr, tmpPtr+2*slabsize, arraysize);
+					cukern_prepareForERKRZ_h2<<<gridsize, blocksize>>>(gasPtr, dustPtr, tmpPtr, arraysize);
 				} else {
 					if(geom.shape == SQUARE) {
 						cukern_prepareForERK3D_h2<SQUARE><<<gridsize, blocksize>>> (gasPtr, dustPtr, tmpPtr, arraysize); }
@@ -1903,9 +1914,19 @@ __global__ void  cukern_prepareForERK3D_h2(double *gas, double *dust, double *em
 			dvsq += dv*dv;
 		}
 
+		/* we must protect on both sides of this
+		 * tl;dr: with only barrier B, warps 1 and 2 depart at the same time
+		 * But if, suppose, warp 1 gets delayed in the slow sqrt() calculation while
+		 * warp 2 goes ahead and runs all the way back to where barrier A is.
+		 *
+		 * Without barrier A, warp 2 will overwrite W (which for warp 1 is still U)
+		 * and the calculation will be corrupted.
+		 */
+		__syncthreads();
+
 		W[myLocAddr]       = gas2press(gas + (globAddr + deltaz));
 
-		__syncthreads();
+		__syncthreads(); // barrier B
 
 		if(IWrite) {
 			deltaP           = LAMZ*(W[myLocAddr] - U[myLocAddr]);
@@ -1916,10 +1937,11 @@ __global__ void  cukern_prepareForERK3D_h2(double *gas, double *dust, double *em
 			dv = (gas[globAddr+4*FLUID_SLABPITCH])/gas[globAddr] - dust[globAddr+4*FLUID_SLABPITCH]/dust[globAddr];
 #endif
 			dvsq += dv*dv;
-		}
+
 
 		em[globAddr] = sqrt(dvsq); // output initial delta-v
 		em[globAddr + FLUID_SLABPITCH] = V[myLocAddr] / gas[globAddr]; // specific internal energy for
+		}
 
 		temp = U; U = V; V = W; W = temp; // cyclically shift them back
 		globAddr += arraysize.x * arraysize.y;

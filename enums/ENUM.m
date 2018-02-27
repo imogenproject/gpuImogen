@@ -70,6 +70,12 @@ classdef ENUM
         CFD_HLL = 1;
         CFD_HLLC = 2;
         CFD_XINJIN = 3;
+
+        MULTIFLUID_EMP = 0;
+        MULTIFLUID_RK4 = 1;
+        MULTIFLUID_ETDRK1 = 2;
+        MULTIFLUID_ETDRK2 = 3;
+        MULTIFLUID_LOGTRAP = 4;
     end
 
 end

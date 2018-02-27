@@ -254,7 +254,12 @@ int checkCudaError(const char *where, const char *fname, int lname);
 int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, const char *srcname, const char *fname, int lname);
 int checkImogenError(int errtype, const char *infile, const char *infunc, int atline);
 
+//
 void MGA_debugPrintAboutArray(MGArray *x);
+
+int dbgfcn_CheckArrayVals(MGArray *x, int maxslab, int crashit);
+int dbgfcn_CheckArrayVals(MGArray *x, int crashit);
+int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit);
 
 #define PRINT_FAULT_HEADER printf("========== FAULT IN COMPILED CODE: function %s (%s:%i)\n", __func__, __FILE__, __LINE__)
 #define PRINT_FAULT_FOOTER printf("========== COMPILED CODE STACK TRACE SHOULD FOLLOW: ============================\n")

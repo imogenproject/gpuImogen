@@ -152,6 +152,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	if(CHECK_CUDA_ERROR("freeing blkA") != SUCCESSFUL) { mexErrMsgTxt("Dumping"); }
     }
 
+    int myr; MPI_Comm_rank(MPI_COMM_WORLD, &myr);
+    printf("Rank %i: local dtmin = %lf\n", tmin);
+
     double trueMin;
     MPI_Allreduce((void *)&tmin, (void *)&trueMin, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
 
@@ -197,7 +200,7 @@ __device__ __inline__ double getMagnitudeMomentum(double *base, int64_t pitch)
 	}
 }
 
-// 3 dims x 2 shapes = 6 kernels total
+// 3 dims x 2 shapes x 3 algorithms = 18 kernels total
 template <int simulationDimension, geometryType_t shape, FluidMethods algo>
 __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int nx, int ntotal, int64_t slabpitch)
 {
@@ -215,6 +218,7 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 	if(x >= ntotal) return; // This is unlikely but we may get a stupid-small resolution
 
 	fluid += x; // compute base offset
+	cs += x;
 
 	if((algo == METHOD_HLL) || (algo == METHOD_HLLC)) {
 		if(shape == SQUARE) { // compute h once
@@ -231,7 +235,7 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 	while(x < ntotal) {
 		if((algo == METHOD_HLL) || (algo == METHOD_HLLC)) {
 			// get max signal speed
-			u = getMagnitudeMomentum<simulationDimension>(fluid, slabpitch) / fluid[0] + cs[x]; // |v| + c
+			u = getMagnitudeMomentum<simulationDimension>(fluid, slabpitch) / fluid[0] + cs[0]; // |v| + c
 
 			// Identify local constraint on dt < dx / c_signal
 			if(shape == SQUARE) {
@@ -246,19 +250,19 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 		if(algo == METHOD_XINJIN) {
 			double rho = fluid[0];
 			// get max signal speed
-			u = GEO_DX / ( fabs(fluid[2*slabpitch])/rho + cs[x] );
+			u = GEO_DX / ( fabs(fluid[2*slabpitch])/rho + cs[0] );
 
 			if(simulationDimension > 1) {
 				if(shape == SQUARE) {
-					v = GEO_DY / ( fabs(fluid[3*slabpitch])/rho + cs[x] );
+					v = GEO_DY / ( fabs(fluid[3*slabpitch])/rho + cs[0] );
 				}
 				if(shape == CYLINDRICAL){
-					v = (GEO_RIN + (x % nx)*GEO_DX)*GEO_DY / ( fabs(fluid[4*slabpitch])/rho + cs[x] );
+					v = (GEO_RIN + (x % nx)*GEO_DX)*GEO_DY / ( fabs(fluid[3*slabpitch])/rho + cs[0] );
 				}
 				u = (u < v) ? u : v;
 			}
 			if(simulationDimension > 2) {
-				v = GEO_DZ / ( fabs(fluid[4*slabpitch])/rho + cs[x] );
+				v = GEO_DZ / ( fabs(fluid[4*slabpitch])/rho + cs[0] );
 				u = (u < v) ? u : v;
 			}
 		}
@@ -267,6 +271,7 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 		localTmin = (u < localTmin) ? u : localTmin;
 
 		fluid += blockhop;
+		cs    += blockhop;
 		x += blockhop; // skip the first block since we've already done it.
 	}
 
@@ -282,16 +287,19 @@ __global__ void cukern_CFLtimestep(double *fluid, double *cs, double *out, int n
 		x=x/2;
 	}
 
-	__syncthreads();
+	if(tix >= 16) return;
 
 	// We have one halfwarp (16 threads) remaining, proceed synchronously
 	// cuda-memcheck --racecheck whines bitterly about this but because of warp synchronicity
 	// there is no RAW problem.
 	if(dtLimit[tix+16] < dtLimit[tix]) { dtLimit[tix] = dtLimit[tix+16]; } if(tix >= 8) return;
+	//__syncthreads();
 	if(dtLimit[tix+8] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+8 ]; } if(tix >= 4) return;
+	//__syncthreads();
 	if(dtLimit[tix+4] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+4 ]; } if(tix >= 2) return;
+	//__syncthreads();
 	if(dtLimit[tix+2] < dtLimit[tix])  { dtLimit[tix] = dtLimit[tix+2 ]; } if(tix) return;
-
+	//__syncthreads();
 	out[blockIdx.x] = (dtLimit[1] < dtLimit[0]) ? dtLimit[1] : dtLimit[0];
 
 }

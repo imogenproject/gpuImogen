@@ -77,7 +77,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	POut = MGA_createReturnedArrays(plhs, 1, fluid);
 	MGArray *cfLocal;
-	cfLocal= MGA_allocArrays(1, &clone);
+	int itworked = MGA_allocArrays(&cfLocal, 1, &clone);
 
 	double hostgf[6];
 	double gam = *mxGetPr(prhs[8]);

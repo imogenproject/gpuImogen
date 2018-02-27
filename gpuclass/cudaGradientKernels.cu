@@ -282,6 +282,8 @@ __global__ void  cukern_computeScalarGradient3D_h2(double *phi, double *fx, doub
 		temp = U; U = V; V = W; W = temp; // cyclically shift them back
 		globAddr += arraysize.x * arraysize.y;
 
+		__syncthreads();
+
 	}
 
 }
@@ -373,6 +375,8 @@ __global__ void  cukern_computeScalarGradient3D_h4_parttwo(double *phi, double *
 	int y;
 	for(y = 0; y < arraysize.y; y++) {
 		phishm[myLocAddr] = phi[globAddr];
+
+		__syncthreads();
 
 		if(IWrite) {
 			deltaphi         = LAMZ*(-phishm[myLocAddr+2*GRADBLOCKX]+8*phishm[myLocAddr+GRADBLOCKX]-8*phishm[myLocAddr-GRADBLOCKX]+phishm[myLocAddr-2*GRADBLOCKX]);

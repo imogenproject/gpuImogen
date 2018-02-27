@@ -2382,10 +2382,13 @@ int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a,
 	return ERROR_CUDA_BLEW_UP;
 }
 
+/* Emit a verbose description of the MGArray living at *x. */
 void MGA_debugPrintAboutArray(MGArray *x)
 {
 	int n = x->nGPUs;
-	printf("========== DEBUG INFORMATION ABOUT ARRAY\n");
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	printf("========== RANK %i DEBUG INFORMATION ABOUT ARRAY\n", rank);
 	printf("  This array's address: %x\n", x);
 	printf("===== Device information\n");
 	printf("Array distributed onto    %i GPUs\n", x->nGPUs);
@@ -2466,7 +2469,112 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	return errtype;
 }
 
-/* This function should be used the mexFunction entry points to signal Matlab of problems.
+#define MAX_BAD_VALUES 1024
+
+/* Trawls through the given pointer for the given length
+ * Looks for any NAN or INF values; These are characteristic of the code taking an
+ * explosive dump. Store the addresses as they are found in evils[].
+ * evils[0] counts # of invalid values
+ */
+__global__ void cukern_dbcheck_array(int *evils, double *array, int Nmax)
+{
+
+	int x = threadIdx.x + blockIdx.x*blockDim.x;
+
+	double foo; int w;
+	while(x < Nmax) {
+		foo = array[x];
+		if( (isnan(foo)) || (isinf(foo)) ) {
+			w = atomicAdd(evils, 1);
+			if(w > (MAX_BAD_VALUES-1)) break;
+			evils[w] = x;
+		}
+		x += blockDim.x*gridDim.x;
+
+	}
+
+}
+
+int dbgfcn_CheckArrayVals(MGArray *x, int crashit) { return dbgfcn_CheckArrayVals(x, 1, crashit); }
+
+/* Calls a kernel to run through all partitions of MGArray x,
+ * storing addresses of invalid data in a separate array (up to 1024).
+ */
+int dbgfcn_CheckArrayVals(MGArray *x, int maxslab, int crashit)
+{
+int rank;
+MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+int fail;
+
+int badnews = 0;
+
+int hostBadVals[MAX_BAD_VALUES];
+
+if(maxslab == 0) { maxslab = 1; }
+if(maxslab > x->numSlabs) { maxslab = x->numSlabs; }
+
+int *evilAddresses;
+
+cudaMalloc(&evilAddresses, MAX_BAD_VALUES*sizeof(int));
+
+int i, j;
+for(j = 0; j < maxslab; j++) {
+	for(i = 0; i < x->nGPUs; i++) {
+		cudaSetDevice(x->deviceID[i]);
+
+		fail = CHECK_CUDA_ERROR("fuck");
+
+		int qq = 1;
+		cudaMemcpy((void *)&evilAddresses[0], (void *)&qq, 1*sizeof(int), cudaMemcpyHostToDevice);
+		fail = CHECK_CUDA_ERROR("fuck");
+		cukern_dbcheck_array<<<16, 256>>>(&evilAddresses[0], x->devicePtr[i] + (j*x->slabPitch[i]/8), x->partNumel[i]);
+		fail = CHECK_CUDA_ERROR("fuck");
+		cudaMemcpy((void *)&qq, (void *)&evilAddresses[0], 1*sizeof(int), cudaMemcpyDeviceToHost);
+		fail = CHECK_CUDA_ERROR("fuck");
+		if(qq > 1) {
+			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %x[0] to %x[%i] and hit %i invalid values!", rank, j, x->devicePtr[i], x->devicePtr[i], x->partNumel[i]-1, qq);
+			printf("break at %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
+			cudaMemcpy((void *)&hostBadVals[0], (void *)&evilAddresses[0], qq*sizeof(int), cudaMemcpyDeviceToHost);
+			fail = CHECK_CUDA_ERROR("fuck");
+			badnews = 1;
+			break;
+		}
+	}
+
+	if(badnews) {
+		printf("Rank %i providing information on array where fault was found:\n", rank);
+		MGA_debugPrintAboutArray(x);
+
+		if(crashit) {
+			printf("Rank %i returning error to cause automatic backtrace output.\n", rank);
+			cudaFree(evilAddresses);
+			return ERROR_CRASH;
+		}
+	}
+
+}
+
+cudaFree(evilAddresses);
+return 0;
+
+}
+
+/* Invokes dbgfcn_CheckArrayVals on fluid[0] through fluid[4] */
+int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit)
+{
+
+	int badnews;
+	int i;
+	for(i = 0; i < 4; i++) {
+		badnews = dbgfcn_CheckArrayVals(fluid + i, 1, crashit);
+		if(badnews) { return badnews; }
+	}
+
+	return 0;
+}
+
+/* This function should be used the mexFunction entry points (AND NOWHERE ELSE) to signal Matlab of problems.
  * NOTE: Don't call this directly, use DROP_MEX_ERROR("string") to automatically
  * fill in the file and line numbers correctly.
  */
