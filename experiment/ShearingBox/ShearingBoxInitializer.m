@@ -1,6 +1,34 @@
 classdef ShearingBoxInitializer < Initializer
-    
-        
+% The ShearingBoxInitializer simulates part of a (possibly dusty) protoplanetary disk.
+% The gas density is derived from a surface density ansatz,
+%     sigma(r) = Sigma0 * (r/r0)^p
+% where p is canonically -1 (steady state thin alpha-disk)
+% Temperature is set on cylinders following another radial power law,
+%     T(r) = T0 * (r/r0)^n
+% with n canonically -0.5 (from P_sunlight ~ r^-2 = P_blackbody ~ T^4)
+% From this the scale height is derived as a function of radius
+%     H(r) = (cs0 / omega0)*(r/r0)^(n/2 + 3/2)
+% and the 3D density is written
+%     rho(r,z) = rho0(r) exp(-alpha phi0(1/r - 1/R)/ cs0^2 r^n)
+% where alpha = (1+dustFraction) and phi0 = GM/r0 and R = sqrt(r^2+z^2) is the spherical
+% radius and rho0(r) = sigma(r) / (sqrt(2*pi) H(r)) is the midplane density. For a very thin
+% disk, the choice of rho0 means that the vertical Gaussian integral returns sigma. The
+% actual analytic result is only close to Gaussian.
+% The rotation function is rotates-on-rings and v_phi(r,z) is derived from the mechanical
+% balance equation,
+%     F_radial = alpha rho v^2 / r - GM r^2/R^3 - (dP/dr)/r = 0
+%
+% If dust is added, alpha is greater than 1 which modifies the density/velocity functions to
+% preserve equilibrium under the assumption of perfect coupling (Vgas-Vdust = 0). The actual
+% time-independent equilibrium for the dust is a vertical delta function but this is not seen
+% as a reasonable initial condition. With dust, small radial/vertical motions occur; If
+% dustFraction is set to zero, the gas-only IC is seen to converge to a true time-independent
+% solution upon grid refinement.
+%
+% It is important to note: the thermodynamic parameter inputs (geometric x-section and molecular
+% mass) are in *SI UNITS*. A dusty disk must be specified in SI units if it is normalized
+% because the normalization rescales molecular properties assuming they are SI.
+
 %===================================================================================================
     properties (Constant = true, Transient = true) %                            C O N S T A N T  [P]
 
@@ -8,21 +36,22 @@ classdef ShearingBoxInitializer < Initializer
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
-        innerRadius, outerRadius; % r- and r+ of the shearing annulus
+        innerRadius, outerRadius; % r- and r+ of the annulus
 
-        normalizationRadius;
-        normalizeValues;
+        Mstar; % Stellar mass. Default = 1.981e30 (Msun)
+        Rstar; % Stellar radius. Default = 1e9 (Rsun)
 
-        Mstar; % mass and radius of the star
-        Rstar;
+        normalizationRadius; % r0
+        normalizeValues; % Rescales such that r0 = 1, rho(r0) = 1, GM/r0 = 1.
         
-        Sigma0; % surface gas mass density at r=(inner radius + outer radius)/2
+        Sigma0; % Gas surface mass density at r=r0
+        densityExponent; % Sigma0(r) = Sigma0 * (r/r0)^q : canonically -1 (steady state accretion)
+        densityCutoffFraction;
         dustFraction; % scales initial rho_dust = dustFraction x rho_gas
         
-        densityExponent; % Sigma0(r) = [r/(r- + r+)]^densityExponent: canonically 1.5
-        temperatureExponent; % omega ~ r^-q: canonically 1.5 (NSG, no radial pressure gradient)
+        cs0; % Isothermal soundspeed kb T0 / mu evaluated at r0
+        temperatureExponent; % T(r) = T(r0) (r/r0)^n: canonically -.5 (purely starlight heating)
         
-       densityCutoffFraction;
 
         useZMirror;
     end %PUBLIC
@@ -40,6 +69,7 @@ classdef ShearingBoxInitializer < Initializer
         
 %____________________________________________________________________________ ShearingBoxInitializer
         function self = ShearingBoxInitializer(input)
+	    if nargin == 0; input = [64 64 1]; end
             self                  = self@Initializer();            
             self.runCode          = 'SHEARBOX';
             self.mode.fluid       = true;
@@ -54,18 +84,24 @@ classdef ShearingBoxInitializer < Initializer
             
             self.numFluids = 2;
             
-            self.normalizationRadius = 1;
-            self.normalizeValues = 0; 
-            self.Sigma0 = 1;
-            self.dustFraction = .01;
-            self.densityExponent = -1.5;
-            self.temperatureExponent = -0.5;
+            self.innerRadius = 5*150e9; % 5 to 20 AU
+            self.outerRadius = 20*150e9; 
 
-           self.densityCutoffFraction = 1e-6;
+            self.normalizationRadius = 150e10; % Normalize by values for 10AU
+            self.normalizeValues = 1; 
+
+            self.Sigma0 = 1000; % 100g/cm^2 = 1000kg/m^2
+            self.densityExponent = -1.5;
+            self.dustFraction = .01;
+
+            self.temperatureExponent = -0.5;
+            self.cs0 = 1137; % isothermal soundspeed of 75% H_2 25% 4He at 273.15K
+
+            self.densityCutoffFraction = 1e-5;
             
             self.gravity.constant = 1;
-            self.Mstar            = 1;
-            self.Rstar            = 0.3;
+            self.Mstar            = 1.981e30;
+            self.Rstar            = 1e9; 
             self.gamma            = 7/5;
             
             self.useZMirror       = 0;
@@ -101,7 +137,7 @@ classdef ShearingBoxInitializer < Initializer
             else
                 if nz > 1
                     self.bcMode.z = ENUM.BCMODE_STATIC;
-		    %self.bcMode.z = ENUM.BCMODE_CONSTANT;
+                    %self.bcMode.z = ENUM.BCMODE_CONSTANT;
                 else
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
@@ -154,70 +190,92 @@ classdef ShearingBoxInitializer < Initializer
                     geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
             end
             
-
+            % Fetch and normalize coordinates
             [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
-            
-%            r_c = (self.innerRadius + self.outerRadius)/2;
-            r_c = self.normalizationRadius;
-            
-            radpts = radpts / r_c; % normalize radius
-           zpts = zpts / r_c;     % normalize height
+            r_c    = self.normalizationRadius;
+            radpts = radpts / r_c;
+            zpts   = zpts / r_c;
+            rsph   = sqrt(radpts.^2+zpts.^2);
 
-            self.gravity.constant = 6.673e-11;
-            cs_0 = 800; % isothermal c_s picked rather arbitrarily...
-            
+            self.gravity.constant = 6.673e-11; % physical value
             GM = self.gravity.constant * self.Mstar;
             
-            % Calculate the isothermal thin-disk scale height H = c_isothermal / omega_kepler;
-           w0 = sqrt(GM/r_c^3);
-           v0 = r_c*w0;
-           h0 = cs_0 / w0;
-           M0 = v0/cs_0;
+            cs_0 = self.cs0; % isothermal c_s picked rather arbitrarily...
 
-            scaleHeight = cs_0 *radpts.^(1.5+.5*self.temperatureExponent) / sqrt(GM);
+            % Calculate several dimensionful scale factors
+            w0    = sqrt(GM/r_c^3); % kepler omega @ r_c
+            v0    = r_c*w0;    % Kepler orbital velocity @ r_c
+            h0    = cs_0 / w0; % scale height @ r_c
+            phi_0 = -GM / r_c; % stellar potential @ r_c
+            rho_0 = self.Sigma0 / (sqrt(2*pi)*h0);
+            P0    = -rho_0 * phi_0; % pressure scale @ r_c
+
+            nt = self.temperatureExponent;
+            np = self.densityExponent;
+            alpha = 1 + self.dustFraction; % inertial/gravitational density enhancement factor
+
+            % scale height as a function of cylindrical radius
+            scaleHeight = cs_0 *radpts.^(1.5+.5*nt) / sqrt(GM);
             
-            % calculate rho at midplane
-           q = (-self.temperatureExponent - 3 + 2*self.densityExponent)/2;
-           rho_0 = self.Sigma0 / (sqrt(2*pi)*h0);
-           rho_mp = rho_0 * radpts.^q;
+            % calculate density at midplane
+            q      = (-nt - 3 + 2*np)/2;
+            rho_mp = rho_0 * radpts.^q;
 
-           phi_0 = -GM / r_c;
-           P0 = -rho_0 * phi_0;
+            % Calculate rho at all elevations given T(r,z) = T(r,z=0) (locally isothermal)
+            % solve dP/dz = T drho/dz = -dphi/dz
+            deltaphi = -phi_0*(1./sqrt(radpts.^2 + zpts.^2) - 1./radpts);
+            mass = rho_mp .* exp(deltaphi .* radpts.^(-nt) / cs_0^2);
 
-           deltaphi = -phi_0*(1/sqrt(radpts.^2 + zpts.^2) - 1./radpts);
-           mass = rho_mp .* exp(deltaphi .* radpts.^(-self.temperatureExponent) / cs_0^2);
-
-            % asymptotic result for very thin disk (H/R << 1) = vertical gaussian
-            %mass = self.Sigma0 * (radpts./r_c).^self.densityExponent .* exp(-(zpts./scaleHeight).^2/2) ./(scaleHeight * sqrt(2*pi));
-
+            % Still more or less fudging the thermodynamics for now
+            % note that throughout here, kb/mu is flagrantly absorbed onto temp/pressure
             self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen'); 
             self.fluidDetails(1).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
+
+            % Calculate the orbital velocity that solves radial force balance
+            % Rotation has a small degree of vertical shear
+            % Solution to v^2 / x = GM x^2/r^3 + (dP/dx)/rho
             vel     = geo.zerosXYZ(geo.VECTOR);
+            vel(2,:,:,:) = sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
 
-            vel(2,:,:,:) = sqrt((cs_0^2*(q+self.densityExponent))*radpts.^(self.temperatureExponent) + r_c^2*w0^2./radpts); 
-            Eint = cs_0^2 * mass .* radpts.^self.temperatureExponent / (self.fluidDetails(1).gamma-1);
+            % Setup internal energy density to yield correct P for an adiabatic ideal gas
+            Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
 
+            % Rescale if we choose to
             if self.normalizeValues
                 mass = mass / rho_0;
                 vel = vel / v0;
                 Eint = Eint / P0;
+                nfact = rho_0 / P0;
+
+                m0 = rho_0 * r_c^3;
+                self.fluidDetails(1).sigma = self.fluidDetails(1).sigma *r_c^-2;
+                self.fluidDetails(1).mu    = self.fluidDetails(1).mu / m0;
+            else
+                nfact = 1;
             end
 
             fluids(1) = self.rhoVelEintToFluid(mass, vel, Eint);
 
             if self.dustFraction > 0
+                %uniformly disperse dust mass through the gas
+                mass = mass * self.dustFraction;
+                self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
+                self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
 
-            % assume uniform dispersal of dust through gas
-            mass = mass * self.dustFraction;
-            self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-            self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
-            Eint = mass * (.01*cs_0)^2 / (self.fluidDetails(2).gamma - 1);
-            fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
+                self.fluidDetails(2).sigma = self.fluidDetails(2).sigma *r_c^-2;
+                self.fluidDetails(2).mu    = self.fluidDetails(2).mu / m0;
+                
+                self.fluidDetails(2).sigma = self.fluidDetails(2).sigma * 10000;
+                self.fluidDetails(2).mu = self.fluidDetails(2).mu * 1e6;
+
+                Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
+                fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
             
             else
-               self.numFluids = 1;
+                self.numFluids = 1;
             end
 
+            % Compute frame boost that minimizes the average advection speed & maximizes timestep
             velInner = sqrt(GM / self.innerRadius);
             velOuter = sqrt(GM / self.outerRadius);
             self.frameParameters.rotateCenter = [0 0 0];
@@ -251,16 +309,17 @@ classdef ShearingBoxInitializer < Initializer
                 potentialField.constant = 1;
             end
 
+            % If necessary, re-initialize the geometry with the normalized coordinates as input.
             if self.normalizeValues
                 geo.geometryCylindrical(self.innerRadius/r_c, 1, dr/r_c, z0/r_c, dz/r_c);
             end
-            % Constructs a single-parameter softened potential -a/sqrt(r^2 + r0^2) inside pointRadius to avoid
-            % a singularity approaching r=0; 'a' is chosen sqrt(2) to match external 1/r
-           % soft = (sphericalR < self.Rstar);
-           % phiSoft = -sqrt(2./(sphericalR(soft).^2 + self.Rstar^2));
+
+            % Constructs a single-parameter softened potential -sqrt(2)/sqrt(r^2 + r0^2) inside pointRadius to avoid
+            % singularity at r -> 0
+            %soft = (sphericalR < self.Rstar);
+            %phiSoft = -sqrt(2./(sphericalR(soft).^2 + self.Rstar^2));
             
-           % potentialField.field(soft) = phiSoft;
-            
+            %potentialField.field(soft) = phiSoft;         
         end
         
     end%PROTECTED
