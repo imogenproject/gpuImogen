@@ -26,7 +26,7 @@ mu_dust    = fluids(2).particleMu;
 
 cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2, run.multifluidDragMethod]);
 cudaTestSourceComposite(fluids, run.potentialField.field, run.geometry, ...
-    [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, dTime, potOrder, 4],  xyvector);
+    [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, dTime, run.compositeSrcOrders],  xyvector);
 cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_dust, dTime/2, run.multifluidDragMethod]);
 % Take care of any parallel synchronization we need to do to remain self-consistent
 

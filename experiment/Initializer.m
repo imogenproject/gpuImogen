@@ -49,6 +49,8 @@ classdef Initializer < handle
         frameParameters;% .omega, rotateCenter, centerVelocity
         fluidDetails;
         numFluids;
+        multifluidDragMethod;
+        compositeSourceOrders;
         
         VTOSettings;    % [alpha beta] or blank
         
@@ -119,6 +121,9 @@ classdef Initializer < handle
             obj.fluidDetails = fluidDetailModel();
             obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 
+            obj.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP;
+	    obj.compositeSourceOrders = [2 4];
+
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
                 obj.activeSlices.(fields{i}) = false; 
@@ -136,10 +141,10 @@ classdef Initializer < handle
         end
 
 
-	function g = get.gamma(self); g = self.fluidDetails(1).gamma; end;
-	function set.gamma(self, g); self.fluidDetails(1).gamma = g; end
-	function m = get.minMass(self); m = self.fluidDetails(1).minMass; end;
-	function set.minMass(self, m); self.fluidDetails(1).minMass = m; end
+        function g = get.gamma(self); g = self.fluidDetails(1).gamma; end;
+        function set.gamma(self, g); self.fluidDetails(1).gamma = g; end
+        function m = get.minMass(self); m = self.fluidDetails(1).minMass; end;
+        function set.minMass(self, m); self.fluidDetails(1).minMass = m; end
 
         
 %_________________________________________________________________________________________ GS: fades
@@ -255,32 +260,32 @@ classdef Initializer < handle
 %            end
             iniSettings = obj.getRunSettings();
 
-	    % One more act: The geometric settings and partitioning are now fixed,
-	    % so we need to set the useExternalHalo flag. If we have one rank (no mpi),
-	    % multiple GPUs, and a circular BC in the direction we are partitioned in,
-	    % then the GPU partitioner needs to add a halo to the *outside* of the grid in
-	    % the partition direction.
-	    % In every other case this is not necessary:
-	    % 	not circular - the BC is set visibly on the grid
-	    %	one gpu - any halos are handled by the CPU level parallel manager
-	    gm = GPUManager.getInstance();
+            % One more act: The geometric settings and partitioning are now fixed,
+            % so we need to set the useExternalHalo flag. If we have one rank (no mpi),
+            % multiple GPUs, and a circular BC in the direction we are partitioned in,
+            % then the GPU partitioner needs to add a halo to the *outside* of the grid in
+            % the partition direction.
+            % In every other case this is not necessary:
+            %   not circular - the BC is set visibly on the grid
+            %   one gpu - any halos are handled by the CPU level parallel manager
+            gm = GPUManager.getInstance();
             pm = ParallelGlobals();
 
-	    bcIsCircular = 0; % FIXME NOTE UGLY HACK
+            bcIsCircular = 0; % FIXME NOTE UGLY HACK
 
-	    if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
+            if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
                 extHalo = 1;
             else
                 extHalo = 0;
             end
 
-	    gm.useExteriorHalo = extHalo;
+            gm.useExteriorHalo = extHalo;
         end
 
         % These either dump ICs to a file or return them as a structure.
         function icfile = saveInitialCondsToFile(obj)
              [fluids, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
-	     IC.fluids = fluids;
+             IC.fluids = fluids;
              IC.magX = squish(mag(1,:,:,:));
              IC.magY = squish(mag(2,:,:,:));
              IC.magZ = squish(mag(3,:,:,:));

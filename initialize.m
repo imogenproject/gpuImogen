@@ -24,17 +24,29 @@ run.geometry.deserialize(ini.geometry);
 
 run.setNumFluids(ini.numFluids);
 if ini.numFluids > 1
-    run.multifluidDragMethod = 4;
+    m = ini.multifluidDragMethod;
+    if (m < 0) || (m > 4)
+	warning(['initializer had invalid multifluid method ' num2str(m) '. Defaulting to explicit midpoint.']);
+        m = 0;
+    end
+
+    run.multifluidDragMethod = m;
     if mpi_amirank0();
-    disp('TEST HACK WARNING');
-    disp('    initialize.m:27 set multifluid drag method to logtrap.')
+        fmnames = {'explicit midpt', 'classic rk4', 'ETD-RK1', 'ETD-RK2 (not impl)', 'logtrap'};
+        disp(['    Multifluid mode is active: multifluid drag method to ' fmnames{m+1}]);
     end
 end
 
-run.compositeSrcOrders = [2 4];
+cso = ini.compositeSourceOrders;
+
+if (any(cso(1) == [2 4]) & any(cso(2) == [2 4 6])) == 0
+    cso = [2 4];
+    warning('Input values to composite sourcer invalid. Defaulting to 2nd order space, 4th order time.');
+end
+run.compositeSrcOrders = cso;
+
 if mpi_amirank0()
-    disp('TEST HACK NOTICE');
-    disp(['    initialize.m:37 set cudaSourceComposite space order to ' num2str(run.compositeSrcOrders(1)) ', time order to ' num2str(run.compositeSrcOrders(2)) '.']);
+    disp(['    If used, cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.']);
 end
 
 if ~isempty(ini.checkpointSteps)

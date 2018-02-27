@@ -1,4 +1,4 @@
-function massiveFrame = util_loadWholeFrame(basename, padding, framenum, precise)
+function bigFrame = util_loadWholeFrame(basename, padding, framenum, precise)
 
 if (nargin < 4) || (precise == 1); precise = 'double'; else; precise = 'single'; end
 
@@ -14,7 +14,7 @@ end
 
 frame = util_LoadFrameSegment(basename, padding, 0, framenum); % We need one for reference
 
-massiveFrame = frame;
+bigFrame = frame;
 globalRes = frame.parallel.globalDims;
 
 beCarefulWithRZ = 0;
@@ -24,21 +24,21 @@ if (globalRes(3) > 1) && (globalRes(2) == 1)
     % but we have to be careful with this case
 end
 
-massiveFrame.myOffset = [0 0 0];
+bigFrame.myOffset = [0 0 0];
 
-massiveFrame.mass = zeros(globalRes, precise);
-massiveFrame.momX = zeros(globalRes, precise);
-massiveFrame.momY = zeros(globalRes, precise);
-massiveFrame.momZ = zeros(globalRes, precise);
-massiveFrame.ener = zeros(globalRes, precise);
+bigFrame.mass = zeros(globalRes, precise);
+bigFrame.momX = zeros(globalRes, precise);
+bigFrame.momY = zeros(globalRes, precise);
+bigFrame.momZ = zeros(globalRes, precise);
+bigFrame.ener = zeros(globalRes, precise);
 if numel(frame.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
-    massiveFrame.magX = zeros(globalRes, precise);
-    massiveFrame.magY = zeros(globalRes, precise);
-    massiveFrame.magZ = zeros(globalRes, precise);
+    bigFrame.magX = zeros(globalRes, precise);
+    bigFrame.magY = zeros(globalRes, precise);
+    bigFrame.magZ = zeros(globalRes, precise);
 else
-    massiveFrame.magX = 0;
-    massiveFrame.magY = 0;
-    massiveFrame.magZ = 0;
+    bigFrame.magX = 0;
+    bigFrame.magY = 0;
+    bigFrame.magZ = 0;
 end
 
 ranks = frame.parallel.geometry;
@@ -58,22 +58,22 @@ while u <= numel(ranks)
     
     fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
     rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
-    frmsize = fs - 6*(rs > 1);
+    frmsize = fs - 2*frame.haloAmt*(rs > 1);
     if numel(frmsize) == 2; frmsize(3) = 1; end
 
     frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...
               frame.parallel.myOffset(2)+(1:frmsize(2)), ...
               frame.parallel.myOffset(3)+(1:frmsize(3))};
 
-    massiveFrame.mass(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass, ranks);
-    massiveFrame.momX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX, ranks);
-    massiveFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, ranks);
-    massiveFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, ranks);
-    massiveFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, ranks);
+    bigFrame.mass(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass, ranks, frame.haloAmt);
+    bigFrame.momX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX, ranks, frame.haloAmt);
+    bigFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, ranks, frame.haloAmt);
+    bigFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, ranks, frame.haloAmt);
+    bigFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, ranks, frame.haloAmt);
     if numel(frame.magX) > 1
-        massiveFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, ranks);
-        massiveFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, ranks);
-        massiveFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, ranks);
+        bigFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, ranks, frame.haloAmt);
+        bigFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, ranks, frame.haloAmt);
+        bigFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, ranks, frame.haloAmt);
     end
     
     if u == numel(ranks); break; end
@@ -83,12 +83,12 @@ end
 
 end % function
 
-function y = trimHalo(x, nprocs)
+function y = trimHalo(x, nprocs, haloamt)
   U = 1:size(x,1); V = 1:size(x,2); W = 1:size(x,3);
 
-  if size(nprocs,1) > 1; U = U(4:(end-3)); end
-  if size(nprocs,2) > 1; V = V(4:(end-3)); end
-  if size(nprocs,3) > 1; W = W(4:(end-3)); end
+  if size(nprocs,1) > 1; U = U((haloamt+1):(end-haloamt)); end
+  if size(nprocs,2) > 1; V = V((haloamt+1):(end-haloamt)); end
+  if size(nprocs,3) > 1; W = W((haloamt+1):(end-haloamt)); end
 
   y = x(U,V,W);
 end

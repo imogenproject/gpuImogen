@@ -1,7 +1,7 @@
 function isUnphysical = checkPhysicality(fluids)
 % isUnphysical = checkPhysicality(fluids) returns
-% 1 if any cell in any fluid has negative density
-% 0 iff every cell in every fluid has positive density
+% 1 if any cell in any fluid has negative density or energy
+% 0 iff every cell in every fluid has positive density and energy
 
 isUnphysical = 0;
 

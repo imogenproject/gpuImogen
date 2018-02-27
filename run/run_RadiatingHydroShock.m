@@ -1,13 +1,12 @@
 %   Run 3D Corrugation instability shock test.
 
 %--- Initialize test ---%
-grid = [512 1 1];
+grid = [2048 1 1];
 run         = RadiatingShockInitializer(grid);
 
-run.iterMax     = 200000;
+run.iterMax     = 400000;
 run.theta       = 0;
-run.sonicMach   = 3;
-
+run.sonicMach   = 6;
 
 run.machY_boost = 0;
 
@@ -19,15 +18,15 @@ run.machY_boost = 0;
 run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
-% theta = 0.5 matches the classical fre-free Bremsstrahlung 
-run.radTheta = -.4;
+% theta = 0.5 matches the classical free-free Bremsstrahlung 
+run.radTheta = .1;
 
 % With the whole X length of the grid taken as 1, these set the length of the equilibrium
 % preshock & cold gas layers; Default values are .25 and .1 respectively
 % Low-theta (~ <.2) shocks undergo large-amplitude breathing modes and require a large cold gas
 % layer to let the large-amplitude downstream waves propagate away
-run.fractionPreshock = 0.2;
-run.fractionCold     = 0.5;
+run.fractionPreshock = 0.3;
+run.fractionCold     = 0.3;
 
 % This sets the temperature relative to the preshock temperature at which radiation rate is clamped
 % to zero. Physically, the value makes little sense if < 1 (since the equilibrium generator assumes
@@ -35,11 +34,11 @@ run.fractionCold     = 0.5;
 % cutoff at the radiating-cold point becomes numerically unhappy. Default 1.05
 %run.Tcutoff = 1.05
 
-run.bcMode.x = ENUM.BCMODE_CONSTANT;
+run.bcMode.x = ENUM.BCMODE_STATIC;
 
 run.ppSave.dim2 = 5;
 run.ppSave.dim3 = 100;
-run.seedAmplitude = 0e-2;
+run.seedAmplitude = 1e-1;
 
 run.image.interval = 20;
 run.image.mass = true;
@@ -56,7 +55,7 @@ rp = RealtimePlotter();
 run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = 1; % hll
+fm.iniMethod = ENUM.CFD_HLLC; 
 run.peripherals{end+1}=fm;
 
 rez = run.geomgr.globalDomainRez;

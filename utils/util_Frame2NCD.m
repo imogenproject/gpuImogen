@@ -56,6 +56,7 @@ parallel_offset = netcdf.defVar(ncid, 'parallel_offset', 'double', vecdim);
 gammavar   = netcdf.defVar(ncid, 'gamma', 'double', scaldim);
 aboutvar   = netcdf.defVar(ncid, 'about', 'char', aboutstr);
 versionvar = netcdf.defVar(ncid, 'version', 'char', versionstr);
+halovar    = netcdf.defVar(ncid, 'amtHalo', 'double', scaldim);
 
 % Define dgrid parameters
 dgrid_x = netcdf.defVar(ncid, 'dgrid_x', 'double', dgridnx);
@@ -100,6 +101,7 @@ netcdf.putVar(ncid, timeinfo_tstart, frame.time.started);
 netcdf.putVar(ncid, parallel_geom, frame.parallel.geometry);
 netcdf.putVar(ncid, parallel_gdims, frame.parallel.globalDims);
 netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
+netcdf.putVar(ncid, halovar, frame.amtHalo);
 
 % Serialize parameters and other small stuff
 netcdf.putVar(ncid, gammavar, frame.gamma(1));

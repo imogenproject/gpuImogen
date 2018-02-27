@@ -33,6 +33,8 @@ v = netcdf.inqVarID(ncid, 'about');
 frame.about = netcdf.getVar(ncid, v);
 v = netcdf.inqVarID(ncid, 'version');
 frame.ver = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'amtHalo');
+frame.haloAmt = netcdf.getVar(ncid, v);
 
 % Note: copy frame.time.iteration above back to frame.iter upon load
 v = netcdf.inqVarID(ncid, 'dgrid_x');
