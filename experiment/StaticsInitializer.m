@@ -17,7 +17,7 @@ classdef StaticsInitializer < handle
         arrayStatics; % Cell array with one cell per simulation var Cell[8];
         % WARNING: THIS MUST BE THE SAME SIZE AS THE NUMBER OF SIMULATION VARIABLES
 
-        geometry; % handle to global semantics class
+        geometry; % handle to the global semantics class
 
     end %PUBLIC
 
@@ -37,6 +37,8 @@ classdef StaticsInitializer < handle
     methods (Access = public) %                                                     P U B L I C  [M]
 
         function obj = StaticsInitializer(geometry)
+            %>> geometry: GeometryManager class
+            
             obj.geometry = geometry;
             obj.arrayStatics = cell(8,1); % Create one arrayStatics for every variable
             for x = 1:8
@@ -48,6 +50,9 @@ classdef StaticsInitializer < handle
         end
 
         function [indices, values, coeffs] = staticsForVariable(obj, varId, component, fieldId)
+            %>> varId:     ...
+            %>> component: ...
+            %>> fieldId:   ...
             indices = [];
             values = [];
             coeffs = [];
@@ -198,6 +203,11 @@ classdef StaticsInitializer < handle
 
     %%%%% ============== Assistant for boundary conditions setup =============== %%%%%
         function indices = indexSetForVolume(obj, xslice, yslice, zslice)
+            % >> xslice: vector of global x coordinates, in Matlab count-from-1
+            % >> yslice: vector of global y coordinates
+            % >> zslice: vector of global z coordinates
+            % << indices: [linear localx localy localz] columns of coordinates; linear is index from 0, others in Matlab count-from-1
+            
             S = {xslice, yslice, zslice};
 
             for dim = 1:3;
