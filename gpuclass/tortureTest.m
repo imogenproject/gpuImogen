@@ -1,5 +1,5 @@
 function tortureTest(multidev, dorad, nTests)
-% tortureTest([device list], 'y'/'n' to radiative cooling test, numTests)
+% tortureTest(devicelist, 'y'/'n' to radiative cooling test, numTests)
 % > device list: Set of integers naming GPUs to use, as enumerated by GPU_ctrl('info')
 % > dorad: If == 'y' tests cudaFreeRadiation
 % > numTests: How many times to fuzz each function
@@ -8,6 +8,9 @@ if nargin < 1
     multidev = [0];
     disp('>>> WARNING: No input array of device IDs given; Defaulting to [0] and disabling multi-device');
 end
+
+% if we are running in a SLURM env
+if multidev == -1; multidev = selectGPUs(-1); end; 
 
 if numel(unique(multidev)) ~= numel(multidev)
     disp('>>> FATAL: The same device is named repeatedly.');
@@ -62,6 +65,8 @@ end
 
 if mpi_amirank0(); disp('#########################'); end
 
+singledev = multidev(1);
+
 % Kernels used by Imogen:
 % TIME_MANAGER	cudaSoundspeed directionalMaxFinder
 % 100% coverage by unit tests
@@ -84,7 +89,7 @@ end
 % parallel compat: jump through the mpi_barrier()s but do nothing
 if basicunits > 0; functests = [0 0 0 0]; end
 
-names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'freezeAndPtot', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
+names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMaxFinder', 'cudaSourceScalarPotential', 'cudaSourceRotatingFrame'};
 
 if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
@@ -102,9 +107,11 @@ res3d = [192 192 192];
 % Test single-device operation
 printit = (isparallel*[1 1 1 1] | functests) * mpi_amirank0();
 
+pm = ParallelGlobals();
+
 if printit(1); disp('==================== Testing on one GPU'); end
 if functests(1)
-    x.init([0], 3, 1); rng(randSeed);
+    x.init(singledev, 3, 1); rng(randSeed);
     onedev = unitTest(nTests, res2d, nTests, res3d, names);
 else; onedev = 0; end
 
@@ -114,6 +121,8 @@ mpi_barrier();
 if printit(2); disp('==================== Testing multiple GPUs, X partitioning'); end
 if functests(2)
     x.init(multidev, 3, 1); rng(randSeed);
+    if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
+    x.useExteriorHalo = extHalo;
     devx = unitTest(nTests, res2d, nTests, res3d, names);
 else; devx = 0; end
 
@@ -122,6 +131,8 @@ mpi_barrier();
 if printit(3); disp('==================== Testing multiple GPUs, Y partitioning'); end
 if functests(3)
     x.init(multidev, 3, 2); rng(randSeed);
+    if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
+    x.useExteriorHalo = extHalo;
     devy = unitTest(nTests, res2d, nTests, res3d, names);
 else; devy = 0; end
 
@@ -130,6 +141,8 @@ mpi_barrier();
 if printit(4); disp('==================== Testing multiple GPUs, Z partitioning'); end
 if functests(4)
     x.init(multidev, 3, 3); rng(randSeed);
+    if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
+    x.useExteriorHalo = extHalo;
     devz = unitTest(0, res2d, nTests, res3d, names);
 else; devz = 0; end
 

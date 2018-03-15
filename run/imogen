@@ -23,6 +23,7 @@ if [ ${1} = "help" ]; then
   echo "| Local parallel:   ./imogen parallel runfile streamnumber GPUs #procs host_file"
   echo "| Cluster submit:   ./imogen cluster  runfile streamnumber [GPUs [nodes [ppn [queue [np]]]]]"
   echo "|                   (tees realtime output to ~/imogenout)"
+  echo "| Talapas submit:   ./imogen talapas  runfile streamnumber #gpus_per_node #nodes queue [PPN]"
   echo "|"
   echo "|    Serial and local parallel operation execute immediately; Cluster"
   echo "|    operation writes a script and submits via qsub."
@@ -130,22 +131,69 @@ if [ ${1} = "cluster" ]; then
   echo "cd $(pwd)" >> $TFILE
   echo "mpirun --mca btl_tcp_if_include torbr --bynode -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuset);\" " >> $TFILE
 
-# This might be important, tell the user precisely how we're about to flush their cycles down the drain:
-echo "CLUSTER IMOGEN RUN SETUP:"
-echo "  $nnodes nodes"
-echo "  $procpn processes/node"
-echo "  Exact script that will be submitted to qsub:"
-echo "------------------------------------------------------------"
-cat $TFILE
-echo "------------------------------------------------------------"
-echo "  Into to queue $QUEUE"
-echo "  using the following invocation:"
-echo "qsub -j oe -q $QUEUE -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr"
-echo -n "  In 5...";  sleep 1; echo -n "4... "; sleep 1; echo -n "3... "; sleep 1; echo -n "2... "; sleep 1; echo -n "1..."; sleep 1;
+fi
 
-      qsub -j oe -q $QUEUE -l nodes=$nnodes:ppn=$procpn $TFILE -o $redirectStr
-      #rm $TFILE
-      exit 0
+
+if [ ${1} = "talapas" ]; then
+# ./imogen talapas runfile stream gpus_per_node #nodes queue [PPN]
+  gpureq=${4};
+  if [ -z "$4" ]; then
+    gpureq="1";
+    echo ">>> WARNING: Talapas run not told how many GPUs to request. Requesting 1."
+  fi
+
+  nnodes=${5};
+  if [ -z "$5" ]; then
+    nnodes="1";
+    echo ">>> WARNING: Talapas run not given #nodes: Defaulting to $nnodes"
+  fi
+
+  QUEUE=${6}
+  if [ -z "$6" ]; then
+    QUEUE="gpu";
+    echo ">>> WARNING: Talapas run not given queue. Defaulting to $QUEUE"
+  fi
+
+  procpn=${7};
+  if [ -z "$7" ]; then
+    procpn="1";
+    echo ">>> WARNING: Talapas run defaulting to $procpn processes/node: This is usually correct"
+  fi
+
+  NP=$(expr $nnodes \* $procpn);
+  echo ">>> Computed $NP total procs to request."
+
+  TFILE=$(mktemp);
+
+  echo "#!/bin/bash" > $TFILE
+  echo "#SBATCH --partition=gpu      ### Quality of Service (like a queue in PBS)" >> $TFILE
+  echo "#SBATCH --job-name=imogen  ### Job Name" >> $TFILE
+  echo "#SBATCH --time=00:10:00      ### Walltime" >> $TFILE
+  echo "#SBATCH --nodes=$nnodes             ### Number of Nodes" >> $TFILE
+  echo "#SBATCH --ntasks-per-node=$procpn ### Number of tasks (MPI processes)" >> $TFILE
+  echo "#SBATCH --gres=gpu:$gpureq      ### General REServation of gpu:number of gpus" >> $TFILE
+
+  echo "module load matlab" >> $TFILE
+  echo "module load openmpi" >> $TFILE
+  echo "module load cuda" >> $TFILE
+  echo "echo PATH: \$PATH" >> $TFILE
+  echo "cd $(pwd)" >> $TFILE
+  echo "mpirun -np $NP matlab -nodisplay -nojvm -r \"parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', -1);\" " >> $TFILE
+
+# This might be important, tell the user precisely how we're about to flush their cycles down the drain:
+  echo "CLUSTER IMOGEN RUN SETUP:"
+  echo "  Exact script that will be submitted to qsub:"
+  echo "------------------------------------------------------------"
+  cat $TFILE
+  echo "------------------------------------------------------------"
+  echo "  Into to queue $QUEUE"
+  echo "  using the following invocation:"
+  echo "sbatch -p $QUEUE -o $redirectStr $TFILE"
+  echo -n "  In 5...";  sleep 1; echo -n "4... "; sleep 1; echo -n "3... "; sleep 1; echo -n "2... "; sleep 1; echo -n "1..."; sleep 1;
+
+  sbatch -p $QUEUE -o $redirectStr $TFILE
+  #rm $TFILE
+  exit 0
 fi
 
 echo ">>> ERROR: Did not receive usable arguments. See ./imogen help:"

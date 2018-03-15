@@ -1310,7 +1310,7 @@ int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redist
 		break;
 	case 4: // {reduce(A,B)->A, reduce(C,D)->C}; reduce(A,C)->A
 		// FIXME: This is broken right now...
-		mexErrMsgTxt((const char *)"This is broken soz.");
+//		mexErrMsgTxt((const char *)"This is broken soz.");
 
 		// On device 0, allocate storage for device 1 and copy device 1 partition to device 0
 		cudaSetDevice(a->deviceID[0]);
@@ -1349,6 +1349,10 @@ int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redist
 		}
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(gridsize, blocksize, a, 2, "clone reduction for 4 GPUs, second call (C,D)->C");
 		if(returnCode != SUCCESSFUL) break;
+
+		// We are going to make this work the simple way
+		// We need to be sure device 2 is done before we copy from device 2 to device 0
+		cudaDeviceSynchronize();
 
 		// Copy C -> A for the final reduction
 		cudaSetDevice(a->deviceID[0]);
