@@ -107,11 +107,15 @@ classdef TimeManager < handle
                 currentTau = cflTimestep(fluids(f), soundSpeed, geo, obj.parent.cfdMethod);
                 GPU_free(soundSpeed);
                 
-                if ~isreal(currentTau) || isnan(currentTau)
+                unhappy = 0;
+                if ~isreal(currentTau) || isnan(currentTau) || isinf(currentTau)
                     % FIXME my gpu routines will return NaN not complex
                     % FIXME and fascinatingly, NaN is apparently a real number in matlab's world
-                    error('Simulation crashing: Computed timestep is nonreal!');
+                    r = mpi_myrank();
+                    fprintf('RANK %i: Simulation crashing, this rank''s computed timestep is nonreal.\n', r);
+                    unhappy = 1;
                 end
+                mpi_errortest(unhappy);
                 
                 dtMin = min(dtMin, currentTau);
             end

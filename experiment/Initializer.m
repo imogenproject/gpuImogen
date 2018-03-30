@@ -122,7 +122,7 @@ classdef Initializer < handle
             obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 
             obj.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP;
-	    obj.compositeSourceOrders = [2 4];
+            obj.compositeSourceOrders = [2 4];
 
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
@@ -270,6 +270,29 @@ classdef Initializer < handle
             %   one gpu - any halos are handled by the CPU level parallel manager
             gm = GPUManager.getInstance();
             pm = ParallelGlobals();
+
+            if numel(gm.deviceList) > 1
+                % FIXME: this also depends on MPI partitioning
+                rez = obj.geomgr.globalDomainRez;
+
+                % Oh my
+                if rez(gm.partitionDir) < 6
+                    if mpi_amirank0();
+                        disp('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.');
+                    end
+                    % Z partition? Try y then x
+                    if gm.partitionDir == 3
+                        if rez(2) < 6; gm.partitionDir = 1; else; gm.partitionDir = 2; end
+                    else
+                    % Y partition? Try z then x
+                        if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
+                    end
+                else
+                    if mpi_amirank0();
+                        disp('NOTE: Initializer checked partition direction & was OK.');
+                    end
+                end
+            end
 
             bcIsCircular = 0; % FIXME NOTE UGLY HACK
 

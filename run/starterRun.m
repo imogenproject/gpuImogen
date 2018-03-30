@@ -32,7 +32,8 @@ function failed = starterRun(gpuSet)
 
     % Get us ready to talk to MPI
     if ~mpi_isinitialized()
-        % Start up PGW
+        % Start up PGW\
+        % defaults to a 3D topology
         context = parallel_start();
         topology = parallel_topology(context, 3);
 
@@ -61,7 +62,7 @@ function failed = starterRun(gpuSet)
     %--- Acquire GPU manager class, set GPUs, and enable intra-node UVM
     gm = GPUManager.getInstance();
 
-    dimensionDistribute = 1;
+    dimensionDistribute = 2;
     teslaCards = selectGPUs(gpuSet);
 
     gm.init(teslaCards, haloSize, dimensionDistribute);

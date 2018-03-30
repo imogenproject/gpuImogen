@@ -152,9 +152,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	if(CHECK_CUDA_ERROR("freeing blkA") != SUCCESSFUL) { mexErrMsgTxt("Dumping"); }
     }
 
-    int myr; MPI_Comm_rank(MPI_COMM_WORLD, &myr);
-    printf("Rank %i: local dtmin = %lf\n", tmin);
-
     double trueMin;
     MPI_Allreduce((void *)&tmin, (void *)&trueMin, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
 
