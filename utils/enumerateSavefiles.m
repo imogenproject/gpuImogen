@@ -77,7 +77,7 @@ if runComplete == 1; aboot.final = 1; else; aboot.final = 0; end
 aboot.padlen = padLen;
 dex = setfield(dex, 'misc',aboot);
 
-save('savefileIndex.mat','dex');
+if mpi_amirank0(); save('savefileIndex.mat','dex'); end;
 
 cd(d0);
 
