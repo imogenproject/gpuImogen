@@ -13,12 +13,15 @@ MEX_LDIR = -L$(MATLAB_DIR)/runtime/glnxa64
 
 PAR_INCL = -I$(MPI_DIR)/include
 PAR_LDIR = -L$(MPI_DIR)/lib
-PAR_LIBS = -lmpi -lmpi_cxx
+PAR_LIBS = -lmpi 
 
 ###############################################################################
 all: debugSpin mpi_amirank0 mpi_abort mpi_all mpi_allgather mpi_any mpi_barrier mpi_basicinfo mpi_dimreduce mpi_errortest mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_min mpi_max mpi_sum mpi_prod mpi_scatter mpi_createDimcomm mpi_deleteDimcomm
 	echo "Finished!"
 
+standalone: mpi_standalone_helloworld.c
+	icpc -I$(CUDA_DIR)/include -L$(CUDA_DIR)/lib64 mpi_standalone_helloworld.c -o mpi_hello -lmpi -lcudart
+	
 debugSpin: debugSpin.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) -output debugSpin debugSpin.cpp
 
