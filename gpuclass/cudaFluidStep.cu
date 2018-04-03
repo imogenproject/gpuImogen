@@ -435,6 +435,17 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			numarrays = 6;
 #endif
 #endif
+
+#ifdef USE_SSPRK
+#define TSFACTOR 1.0
+#else
+#ifdef USE_RK3
+#define TSFACTOR 1.0
+#else
+#define TSFACTOR 0.5
+#endif
+#endif
+
 			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
 			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
@@ -454,15 +465,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				if(sub[4] < YBLOCKS) {
 					blocksize.y = sub[4];
 				}
-#ifdef USE_SSPRK
-#define TSFACTOR 1.0
-#else
-#ifdef USE_RK3
-#define TSFACTOR 1.0
-#else
-#define TSFACTOR 0.5
-#endif
-#endif
+
 				// Fire off the fluid update step
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
@@ -485,20 +488,40 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				}
 #else // runs at higher order
 
-// FIXME awful hack
-				MGArray fluidB[5];
-				int qwer;
+				// FIXME awful hack
+			}
+
+			MGArray fluidB[5];
+			int qwer;
+			for(i = 0; i < fluid->nGPUs; i++) {
 				for(qwer = 0; qwer < 5; qwer++) {
 					fluidB[qwer] = fluid[qwer];
-					fluidB[qwer].devicePtr[0] = wStepValues[0] + haParams[3]*qwer;
-					}
-				returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
+					fluidB[qwer].devicePtr[i] = wStepValues[i] + haParams[3]*qwer;
+				}
+			}
+			returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
+
+			for(i = 0; i < fluid->nGPUs; i++) {
+				cudaSetDevice(fluid->deviceID[i]);
+
+				// Find out the size of the partition
+				calcPartitionExtent(fluid, i, sub);
+				if((sub[4] == 1) && (sub[5] > 1)) {
+					sub[4] = sub[5]; sub[5] = 1;
+				}
+
+				gridsize.x = (sub[3]/BLOCKLEN); gridsize.x += 1*(gridsize.x*BLOCKLEN < sub[3]);
+				gridsize.y = sub[5];
+				blocksize = makeDim3(32, YBLOCKS, 1);
+				if(sub[4] < YBLOCKS) {
+					blocksize.y = sub[4];
+				}
 
 				if(params.stepMethod == METHOD_HLL) {
 					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 				}
-				ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
+				cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_HLLC_2ndorder");
 
 #ifdef USE_RK3
@@ -514,10 +537,13 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 #endif
 			}
+
+
 			returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
 			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 		} break;
 		}
+
 		if(fluid->partitionDir == PARTITION_X) returnCode = MGA_exchangeLocalHalos(fluid, 5);
 		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 

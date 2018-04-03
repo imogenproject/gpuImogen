@@ -529,6 +529,9 @@ function fail = testCudaSourceScalarPotential(res)
 % FIXME: this probably breaks in parallel?
 fail = 0;
 
+GM = GeometryManager(res);
+GM.makeBoxSize(.01*res);
+
 rho = rand(res);
 px = rand(res);
 py = rand(res);
@@ -568,8 +571,6 @@ px = px + Fx * dt;
 py = py + Fy * dt;
 pz = pz + Fz * dt;
 
-GM = GeometryManager(res);
-GM.makeBoxSize(.01*res);
 
 cudaSourceScalarPotential(FM, phiD, GM, [dt, rho_nograv, rho_fullgrav]);
 a = max(px(:) - FM.mom(1).array(:));

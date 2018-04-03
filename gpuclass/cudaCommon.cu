@@ -1527,6 +1527,9 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 //MGA_sledgehammerSequentialize(a);
 			// Transfer linear strips
 			for(j = 0; j < a->nGPUs; j++) {
+				cudaSetDevice(a->deviceID[j]);
+				CHECK_CUDA_ERROR("cudaSetDevice()");
+
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				if(a->addExteriorHalo || (j > 0)) {
 					cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));

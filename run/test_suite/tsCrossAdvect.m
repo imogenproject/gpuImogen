@@ -36,8 +36,6 @@ run.waveStationarity(0);
 run.backgroundB = B0;
 run.ppSave.dim3 =  100;
 
-run.alias = sprintf('ADVECTtestsuite_N%i_%i_%i',run.wavenumber(1),run.wavenumber(2),run.wavenumber(3));
-
 if prettyPictures
     rp = RealtimePlotter();
     rp.plotmode = 1;
@@ -73,6 +71,9 @@ for nz = 0:Nmax(3)
     run.wavenumber = [nx ny nz];
     % this should be the same actual time (i.e. # of steps) every time
     run.cycles = cyc*norm([nx ny nz]);
+
+    wn = int32(run.wavenumber);
+    run.alias = sprintf('ADVECT_XY_testsuite_N%i_%i_%i', wn(1), wn(2), wn(3));
 
     % Run simulation at present resolution & store results path
     IC = run.saveInitialCondsToStructure();
