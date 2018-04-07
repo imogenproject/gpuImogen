@@ -294,7 +294,8 @@ classdef Initializer < handle
                 end
             end
 
-            bcIsCircular = 0; % FIXME NOTE UGLY HACK
+            bcmodes = BCManager.expandBCStruct(obj.bcMode);
+            bcIsCircular = strcmp(bcmodes{1,gm.partitionDir}, 'circ');
 
             if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
                 extHalo = 1;

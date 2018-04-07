@@ -161,6 +161,41 @@ classdef BCManager < handle
         
 %===================================================================================================    
     methods (Static = true) %                                                      S T A T I C   [M]
-        
+
+%___________________________________________________________________________________________________ populateBCModes
+% Responsible for actually initializeing the boundary conditions on a per boundary condition
+% mode type. Once it has initialized the mode it applies the boundary condition to the 
+% ImogenArray by setting the bcModes value and attaching the edgeshift routines.
+%>> varargin    Variable length input from the readBoundaryConditions method.        cell
+        function outputModes = expandBCStruct(bcs)
+            result.x            = [];  
+            result.y            = []; 
+            result.z            = [];
+            fields              = {'x','y','z'};
+            outputModes    = cell(2,3);
+            
+            for i=1:3
+                for n=1
+                    if ( isfield(bcs,fields{i}) && isempty(result.(fields{i})) )
+                        result.(fields{i}) = bcs.(fields{i});
+                        break
+                    end
+                end
+            end
+            
+            for i=1:3
+                if iscell(result.(fields{i}))
+                    secondIndex = length(result.(fields{i}));
+                    outputModes{1,i} = result.(fields{i}){1};
+                    outputModes{2,i} = result.(fields{i}){secondIndex};
+                else
+                    outputModes{1,i} = result.(fields{i});
+                    outputModes{2,i} = result.(fields{i});
+                end
+
+            end
+
+        end
+
     end%STATIC
 end%CLASS

@@ -468,7 +468,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 				// Fire off the fluid update step
 				if(params.stepMethod == METHOD_HLL) {
-					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*haParams[3]);
+					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 #ifdef DEBUGMODE
 				returnDebugArray(fluid, 1, wStepValues, dbOutput);
@@ -496,7 +496,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			for(i = 0; i < fluid->nGPUs; i++) {
 				for(qwer = 0; qwer < 5; qwer++) {
 					fluidB[qwer] = fluid[qwer];
-					fluidB[qwer].devicePtr[i] = wStepValues[i] + haParams[3]*qwer;
+					fluidB[qwer].devicePtr[i] = wStepValues[i] + fluid->slabPitch[i]*qwer/sizeof(double);
 				}
 			}
 			returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
@@ -518,7 +518,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				}
 
 				if(params.stepMethod == METHOD_HLL) {
-					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*haParams[3]);
+					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 				}
 				cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);

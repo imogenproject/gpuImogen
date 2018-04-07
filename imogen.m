@@ -64,7 +64,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         [run.fluid, mag] = uploadDataArrays(FieldSource, run, statics);
     catch oops
         prettyprintException(oops, 0, ...
-            sprintf('\n    FATAL: Unsuccessful uploading data arrays!\n    Aborting run...\n    Additional execption will be printed by loader.\n'));
+            sprintf('\n    FATAL: Unsuccessful uploading data arrays!\n    Aborting run.\n    Additional execption will be printed by loader.\n'));
         collectiveFailure = 1;
     end
     mpi_errortest(collectiveFailure);

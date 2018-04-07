@@ -1449,6 +1449,11 @@ __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel)
 	}
 }
 
+#define LEFT_SIDE 0
+#define RIGHT_SIDE 1
+#define HALO_READ 0
+#define HALO_WRITE 1
+
 /* Synchronizes the halo regions between data partitions of a[0] to a[n-1].
  * Does nothing if a[i].haloSize == 0 or a[i].nGPUs == 1.
  * returns error if something failed, or SUCCESSFUL */
@@ -1515,16 +1520,16 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 
 				// In particular, it will corrupt the calculation of boundary conditions!
 				if(a->addExteriorHalo || (j > 0)) {
-					returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, 0, 0, a->haloSize, &buffs[4*j+0]);
+					returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, LEFT_SIDE, HALO_READ, a->haloSize, &buffs[4*j+0]);
 					if(returnCode != SUCCESSFUL) break;
 				}
 				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
-					returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, 1, 0, a->haloSize, &buffs[4*j+1]);
+					returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, RIGHT_SIDE, HALO_READ, a->haloSize, &buffs[4*j+1]);
 					if(returnCode != SUCCESSFUL) break;
 				}
 			}
 
-//MGA_sledgehammerSequentialize(a);
+MGA_sledgehammerSequentialize(a);
 			// Transfer linear strips
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
@@ -1543,16 +1548,16 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				}
 
 			}
-//MGA_sledgehammerSequentialize(a);
+MGA_sledgehammerSequentialize(a);
 			// Dump the strips back to halo
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				if(a->addExteriorHalo || (j > 0)) {
-					returnCode = MGA_partitionHaloToLinear(a, jp, a->partitionDir, 1, 1, a->haloSize, &buffs[4*jp+3]);
+					returnCode = MGA_partitionHaloToLinear(a, jp, a->partitionDir, RIGHT_SIDE, HALO_WRITE, a->haloSize, &buffs[4*jp+3]);
 					if(returnCode != SUCCESSFUL) break;
 				}
 				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
-					returnCode = MGA_partitionHaloToLinear(a, jn, a->partitionDir, 0, 1, a->haloSize, &buffs[4*jn+2]);
+					returnCode = MGA_partitionHaloToLinear(a, jn, a->partitionDir, LEFT_SIDE, HALO_WRITE, a->haloSize, &buffs[4*jn+2]);
 					if(returnCode != SUCCESSFUL) break;
 				}
 			}
@@ -1739,7 +1744,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 		switch(right + 2*toHalo) {
 		/* left read */
 		case 0: cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
-		/* left write */
+		/* right read */
 		case 1: cudaMGA_haloXrw<1><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
 		/* left write */
 		case 2: cudaMGA_haloXrw<2><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
