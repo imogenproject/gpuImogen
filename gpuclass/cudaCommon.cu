@@ -1529,7 +1529,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				}
 			}
 
-MGA_sledgehammerSequentialize(a);
+//MGA_sledgehammerSequentialize(a);
 			// Transfer linear strips
 			for(j = 0; j < a->nGPUs; j++) {
 				cudaSetDevice(a->deviceID[j]);
@@ -1548,7 +1548,7 @@ MGA_sledgehammerSequentialize(a);
 				}
 
 			}
-MGA_sledgehammerSequentialize(a);
+//MGA_sledgehammerSequentialize(a);
 			// Dump the strips back to halo
 			for(j = 0; j < a->nGPUs; j++) {
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
@@ -1676,7 +1676,7 @@ int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehal
 		int ctr;
 		for(ctr = 0; ctr < a->nGPUs; ctr++) {
 			double *ptmp = linear[0] + q;
-			returnCode = MGA_partitionHaloToLinear(a, ctr, direction, rightside, writehalo, 3, &ptmp);
+			returnCode = MGA_partitionHaloToLinear(a, ctr, direction, rightside, writehalo, h, &ptmp);
 			if(returnCode != SUCCESSFUL) break;
 			q += MGA_partitionHaloNumel(a, ctr, direction, 3);
 		}
@@ -1726,6 +1726,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 
 
 	if(linear[0] == NULL) {
+//	printf("pointer was null: allocating at cudaCommon.cu:1731\n");
 		cudaMalloc((void **)linear, 2*haloNumel*sizeof(double));
 		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMalloc()");
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -1741,6 +1742,19 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 
 		gridsize.x  = ROUNDUPTO(a->dim[1], SYNCBLOCK)/SYNCBLOCK;
 		gridsize.y  = 1; gridsize.z = 1;
+
+/*		printf("cuda halo X operation. partition=%i, direction=%i, LR = %i, toHalo = %i, h = %i\n", partition, direction, right, toHalo, h);
+		printf("block size: %i %i %i\n", blocksize.x, blocksize.y, blocksize.z);
+		printf("grid size: %i %i %i\n", gridsize.x, gridsize.y, gridsize.z);
+
+		printf("partition dimensions being acted on: %i %i %i\n", sub[3], sub[4], sub[5]);
+		printf("info about array: ===========================\n");
+MGA_debugPrintAboutArray(a);
+Leaving this here... there was a strange bug where the wrong h value (hardcoded 3, not h) got passed
+here. Somewhere in halo allocation and write, things got turned around and an invalid write occurred.
+
+This invalid write would not trigger a WARP_INVALID_ADDRESS in the debugger, bizzarely enough.
+*/
 		switch(right + 2*toHalo) {
 		/* left read */
 		case 0: cudaMGA_haloXrw<0><<<gridsize, blocksize>>>(a->devicePtr[partition] , *linear, sub[3], sub[4], sub[5], h); break;
@@ -1893,6 +1907,7 @@ __global__ void cudaMGA_haloYrw(double *phi, double *linear, int nx, int ny, int
 	int x0 = threadIdx.x + blockIdx.x*blockDim.x;
 	int z0 = threadIdx.y + blockIdx.y*blockDim.y;
 
+	// Read extent from array of size {nx ny nz} into array of size {nx h nz}
 
 	if((x0 >= nx) || (z0 >= nz)) return;
 
@@ -2408,13 +2423,13 @@ void MGA_debugPrintAboutArray(MGArray *x)
 	for(j = 0; j < n; j++) { printf("Device %i: [%i | %x]\n", j, x->deviceID[j], x->devicePtr[j]); }
 
 	printf("Array's host-side extent: [%i %i %i]\n", x->dim[0], x->dim[1], x->dim[2]);
-	printf("Array's host #elements  : %li", x->numel);
+	printf("Array's host #elements  : %li; ", x->numel);
 	if(x->numSlabs > 1) {
 		printf("Array IS A REAL ALLOCATION with %i slabs.\n", x->numSlabs);
 	} else {
 		printf("Array IS A SLAB REFERENCE  index number %i\n", -x->numSlabs);
 	}
-	printf("Array's slab pitch      : [");
+	printf("Array's slab pitches    : [");
 	for(j = 0; j < n; j++) { printf("%li ", x->slabPitch[j]); }
 	printf("]\n");
 	printf("Partition halo size     : %i\n", x->haloSize);
@@ -2423,7 +2438,7 @@ void MGA_debugPrintAboutArray(MGArray *x)
 	printf("Permutation tag value   : %i\n", x->permtag);
 	printf("Which represents        : [%i %i %i] stride ordering\n", x->currentPermutation[0], x->currentPermutation[1], x->currentPermutation[2]);
 	printf("circularBoundaryBits    : %i\n", x->circularBoundaryBits);
-	printf("Matlab source class index is %i\n", x->mlClassHandleIndex);
+	printf("Matlab source class idx : %i\n", x->mlClassHandleIndex);
 	printf("==========\n");
 
 }

@@ -377,10 +377,10 @@ classdef GeometryManager < handle
 
                 lmin = 1; lmax = obj.localDomainRez(j);
                 if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
-                    lmin = 4;
+                    lmin = 1 + obj.haloAmt; % If the minus side is a halo
                 end
                 if (obj.topology.coord(j) < obj.topology.nproc(j)-1) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
-                    lmax = lmax - obj.haloAmt;
+                    lmax = lmax - obj.haloAmt; % If the plus side is a halo
                 end
 
                 lnh{j} = lmin:lmax;
@@ -574,10 +574,9 @@ classdef GeometryManager < handle
             error('ndgridSetIK called but input argument was %s, not ''coords'', or ''pos''.\n', form);
         end
 
-        % Generic function that the functions below talk to
-        function out = makeValueArray(obj, dims, dtype, val)
-            makesize = [];
-            switch dims;
+	function makesize = localDimsFor(obj, dimtype)
+
+            switch dimtype;
                 case 1; makesize = [obj.localDomainRez(1) 1 1];
                 case 2; makesize = [1 obj.localDomainRez(2) 1];
                 case 3; makesize = [1 1 obj.localDomainRez(3)];
@@ -586,6 +585,12 @@ classdef GeometryManager < handle
                 case 6; makesize = [1 obj.localDomainRez(2:3)];
                 case 7; makesize = obj.localDomainRez;
             end
+
+        end
+
+        % Generic function that the functions below talk to
+        function out = makeValueArray(obj, dims, dtype, val)
+            makesize = obj.localDimsFor(dims);
             
             % Slap a 3 on the first dim to build a vector
             % This is stupid and REALLY should be exchanged (3 goes LAST)
@@ -594,7 +599,7 @@ classdef GeometryManager < handle
             % Generate an array of 0 if not given a value
             if (nargin < 4); val = 0; end
 
-            out = val * ones(makesize);
+            if isnan(val); out = rand(makesize); else; out = val*ones(makesize); end
         end 
 
         % These generate a set of zeros of the size of the part of the global grid residing on this node
@@ -608,7 +613,14 @@ classdef GeometryManager < handle
         function O = onesXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 1); end
         function O = onesYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 1); end
         function O = onesXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 1); end
-        
+
+        % These generate a set of zeros of the size of the part of the global grid residing on this node
+        function O = randsXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, NaN); end
+        function O = randsXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, NaN); end
+        function O = randsYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, NaN); end
+        function O = randsXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, NaN); end
+
+
         function [rho, mom, mag, ener] = basicFluidXYZ(obj)
             % Returns a single fluid [rho, mom, mag, ener] with
             % rho = 1, mom = [0 0 0], B = [0 0 0] and ener = 1 (pressure = gamma-1)
@@ -648,8 +660,9 @@ classdef GeometryManager < handle
                 disp([size(array); obj.localDomainRez]);
                 error('Oh teh noez, rank %i received an array of invalid size!', mpi_myrank());
             end
-      
             slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
+
+      if mpi_amirank0(); disp(size(array)); disp(size(slim)); end
         end
 
         

@@ -51,6 +51,7 @@ timeinfo_tstart = netcdf.defVar(ncid, 'timeinfo_tstart', 'char', tstart);
 parallel_geom   = netcdf.defVar(ncid, 'parallel_geom', 'double', [geomnx geomny geomnz]);
 parallel_gdims  = netcdf.defVar(ncid, 'parallel_gdims', 'double', vecdim);
 parallel_offset = netcdf.defVar(ncid, 'parallel_offset', 'double', vecdim);
+parallel_halobits=netcdf.defVar(ncid, 'parallel_halobits', 'double', scaldim);
 
 % Define small parameters
 gammavar   = netcdf.defVar(ncid, 'gamma', 'double', scaldim);
@@ -101,6 +102,7 @@ netcdf.putVar(ncid, timeinfo_tstart, frame.time.started);
 netcdf.putVar(ncid, parallel_geom, frame.parallel.geometry);
 netcdf.putVar(ncid, parallel_gdims, frame.parallel.globalDims);
 netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
+netcdf.putVar(ncid, parallel_halobits, frame.parallel.haloBits);
 netcdf.putVar(ncid, halovar, frame.amtHalo);
 
 % Serialize parameters and other small stuff

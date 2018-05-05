@@ -107,6 +107,8 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 pInfo.geometry   = run.geometry.getNodeGeometry();
                 pInfo.globalDims = run.geometry.globalDomainRez;
                 pInfo.myOffset   = run.geometry.pLocalDomainOffset;
+		% Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
+		pInfo.haloBits   = run.fluid(1).mass.gputag(10);
 
                 sl.parallel = pInfo;
                 sl.dim = sliceDim;

@@ -25,6 +25,8 @@ v = netcdf.inqVarID(ncid, 'parallel_gdims');
 frame.parallel.globalDims = netcdf.getVar(ncid, v)';
 v = netcdf.inqVarID(ncid, 'parallel_offset');
 frame.parallel.myOffset = netcdf.getVar(ncid, v)';
+v = netcdf.inqVarID(ncid, 'parallel_halobits');
+frame.parallel.halobits = netcdf.getVar(ncid, v);
 
 % Deserialize small stuff
 v = netcdf.inqVarID(ncid, 'gamma');
