@@ -29,10 +29,11 @@ else if numDimensions == 2
             nProc(2) = prod(p(2:3:end));
             nProc(3) = prod(p(3:3:end));
             
-            mycoord(1) = floor(myrank / (nProc(2)*nProc(3)));
-            r = myrank - nProc(2)*nProc(3) * mycoord(1);
-            mycoord(2) = floor(r / nProc(2));
-            r = r      - nProc(2) * mycoord(2);
+            mycoord(1) = mod(myrank, nProc(1));
+	    r = (myrank - mycoord(1))/nProc(1);
+
+            mycoord(2) = mod(r, nProc(2));
+            r = (r - mycoord(2))/nProc(2);
             mycoord(3) = r;
         end
     end
