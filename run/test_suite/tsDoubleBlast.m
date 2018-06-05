@@ -64,37 +64,36 @@ for N = 1:doublings
     grid(1) = grid(1)*2;
 end
 
-rhos = cell(doublings,1);
-
-for N = 1:doublings;
-    enforceConsistentView(outdirs{N});
-    S = SavefilePortal(outdirs{N});
-    S.setFrametype('X');
-    
-    F = S.jumpToLastFrame();
-
-    rhos{N} = F.mass;
-end
-
-rhobar = rhos{N};
-
-for N = (doublings-1):-1:1
-    % average 2:1
-    rhobar = (rhobar(1:2:end) + rhobar(2:2:end))/2;
-    
-    result.N(N)  = numel(rhobar);
-    result.L1(N) = norm((rhos{N}-rhobar)/numel(rhobar), 1);
-    result.L2(N) = norm((rhos{N}-rhobar)/numel(rhobar), 2);
-end
-
-result.paths = outdirs;
-
-
 if mpi_amirank0()
-    d0 = pwd();
-    cd(outdirs{1});
-%    save('./tsCentrifugeResult.mat','result');
-    cd(d0);
+
+    rhos = cell(doublings,1);
+
+    for N = 1:doublings;
+        enforceConsistentView(outdirs{N});
+        S = SavefilePortal(outdirs{N});
+        S.setParallelMode(0); 
+
+        S.setFrametype('X');
+
+        F = S.jumpToLastFrame();
+
+        rhos{N} = F.mass;
+    end
+
+    rhobar = rhos{N};
+
+    for N = (doublings-1):-1:1
+        % average 2:1
+        rhobar = (rhobar(1:2:end) + rhobar(2:2:end))/2;
+    
+        result.N(N)  = numel(rhobar);
+        result.L1(N) = norm((rhos{N}-rhobar)/numel(rhobar), 1);
+        result.L2(N) = norm((rhos{N}-rhobar)/numel(rhobar), 2);
+    end
+
+    result.paths = outdirs;
+else
+    result = [];
 end
 
 end

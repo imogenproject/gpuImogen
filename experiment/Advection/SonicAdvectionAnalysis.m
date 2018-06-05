@@ -39,17 +39,18 @@ KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 machParallel = IC.ini.backgroundMach' * Khat;
 machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
-% Output vars...
-rhoerr_L1 = []; rhoerr_L2 = [];
-velerr_L1 = []; velerr_L2 = [];
-frameT = [];
+% Output vars...[]
+qq = zeros([S.numFrames() 1]);
+rhoerr_L1 = qq; rhoerr_L2 = qq;
+velerr_L1 = qq; velerr_L2 = qq;
+frameT = qq;
 
 % Since we know the initial function is a sine, write down the critical
 % time
 tCritical = 2/((IC.ini.gamma + 1)*c0*Kmag*IC.ini.amplitude);
 
 % Iterating over all frames in sequence,
-for N = 1:S.numFrames();
+for N = 1:S.numFrames()
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
@@ -71,12 +72,12 @@ for N = 1:S.numFrames();
     delta = rhoAnalytic - F.mass;
     if runParallel; delta = geo.withoutHalo(delta); end
 
-    if sum(F.time.history) >= tCritical;
+    if sum(F.time.history) >= tCritical
         disp(['At frame', num2str(S.tellFrame()), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
         break;
     end
     
-    frameT(end+1) = t;
+    frameT(N) = t;
 
     rhoerr_L1(N) =      mpi_sum(norm(delta(:),1)  ) / mpi_sum(numel(delta)) ;
     rhoerr_L2(N) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));

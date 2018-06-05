@@ -78,7 +78,7 @@ classdef SavefilePortal < handle
                 problem = 0;
                 if id < 1; problem = id; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
                 if id > 7; problem = id; id = 7; disp('Invalid ID; defaulted to XYZ (7)'); end
-                if problem; % U jelly?
+                if problem
                     fprintf('Got id of %i, valid values are 1 (X), 2 (Y), 3 (Z), 4 (XY), 5 (XZ), 6 (YZ), 7 (XYZ)\n', int32(problem));
                 end
             else
@@ -89,7 +89,7 @@ classdef SavefilePortal < handle
                 if strcmp(id,'XZ');id = 5; end
                 if strcmp(id,'YZ');id = 6; end
                 if strcmp(id,'XYZ');id = 7; end
-                if isa(id,'double') == false;
+                if isa(id,'double') == false
                     fprintf('Received string ''%s'' for ID.\nValid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\nDefaulting to XYZ.\n');
                     id = 7;
                 end

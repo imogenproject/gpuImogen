@@ -5,7 +5,7 @@ if nargin < 6
 end
 
 run         = AdvectionInitializer(grid);
-run.iterMax = 499999;
+run.iterMax = 999999;
 run.info    = 'Advection test.';
 run.notes   = 'Automated test suite: Advection';
 
@@ -28,7 +28,7 @@ run.backgroundMach = V0;
 % Any nonzero B will automatically activate magnetic fluxing, and turn 'sonic' into 'fast ma'
 % as the fast branch merges with the sonic branch of the dispersion relation
 run.waveType = wavetype;
-run.amplitude = .05;
+run.amplitude = .15;
 run.waveLinearity(0);
 run.waveStationarity(0);
 % FWIW an amplitude of .01 corresponds to a roughly 154dB sound in air
