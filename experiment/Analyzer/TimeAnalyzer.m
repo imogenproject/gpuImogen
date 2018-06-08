@@ -38,17 +38,15 @@ methods (Access = public)
     end
 
     function help(obj)
-        fprintf('I am a TimeAnalyzer base class; I help sift through a directory full of Imogen savefiles and generate useful time series data. My basic functions are:\n\tselectFileset(basename, padlength, framerange) - select (interactively if I don''t get all 3) what frames to load\n\toutput = runAnonOnFrames(anonymous function) - return a cell array produced by passing dataframes in sequence to the anonymous function which may return whatever it pleases.\n\tsquashed = cellsToMatrix(cells) - takes cells from above and, if they are nice 2x2 matrices, returns a 3d matrix with time stacked in the 3rd dimension.\n\n');
+        fprintf('I am a TimeAnalyzer base class; I help sift through a directory full of Imogen savefiles and generate useful time series data. My basic functions are:\n\tselectFileset(basename, framerange) - select (interactively if I don''t get all 3) what frames to load\n\toutput = runAnonOnFrames(anonymous function) - return a cell array produced by passing dataframes in sequence to the anonymous function which may return whatever it pleases.\n\tsquashed = cellsToMatrix(cells) - takes cells from above and, if they are nice 2x2 matrices, returns a 3d matrix with time stacked in the 3rd dimension.\n\n');
     end
 
-    function selectFileset(obj, basename, padlength, framerange)
+    function selectFileset(obj, basename, framerange)
         if nargin ~= 4
             obj.inputBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
-            obj.inputPadlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
             obj.inputFrameRange       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
         else
             obj.inputBasename   = basename;
-            obj.inputPadlength  = padlength;
             obj.inputFrameRange = framerange;
         end
 %    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
@@ -57,7 +55,7 @@ methods (Access = public)
         if max(round(obj.inputFrameRange) - obj.inputFrameRange) ~= 0; error('ERROR: Frame obj.inputFrameRange is not integer-valued.\n'); end
         if min(obj.inputFrameRange) < 0; error('ERROR: Frame obj.inputFrameRange must be nonnegative.\n'); end
 
-        obj.inputFrameRange = obj.removeNonexistantEntries(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange);
+        obj.inputFrameRange = obj.removeNonexistantEntries(obj.inputBasename, obj.inputFrameRange);
         obj.maxFrameno = max(obj.inputFrameRange);
         obj.nFrames = numel(obj.inputFrameRange);
 
@@ -69,7 +67,7 @@ methods (Access = public)
         output = [];
 
         for iter = 1:obj.nFrames
-            dataframe = util_LoadWholeFrame(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(iter));
+            dataframe = util_LoadWholeFrame(obj.inputBasename, obj.inputFrameRange(iter));
             output{iter} = afunc(dataframe);
         end
     end
@@ -85,23 +83,14 @@ end
 
 methods (Access = protected)
 
-    function newframeranges = removeNonexistantEntries(obj, namebase, padsize, frameranges)
+    function newframeranges = removeNonexistantEntries(obj, namebase, frameranges)
 
-    existframeranges = [];
+        existframeranges = [];
 
-        for ITER = 1:numel(frameranges)
-            % Take first guess; Always replace _START
-            fname = sprintf('%s_%0*i.mat', namebase, padsize, frameranges(ITER));
-            if frameranges(ITER) == 0; fname = sprintf('%s_START.mat', namebase); end
+        for ITER = 1:numel(range)
+            ftype = util_findSegmentFile(inBasename, 0, range(ITER));
 
-            % Check existance; if fails, try _FINAL then give up
-            doesExist = exist(fname, 'file');
-            if (doesExist == 0) && (ITER == numel(frameranges))
-                fname = sprintf('%s_FINAL.mat', namebase);
-                doesExist = exist(fname, 'file');
-            end
-
-            if doesExist ~= 0; existframeranges(end+1) = ITER; end
+            if ftype > 0; existrange(end+1) = ITER; end;
         end
 
         newframeranges = frameranges(existframeranges);

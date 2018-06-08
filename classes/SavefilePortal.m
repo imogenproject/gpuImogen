@@ -154,9 +154,9 @@ classdef SavefilePortal < handle
             self.pushdir(self.savefileDirectory);
             if self.pParallelMode
                 r = mpi_myrank();
-                F = util_LoadFrameSegment(self.typeToLoad, self.savefileList.misc.padlen, r, b(f));
+                F = util_LoadFrameSegment(self.typeToLoad, r, b(f));
             else
-                F = util_LoadWholeFrame(self.typeToLoad, self.savefileList.misc.padlen, b(f));
+                F = util_LoadWholeFrame(self.typeToLoad, b(f));
 
             end
             self.popdir();

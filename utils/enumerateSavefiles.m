@@ -52,7 +52,7 @@ for N = 1:numel(typelist)
         if f(u).name(prefixlen(N)) == 'S';
             a = 0;
         elseif f(u).name(prefixlen(N)) == 'F';
-            X = util_LoadFrameSegment(typelist{N}, 6, 0, 999999); % Load last frame
+            X = util_LoadFrameSegment(typelist{N}, 0, 999999); % Load last frame
             a = X.iter;
             runComplete = 1; % if a _FINAL exists, the run's done and this index can be saved
             % in order to not waste time on future directory enumerations, which may be slow.

@@ -1,4 +1,4 @@
-function imageGen(prefix, ranks, padding, set, print)
+function imageGen(prefix, ranks, set, print)
 
 if nargin < 5; print = 0; end
 
@@ -10,7 +10,7 @@ for n = set
   parts = [];
 
   for j = 1:numel(ranks)
-    frame = util_LoadFrameSegment(prefix, padding, ranks(j), n);
+    frame = util_LoadFrameSegment(prefix, ranks(j), n);
     parts{j} = frame.mass(:,:,end/2);
     fprintf('*');
   end
@@ -37,7 +37,7 @@ for n = set
 
   mergedH = (mergedH - min(min(mergedH)))./(max(max(mergedH)) - min(min(mergedH)));
 
-  outname = sprintf('%s_%0*i.png', prefix, padding, n);
+  outname = sprintf('%s_%0*i.png', prefix, 6, n);
   imwrite(mergedH', outname, 'png');
 
   nprocessed = nprocessed + 1;

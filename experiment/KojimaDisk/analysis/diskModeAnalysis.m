@@ -1,4 +1,4 @@
-function modes = diskModeAnalysis(frameset, padlen, imgprefix, innercut, noffset)
+function modes = diskModeAnalysis(frameset, imgprefix, innercut, noffset)
 % Unwraps the disk and projects the azimuthal component into fourier space.
 % Return is [nr X 24 modes X nz X ntime]
 
@@ -11,7 +11,7 @@ modes = [];
 
 for N = 1:numel(frameset)
   fprintf('Loading frame %i... ',frameset(N));
-  cframe = util_LoadWholeFrame('3D_XYZ', padlen, frameset(N));
+  cframe = util_LoadWholeFrame('3D_XYZ', frameset(N));
 
   fprintf('Azimuthal FFT... ');
   mft = fft(diskUnwrap(cframe.mass),[],2); % Take the azimuthal FFT

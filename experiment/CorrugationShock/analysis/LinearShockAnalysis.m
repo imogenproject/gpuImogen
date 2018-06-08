@@ -34,7 +34,6 @@ classdef LinearShockAnalysis < handle
 
     properties(SetAccess = protected, GetAccess = protected)
         inputBasename;
-        inputPadlength;
         inputFrameRange;
         maxFrameno;
 
@@ -133,11 +132,11 @@ methods (Access = public)
         fclose(FILE);
     end
 
-    function obj = LinearShockAnalysis(basename, padlen, framerange, numModes, verbosity)
+    function obj = LinearShockAnalysis(basename, framerange, numModes, verbosity)
 
         if nargin >= 4
             fprintf('Recv''d %i input args; Running fully automatic analysis...\n', nargin);
-            obj.selectFileset(basename, padlen, framerange);
+            obj.selectFileset(basename, framerange);
             if nargin == 5; silenceOfTheLambs = verbosity; else; silenceOfTheLambs = 0; end
 
             obj.performFourierAnalysis(numModes, silenceOfTheLambs);
@@ -163,14 +162,12 @@ methods (Access = public)
 
     end
 
-    function selectFileset(obj, basename, padlength, framerange)
+    function selectFileset(obj, basename, framerange)
         if nargin ~= 4
             obj.inputBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
-            obj.inputPadlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
             obj.inputFrameRange       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
         else
             obj.inputBasename   = basename;
-            obj.inputPadlength  = padlength;
             obj.inputFrameRange = framerange;
         end
 %    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
@@ -179,7 +176,7 @@ methods (Access = public)
         if max(round(obj.inputFrameRange) - obj.inputFrameRange) ~= 0; error('ERROR: Frame obj.inputFrameRange is not integer-valued.\n'); end
         if min(obj.inputFrameRange) < 0; error('ERROR: Frame obj.inputFrameRange must be nonnegative.\n'); end
 
-        obj.inputFrameRange = obj.removeNonexistantEntries(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange);
+        obj.inputFrameRange = obj.removeNonexistantEntries(obj.inputBasename, obj.inputFrameRange);
         obj.maxFrameno = max(obj.inputFrameRange);
 
         obj.originalSrcDirectory = pwd();
@@ -493,24 +490,15 @@ end
 
 methods (Access = protected)
 
-    function newframeranges = removeNonexistantEntries(obj, namebase, padsize, frameranges)
+    function newframeranges = removeNonexistantEntries(obj, namebase, frameranges)
 
     existframeranges = [];
 
-        for ITER = 1:numel(frameranges)
-            % Take first guess; Always replace _START
-            fname = sprintf('%s_%0*i.mat', namebase, padsize, frameranges(ITER));
-            if frameranges(ITER) == 0; fname = sprintf('%s_START.mat', namebase); end
+    for ITER = 1:numel(range)
+        ftype = util_findSegmentFile(inBasename, 0, range(ITER));
 
-            % Check existance; if fails, try _FINAL then give up
-            doesExist = exist(fname, 'file');
-            if (doesExist == 0) && (ITER == numel(frameranges))
-                fname = sprintf('%s_FINAL.mat', namebase);
-                doesExist = exist(fname, 'file');
-            end
-        
-            if doesExist ~= 0; existframeranges(end+1) = ITER; end
-        end
+        if ftype > 0; existrange(end+1) = ITER; end;
+    end
 
         newframeranges = frameranges(existframeranges);
         if numel(newframeranges) ~= numel(frameranges);

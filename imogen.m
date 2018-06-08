@@ -49,7 +49,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         % (2) Q(x,t0) from saved files
         % WARNING - this really, really needs to _know_ which frame type to load
         origpath=pwd(); cd(run.paths.save);
-        dframe = util_LoadFrameSegment('2D_XY',run.paths.indexPadding, mpi_myrank(), resumeinfo.frame);
+        dframe = util_LoadFrameSegment('2D_XY', mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
         run.image.frame = resumeinfo.imgframe;

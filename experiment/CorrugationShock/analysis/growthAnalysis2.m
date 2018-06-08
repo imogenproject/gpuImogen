@@ -1,6 +1,5 @@
-function ANALYSIS  = growthAnalysis2(inBasename, padlength, range, timeNormalization)
+function ANALYSIS  = growthAnalysis2(inBasename, range, timeNormalization)
 %>> inBasename:        Input filename for Imogen .mat savefiles
-%>> padlength:         Number of zeros in Imogen filenames
 %>> range:             Set of .mats to export
 %>> timeNormalization: Allows Imogen timestep-time to be converted into characteristic time units
         
@@ -8,7 +7,6 @@ function ANALYSIS  = growthAnalysis2(inBasename, padlength, range, timeNormaliza
 if nargin < 4
     fprintf('Not enough input arguments to run automatically.\n');
     inBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
-    padlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
     range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
     timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
     if timeNormalization == 0; timeNormalization = 1; end;
@@ -23,14 +21,13 @@ analyzedFrameNumber = 1;
 if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 
-range = removeNonexistantEntries(inBasename, padlength, range);
+range = removeNonexistantEntries(inBasename, range);
 maxFrameno = max(range);
 
 if nargin == 4; timeNormalization = 1; end;
 
 % Store this to enable the analysis routine to extend a given analysis
 ANALYSIS.about.inBasename = inBasename;
-ANALYSIS.about.padlength = padlength;
 ANALYSIS.about.range = range;
 ANALYSIS.about.timeNormalization = timeNormalization;
 
@@ -46,7 +43,7 @@ ANALYSIS.nModes = [yran zran];
 %--- Loop over given frame range ---%
 for ITER = 1:numel(range)
     
-    dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
+    dataframe = util_LoadWholeFrame(inBasename, range(ITER));
     fprintf('*');
     if mod(ITER, 100) == 0; fprintf('\n'); end
 
@@ -166,7 +163,7 @@ close(figno);
 
 fprintf('Run indicated as being in linear regime for saveframes %i to %i inclusive.\n', min(linearFrames), max(linearFrames));
 
-ANALYSIS.lastLinearFrame = util_LoadWholeFrame( inBasename, padlength, linearFrames(end) );
+ANALYSIS.lastLinearFrame = util_LoadWholeFrame(inBasename, linearFrames(end) );
 ANALYSIS.linearFrames = linearFrames;
 
 fprintf('\nAnalyzing shock front (eta)...\n');
@@ -205,23 +202,14 @@ end
 
 end
 
-function newrange = removeNonexistantEntries(inBasename, padlength, range)
+function newrange = removeNonexistantEntries(inBasename, range)
 
 existrange = [];
 
 for ITER = 1:numel(range)
-    % Take first guess; Always replace _START
-    fname = sprintf('%s_%0*i.mat', inBasename, padlength, range(ITER));
-    if range(ITER) == 0; fname = sprintf('%s_START.mat', inBasename); end
+    ftype = util_findSegmentFile(inBasename, 0, range(ITER));
 
-    % Check existance; if fails, try _FINAL then give up
-    doesExist = exist(fname, 'file');
-    if (doesExist == 0) && (ITER == numel(range))
-        fname = sprintf('%s_FINAL.mat', inBasename);
-        doesExist = exist(fname, 'file');
-    end
-    
-    if doesExist ~= 0; existrange(end+1) = ITER; end
+    if ftype > 0; existrange(end+1) = ITER; end;
 end
 
 newrange = range(existrange);

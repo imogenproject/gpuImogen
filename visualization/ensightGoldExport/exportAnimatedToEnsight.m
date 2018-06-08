@@ -1,8 +1,7 @@
-function exportAnimatedToEnsight(outBasename, inBasename, padlength, range, varset, timeNormalization)
-% exportAnimatedToEnsight(outBasename, inBasename, padlength, range, varset, timeNormalization)
+function exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNormalization)
+% exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNormalization)
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
-%>> padlength:   Number of zeros in Imogen filenames (fixme: autodetect this)
 %>> range:       Set of savefiles to export (e.g. 0:50:1000)
 %>> varset:      {'names','of','variables'} to save (see util_DerivedQty for list)
 %>> timeNormalization: Allows Imogen timestep-time to be converted into characteristic time units
@@ -12,7 +11,6 @@ if nargin < 5
     fprintf('Not enough input arguments to run automatically. Input them now:\n');
     outBasename = input('Base filename for exported files (e.g. "torus1"): ', 's');
     inBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
-    padlength   = input('Length of frame #s in source files (e.g. 3D_XYZ_xxxx -> 4): ');
     range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
     varset      = eval(input('Cell array of variable names: ','s'));
     if isempty(varset) || ~isa(varset,'cell'); disp('Not valid; Defaulting to mass, velocity, pressure'); varset={'mass','velocity','pressure'}; end
@@ -28,7 +26,13 @@ exportedFrameNumber = 0;
 if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 
-frmexists = util_checkFrameExistence(inBasename, padlength, range);
+% Automatically remove tailing _ but scorn the user
+if inBasename(end) == '_'
+    inBasename = inBasename(1:(end-1));
+    warning('inBasename had a trailing _; This causes a no-frames-found error & has been automatically stripped out.');
+end
+
+frmexists = util_checkFrameExistence(inBasename, range);
 fprintf('Found %i/%i frames to exist.\n',numel(find(frmexists)),numel(frmexists));
 
 if all(~frmexists);
@@ -58,7 +62,7 @@ tic;
 
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
-    dataframe = util_LoadWholeFrame(inBasename, padlength, range(ITER));
+    dataframe = util_LoadWholeFrame(inBasename, range(ITER));
 
     writeEnsightDatafiles(outBasename, ITER-1, dataframe,varset);
     if range(ITER) == maxFrameno
