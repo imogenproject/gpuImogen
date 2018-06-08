@@ -19,7 +19,7 @@ run             = ImogenManager();
 [run.version, run.detailedVersion]                        = versionInfo();
 [run.paths.hostName, run.paths.imogen, run.paths.results] = determineHostVariables();
 
-run.geometry = GeometryManager(ini.geometry.globalDomainRez);
+run.geometry = GeometryManager(ini.geometry.globalDomainRez, ini.bcMode);
 run.geometry.deserialize(ini.geometry);
 
 run.setNumFluids(ini.numFluids);

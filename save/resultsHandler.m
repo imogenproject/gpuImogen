@@ -42,18 +42,18 @@ function resultsHandler(saveEvent, run, fluids, mag)
         sl.about  = run.about;
         sl.ver    = run.version;
         sl.iter   = iteration;
-	sl.amtHalo= gm.useHalo;
+        sl.amtHalo= gm.useHalo;
             
         for i = find(run.save.ACTIVE)
             switch (i)
-                case {1 2 3};    % 1D Slices
-                    if ( ~run.save.save1DData ); continue;        else sliceDim = '1D';     end
-                case {4 5 6};    % 2D Slices
-                    if ( ~run.save.save2DData ); continue;        else sliceDim = '2D';     end
-                case 7;            % 3D Slice
-                    if ( ~run.save.save3DData ); continue;        else sliceDim = '3D';     end
-                case 8;            % Custom Slice
-                    if ( ~run.save.saveCustomData ); continue;    else sliceDim = 'Cust';   end
+                case {1 2 3}    % 1D Slices
+                    if ( ~run.save.save1DData ); continue;        else; sliceDim = '1D';     end
+                case {4 5 6}    % 2D Slices
+                    if ( ~run.save.save2DData ); continue;        else; sliceDim = '2D';     end
+                case 7            % 3D Slice
+                    if ( ~run.save.save3DData ); continue;        else; sliceDim = '3D';     end
+                case 8            % Custom Slice
+                    if ( ~run.save.saveCustomData ); continue;    else; sliceDim = 'Cust';   end
             end
 
             %--- Save slice if active ---%
@@ -85,12 +85,12 @@ function resultsHandler(saveEvent, run, fluids, mag)
                     sl.magX = run.save.getSaveSlice(mag(1).array, i);
                     sl.magY = run.save.getSaveSlice(mag(2).array, i);
                     sl.magZ = run.save.getSaveSlice(mag(3).array, i);
-                else sl.magZ = []; sl.magY = []; sl.magX = [];
+                else; sl.magZ = []; sl.magY = []; sl.magX = [];
                 end
                 
                 if (run.selfGravity.ACTIVE && numel(run.selfGravity.array) > 1)
                     sl.grav = run.save.getSaveSlice(run.selfGravity.array, i);
-                else sl.grav = []; 
+                else; sl.grav = []; 
                 end
                 
                 %--- Slice DGRID to match arrays if necessary ---%
@@ -107,8 +107,8 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 pInfo.geometry   = run.geometry.getNodeGeometry();
                 pInfo.globalDims = run.geometry.globalDomainRez;
                 pInfo.myOffset   = run.geometry.pLocalDomainOffset;
-		% Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
-		pInfo.haloBits   = run.fluid(1).mass.gputag(10);
+		        % Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
+                pInfo.haloBits   = run.fluid(1).mass.gputag(10);
 
                 sl.parallel = pInfo;
                 sl.dim = sliceDim;
@@ -124,11 +124,11 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 if ~isvarname(sliceName); sliceName = genvarname(sliceName); end
                     
                 try
-                    switch(run.save.format);
+                    switch(run.save.format)
                         case ENUM.FORMAT_MAT; eval([sliceName '= sl;']); save(fileName, sliceName);
                         case ENUM.FORMAT_NC;  util_Frame2NCD(sl, [fileName '.nc']);
                     end
-                catch MERR %#ok<NASGU>
+                catch MERR
                     fprintf('In resultsHandler:115, unable to save frame. Skipping\n');
                     fprintf('Target filename: %s\n', fileName);
                     fprintf('If just started resuming, this is normal for .nc because of trying to overwrite existing data files.');
@@ -182,7 +182,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
             dMinutes        = 60 * (24 * (dDateNum - dDays) - dHours);                      
             delTimeStr      = sprintf('[%g days][%g hours][%g minutes]',dDays, dHours, dMinutes);    
             logName         = '/runInfo.log';
-        else logName = '/start.log';
+        else; logName = '/start.log';
         end
         
         fid = fopen([run.paths.save, logName],'a');
@@ -233,7 +233,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
 
         %--- Print Gravity solver information ---%
         if ~isempty(run.selfGravity.info), fprintf(fid, ['\n---++ Gravity\n' run.selfGravity.info]);
-        else fprintf(fid, '   * Gravity solver performed without error.');
+        else; fprintf(fid, '   * Gravity solver performed without error.');
         end
         fprintf(fid, '\n%%ENDTWISTY%%\n');
         fclose(fid);

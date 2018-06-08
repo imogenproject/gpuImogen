@@ -244,6 +244,8 @@ classdef Initializer < handle
                 obj.populateValues(ini.ini);
 
             else
+	        obj.geomgr.setup(obj.geomgr.globalDomainRez, obj.bcMode);
+
                 if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
 
@@ -294,6 +296,8 @@ classdef Initializer < handle
                 end
             end
 
+            % Checks if MGA needs to add its own halo to the outside of the partitioned direction
+            % (only if we have a circular BC, one processor in the MPI grid in that direction, and multiple GPUs in use)
             bcmodes = BCManager.expandBCStruct(obj.bcMode);
             bcIsCircular = strcmp(bcmodes{1,gm.partitionDir}, 'circ');
 

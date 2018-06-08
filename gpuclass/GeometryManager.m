@@ -63,7 +63,7 @@ classdef GeometryManager < handle
     end % Dependent
 
     methods
-        function obj = GeometryManager(globalResolution)
+        function obj = GeometryManager(globalResolution, circularity)
             % GlobalIndexSemantics sets up Imogen's global/local indexing
             % system. It automatically fetches itself the context & topology stored in ParallelGlobals
             
@@ -75,8 +75,11 @@ classdef GeometryManager < handle
                 warning('GeometryManager received no resolution: going with 512x512x1; Call geo.setup([nx ny nz]) to change.');
                 globalResolution = [512 512 1];
             end
+            if nargin < 2
+                circularity = [1 1 1];
+            end
 
-            obj.setup(globalResolution);
+            obj.setup(globalResolution, circularity);
             obj.geometrySquare([0 0 0], [1 1 1]); % Set default geometry to cartesian, unit spacing
             
             obj.frameRotationCenter = [0 0 0];
@@ -108,16 +111,28 @@ classdef GeometryManager < handle
             end
         end
         
-        function obj = setup(obj, global_size)
-            % geo.setup(global_resolution) establishes a global resolution &
+        function setup(obj, global_size, iscirc)
+            % geo.setup(global_resolution) establishes the global resolution &
             % runs the bookkeeping for it, determining what set of I/J/K vectors out of the global grid that
             % this node has.
+            % geo.setup(global_resolution, Initializer) sets the resolution and
             if numel(global_size) == 2; global_size(3) = 1; end
 
+            % Default to circular BCS
+            obj.circularBCs = [1 1 1];
+            % If we receive a bcMode structure 
+            if nargin == 3
+                bcs = BCManager.expandBCStruct(iscirc);
+                for i = 1:3
+                    obj.circularBCs(i) = 1*(strcmp(bcs(1,i),'circ'));
+                end
+            end
             dblhalo = 2*obj.haloAmt;
             
             obj.globalDomainRez = global_size;
             obj.globalDomainRezPlusHalos   = global_size + dblhalo*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
+            % Do NOT add external halo if direction is not circular
+            obj.globalDomainRezPlusHalos = obj.globalDomainRezPlusHalos - dblhalo*(1-obj.circularBCs).*double(obj.topology.nproc > 1);
 
             % Default size: Ntotal / Nproc
             propSize = floor(obj.globalDomainRezPlusHalos ./ double(obj.topology.nproc));
@@ -126,7 +141,7 @@ classdef GeometryManager < handle
             obj.pLocalDomainOffset = (propSize-dblhalo).*double(obj.topology.coord);
 
             % If we're at the plus end of the topology in a dimension, increase proposed size to meet global domain resolution.
-            for i = 1:obj.topology.ndim;
+            for i = 1:obj.topology.ndim
                 if (double(obj.topology.coord(i)) == (obj.topology.nproc(i)-1)) && (propSize(i)*obj.topology.nproc(i) < obj.globalDomainRezPlusHalos(i))
                     propSize(i) = propSize(i) + obj.globalDomainRezPlusHalos(i) - propSize(i)*obj.topology.nproc(i);
                 end
@@ -136,8 +151,6 @@ classdef GeometryManager < handle
 
             obj.edgeInterior(1,:) = double(obj.topology.coord > 0);
             obj.edgeInterior(2,:) = double(obj.topology.coord < (obj.topology.nproc-1));
-
-            obj.circularBCs = [1 1 1];
 
             obj.updateGridVecs();
         end % Constructor
@@ -239,7 +252,7 @@ classdef GeometryManager < handle
                spacing = [spacing{1} spacing{2} spacing{3}]; 
             end
             
-            if nargin >= 2;
+            if nargin >= 2
                 if numel(zeropos) ~= 3; zeropos = [1 1 1]*zeropos(1); end
             else
                 zeropos = [0 0 0];
@@ -262,7 +275,7 @@ classdef GeometryManager < handle
             obj.pGeometryType = ENUM.GEOMETRY_CYLINDRICAL;
             obj.makeDimNotCircular(1); % updates grid vecs
 
-	    % This is used in the low-level routines as the Rcenter of the innermost cell of this node...
+           % This is used in the low-level routines as the Rcenter of the innermost cell of this node...
             obj.pInnerRadius  = Rin + dr*(obj.localIcoords(1)-1);
 
             obj.affine = [Rin z0];
@@ -276,7 +289,7 @@ classdef GeometryManager < handle
             % [u v w] = geo.toLocalIndices(x, y, z) converts a global set of coordinates to 
             % local coordinates, and keeps only those in the local domain
             u = []; v = []; w = [];
-            if (nargin == 2) && (size(x,2) == 3);
+            if (nargin == 2) && (size(x,2) == 3)
                 z = x(:,3) - obj.pLocalDomainOffset(3);
                 y = x(:,2) - obj.pLocalDomainOffset(2);
                 x = x(:,1) - obj.pLocalDomainOffset(1);
@@ -332,13 +345,13 @@ classdef GeometryManager < handle
         
             pLocalMax = obj.pLocalDomainOffset + obj.localDomainRez;
 
-            if nargin == 3;
+            if nargin == 3
                 q = globalset{d};
                 localset =  q((q >= obj.pLocalDomainOffset(d)) & (q <= pLocalMax(d))) - obj.pLocalDomainOffset(d) + 1;
             else
                 localset = cell(3,1);
                 
-                for n = 1:min(numel(obj.globalDomainRezPlusHalos), numel(globalset));
+                for n = 1:min(numel(obj.globalDomainRezPlusHalos), numel(globalset))
                     q = globalset{n};
                     localset{n} = q((q >= obj.pLocalDomainOffset(n)) & (q <= pLocalMax(n))) - obj.pLocalDomainOffset(n) + 1;
                 end
@@ -350,8 +363,8 @@ classdef GeometryManager < handle
         % Such that subtracting them from a 1:size(array) will make the lower-left corner that isn't part of the halo [0 0 0] in local coords and whatever it is in global coords
         ndim = numel(obj.globalDomainRezPlusHalos);
 
-            LL=[1 1 1; (obj.pLocalDomainOffset+1)]';
-            for j = 1:ndim;
+            LL=[1 1 1; (obj.pLocalDomainOffset+1)];
+            for j = 1:ndim
                 LL(j,:) = LL(j,:) - obj.haloAmt*(obj.topology.nproc(j) > 1);
             end
 
@@ -364,10 +377,10 @@ classdef GeometryManager < handle
 
             x   = cell(ndim,1);
             lnh = cell(ndim,1);
-            for j = 1:ndim;
+            for j = 1:ndim
                 q = 1:obj.localDomainRez(j);
                 % This line degerates to the identity operation if nproc(j) = 1
-                q = q + obj.pLocalDomainOffset(j) - obj.haloAmt*(obj.topology.nproc(j) > 1);
+                q = q + obj.pLocalDomainOffset(j) - obj.haloAmt*(obj.topology.nproc(j) > 1)*(obj.circularBCs(j) == 1);
 
                 % If the edges are periodic, wrap coordinates around
                 if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
@@ -376,10 +389,10 @@ classdef GeometryManager < handle
                 x{j} = q;
 
                 lmin = 1; lmax = obj.localDomainRez(j);
-                if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
+                if (obj.topology.coord(j) > 0) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1))
                     lmin = 1 + obj.haloAmt; % If the minus side is a halo
                 end
-                if (obj.topology.coord(j) < obj.topology.nproc(j)-1) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1));
+                if (obj.topology.coord(j) < obj.topology.nproc(j)-1) || ((obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1))
                     lmax = lmax - obj.haloAmt; % If the plus side is a halo
                 end
 
@@ -492,8 +505,8 @@ classdef GeometryManager < handle
             % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
             % will use (see setBoxSize/setBoxOriginCoord/setBoxLLPosition/geometryCylindrical)
             % If 'coords', returns the ndgrid() of the cell coordinates (numbered from 1) instead.
-	    % If 'pos' is followed by 'square' or 'cyl', output will be in XY or R-Theta coordinates
-	    % even if the geometry is cylindrical or square, respectively.
+           % If 'pos' is followed by 'square' or 'cyl', output will be in XY or R-Theta coordinates
+           % even if the geometry is cylindrical or square, respectively.
             % If no argument, defaults to 'coords'.
             
             if nargin < 2; form = 'coords'; end
@@ -505,25 +518,25 @@ classdef GeometryManager < handle
             if strcmp(form, 'pos')
                 if obj.pGeometryType == ENUM.GEOMETRY_SQUARE
                     [x, y] = ndgrid(obj.localXposition, obj.localYposition);
-		    if (nargin == 3) && strcmp(geotype, 'cyl') % convert xy to r-theta
-			a = x; b = y;
-			x = sqrt(a.^2+b.^2);
-			y = 2*pi*(y<0) + atan2(b,a);
-		    end
+                  if (nargin == 3) && strcmp(geotype, 'cyl') % convert xy to r-theta
+                     a = x; b = y;
+                     x = sqrt(a.^2+b.^2);
+                     y = 2*pi*(y<0) + atan2(b,a);
+                  end
                 elseif obj.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                     [x, y] = ndgrid(obj.localRposition, obj.localPhiPosition);
-		    if (nargin == 3) && strcmp(geotype,'square')
-		        r = x; phi = y;
-		        x = r .* cos(phi);
-		        y = r .* sin(phi);
-		    end
+                  if (nargin == 3) && strcmp(geotype,'square')
+                      r = x; phi = y;
+                      x = r .* cos(phi);
+                      y = r .* sin(phi);
+                  end
                 end
                 return;
             end
             error('ndgridSetIJ called but form was %s, not ''coords'', or ''pos''.\n', form);
         end
         
-        function [y, z] = ndgridSetJK(obj, offset, scale)
+        function [y, z] = ndgridSetJK(obj, form)
             % [y, z] = ndgridsetJK(['pos' | 'coords']) returns the part of
             % the Y-Z or Phi-Z global domain that lives on this node.
             % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
@@ -549,7 +562,7 @@ classdef GeometryManager < handle
             error('ndgridSetJK called but input argument was %s, not ''coords'', or ''pos''.\n', form);
         end
         
-        function [x, z] = ndgridSetIK(obj, offset, scale)
+        function [x, z] = ndgridSetIK(obj, form)
             % [x, z] = ndgridsetIK(['pos' | 'coords']) returns the part of
             % the X-Z or R-Z global domain that lives on this node.
             % If the argument is 'pos' returns the ndgrid() of the "physical" positions that the code
@@ -574,9 +587,9 @@ classdef GeometryManager < handle
             error('ndgridSetIK called but input argument was %s, not ''coords'', or ''pos''.\n', form);
         end
 
-	function makesize = localDimsFor(obj, dimtype)
+       function makesize = localDimsFor(obj, dimtype)
 
-            switch dimtype;
+            switch dimtype
                 case 1; makesize = [obj.localDomainRez(1) 1 1];
                 case 2; makesize = [1 obj.localDomainRez(2) 1];
                 case 3; makesize = [1 1 obj.localDomainRez(3)];
@@ -655,16 +668,13 @@ classdef GeometryManager < handle
                 
             cantdo = mpi_max(cantdo); % All nodes must receive an array of the appropriate size
   
-            if cantdo;
+            if cantdo
                 disp(obj.topology);
                 disp([size(array); obj.localDomainRez]);
                 error('Oh teh noez, rank %i received an array of invalid size!', mpi_myrank());
             end
             slim = array(obj.nohaloXindex, obj.nohaloYindex, obj.nohaloZindex);
-
-      if mpi_amirank0(); disp(size(array)); disp(size(slim)); end
         end
-
         
         function DEBUG_setTopoSize(obj, n)
             % This function is only for debugging: It allows the topology's .nproc parameter to
