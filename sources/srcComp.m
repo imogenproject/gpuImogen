@@ -14,7 +14,7 @@ cudaTestSourceComposite(fluids, run.potentialField.field, run.geometry, ...
     [run.fluid(1).MINMASS*4, run.fluid(1).MINMASS*4.1, dTime, run.compositeSrcOrders],  xyvector);
 
 if run.compositeSrcOrders(1) > 0
-    for N = 1:numel(fluids);
+    for N = 1:numel(fluids)
         fluids(N).synchronizeHalos(1, [0 1 1 1 1]);
         fluids(N).synchronizeHalos(2, [0 1 1 1 1]);
         fluids(N).synchronizeHalos(3, [0 1 1 1 1]);

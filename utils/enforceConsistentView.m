@@ -4,7 +4,7 @@ function enforceConsistentView(directory, timeout)
 % Does not return until all ranks agree on these
 % FIXME: the existing hashes are terrible
 
-if nargin == 0;
+if nargin == 0
     directory = pwd();
 end
 
@@ -15,11 +15,11 @@ if nargin < 2
 end
 
 theSame = 0;
-wait = 0.25;
+wait = 0.0625;
 
 tic
 
-mr = mpi_myrank();
+%mr = mpi_myrank();
 
 while theSame == 0
     names = [];
@@ -27,7 +27,7 @@ while theSame == 0
     totalBytes = 0;
 
     for N = 1:numel(fileList)
-	    names = [names fileList(N).name];
+        names = [names fileList(N).name];
         totalBytes = totalBytes + fileList(N).bytes;
     end
     testvec = [N 1*do_xor_hash(names) totalBytes];
@@ -37,13 +37,13 @@ while theSame == 0
 
     theSame = all(most == least);
 
-    if theSame == 0;
-        wait = wait*2; if(wait > 8) wait = 8; end
+    if theSame == 0
+        wait = wait*2; if(wait > 4); wait = 4; end
         if wait > .25; pause(wait); end
 
         if toc() > timeout
-	    break;
-	end
+            break;
+        end
     end
 end
 
@@ -66,7 +66,7 @@ if toadd ~= 4; s((end+1):(end+toadd)) = s(end); end
 
 q = uint32(s(1:4:end) + 256*s(2:4:end) + 65536 * s(3:4:end) + 16777216 *s(4:4:end));
 
-for n = 1:numel(q);
+for n = 1:numel(q)
     H = bitxor(H, q(n));
 end
 

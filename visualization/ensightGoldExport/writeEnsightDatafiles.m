@@ -1,4 +1,4 @@
-function exportEnsightDatafiles(basename, frameNo, frame, varset)
+function writeEnsightDatafiles(basename, frameNo, frame, varset)
 % exportEnsightDatafiles(basename, frame #, data frame, {'names','of','vars'})
 % basename: output filename base
 % frame #:  frame number

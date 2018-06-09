@@ -2,57 +2,57 @@ classdef Paths < handle
 % The storage class for all path related values needed to load/save data for an imogen run. 
 
 %===================================================================================================
-	properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
-        DEFAULT      = 'def';		% ENUMERATION: "Defaulted" warning
-        OVERRIDE     = 'over';		% ENUMERATION: "Override" warning
+    properties (Constant = true, Transient = true) %                         C O N S T A N T     [P]
+        DEFAULT      = 'def';        % ENUMERATION: "Defaulted" warning
+        OVERRIDE     = 'over';        % ENUMERATION: "Override" warning
         RADIX_BUFFER = '0123456789ABCDEF'; % Base 16 Radix
     end%CONSTANT
 
 %===================================================================================================
-    properties (SetAccess = public, GetAccess = public, Transient = true) %			P U B L I C  [P]
-		imogen;				% Top-level imogen run path (where imogen.m is located).		str
-		results;			% Top-level results path.										str
-		indexPadding;		% Number of digits required for padded numbers.                 int
-		hostName;			% Name of the host running Imogen.                              str
+    properties (SetAccess = public, GetAccess = public, Transient = true) %         P U B L I C  [P]
+        imogen;                % Top-level imogen run path (where imogen.m is located).     str
+        results;            % Top-level results path.                                       str
+        indexPadding;        % Number of digits required for padded numbers.                int
+        hostName;            % Name of the host running Imogen.                             str
         saveFolder;         % Name of folder in which data is saved.                        str
         containerFolder;    % Name of container folder in which data will be saved.         str
         runCode;            % Run code for the type of simulation being executed.           str
         alias;              % Unique identifier for the run.                                str
-	end%PUBLIC
-	
+    end%PUBLIC
+    
 %===================================================================================================
     properties (Dependent = true, SetAccess = public) %                        D E P E N D E N T [P]
-        container;			% path to the container directory saving data.					str
-        image;				% image subdirectory path for the save.							str
-        save;				% path to the save directory for the run.						str
+        container;            % path to the container directory saving data.                str
+        image;                % image subdirectory path for the save.                       str
+        save;                % path to the save directory for the run.                      str
     end %DEPENDENT    
-	
+    
 %===================================================================================================
-	properties (SetAccess = private, GetAccess = private, Transient = true) %	P R I V A T E    [P]
+    properties (SetAccess = private, GetAccess = private, Transient = true) %   P R I V A T E    [P]
     end
-	
-	
+    
+    
 %===================================================================================================
-	methods %																	G E T / S E T	 [M]	
+    methods %                                                                  G E T / S E T     [M]    
 
-%___________________________________________________________________________________________________ Paths
-		function obj = Paths() 
+%_____________________________________________________________________________________________ Paths
+        function obj = Paths() 
             obj.alias = '';
         end
         
-%___________________________________________________________________________________________________ GS: save
+%__________________________________________________________________________________________ GS: save
         function result = get.save(obj)
         % Access to the folder where the run data is to be stored.
             result = strcat( obj.container, filesep, obj.saveFolder);
         end
         
-%___________________________________________________________________________________________________ GS: container
+%_____________________________________________________________________________________ GS: container
         function result = get.container(obj)
         % Access to the monthly container folder in the top level results directory.
             result = strcat( obj.results, filesep, obj.containerFolder);
         end
         
-%___________________________________________________________________________________________________ GS: image
+%_________________________________________________________________________________________ GS: image
         function result = get.image(obj)
         % Access to the image subdirectory in the save directory.
             result = strcat(obj.save, filesep, 'images');
@@ -61,9 +61,9 @@ classdef Paths < handle
     end%GET/SET
     
 %===================================================================================================
-    methods (Access = public) %														P U B L I C  [M]
+    methods (Access = public) %                                                     P U B L I C  [M]
 
-%___________________________________________________________________________________________________ initialize
+%________________________________________________________________________________________ initialize
         function initialize(obj, run)
             timeManager             = run.time;
             startTime               = mpi_scatter(timeManager.startTime,0);
@@ -73,7 +73,7 @@ classdef Paths < handle
             if mpi_amirank0(); obj.printHostVariables(startTime); end
         end
         
-%___________________________________________________________________________________________________ iterationToString
+%_________________________________________________________________________________ iterationToString
         function result = iterationToString(obj, iteration)
         % Pads an iteration value with zeros for consistent save length of intermediate slice data.
             result = Paths.paddedNumber(iteration, obj.indexPadding);
@@ -105,26 +105,26 @@ classdef Paths < handle
             obj.alias           = serial_struct.alias;
 
         end
-	
-	end%PUBLIC
-	
+    
+    end%PUBLIC
+    
 %===================================================================================================
-    methods (Access = private) %												P R I V A T E    [M]
+    methods (Access = private) %                                                P R I V A T E    [M]
 
-%___________________________________________________________________________________________________ printHostVariables
-		function printHostVariables(obj, startTime)
+%________________________________________________________________________________ printHostVariables
+        function printHostVariables(obj, startTime)
                     fprintf('\n\tRun started at: %s (%s)\n', datestr(startTime), obj.saveFolder);
-		    fprintf('\tRunning on %s\n',            obj.hostName);
-			fprintf('\tImogen directory: %s\n',     obj.imogen);
-			fprintf('\tOutput directory: %s\n',	obj.results);
-		end
+            fprintf('\tRunning on %s\n',            obj.hostName);
+            fprintf('\tImogen directory: %s\n',     obj.imogen);
+            fprintf('\tOutput directory: %s\n',    obj.results);
+        end
         
-%___________________________________________________________________________________________________ makePathUnique
+%___________________________________________________________________________________ makePathUnique
 % Creates a unique folder name on the path in cases where naming conflicts occur. This happens when
 % multiple runs are started at the same time (within the same minute).
 %
-%>> folderName		fully resolved path to the folder to check for name conflicts			str
-%<< updatedName		unique name for the folder differing from input if conflict existed		str
+%>> folderName        fully resolved path to the folder to check for name conflicts            str
+%<< updatedName        unique name for the folder differing from input if conflict existed     str
         function makePathUnique(obj, startTime)
             
             %--- Load the UID if it exists ---%
@@ -157,7 +157,7 @@ classdef Paths < handle
             end
         end 
     
-%___________________________________________________________________________________________________ encodeBase16
+%______________________________________________________________________________________ encodeBase16
 % Encodes the number into a hex string.
         function result = encodeBase16(obj, number)
             %--- Initialize ---%
@@ -177,22 +177,22 @@ classdef Paths < handle
         
     end%PRIVATE
     
-%===================================================================================================	
-	methods (Static = true) %													  S T A T I C    [M]
+%===================================================================================================    
+    methods (Static = true) %                                                     S T A T I C    [M]
 
-%___________________________________________________________________________________________________ paddedNumber
+%______________________________________________________________________________________ paddedNumber
 % Converts a number to a string and pads it with leading zeros for consistent length for use in i/o
 % naming conventions.
-		function result = paddedNumber(number, padLength)
-			result = num2str(number);
-			zeroPad = padLength - length(result);
-			if (zeroPad > 0)
-				zeroStr = '00000000000000';
-				result = strcat(zeroStr(1:zeroPad),result);
-			end
-		end
-		
-	end%PROTECTED
-	
+        function result = paddedNumber(number, padLength)
+            result = num2str(number);
+            zeroPad = padLength - length(result);
+            if (zeroPad > 0)
+                zeroStr = '00000000000000';
+                result = strcat(zeroStr(1:zeroPad),result);
+            end
+        end
+        
+    end%PROTECTED
+    
 end
-		
+        

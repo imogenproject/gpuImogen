@@ -1,20 +1,20 @@
 function result = zero_shift(array, DIRECT, n, obj)
 % Shifts an array so that the new cells added are identical to the pre-shifted edge cells.
 %
-%>> array		array to be shifted											double(Nx,Ny,Nz)
-%>> DIRECT		direction/dimension along which to shift					int
-%>> n			number of cells to shift									int
-%>< obj			object owning the array										ImogenArray...
-%<< result		shifted array												double(Nx,Ny,Nz)
+%>> array        array to be shifted                                         double(Nx,Ny,Nz)
+%>> DIRECT       direction/dimension along which to shift                    int
+%>> n            number of cells to shift                                    int
+%>< obj          object owning the array                                     ImogenArray...
+%<< result       shifted array                                               double(Nx,Ny,Nz)
 
 
     if isa(obj,'FluxArray')
     
         %--- Initialization ---%
-        N		= size(array);
-        NDim	= N(DIRECT);
-        NSize	= length(N);
-        index	= cell(1, NSize);
+        N        = size(array);
+        NDim    = N(DIRECT);
+        NSize    = length(N);
+        index    = cell(1, NSize);
         for i=1:NSize,  index{i} = 1:N(i); end
 
         dir     = -sign(n); %Flip sign to correct inverse nature of shifting routines
@@ -47,5 +47,5 @@ function result = zero_shift(array, DIRECT, n, obj)
         result = constant_shift(array, DIRECT, n, obj); return;
     end
         
-	
+    
 end

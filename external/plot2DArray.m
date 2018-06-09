@@ -42,7 +42,7 @@ function hFig = plot2DArray(array, contrast, type)
     for i=1:vector
         hAxis = subplot(ng,ng,i);
         if (vector > 1); resArray = squish(array(i,:,:));
-        else resArray = array; end
+        else; resArray = array; end
 
         
         high = max(max(resArray)); hStr = sprintf('%0.2g',high);

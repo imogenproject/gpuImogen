@@ -1,8 +1,8 @@
-function [indextab valstab coeffstab] = staticsPrecompute(indices, values, coeffs, arrdims)
+function [indextab, valstab, coeffstab] = staticsPrecompute(indices, values, coeffs, arrdims)
 % Given a list of indices (x,y,z), the array dimensions, and associated values and coeffs,
 % compute all possible permutations
 
-if (numel(values) == 0) || (numel(coeffs) == 0) || (numel(indices) == 0);
+if (numel(values) == 0) || (numel(coeffs) == 0) || (numel(indices) == 0)
     valstab = [];
     coeffstab = [];
     indextab = [];
@@ -27,7 +27,7 @@ for pg = 1:6
     nx = arrdims(P(1)); ny = arrdims(P(2)); nz = arrdims(P(3));
     % Standard C-style memory arrangement, plus 1-indexing to 0-indexing factor
     linind = indices(:,P(1)) + nx*indices(:,P(2)) + nx*ny*indices(:,P(3)) - nx*(ny+1);
-    [indextab(:,pg) I] = sort(linind,1);
+    [indextab(:,pg), I] = sort(linind,1);
     valstab(:,pg)      = values(I);
     coeffstab(:,pg)    = coeffs(I);
 end

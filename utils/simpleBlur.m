@@ -13,7 +13,7 @@ xset = [-1 0 1];
 yset = [-1 0 1];
 zset = [-1 0 1];
 
-if nargin == 4;
+if nargin == 4
     switch specDir
         case 1; yset = 0; zset = 0;
         case 2; xset = 0; zset = 0;
@@ -22,9 +22,9 @@ if nargin == 4;
 end
 
 if numel(d) < 3
-    zset = [ 0 ];
+    zset = 0;
     if d(2) == 1
-         yset = [ 0 ];
+         yset = 0;
     end
 end
 
@@ -33,12 +33,12 @@ smat = zeros(size(imat));
 q = 0;
 
 for blurcount = 1:n
-    for x = xset; for y = yset; for z = zset;
-        if (x == 0) && (y == 0) && (z == 0) continue; end
+    for x = xset; for y = yset; for z = zset
+        if (x == 0) && (y == 0) && (z == 0); continue; end
 
         smat = smat + circshift(rmat, [x y z]) / sqrt(x^2 + y^2 + z^2);
         q = q + 1/sqrt(x^2 + y^2 + z^2);
-    end; end; end;
+    end; end; end
 
     smat = smat / q; q = 0;
 

@@ -11,7 +11,7 @@ run.activeSlices.xy = true;
 run.info            = 'Karman Street test';
 run.notes           = '';
 run.ppSave.dim2     = 25;
-run.mach	    = .8;
+run.mach            = .8;
 
 rp = RealtimePlotter();
   rp.plotmode = 4;

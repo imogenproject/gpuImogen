@@ -2,47 +2,47 @@ classdef ImageManager < handle
     % The manager class responsible for handling image related actions (primarily saving).
     
     %===================================================================================================
-    properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
+    properties (Constant = true, Transient = true) %                            C O N S T A N T     [P]
         IMGTYPES = {'mass','ener','momX','momY','momZ','magX', ... % The possible image types
             'magY','magZ','grav','spen','pGas', 'pTot',...
             'mach','speed','velX','velY','velZ'};
     end%CONSTANT
     
     %===================================================================================================
-    properties (SetAccess = public, GetAccess = public, Transient = true) %			P U B L I C  [P]
-        ACTIVE;		% Specifies if image saving is active for a run.				boolean
-        INTERVAL;	% Interval between image saves.									int
-        COLORMAP;	% Colormap to use for the images.								double
-        frame;		% Frame index number for the next image save operation.			int
+    properties (SetAccess = public, GetAccess = public, Transient = true) %            P U B L I C  [P]
+        ACTIVE;        % Specifies if image saving is active for a run.               boolean
+        INTERVAL;    % Interval between image saves.                                  int
+        COLORMAP;    % Colormap to use for the images.                                double
+        frame;        % Frame index number for the next image save operation.         int
         
         
-        %--- Specify whether or not the saving of an image type is allowed ---%		boolean
+        %--- Specify whether or not the saving of an image type is allowed ---%       boolean
         mass;   ener;   spen;
         momX;   momY;   momZ;
         magX;   magY;   magZ;
-        pGas;   pTot;	grav;
+        pGas;   pTot;    grav;
         velX;   velY;   velZ;
         mach;   speed;
         
-        logarithmic;  % Contains fields to save as logarithmic images.              struct
+        logarithmic;  % Contains fields to save as logarithmic images.                struct
 
         parallelUniformColors; % logical: Do or do not determine the color scaling based on global rather
                                % than local min/max values
     end%PUBLIC
     
     %===================================================================================================
-    properties (SetAccess = public, GetAccess = protected) %				   P R O T E C T E D [P]
-        pColordepth;	% # of color values to use in creating the colormaps		int
-        parent;			% parent manager											ImogenArray
-        pActive;		% active image saving slices
+    properties (SetAccess = public, GetAccess = protected) %                   P R O T E C T E D [P]
+        pColordepth;    % # of color values to use in creating the colormaps          int
+        parent;            % parent manager                                           ImogenArray
+        pActive;        % active image saving slices
     end %PROTECTED
     
     %===================================================================================================
-    methods %																	  G E T / S E T  [M]
+    methods %                                                                      G E T / S E T  [M]
     end%GET/SET
     
     %===================================================================================================
-    methods (Access = public) %														P U B L I C  [M]
+    methods (Access = public) %                                                        P U B L I C  [M]
         %__________________________________________________________________________________ ImageManager
         % Creates a new ImageManager instance.
         function obj = ImageManager()
@@ -57,9 +57,9 @@ classdef ImageManager < handle
             if ~any(obj.pActive)
                 [minval, mindex] = min(obj.parent.geometry.globalDomainRez); %#ok<ASGLU>
                 switch mindex
-                    case 1;		obj.pActive(3) = true;
-                    case 2;		obj.pActive(2) = true;
-                    case 3;		obj.pActive(1) = true;
+                    case 1;        obj.pActive(3) = true;
+                    case 2;        obj.pActive(2) = true;
+                    case 3;        obj.pActive(1) = true;
                 end
             end
         end
@@ -68,7 +68,7 @@ classdef ImageManager < handle
         % Activates the ImageManager by determining if any images have been enabled for saving.
         function activate(obj)
             obj.ACTIVE = false;
-            for i=1:length(obj.IMGTYPES),	obj.ACTIVE = ( obj.ACTIVE || obj.(obj.IMGTYPES{i}) ); end
+            for i=1:length(obj.IMGTYPES),    obj.ACTIVE = ( obj.ACTIVE || obj.(obj.IMGTYPES{i}) ); end
         end
         
         %___________________________________________________________________________________ getColormap
@@ -165,13 +165,13 @@ classdef ImageManager < handle
     end%PUBLIC
     
     %===================================================================================================
-    methods (Access = protected) %											P R O T E C T E D    [M]
+    methods (Access = protected) %                                            P R O T E C T E D    [M]
         
         %_____________________________________________________________________________________ saveImage
         %   This helper routine is responsible for saving image files. The default format here is an 8bit
         %   RGB png file.
         % array         array slice to write to an image file                           double  [nx ny]
-        % name			name of the array for folder and file                           str     *
+        % name            name of the array for folder and file                           str     *
         % sliceType     slice type identifier to include in file name (eg. XY or YZ)    str     *
         function saveImage(obj, array, name, sliceType)
             parallels = ParallelGlobals(); % FIXME ugh this again
@@ -197,7 +197,7 @@ classdef ImageManager < handle
     end%PROTECTED
     
     %===================================================================================================
-    methods (Static = true) %													  S T A T I C    [M]
+    methods (Static = true) %                                                      S T A T I C    [M]
         
         %_______________________________________________________________________________________________
         % Find natural log of absolute value, replacing infinities with next greater finite minimum.
@@ -206,7 +206,7 @@ classdef ImageManager < handle
             result = log(abs(array));    
             infinities = isinf(result);
             [I,J] = find(infinities == true);
-            for k = 1:length(I);
+            for k = 1:length(I)
                 result(I(k),J(k)) = newMin;
             end      
         end        

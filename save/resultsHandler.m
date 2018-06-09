@@ -107,7 +107,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 pInfo.geometry   = run.geometry.getNodeGeometry();
                 pInfo.globalDims = run.geometry.globalDomainRez;
                 pInfo.myOffset   = run.geometry.pLocalDomainOffset;
-		        % Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
+                    % Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
                 pInfo.haloBits   = run.fluid(1).mass.gputag(10);
 
                 sl.parallel = pInfo;
@@ -251,9 +251,4 @@ function resultsHandler(saveEvent, run, fluids, mag)
     % Save images
     run.image.imageSaveHandler(fluids(1).mass, fluids(1).mom, fluids(1).ener, mag);
     
-end
-
-% Just go with it, ok?
-function brainDamagedIdioticWorkaround(sliceName, sl)
-  assignin('caller',sliceName, sl);
 end

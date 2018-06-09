@@ -2,15 +2,15 @@ function initializeResultPaths(run, IC)
 % Creates the directories to store results based on the user input save settings and stores them as
 % a Paths object contained within the ImogenManager instance for the run.
 %
-%<> run              manager object for the Imogen run								ImogenManager
+%<> run              manager object for the Imogen run                                ImogenManager
 %>> IC               Initial condition structure containing path, time, and grid info
 
     if isfield(IC, 'originalPathStruct')
         run.paths.deserialize(IC.originalPathStruct); 
-	setupDirectories = 0;
+    setupDirectories = 0;
     else
         run.paths.initialize(run);
-	setupDirectories = 1;
+    setupDirectories = 1;
     end
    
     mpi_barrier(); % force all units to evaluate to the same paths
@@ -22,12 +22,12 @@ function initializeResultPaths(run, IC)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
-	disp('Creating directories...');
+    disp('Creating directories...');
             
         %--- RESULTS Directory ---%
         MErr = locDirMaker(run, run.paths.results,'Results folder Created');
         if isa(MErr,'MException')
-            error('PathCreation:Results', ['Unable to create or locate results folder. Aborting run. ']);
+            error('PathCreation:Results', 'Unable to create or locate results folder. Aborting run. ');
         end
 
         %--- DATE CONTAINER Directory ---%
@@ -61,7 +61,7 @@ function initializeResultPaths(run, IC)
                                                [upper(fields{i}(1)) fields{i}(2:end)]);
                                            
                     if isa(MErr, 'MException')
-                        error('PathCreation:Image', ['Unable to create an image subdirectory. Aborting operation.']);
+                        error('PathCreation:Image', 'Unable to create an image subdirectory. Aborting operation.');
                     end
                 end
                    
@@ -123,10 +123,10 @@ function created = locDirMaker(run, folderPath, infoStr)
 %   This helper function is responsible for creating directories if testing for them finds that they
 %   do not exist.
 %
-%>> savePath    full path to the save directory    										str
-%>> folder        folder to test for existance or create relative to savePath				str
-%>> infoStr        an information string for reporting creation to the command line		str
-%<< created        result specifying whether or not the director was created.				logical
+%>> savePath    full path to the save directory                                            str
+%>> folder        folder to test for existance or create relative to savePath              str
+%>> infoStr        an information string for reporting creation to the command line        str
+%<< created        result specifying whether or not the director was created.              logical
         
     %--- Create folder is it doesn't exist. ---%
     created = exist(folderPath, 'dir'); %Test for folder exists

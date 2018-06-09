@@ -1,6 +1,6 @@
 function test_mpi(rez)
 
-if nargin < 1;
+if nargin < 1
     rez = [32 32 32];
     disp('Defaulting to resolution of 32^3');
 end
@@ -34,7 +34,7 @@ if MYID == 0
     rng(0);
     trueans = rand(res);
     trueans = round(trueans);
-    for n = 2:context.size;
+    for n = 2:context.size
         rng(n-1); tst = rand(res);
         trueans = trueans .* round(tst);
     end
@@ -48,17 +48,17 @@ A = mpi_any(round(alpha));
 B = mpi_any(round(beta));
 C = mpi_any(gamma);
 
-if MYID == 0;
+if MYID == 0
     rng(0);
     trueans = rand(res);
     trueans = round(trueans);
-    for n = 2:context.size;
+    for n = 2:context.size
         rng(n-1); tst = rand(res);
         trueans = trueans + round(tst);
     end
     trueans = (trueans ~= 0);
     fail = any(trueans(:) - A(:)) | any(trueans(:) - B(:)) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_LOR. Result: FAILURE!\n'); else fprintf('Tested MPI_LOR; Result: Success.\n'); end
+    if fail; fprintf('Tested MPI_LOR. Result: FAILURE!\n'); else; fprintf('Tested MPI_LOR; Result: Success.\n'); end
 end
 
 % TEST MAX(x)
@@ -75,7 +75,7 @@ if MYID == 0
     end
 
     fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_MAX. Result: FAILURE!\n'); else fprintf('Tested MPI_MAX; Result: Success.\n'); end
+    if fail; fprintf('Tested MPI_MAX. Result: FAILURE!\n'); else; fprintf('Tested MPI_MAX; Result: Success.\n'); end
 end
 
 % TEST MIN(x)
@@ -91,7 +91,7 @@ if MYID == 0
         trueans = min(trueans, rand(res));
     end
     fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_MIN. Result: FAILURE!\n'); else fprintf('Tested MPI_MIN; Result: Success.\n'); end
+    if fail; fprintf('Tested MPI_MIN. Result: FAILURE!\n'); else; fprintf('Tested MPI_MIN; Result: Success.\n'); end
 end
 
 % TEST MPI_PROD
@@ -107,7 +107,7 @@ if MYID == 0
         trueans = trueans .* rand(res);
     end
     fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6);
-    if fail; fprintf('Tested MPI_PROD. Result: FAILURE!\n'); else fprintf('Tested MPI_PROD; Result: Success.\n'); end
+    if fail; fprintf('Tested MPI_PROD. Result: FAILURE!\n'); else; fprintf('Tested MPI_PROD; Result: Success.\n'); end
 end
 
 % TEST MPI_SUM
@@ -123,7 +123,7 @@ if MYID == 0
         trueans = trueans + rand(res);
     end
     fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6);
-    if fail; fprintf('Tested MPI_SUM. Result: FAILURE!\n'); else fprintf('Tested MPI_SUM; Result: Success.\n'); end
+    if fail; fprintf('Tested MPI_SUM. Result: FAILURE!\n'); else; fprintf('Tested MPI_SUM; Result: Success.\n'); end
 end
 
 mpi_barrier();

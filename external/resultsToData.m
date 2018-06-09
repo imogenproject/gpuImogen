@@ -8,7 +8,7 @@ function data = resultsToData(result)
     
     data.grav = GravityArray(ENUM.GRAV, data.run, []);
     if isempty(result.grav);        data.grav.array = zeros(size(result.mass));
-    else                            data.grav.array = data.grav;
+    else;                           data.grav.array = data.grav;
     end
 
     data.mom  = FluidArray.empty(3,0);

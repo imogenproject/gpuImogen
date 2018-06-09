@@ -3,19 +3,19 @@ function result = getCompression(run, array, divideArray)
 %   defined as the divergence of the vector field. If a divideArray is specified, it is divided out
 %   of each component of the array (e.g. array = momentum, divideArray = mass to get velocity).
 %
-%>< array			array to find the compression of						ImogenArray(3)
-%>> dGrid			grid spacing vector										double [dx dy dz]
-%>< divideArray		array to divide out of the primary array				ImogenArray
-%<< result			resulting compression of array							double [Nx Ny Nz]
+%>< array            array to find the compression of                        ImogenArray(3)
+%>> dGrid            grid spacing vector                                     double [dx dy dz]
+%>< divideArray      array to divide out of the primary array                ImogenArray
+%<< result           resulting compression of array                          double [Nx Ny Nz]
 
 
     %--- Initialization ---%
-	result = zeros(run.geometry.localDomainRez);
-	
-	%--- Calculate compression ---%
+    result = zeros(run.geometry.localDomainRez);
+    
+    %--- Calculate compression ---%
     for i=1:3
-		vec       = array(i).dataClone();
-		vec.array = vec.array ./ divideArray.array;
+        vec       = array(i).dataClone();
+        vec.array = vec.array ./ divideArray.array;
         result    = result + vec.calculate5PtDerivative(i,run.dGrid{i});
     end
     

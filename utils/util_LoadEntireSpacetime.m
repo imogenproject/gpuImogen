@@ -44,22 +44,22 @@ for x = 1:N
 
         fourd{1} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
         fourd{2} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
-    	fourd{3} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
+        fourd{3} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
         fourd{4} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
         fourd{5} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
     end
    
-    for a = 1:5;
-        fourd{a}(:,:,:,x) = getfield(fi, fields{a});
+    for a = 1:5
+        fourd{a}(:,:,:,x) = fi.(fields{a});
     end 
     
     % Final events 
     if x == N
         F.mass = fourd{1};
-    	F.momX = fourd{2};
-    	F.momY = fourd{3};
-    	F.momZ = fourd{4};
-    	F.ener = fourd{5};
+        F.momX = fourd{2};
+        F.momY = fourd{3};
+        F.momZ = fourd{4};
+        F.ener = fourd{5};
         F.time = fi.time; % Set time history by last frame
         tau = [0; cumsum(F.time.history)];
         F.tFrame = tau(frameset+1);

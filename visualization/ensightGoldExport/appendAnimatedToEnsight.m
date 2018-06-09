@@ -6,7 +6,7 @@ function appendAnimatedToEnsight(outBasename, inBasename, oldrange, addrange, ti
 	
 %--- Initialization ---%
 fprintf('Beginning export of %i files\n', numel(addrange));
-exportedFrameNumber = numel(oldrange);
+%exportedFrameNumber = numel(oldrange);
 
 if max(round(addrange) - addrange) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(addrange) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
@@ -18,7 +18,7 @@ if inBasename(end) == '_'
 end
 
 frmexists = util_checkFrameExistence(inBasename, addrange);
-if all(~frmexists);
+if all(~frmexists)
   fprintf('No frames to be added exist; Returning.\n');
   return
 end
@@ -26,7 +26,7 @@ end
 addrange = addrange(frmexists == 1);
 maxFrameno = max(addrange);
 
-if nargin == 4; timeNormalization = 1; end;
+if nargin == 4; timeNormalization = 1; end
 
 %--- Loop over given frame range ---%
 parfor ITER = 1:numel(addrange)
@@ -36,31 +36,10 @@ parfor ITER = 1:numel(addrange)
 
     writeEnsightDatafiles(outBasename, numel(oldrange)+ITER+1, dataframe);
     if addrange(ITER) == maxFrameno
-        writeEnsightMasterFiles(outBasename, [oldrange addrange], dataframe, timeNormalization);
+        writeEnsightMasterFiles(outBasename, [oldrange, addrange], dataframe, timeNormalization);
     end
 
     fprintf('done.\n');
-end
-
-end
-
-function newrange = removeNonexistantEntries(inBasename, range)
-
-existrange = [];
-
-for ITER = 1:numel(range)
-    ftype = util_FindSegmentFile(inBasename, 0, range(ITER));
-
-    if ftype > 0; existrange(end+1) = ITER; end;
-end
-
-newrange = range(existrange);
-if numel(newrange) ~= numel(range);
-    fprintf('WARNING: Removed %i entries that could not be opened from list.\n', numel(range)-numel(newrange));
-end
-
-if numel(newrange) == 0;
-   error('UNRECOVERABLE: No files indicated existed. Perhaps remove trailing _ from base name?\n'); 
 end
 
 end

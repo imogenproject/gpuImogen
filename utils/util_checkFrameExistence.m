@@ -5,14 +5,14 @@ function TF = util_checkFrameExistence(basename, frameset)
 % frameno in frameset,
 % It returns a true-false matrix the same size as frameset. All files
 % which exist are true, all which do not exist are false.
-rank = 0;
+
 % Initially assume all frames exist
 TF = ones(size(frameset));
 
-for x = 1:numel(frameset);
+for x = 1:numel(frameset)
     frameno = frameset(x);
     
-    [ftype, fname] = util_FindSegmentFile(basename, 0, frameno);
+    [ftype, ~] = util_FindSegmentFile(basename, 0, frameno);
 
     if ftype < 0; TF(x) = 0; end
 end

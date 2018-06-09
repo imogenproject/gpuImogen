@@ -31,8 +31,8 @@ classdef ImogenEvent < LinkedListNode
         function self = ImogenEvent(time, iter, handle, callback)
                 self = self@LinkedListNode();
 
-                if ~isempty(time); self.time = time; else self.time = NaN; end
-                if ~isempty(iter); self.iter = iter; else self.iter = NaN; end
+                if ~isempty(time); self.time = time; else; self.time = NaN; end
+                if ~isempty(iter); self.iter = iter; else; self.iter = NaN; end
                 if ~isempty(handle); self.testHandle = handle; end
                 if ~isempty(callback); self.callbackHandle = callback; end
 

@@ -110,8 +110,8 @@ classdef FluidManager < handle
             self.gamma         = details.gamma;
 
             % We assume these will be set to meaningful values if needed (multiphase flow / radiation)
-            if isfield(details,'sigma'); self.particleSigma = details.sigma; else self.particleSigma = 1.0; end
-            if isfield(details,'mu'); self.particleMu = details.mu; else self.particleMu = 1.0; end
+            if isfield(details,'sigma'); self.particleSigma = details.sigma; else; self.particleSigma = 1.0; end
+            if isfield(details,'mu'); self.particleMu = details.mu; else; self.particleMu = 1.0; end
 
             if isfield(details,'isDust');   self.isDust     = details.isDust;   end
             if isfield(details,'checkCFL'); self.checkCFL   = details.checkCFL; end

@@ -5,14 +5,14 @@ function s = GPU_tag2struct(t)
 baselen = 10;
 
 partdir = '';
-switch(double(t(6)) );
-	case 1; partdir = 'X';
-	case 2; partdir = 'Y';
-	case 3; partdir = 'Z';
+switch(double(t(6)) )
+    case 1; partdir = 'X';
+    case 2; partdir = 'Y';
+    case 3; partdir = 'Z';
 end
 
 memlay = '';
-switch(double(t(9)));
+switch(double(t(9)))
     case 1; memlay = 'XYZ';
     case 2; memlay = 'XZY';
     case 3; memlay = 'YXZ';

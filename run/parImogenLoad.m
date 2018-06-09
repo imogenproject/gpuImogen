@@ -1,4 +1,4 @@
-function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize)
+function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize) %#ok<INUSD>
 % This script is the command and control manager for command line run Imogen scripts. It is
 % designed to simplify the run script syntax and allow for greater extensibility.
 % 
@@ -11,12 +11,12 @@ function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize)
 
     if ~iscell(runFile); runFile = {runFile}; end
 
-    if failed == 0;
+    if failed == 0
             assignin('base','logFile',logFile);
             assignin('base','alias',alias);
     
-            if nargin < 5;
-                if mpi_myrank() == 0;
+            if nargin < 5
+                if mpi_myrank() == 0
                     fprintf('No 5th argument: Assuming run is scripted, will shut down everything and mpi_finalize at completion.\n'); end
                 shutDownEverything = 1;
             end
@@ -37,7 +37,7 @@ function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize)
             catch ME
                 fprintf('FATAL: A runfile has thrown an exception back to loader.\nRANK %i IS ABORTING JOB!\nException report follows:\n', mpi_myrank());
                 prettyprintException(ME);
-                if shutDownEverything;
+                if shutDownEverything
                     fprintf('Run is non-interactive: Invoking MPI_Abort() to avoid hanging job.\n');
                     mpi_abort();
                 end
@@ -50,7 +50,6 @@ function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize)
     mpi_barrier(); % If testing n > 1 procs on one node, don't let anyone reset GPUs before we're done.
 
     if shutDownEverything
-        clear all;         % Trashcan any remaining user GPU arrays
         GPU_ctrl('reset'); % Trashcan CUDA context
         % FIXME: Somewhere we need to get to dump the communicators created in ParallelGlobals.topology
         mpi_finalize();    % Trashcan MPI runtime

@@ -2,15 +2,15 @@ function printDEBUG(str, mode)
 % This routine is designed to display str information on the command line or logfile for help when
 % debugging the code.
 %
-%>> str       primary information string to print								  str     *
-%>> mode      boolean debug mode                                                  bool    t/f
+%>> str       primary information string to print                str     *
+%>> mode      boolean debug mode                                 bool    t/f
 
     
     %--- Display only if debug mode is TRUE ---%
-    if (mode); 
+    if (mode)
         
         %--- Get stack info to locate current line in code ---%
-        [stack,I] = dbstack; 
+        [stack, ~] = dbstack; 
         if (length(stack) > 1)
             strLen = 30 - length(str); if (strLen <= 0); strLen = 4; end
             str = strcat(str, sprintf('%s[', blanks(strLen)));

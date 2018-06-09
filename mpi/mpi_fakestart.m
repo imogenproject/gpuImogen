@@ -3,6 +3,6 @@ function mpi_fakestart(dims, grid)
 c = parallel_start();
 t = parallel_topology(c, dims);
 
-pg = ParallelGlobals(c, t);
+pg = ParallelGlobals(c, t); %#ok<NASGU>
 end
 

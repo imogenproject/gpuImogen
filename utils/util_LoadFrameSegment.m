@@ -12,7 +12,7 @@ try
     if act == 2
         tempname = load(fname);
         nom_de_plume = fieldnames(tempname);
-        dataframe = getfield(tempname,nom_de_plume{1});
+        dataframe = tempname.(nom_de_plume{1});
     end
 catch ERR
     str = sprintf('SERIOUS on %s: Frame in cwd %s exists but load returned error:\n', getenv('HOSTNAME'), pwd());

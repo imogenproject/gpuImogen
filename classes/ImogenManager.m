@@ -82,7 +82,7 @@ classdef ImogenManager < handle
                 result = '\n   * ENTER INFORMATION ABOUT THIS RUN HERE.';
             else
                 result = strrep(obj.pNotes,  '\n', '\n   * ' );
-                result = strrep(result, sprintf('\n'), '\n   * ' );
+                result = strrep(result, newline(), '\n   * ' );
                 result = sprintf('\n   * %s',result);
             end
         end
@@ -96,7 +96,7 @@ classdef ImogenManager < handle
                 result = '\n   * No warnings logged.';
             else
                 result = strrep(obj.pWarnings,  '\n', '\n   * ' );
-                result = strrep(result, sprintf('\n'), '\n   * ' );
+                result = strrep(result, newline(), '\n   * ' );
             end     
         end
         
@@ -216,9 +216,8 @@ classdef ImogenManager < handle
             %--- Stop and save code profiling if active ---%
             if obj.PROFILE
                 profile('off');
-                proInfo = profile('info');
+                proInfo = profile('info'); %#ok<NASGU>
                 save(strcat(obj.paths.save, filesep, 'profile'),'proInfo');
-                
             end
 
             %--- call finalize functions of all peripherals ---%
@@ -320,10 +319,10 @@ classdef ImogenManager < handle
             
             while ~isempty(p)
                 triggered = 0;
-                if p.armed;
+                if p.armed
                     if obj.time.iteration >= p.iter; triggered = 1; p.armed = 0; end
                     if obj.time.time      >= p.time; triggered = 1; p.armed = 0; end
-                    if ~isempty(p.testHandle);
+                    if ~isempty(p.testHandle)
                         triggered = p.testHandle(p, obj, fluids, mag);
                         if triggered; p.armed = 0; end
                     end

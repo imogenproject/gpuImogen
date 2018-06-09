@@ -8,7 +8,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 %< outdirectory    Path to directory containing output data
 
     if isstruct(srcData) == 0
-        load(srcData);
+        load(srcData); %#ok<LOAD>
         if mpi_amirank0(); fprintf('---------- Imogen starting from file'); end
     else
         IC = srcData;
@@ -30,7 +30,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     run = initialize(ini);
     run.save.logPrint('---------- Preparing physics subsystems\n');
 
-    if isfield(IC, 'amResuming'); RESTARTING = true; else RESTARTING = false; end
+    if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
 
     % Behavior depends if IC.originalPathStruct exists
     initializeResultPaths(run, IC)
@@ -133,7 +133,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 % FIXME: This is a terrible hack.
 if mpi_amirank0() && numel(run.selfGravity.compactObjects) > 0
   starpath = sprintf('%s/starpath.mat',run.paths.save);
-  stardata = run.selfGravity.compactObjects{1}.history;
+  stardata = run.selfGravity.compactObjects{1}.history; %#ok<NASGU>
   save(starpath,'stardata');
 end
 

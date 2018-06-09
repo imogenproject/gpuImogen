@@ -1,12 +1,13 @@
 % Run sonic advection test at 3 different resolutions,
 % Check accuracy & scaling
+format long
 
 TestResults.name = 'Imogen Master Test Suite';
 
-TestResultFilename = '~/fulltest';
+TestResultFilename = '~/fulltestasdf';
 
 %--- Override: Run ALL the tests! ---%
-doALLTheTests = 1;
+doALLTheTests = 0;
 realtimePictures = 0;
 
 %--- Individual selects ---%
@@ -21,7 +22,7 @@ doDustyWaveMovingBG     = 0;
 
 % 1D tests
 doSodTubeTests        = 0;
-doEinfeldtTests       = 0;
+doEinfeldtTests       = 1;
 doDoubleBlastTests    = 0;
 doNohTubeTests        = 0;
 doDustyBoxes          = 0;
@@ -38,15 +39,15 @@ doSedovTests          = 0;
 
 baseResolution = 32;
 
-if mpi_amirank0();
+if mpi_amirank0()
     fprintf('NOTICE: Base resolution is currently set to %i.\nNOTICE: If the number of MPI ranks or GPUs will divide this to below 6, things will Break.\n', baseResolution);
 end
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 8;
-doubleblastDoublings= 10;
+advectionDoublings  = 5;
+doubleblastDoublings= 6;
 dustyBoxDoublings   = 7;
-einfeldtDoublings   = 7;
+einfeldtDoublings   = 4;
 nohDoublings        = 7;
 sodDoublings        = 7;
 
@@ -54,7 +55,7 @@ advection2DDoublings= 6;
 centrifugeDoublings = 6;
 sedov2D_scales      = [1 2 4 8 16 24];
 
-sedov3D_scales      = [1];
+sedov3D_scales      = 1;
 
 
 fm = FlipMethod();
@@ -101,7 +102,7 @@ end
 if doSonicAdvectAngleXY || doALLTheTests
     if mpi_amirank0(); disp('Testing sound advection''s prefactor in 2D'); end
     try
-        x = tsCrossAdvect('sonic', [1536 1536 1], [11 11 0], [0 0 0], [0 0 0], realtimePictures, fm);
+        x = tsCrossAdvect('sonic', [256 256 1], [1 0 0], [0 0 0], [0 0 0], realtimePictures, fm);
     catch ME
         fprintf('2D Advection test simulation barfed.\n');
         prettyprintException(ME);
@@ -142,14 +143,18 @@ end
 if doDustyWaveStaticBG || doALLTheTests
     if mpi_amirank0(); disp('Testing dustywave with static BG'); end
     try
-        x = tsDustywave([baseResolution 1 1], advectionDoublings, 0.1, realtimePictures, fm);
+        x = tsDustywave([baseResolution 1 1], advectionDoublings, .1, realtimePictures, fm);
+        y = tsDustywave([baseResolution 1 1], advectionDoublings, 1, realtimePictures, fm);
+        z = tsDustywave([baseResolution 1 1], advectionDoublings, 25, realtimePictures, fm);
     catch ME
         fprintf('Dustywave test failed.\n');
         prettyprintException(ME);
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
-    TestResult.advection.Dustywave_static = x;
+    TestResult.advection.dustywave_k0p1 = x;
+    TestResult.advection.dustywave_k1 = y;
+    TestResult.advection.dustywave_k25 = z;
 end
 
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
@@ -308,6 +313,8 @@ end
 
 endSimulationsTime = clock();
 
+TestResult.einfeldt.L1
+TestResult.einfeldt.L2
 
 %%%%%
 % Test standing shocks, HD and MHD, 1/2/3 dimensional
@@ -315,7 +322,7 @@ endSimulationsTime = clock();
 if mpi_amirank0()
     disp('========================================');
 
-    if exist([TestResultFilename '.mat']) ~= 0
+    if exist([TestResultFilename '.mat'], 'file') ~= 0
         disp(['!!! WARNING: filename "' TestResultFilename '.mat exists! Appending YYYYMMDD_HHMMSS.']);
         disp('========================================');
         TestResultFilename = [TestResultFilename date2ymdhms(startSimulationsTime)];

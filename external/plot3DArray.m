@@ -31,7 +31,7 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
         maxA = maxFinderND(array);
         minA = minFinderND(array);
     elseif (length(scaleMax) < 2), maxA = scaleMax; minA = -1.0 * scaleMax;
-    else                       minA = scaleMax(1); maxA = scaleMax(2);
+    else;                      minA = scaleMax(1); maxA = scaleMax(2);
     end
     scaleMax = [minA maxA];
     
@@ -88,7 +88,7 @@ function plot3DArray(array,contrast,scaleMax,pTag,sliceVals)
             slicePlotAbility = true;
             minTest = min(array3D(:)); maxTest = max(array3D(:));
             if ( (minTest - maxTest) == 0 ); slicePlotAbility = false; end
-        else array3D(1:N(1),1:N(2),1:N(3)) = array; offset = 0;
+        else; array3D(1:N(1),1:N(2),1:N(3)) = array; offset = 0;
         end
         
         % --- 3D plot ---%

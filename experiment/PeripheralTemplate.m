@@ -1,4 +1,4 @@
-classdef ISAnalyzerTemplate < handle
+classdef PeripheralTemplate < handle
 % Class annotation template for creating new classes.
 %___________________________________________________________________________________________________ 
 
@@ -24,8 +24,8 @@ classdef ISAnalyzerTemplate < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
 
-    function obj = ISAnalyzerTemplate(run, mass, mom, ener, mag)
-        pInitialInfo = mass.array;
+    function self = ISAnalyzerTemplate(run, mass, mom, ener, mag)
+        self.pInitialInfo = mass.array;
         % Or otherwise remember whatever I need from the start.
     end
 

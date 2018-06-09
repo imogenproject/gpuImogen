@@ -39,7 +39,7 @@ else
 end
 
 tic;
-for F = 1:nFuncs;
+for F = 1:nFuncs
     outcome = iterateOnFunction(funcList{F}, D, R);
 
     switch outcome
@@ -80,11 +80,11 @@ function outcome = iterateOnFunction(fname, D, R)
     outcome = 0;
     for n = 1:numel(D)
         res = randomResolution(D(n), R(n,:));
-	func = name2func(fname);
+        func = name2func(fname);
         outcome = func(res);
         if mpi_any(outcome ~= 0)
             if outcome ~= 0; fprintf('RANK %i: Copypasta to rerun this exact test:\n\tunitTest([%i %i %i], {''%s''})\n', mpi_myrank(), int32(res(1)), int32(res(2)), int32(res(3)), fname); end
-	    outcome = mpi_max(outcome);
+            outcome = mpi_max(outcome);
             break;
         end
         if mpi_amirank0(); fprintf('.'); end
@@ -149,18 +149,18 @@ function fail = testCudaArrayRotateB(res)
         Zg = GPU_Type(cudaArrayRotateB(Xg, 4));
         Xp = permute(X, [1 3 2]);
         if any(any(any(Zg.array ~= Xp))); fprintf('   !!! RANK %i: Test failed: YZ transpose !!!', r); fail = 1; end
-	
-	Zg = cudaArrayRotateB(Xg, 5);
-	cudaArrayRotateB(Zg,5);
-	cudaArrayRotateB(Zg,5);
-	if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices left !!!', r); fail = 1; end 
-	GPU_free(Zg);
+        
+        Zg = cudaArrayRotateB(Xg, 5);
+        cudaArrayRotateB(Zg,5);
+        cudaArrayRotateB(Zg,5);
+        if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices left !!!', r); fail = 1; end 
+        GPU_free(Zg);
 
-	Zg = cudaArrayRotateB(Xg, 6);
-	cudaArrayRotateB(Zg,6);
-	cudaArrayRotateB(Zg,6);
-	if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices right !!!', r); fail = 1; end 
-	GPU_free(Zg);
+        Zg = cudaArrayRotateB(Xg, 6);
+        cudaArrayRotateB(Zg,6);
+        cudaArrayRotateB(Zg,6);
+        if any(any(any(GPU_download(Zg) ~= X))); fprintf('   !!! RANK %i: Test failed: Permute indices right !!!', r); fail = 1; end 
+        GPU_free(Zg);
 
      end
 
@@ -168,10 +168,10 @@ end
 
 function fail = testCudaFreeRadiation(res)
     fail = 0;
-    rho = 2 - 1.8*rand(res); rhod = GPU_Type(rho);
-    px = 2*rand(res); pxd = GPU_Type(px);
-    py = 3*rand(res); pyd = GPU_Type(py);
-    pz = 2*rand(res); pzd = GPU_Type(pz);
+    rho = 2 - 1.8*rand(res);
+    px = 2*rand(res);
+    py = 3*rand(res);
+    pz = 2*rand(res);
     bx = rand(res);   bxd = GPU_Type(bx);
     by = rand(res);   byd = GPU_Type(by);
     bz = rand(res);   bzd = GPU_Type(bz); % The del.b constraint doesn't matter, this just calculates |B|^2 to subtract it
@@ -179,14 +179,14 @@ function fail = testCudaFreeRadiation(res)
     T = .5*(px.^2+py.^2+pz.^2) ./ rho;
     B = .5*(bx.^2+by.^2+bz.^2);
 
-    Ehydro = T + .5+.25*rand(res); Ehydrod = GPU_Type(Ehydro);
-    Emhd = Ehydro + B;             Emhdd = GPU_Type(Emhd);
+    Ehydro = T + .5+.25*rand(res); %Ehydrod = GPU_Type(Ehydro);
+    Emhd = Ehydro + B;             %Emhdd = GPU_Type(Emhd);
 
     for thtest = [-.3 0 .28 .5 1 1.3]
         gm1 = 2/3;
         Tmin = 0.2;
 
-        Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
+        %Ehydrod = GPU_Type(Ehydro); % Reload internal energy array
         
         FM = FluidManager();
         FM.DEBUG_uploadData(rho, Ehydro, px, py, pz);
@@ -195,7 +195,7 @@ function fail = testCudaFreeRadiation(res)
         rtest = GPU_Type(cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest 1 0 1]));
         rtrue = (rho.^(2-thtest)) .* (gm1*(Ehydro-T)).^(thtest);
 
-        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12
             fail = 1;
             fprintf('    !!! RANK %i: Failed calculating radiation rate in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
         end
@@ -225,7 +225,7 @@ function fail = testCudaFreeRadiation(res)
         Pf(COLD) = P0(COLD);
         Enew = T + Pf/gm1;
 
-        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12;
+        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12
             fail = 1;
             fprintf('   !!! RANK %i: Failed calculating radiation loss in hydrodynamic gas. Theta: %f\n', mpi_myrank(), thtest);
         end
@@ -233,14 +233,12 @@ function fail = testCudaFreeRadiation(res)
 
         FM = FluidManager();
         FM.DEBUG_uploadData(rho, Emhd, px, py, pz);
-        
-        Emhdd = GPU_Type(Emhd); % Reload internal energy array
 
         % RADIATION RATE -- MAGNETOHYDRODYNAMIC
         rtest = GPU_Type(cudaFreeRadiation(FM, bxd, byd, bzd, [5/3 thtest 1 0 0]));
         rtrue = (rho.^(2-thtest)) .* (gm1*(Emhd-T-B)).^(thtest);
 
-        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12;
+        if max(abs(rtrue(:)-rtest.array(:))) > 1e-12
             fail = 1;
             fprintf('   !!! RANK %i: Failed calculating radiation rate in MHD gas. Theta: %f\n', mpi_myrank(), thtest);
         end
@@ -271,7 +269,7 @@ function fail = testCudaFreeRadiation(res)
 
         Enew = T + B + Pf/gm1;
 
-        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12;
+        if max(abs(Enew(:) - FM.ener.array(:))) > 1e-12
                 fail = 1;
                 fprintf('   !!! RANK %i: Failed calculating radiation loss in MHD gas. Theta: %i\n', mpi_myrank(), thtest);
         end
@@ -303,10 +301,10 @@ b = max(G2(:)-G2D.array(:));
 c = max(G3(:)-G3D.array(:));
 n = [a,b,c];
 
-if max(abs(n)) < 1e-15;
+if max(abs(n)) < 1e-14
     fail = 0;
-else fail = 1;
-end;
+else; fail = 1;
+end
 end
 
 function fail = testCudaFwdDifference(res)
@@ -342,15 +340,16 @@ c = max(Rz(:)-RD.array(:));
 
 n = [a,b,c];
 
-if max(abs(n)) < 1e-15;
+if max(abs(n)) < 1e-14
     fail = 0;
-else fail = 1;
-end;
+else; fail = 1;
+end
 end
 
 function fail = testCudaMHDKernels(res)
 fail = -1;
-%hmmmmm
+%hmmmmm... nope, barely have time to write unit tests for code that actually runs, not writing for
+%dead crap...
 end
 
 function fail = testCudaMagPrep(res)
@@ -371,7 +370,7 @@ Bdir = [0 1 0; 0 0 1; 1 0 0; 0 0 1; 1 0 0; 0 1 0];
 
 CudaDir = [1 2; 1 3; 2 1; 2 3; 3 1; 3 2];
 
-for N = 1:6;
+for N = 1:6
     a1 = .25*(circshift(p, Adir(N,:)) + circshift(p, Adir(N,:)*0)) ./ (circshift(rho, Adir(N,:)) + circshift(rho, Adir(N,:)*0));
     a2 = (circshift(a1, Bdir(N,:)) + 2*a1 + circshift(a1, -Bdir(N,:)));
     cudaMagPrepD = GPU_Type(cudaMagPrep(pD, rhoD, [CudaDir(N, :)]));
@@ -381,9 +380,9 @@ end
 n = [a(1), a(2), a(3), a(4), a(5), a(6)];
 abs(n)
 
-if abs(n) < 1e-12;
+if abs(n) < 1e-12
     fail = 0;
-else fail = -1;
+else; fail = -1;
 end
 end
 
@@ -409,7 +408,6 @@ fail = -1;
 end
 
 function fail = testCudaSoundspeed(res)
-fail = 0;
 
 gamma = 5/3; %choose a number between 1 and 5/3
 rho =  2 - rand(res);
@@ -449,10 +447,10 @@ a = max(abs(c_sq(:) - c_s1.array(:)));
 b = max(abs(c_fast(:) - c_s.array(:)));
 n = [a,b];
 
-if max(abs(n)) < 1e-10;
+if max(abs(n)) < 1e-10
     fail = 0;
-else fail = 1;
-end;
+else; fail = 1;
+end
 end
 
 function fail = testCudaSourceAntimach(res)
@@ -461,7 +459,6 @@ fail = -1;
 end
 
 function fail = testCudaSourceRotatingFrame(res)
-fail = -1;
 
 w = rand(1);
 px = rand(res);
@@ -480,26 +477,26 @@ dt = .01;
 FM = FluidManager();
 FM.DEBUG_uploadData(rho, E, px, py, pz);
 
-dvx = (2 * w * vy + w^2 * x)*(dt/2);
-dvy = (-2 * w * vx + w^2 * y)*(dt/2);
+%dvx = (2 * w * vy + w^2 * x)*(dt/2);
+%dvy = (-2 * w * vx + w^2 * y)*(dt/2);
 
 dpx = (2 * w * py + w^2 * rho .* x)*(dt/2);
 dpy = (-2 * w * px + w^2 * rho .* y)*(dt/2);
 
-vx1 = vx + dvx;
-vy1 = vy + dvy;
+%vx1 = vx + dvx;
+%vy1 = vy + dvy;
 
 px1 = px + dpx;
 py1 = py + dpy;
 
-dvx1 = (2 * w * vy1 + w^2 * x)*(dt);
-dvy1 = (-2 * w * vx1 + w^2 * y)*(dt);
+%dvx1 = (2 * w * vy1 + w^2 * x)*(dt);
+%dvy1 = (-2 * w * vx1 + w^2 * y)*(dt);
  
 dpx1 = (2 * w * py1 + w^2 * rho .* x)*(dt);
 dpy1 = (-2 * w * px1 + w^2 * rho .* y)*(dt);
 
-vx = vx + dvx1;
-vy = vy + dvy1;
+%vx = vx + dvx1;
+%vy = vy + dvy1;
 
 E = E + (px + .5*dpx1) .* (dpx1 ./ rho) + (py + .5*dpy1) .* (dpy1 ./ rho);
 
@@ -519,15 +516,14 @@ b = max(py(:) - FM.mom(2).array(:));
 c = max(E(:) - FM.ener.array(:));
 
 n = [a, b, c];
-if max(abs(n)) < 1e-10;
+if max(abs(n)) < 1e-10
     fail = 0;
-else fail = 1;
+else; fail = 1;
 end
 end
 
 function fail = testCudaSourceScalarPotential(res)
 % FIXME: this probably breaks in parallel?
-fail = 0;
 
 GM = GeometryManager(res);
 GM.makeBoxSize(.01*res);
@@ -553,7 +549,7 @@ FM.MINMASS = rho_nograv;
 phiD = GPU_Type(phi);
 
 beta(rho_fullgrav < rho) = 1;
-beta(rho < rho_fullgrav) = [(rho(rho < rho_fullgrav) - rho_nograv) / (rho_fullgrav - rho_nograv)];
+beta(rho < rho_fullgrav) = (rho(rho < rho_fullgrav) - rho_nograv) / (rho_fullgrav - rho_nograv);
 beta(rho < rho_nograv) = 0;
 
 grad_phiX = .5*(circshift(phi, [-1,0,0]) - circshift(phi, [1,0,0])) / d3x(1);
@@ -564,7 +560,7 @@ Fx = -beta .* rho .* grad_phiX;
 Fy = -beta .* rho .* grad_phiY;
 Fz = -beta .* rho .* grad_phiZ;
 
-e0 = E; px0 = px; py0 = py;
+%e0 = E; px0 = px; py0 = py;
 E = E - beta .* (px .* grad_phiX + py .* grad_phiY + pz .* grad_phiZ)*dt ...
       + .5*rho.*beta.*beta.*(grad_phiX.^2+grad_phiY.^2+grad_phiZ.^2)*dt*dt;
 px = px + Fx * dt;
@@ -579,10 +575,10 @@ c = max(pz(:) - FM.mom(3).array(:));
 d = max(E(:) - FM.ener.array(:));
 
 n = [a, b, c, d];
-if max(abs(n)) < 1e-10;
+if max(abs(n)) < 1e-10
     fail = 0;
-else fail = 1;
-end;
+else; fail = 1;
+end
 end
 
 function fail = testCudaStatics(res)
@@ -626,11 +622,11 @@ if cflZ > cfl; cfl = cflZ; cflDir = 3; end
 cfl = mpi_max(cfl);
 
 % Now make the GPU compute it
-[gpuCFL gpuDIR] = directionalMaxFinder(rhoD, csD, pxD, pyD, pzD);
+[gpuCFL, gpuDIR] = directionalMaxFinder(rhoD, csD, pxD, pyD, pzD);
 
 gpuCFL = mpi_max(gpuCFL);
 
-if gpuCFL ~= cfl;
+if gpuCFL ~= cfl
     fprintf('   !!! RANK %i: Test failed to return correct cfl speed !!! cpu=%f, gpu=%f\n', mpi_myrank(), cfl, gpuCFL);
     fail = 1;
 end
@@ -650,7 +646,7 @@ end
 end
 
 function fail = testFreezeAndPtot(res)
-    [xpos ypos zpos] = ndgrid((1:res(1))*2*pi/res(1), (1:res(2))*2*pi/res(2), (1:res(3))*2*pi/res(3));
+    %[xpos, ypos, zpos] = ndgrid((1:res(1))*2*pi/res(1), (1:res(2))*2*pi/res(2), (1:res(3))*2*pi/res(3));
     % Generate nontrivial conditions
     rho = ones(res);
     px = zeros(res);% + sin(xpos);
@@ -672,7 +668,7 @@ function fail = testFreezeAndPtot(res)
 
     % Call GPU routine
     geo = GeometryManager(res);
-    [pdev cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, geo.topology);
+    [pdev, cdev] = freezeAndPtot(rhoD, ED, pxD, pyD, pzD, BxD, ByD, BzD, 5/3, 1, .01, geo.topology);
 
     pd = GPU_Type(pdev);
     cf = GPU_Type(cdev);

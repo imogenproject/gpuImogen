@@ -26,7 +26,7 @@ if strcmp(name,'warm_air')
     return;
 end
 
-if strcmp(name,'10um_iron_balls');
+if strcmp(name,'10um_iron_balls')
     D.gamma = 1.01; D.sigma = pi*25e-12; D.mu = 3e-11;
     return;
 end

@@ -1,9 +1,9 @@
 function L = selectGPUs(gpus_arg)
 % Accepts list of GPUs given to imogen at invocation
 % This can take three forms:
-% (1) A vector of the form [vector, of, CUDA, device #s],
-% (2) The scalar magic value -1 works with SLURM and uses
-%     getenv('GPU_DEVICE_ORDINAL') to retreive the above vector,
+% (1) A numeric vector of the form [vector, of, CUDA, device #s],
+% (2) For runs launched by SLURM, use the scalar magic value -1 and
+%     getenv('GPU_DEVICE_ORDINAL') will be used to retreive the above vector,
 % (3) a file containing fields of the form
 %     s(x) = struct('hostname','nodeX','devlist',[gpus_for_first_rank_on_node, for_2nd_rank; ...]);
 % If successful, returns the set of GPUs that the rank should initialize in Imogen.
@@ -22,7 +22,6 @@ end
 failure = 0;
 bi = mpi_basicinfo();
 
-
 try
     load(gpus_arg);
 catch
@@ -35,7 +34,6 @@ R = ranksOnHost();
 
 [dump, myself] = system('hostname');
 myself = deblank(myself);
-
 
 kmax = numel(gpuList);
 k = 1;

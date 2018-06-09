@@ -1,4 +1,4 @@
-function source0100(run, fluids, mag, tFraction)
+function src0100(run, fluids, mag, tFraction)
 % This function sources rotating frame terms
 
 dTime = tFraction * run.time.dTime;

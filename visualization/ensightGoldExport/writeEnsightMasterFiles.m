@@ -19,7 +19,7 @@ for n = 1:numel(varset)
     % util_DerivedQty returns a [.X .Y .Z] structure for vectors
     vector = isa(util_DerivedQty(frame, varset{n},0), 'struct');
 
-    if vector;
+    if vector
         fprintf(CASE, 'vector per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});
     else
         fprintf(CASE, 'scalar per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});

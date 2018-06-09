@@ -84,7 +84,7 @@ end
 try
     v = netcdf.inqVarID(ncid, 'magstatus');
     magstat = ncread(nfile,'magstatus');
-catch NOTTHERE
+catch NOTTHERE %#ok<NASGU>
     magstat = 0;
 end
 

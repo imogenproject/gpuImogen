@@ -6,8 +6,8 @@ d0 = pwd(); % Avoid corrupting global state
 if nargin > 0; cd(indir); end
 
 if numel(dir('savefileIndex.mat')) == 1
-    load('savefileIndex.mat');
-    if dex.misc.final == 1;
+    load('savefileIndex.mat','dex');
+    if dex.misc.final == 1 %#ok<NODEF>
         disp('Found existing savefileIndex.mat file; It claims to be complete. Using...');
         return;
     end
@@ -28,7 +28,7 @@ end
 dex = struct('X',[],'Y',[],'Z',[],'XY',[],'XZ',[],'YZ',[],'XYZ',[],'misc',[]);
 
 % Scrape some info out of this...
-load('ini_settings.mat');
+load('ini_settings.mat','ini');
 format = ini.saveFormat;
 
 % All the savefiles that Imogen generates
@@ -41,17 +41,17 @@ padLen = 0;
 
 for N = 1:numel(typelist)
     % Per type, list all the files of that type written by rank 0
-    if format == ENUM.FORMAT_MAT;
+    if format == ENUM.FORMAT_MAT
         f = dir([typelist{N} '_rank0_*mat']);
-    elseif format == ENUM.FORMAT_NC;
+    elseif format == ENUM.FORMAT_NC
         f = dir([typelist{N} '_rank0_*nc']);
     end
 
     flist = [];
-    for u = 1:numel(f);
-        if f(u).name(prefixlen(N)) == 'S';
+    for u = 1:numel(f)
+        if f(u).name(prefixlen(N)) == 'S'
             a = 0;
-        elseif f(u).name(prefixlen(N)) == 'F';
+        elseif f(u).name(prefixlen(N)) == 'F'
             X = util_LoadFrameSegment(typelist{N}, 0, 999999); % Load last frame
             a = X.iter;
             runComplete = 1; % if a _FINAL exists, the run's done and this index can be saved
@@ -64,20 +64,22 @@ for N = 1:numel(typelist)
                 padLen = numel(f(u).name) - prefixlen(N) - 2;
             end
         end
-	flist(end+1) = a;
+        flist(end+1) = a;
     end
     
     % Append this info to the index
-    dex = setfield(dex,fieldlist{N},sort(flist));
+    dex.(fieldlist{N}) = sort(flist);
+    %dex = setfield(dex,fieldlist{N},sort(flist));
 end
 
 aboot = [];
 
 if runComplete == 1; aboot.final = 1; else; aboot.final = 0; end
 aboot.padlen = padLen;
-dex = setfield(dex, 'misc',aboot);
+dex.('misc') = aboot;
+%dex = setfield(dex, 'misc',aboot);
 
-if mpi_amirank0(); save('savefileIndex.mat','dex'); end;
+if mpi_amirank0(); save('savefileIndex.mat','dex'); end
 
 cd(d0);
 

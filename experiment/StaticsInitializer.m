@@ -173,7 +173,7 @@ classdef StaticsInitializer < handle
         end
 
         function setConstantBC(obj, varID, component, fieldID, array, facenumber)
-            vmap = obj.mapVaridToIdx(varID, component);
+            %vmap = obj.mapVaridToIdx(varID, component);
 
             xset=[]; yset=[]; zset=[];
 
@@ -210,8 +210,12 @@ classdef StaticsInitializer < handle
             
             S = {xslice, yslice, zslice};
 
-            for dim = 1:3;
-                if isempty(S{dim}); s0 = (1:obj.geometry.localDomainRez(dim)); else s0 = S{dim} - obj.geometry.pLocalDomainOffset(dim); end
+            for dim = 1:3
+                if isempty(S{dim})
+                    s0 = (1:obj.geometry.localDomainRez(dim));
+                else
+                    s0 = S{dim} - obj.geometry.pLocalDomainOffset(dim);
+                end
                 s0 = s0( (s0 > 0) & (s0 <= obj.geometry.localDomainRez(dim)) );
                 S{dim} = s0;        
             end

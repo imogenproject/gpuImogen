@@ -19,7 +19,7 @@ function failed = starterRun(gpuSet)
         end
         
         if found, break;
-        else cd('..');
+        else; cd('..');
         end
     end
 
@@ -38,7 +38,7 @@ function failed = starterRun(gpuSet)
         topology = parallel_topology(context, 3);
 
         % This will be init'd & stores itself as a persistent var
-        parInfo = ParallelGlobals(context, topology);
+        parInfo = ParallelGlobals(context, topology); %#ok<NASGU>
         
         if context.rank==0
             fprintf('\n---------- MPI Startup\nFirst start: MPI is now ready. Roll call:\n'); end
@@ -80,10 +80,10 @@ function failed = starterRun(gpuSet)
     end
     
     worked = mpi_max(worked);
-    if worked > 0;
+    if worked > 0
         failed = 1;
     else
-        if ~gm.isInitd;
+        if ~gm.isInitd
             GPU_ctrl('peers',1);
         end
         failed = 0;

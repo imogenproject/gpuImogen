@@ -48,14 +48,14 @@ classdef GPU_Type < handle
         end % Constructor
 
         function delete(obj)
-            if(obj.allocated == true) GPU_free(obj); end
+            if(obj.allocated == true); GPU_free(obj); end
         end % Destructor
 
         function updateVectorComponent(self, newComponent)
             % Pokes the vector component part of the mga data list
-	    % used by gpu-imogen to set up the vector components to make BCs work right
-	    self.GPU_MemPtr(11) = int64(newComponent);
-	end
+            % used by gpu-imogen to set up the vector components to make BCs work right
+            self.GPU_MemPtr(11) = int64(newComponent);
+        end
 
         function set.array(obj, arrin)
             % Goofus doesn't care if he leaks memory
@@ -86,7 +86,7 @@ classdef GPU_Type < handle
 
         function result = size(obj, dimno)
             if nargin == 1
-                if obj.numdims == 2; result = obj.asize(1:2); else result = obj.asize; end
+                if obj.numdims == 2; result = obj.asize(1:2); else; result = obj.asize; end
             else
                 result = obj.asize(dimno);
             end
@@ -181,11 +181,11 @@ classdef GPU_Type < handle
                 if isa(arrin, 'double')
                     % We need to transfer this to the GPU first
                     halo = gm.useHalo;
-                    if docloned;
+                    if docloned
                         halo = 0;
                         pd = gm.partitionDir;
                         
-                        if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList));
+                        if (size(arrin,pd) ~= 1) && (size(arrin,pd) ~= numel(gm.deviceList))
                             error('Upload of cloned data does not fit.');
                         end
                     end
@@ -216,7 +216,7 @@ classdef GPU_Type < handle
                     obj.numdims = ndims(arrin);
                     
                     halo = gm.useHalo;
-                    if docloned;
+                    if docloned
                         cloneme = 1;
                         halo = 0;
                     else

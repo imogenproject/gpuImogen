@@ -12,7 +12,7 @@ if run.geometry.pGeometryType == ENUM.GEOMETRY_SQUARE
     X = (X - run.geometry.frameRotationCenter(1))*deltaOmega;
     Y = (Y - run.geometry.frameRotationCenter(2))*deltaOmega;
     
-    for x=1:numel(fluids);
+    for x=1:numel(fluids)
         % Remember the original kinetic energy density which includes the original w0 term
         T0 = fluids(x).mom(1).array.^2 + fluids(x).mom(2).array.^2;
         % Alter the momentum arrays

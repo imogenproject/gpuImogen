@@ -109,10 +109,10 @@ classdef SaveManager < LinkedListNode
 
 % FIXME: This should determine *when* resultsHandler should be called
 % and mark THAT iteration/time, not waste time on every iteration...
-	saver = ImogenEvent([], 1, [], @resultsHandler);
-	saver.armed = 1;
-	run.attachEvent(saver);
-	
+        saver = ImogenEvent([], 1, [], @resultsHandler);
+        saver.armed = 1;
+        run.attachEvent(saver);
+        
     rez = obj.parent.geometry.globalDomainRez;
         %--- Analyze grid directions for auto-slices ---%
         [~, indexMax] = max(rez);
@@ -143,29 +143,7 @@ classdef SaveManager < LinkedListNode
 
 %_____________________________________________________________________________________ postliminary
     function finalize(obj, run, fluids, mag)
-	run.save.logPrint('SaveManager finalize called.\n');
-    end
-
-%_________________________________________________________________________________________ logPrint
-% Prints information to the standard output as well as a log file.
-    function logPrint(obj, printLine, varargin)
-        if mpi_amirank0() 
-            fprintf(printLine, varargin{:});
-        end
-    end
-
-%_________________________________________________________________________________________ logAllPrint
-% Prints information to the standard output as well as a log file for all ranks
-    function logAllPrint(obj, printLine, varargin)
-            fprintf(printLine, varargin{:});
-    end
-    
-% logMaskprint
-% Prints information iff any(mpi_myrank() == masks)
-    function logMaskPrint(obj, mask, printLine, varargin)
-        if any(mpi_myrank() == mask)
-            fprintf(printLine, varargin{:});
-        end
+        run.save.logPrint('SaveManager finalize called.\n');
     end
 
 %________________________________________________________________________________ saveIniSettings
@@ -362,6 +340,32 @@ end%PROTECTED
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
             
+        %_________________________________________________________________________________________ logPrint
+% Prints information to the standard output as well as a log file.
+    function logPrint(printLine, varargin)
+        if mpi_amirank0() 
+            fprintf(printLine, varargin{:});
+        end
+    end
+
+%_________________________________________________________________________________________ logAllPrint
+% Prints information to the standard output as well as a log file for all ranks
+    function logAllPrint(printLine, varargin)
+            fprintf('RANK %i: ', int32(mpi_myrank()));
+            fprintf(printLine, varargin{:});
+    end
+    
+% logMaskprint
+% Prints information iff any(mpi_myrank() == masks)
+    function logMaskPrint(mask, printLine, varargin)
+        r = mpi_myrank();
+        if any(r == mask)
+            fprintf('RANK %i: ', int32(r));
+            fprintf(printLine, varargin{:});
+        end
+    end
+
+        
     end%STATIC
     
 

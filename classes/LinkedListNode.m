@@ -41,7 +41,7 @@ classdef LinkedListNode < handle
 		node.Prev = [];	
 	end
 
-	function insertBefore(self, before);
+	function insertBefore(self, before)
 		unlink(self);
 		self.Prev = before.Prev;
 		if ~isempty(self.Prev)
@@ -51,7 +51,7 @@ classdef LinkedListNode < handle
 		before.Prev = self;
 	end
 
-	function insertAfter(self, node);
+	function insertAfter(self, node)
 		unlink(self);
 		self.Prev = node;
 		self.Next = node.Next;

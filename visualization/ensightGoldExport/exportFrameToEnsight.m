@@ -1,4 +1,4 @@
-function exportToEnsightTest(frame)
+function exportFrameToEnsight(frame)
 % FIXME: Add stuff to support not loading everything first
 
 basename = input('Basename: ','s');

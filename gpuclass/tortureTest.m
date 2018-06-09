@@ -5,12 +5,12 @@ function tortureTest(multidev, dorad, nTests)
 % > numTests: How many times to fuzz each function
 
 if nargin < 1
-    multidev = [0];
+    multidev = 0;
     disp('>>> WARNING: No input array of device IDs given; Defaulting to [0] and disabling multi-device');
 end
 
 % if we are running in a SLURM env
-if multidev == -1; multidev = selectGPUs(-1); end; 
+if multidev == -1; multidev = selectGPUs(-1); end
 
 if numel(unique(multidev)) ~= numel(multidev)
     disp('>>> FATAL: The same device is named repeatedly.');
@@ -29,7 +29,7 @@ end
 
 addpath('../mpi');
 mpi_init();
-if mpi_amirank0();
+if mpi_amirank0()
     disp('Started MPI');
     disp('#########################');
     disp('Setting up test environment');
@@ -48,14 +48,15 @@ end
 
 if mpi_amirank0(); disp('#########################');
                    disp('Running basic funtionality tests');
-                   disp('#########################'); end
+                   disp('#########################');
+end
 
 
 % Check that the basic stuff works first
 x = GPUManager.getInstance();
 
 basicunits = basicTest(multidev);
-if basicunits > 0;
+if basicunits > 0
     if isparallel
         disp('Rank %i got fatal problems in basic tests: Rank will not run further tests.\n');
     else
@@ -70,7 +71,7 @@ singledev = multidev(1);
 % Kernels used by Imogen:
 % TIME_MANAGER	cudaSoundspeed directionalMaxFinder
 % 100% coverage by unit tests
-% FLUX		
+% FLUX
 % 	ARRAY_INDEX_EXCHANGE:	cudaArrayRotateB
 %	RELAXING_FLUID:		freezeAndPtot, cudaFluidStep, cudaHaloExchange
 % 75% coverage by unit tests
@@ -79,7 +80,7 @@ singledev = multidev(1);
 %	cudaSourceRotatingFrame, cudaAccretingStar, cudaSourceScalarPotential, cudaFreeRadiation
 % 50% coverage by unit tests (accreting star broken)
 
-if numel(multidev) < 2;
+if numel(multidev) < 2
     functests = [1 0 0 0];
     if mpi_amirank0(); disp('>>> WARNING: Only one device indicated for use. Multi-device fuzzing tests will not be done'); end
 else
@@ -93,7 +94,7 @@ names = {'cudaArrayAtomic', 'cudaArrayRotateB', 'cudaSoundspeed', 'directionalMa
 
 if dorad == 'y'; names{end+1} = 'cudaFreeRadiation'; end
 
-if mpi_amirank0();
+if mpi_amirank0()
     for N = 1:numel(names); disp(['	' names{N}]); end
     disp('NOTE: setup & data upload times dwarf execution times here; No speedup will be observed.');
     disp('#########################');
@@ -113,7 +114,8 @@ if printit(1); disp('==================== Testing on one GPU'); end
 if functests(1)
     x.init(singledev, 3, 1); rng(randSeed);
     onedev = unitTest(nTests, res2d, nTests, res3d, names);
-else; onedev = 0; end
+else; onedev = 0;
+end
 
 mpi_barrier();
 
@@ -124,7 +126,8 @@ if functests(2)
     if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
     x.useExteriorHalo = extHalo;
     devx = unitTest(nTests, res2d, nTests, res3d, names);
-else; devx = 0; end
+else; devx = 0;
+end
 
 mpi_barrier();
 
@@ -134,7 +137,8 @@ if functests(3)
     if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
     x.useExteriorHalo = extHalo;
     devy = unitTest(nTests, res2d, nTests, res3d, names);
-else; devy = 0; end
+else; devy = 0;
+end
 
 mpi_barrier();
 
@@ -144,7 +148,8 @@ if functests(4)
     if (numel(x.deviceList) > 1) && (pm.topology.nproc(x.partitionDir) == 1); extHalo = 1; else; extHalo = 0; end
     x.useExteriorHalo = extHalo;
     devz = unitTest(0, res2d, nTests, res3d, names);
-else; devz = 0; end
+else; devz = 0;
+end
 
 mpi_barrier();
 if mpi_amirank0(); disp('#########################'); disp('RESULTS:'); end
@@ -163,40 +168,40 @@ if isparallel
         if mpi_amirank0(); disp('  >>> PARALLEL PROBLEMS: SOME NODES PASSED AND OTHERS FAILED <<<'); end
     end
 
-    if amgood > 0; % everyone failed:
+    if amgood > 0 % everyone failed:
         tests = mpi_max(tests);
         if mpi_amirank0(); fprintf('  >>> PARALLEL RESULT: ALL RANKS FAILED. RECOMMEND RERUN IN SERIAL <<<\n  >>> DISPLAYING UNIT TEST OUTPUT FOR max(tests)'); end
     end
     
 end
 
-if mpi_amirank0();
-
-if any(tests > 0)
-    disp('	UNIT TESTS FAILED!');
-    disp('	ABSOLUTELY DO NOT COMMIT THIS CODE REVISION!');
-    if onedev > 0; disp('	SINGLE DEVICE OPERATION: FAILED'); end
-    if devx > 0;   disp('	TWO DEVICES, X PARTITION: FAILED'); end 
-    if devy > 0;   disp('	TWO DEVICES, Y PARTITION: FAILED'); end
-    if devz > 0;   disp('	TWO DEVICES, Z PARTITION: FAILED'); end 
-
-    if any(functests == 0) || (dorad ~= 'y')
-        disp('	>>> SOME UNIT TESTS WERE NOT RUN <<<');
-	disp('	>>>   FURTHER ERRORS MAY EXIST   <<<');
+if mpi_amirank0()
+    
+    if any(tests > 0)
+        disp('	UNIT TESTS FAILED!');
+        disp('	ABSOLUTELY DO NOT COMMIT THIS CODE REVISION!');
+        if onedev > 0; disp('	SINGLE DEVICE OPERATION: FAILED'); end
+        if devx > 0;   disp('	TWO DEVICES, X PARTITION: FAILED'); end
+        if devy > 0;   disp('	TWO DEVICES, Y PARTITION: FAILED'); end
+        if devz > 0;   disp('	TWO DEVICES, Z PARTITION: FAILED'); end
+        
+        if any(functests == 0) || (dorad ~= 'y')
+            disp('	>>> SOME UNIT TESTS WERE NOT RUN <<<');
+            disp('	>>>   FURTHER ERRORS MAY EXIST   <<<');
+        end
+    else
+        disp('	UNIT TESTS PASSED!');
+        if any(functests == 0)
+            disp('	>>>       SOME UNIT TESTS WERE NOT RUN        <<<');
+            if numel(multidev) == 1; disp('	>>>     MULTI-GPU UNIT TESTS WERE NOT RUN     <<<'); end
+            disp('	>>> DO NOT COMMIT CODE UNTIL _ALL_ TESTS PASS <<<');
+        end
+        if dorad ~= 'y'
+            disp('  >>>    FREE RADIATION UNIT TEST WAS NOT RUN    <<<');
+            disp('  >>> DO NOT COMMIT IF RADIATION CODE IS CHANGED <<<');
+        end
     end
-else
-    disp('	UNIT TESTS PASSED!');
-    if any(functests == 0);
-        disp('	>>>       SOME UNIT TESTS WERE NOT RUN        <<<');
-        if numel(multidev) == 1; disp('	>>>     MULTI-GPU UNIT TESTS WERE NOT RUN     <<<'); end
-        disp('	>>> DO NOT COMMIT CODE UNTIL _ALL_ TESTS PASS <<<');
-    end
-    if dorad ~= 'y'
-        disp('  >>>    FREE RADIATION UNIT TEST WAS NOT RUN    <<<');
-        disp('  >>> DO NOT COMMIT IF RADIATION CODE IS CHANGED <<<');
-    end
-end
-
+    
 end
 
 end

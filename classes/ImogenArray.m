@@ -51,7 +51,7 @@ classdef ImogenArray < handle
         %___________________________________________________________________________________________________ GS: array
         % Main property accessor to the data array for the ImogenArray object.
         function result = get.array(obj)
-            if isa(obj.pArray,'GPU_Type');
+            if isa(obj.pArray,'GPU_Type')
                 result = obj.pArray.array;
             else
                 result = obj.pArray;
@@ -65,7 +65,7 @@ classdef ImogenArray < handle
         
         function initialArray(obj, array)
             obj.pArray.array = array;
-            if obj.pBCUninitialized;
+            if obj.pBCUninitialized
                 % Make certain everyone is on board & shares the same view before setting up BCs
                 parallels = ParallelGlobals();
                 
@@ -84,8 +84,8 @@ classdef ImogenArray < handle
             end
             
             if ~isempty(obj.pManager.parent)
-                for d = 1:3;
-                    if obj.gridSize(d) > 3;
+                for d = 1:3
+                    if obj.gridSize(d) > 3
                         obj.applyBoundaryConditions(d);
                     end
                 end
@@ -97,7 +97,7 @@ classdef ImogenArray < handle
         
         function set.array(obj,value)
             obj.pArray.array = value;
-            for d = 1:3; % Do not try to force BCs in a nonfluxable direction
+            for d = 1:3 % Do not try to force BCs in a nonfluxable direction
                if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
             end
         end
@@ -105,7 +105,7 @@ classdef ImogenArray < handle
         function array_NewBC(obj, value)
             obj.pArray.array = value;
             obj.setupBoundaries();
-            for d = 1:3; % Do not try to force BCs in a nonfluxable direction
+            for d = 1:3 % Do not try to force BCs in a nonfluxable direction
                if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
             end
         end
@@ -213,7 +213,7 @@ classdef ImogenArray < handle
         % Flips the array and all associated subarrays such that direction i and the x (stride-of-1) direction
         % exchange places. Updates the array, all subarrays, and the static indices.
         function arrayIndexExchange(obj, toex, type)
-            if type == 1; % Does not flip subarrays, they can just be overwritten
+            if type == 1 % Does not flip subarrays, they can just be overwritten
                 cudaArrayRotateB(obj.gputag, toex); obj.pArray.flushTag();
             end
         end

@@ -11,7 +11,7 @@ run.M0 = 3;
 
 run.cfl = .7;
 NT = NohTubeExactPlanar(run.rho0, 1, run.M0);
-run.timeMax = NT.shockTimeGivenPosition(run.r0, -run.r0);;
+run.timeMax = NT.shockTimeGivenPosition(run.r0, -run.r0);
 run.iterMax     = 10*run.timeMax*grid(1)/run.cfl; % This will give steps max ~ 1.2x required
 
 run.alias       = '';

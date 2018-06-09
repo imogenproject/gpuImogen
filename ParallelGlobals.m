@@ -16,9 +16,9 @@ classdef ParallelGlobals < handle
                 obj = instance; return;
             end
 
-            if nargin < 2;
+            if nargin < 2
                 warning('GlobalIndexSemantics received no topology: generating one');
-                if nargin < 1;
+                if nargin < 1
                     warning('GlobalIndexSemantics received no context: generating one.');
                     obj.context = parallel_start();
                 end

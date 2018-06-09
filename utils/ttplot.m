@@ -1,8 +1,7 @@
+function ttplot(M)
 %This programe is made by Nasar Ahmad, which creates Ascii Images
 %Comsats Institue of Information Technology Islamabad (Telecom Eng III)
 % Modified by Erik Keever
-
-function ttplot(M)
 
 % Get size of window
 [~, tsys]= system('stty size');
@@ -11,15 +10,16 @@ termdim = sscanf(tsys, '%i %i');
 % Affine transform M to lie within [0, 27]
 M=M-min(M(:));
 M=27*M/max(M(:));
-gmax = 27;                  % Maximum number of intensity chracter
+%gmax = 27;                  % Maximum number of intensity chracter
 
 termdim=termdim'-2;
 % If matrix is too large, rescale
-if min(termdim ./ size(M)) < 1;
-	image = round(imresize(M, min(termdim./size(M))));
-else; image = round(M); end
+if min(termdim ./ size(M)) < 1
+    image = round(imresize(M, min(termdim./size(M))));
+else; image = round(M);
+end
 
-[rows cols c]=size(image);
+[rows, cols, c]=size(image);
 picture = char(zeros(rows,cols)); % creting a matrix where we can store characters   
 for r = 1: rows
   for c = 1:cols
@@ -110,27 +110,27 @@ case(1)
 A	='M';
 picture(r,c)=A;
 case(0)
-A = ' ';
-picture(r,c) = A;
-end
+    A = ' ';
+    picture(r,c) = A;
+     end
   end
 end
 
 fprintf('\x1b[40m'); % set black BG
-for i = 1:size(picture,1);
-  outstring = '';
-   for j = 1:size(picture,2);
-    tocolor = floor(image(i,j)*6.99/27);
-    switch(tocolor);
-        case 0; outstring = [outstring sprintf('\x1b[31m%c', picture(i,j))];
-	case 1; outstring = [outstring sprintf('\x1b[33m%c', picture(i,j))];
-	case 2; outstring = [outstring sprintf('\x1b[32m%c', picture(i,j))];
-	case 3; outstring = [outstring sprintf('\x1b[36m%c', picture(i,j))];
-	case 4; outstring = [outstring sprintf('\x1b[34m%c', picture(i,j))];
-	case 5; outstring = [outstring sprintf('\x1b[35m%c', picture(i,j))];
-	case 6; outstring = [outstring sprintf('\x1b[37m%c', picture(i,j))];
-    end
-end; fprintf('%s\n',outstring); end
+for i = 1:size(picture,1)
+    outstring = '';
+    for j = 1:size(picture,2)
+        tocolor = floor(image(i,j)*6.99/27);
+        switch(tocolor)
+            case 0; outstring = [outstring sprintf('\x1b[31m%c', picture(i,j))];
+            case 1; outstring = [outstring sprintf('\x1b[33m%c', picture(i,j))];
+            case 2; outstring = [outstring sprintf('\x1b[32m%c', picture(i,j))];
+            case 3; outstring = [outstring sprintf('\x1b[36m%c', picture(i,j))];
+            case 4; outstring = [outstring sprintf('\x1b[34m%c', picture(i,j))];
+            case 5; outstring = [outstring sprintf('\x1b[35m%c', picture(i,j))];
+            case 6; outstring = [outstring sprintf('\x1b[37m%c', picture(i,j))];
+        end
+    end; fprintf('%s\n',outstring); end
 
 fprintf('\x1b[39m\x1b[49m');
 

@@ -40,14 +40,14 @@ classdef FrameTracker < handle
     
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-	function self = FrameTracker()
+        function self = FrameTracker()
             % Called by ImogenManager constructor
             self.iniParameters([0 0 0], 0, [0 0]);
         end
-
+        
         function iniParameters(self, iniVelocity, iniOmega, iniCenter)
             % Called by initialize.m:355
-	end
+        end
 
 	function initialize(self, run, frameParameters, mass, ener, mom)
         % called by ImogenManager.initialize()
@@ -75,22 +75,14 @@ classdef FrameTracker < handle
 	end
 
 
-	function changeOmega(self, mass, ener, mom, wDest)
-
-	end
-
-        function changeRotationCenter(self, mass, ener, mom, newCenter)
-
-        end
-
-        function changeVelocity(self, mass, ener, mom, vel)
-
-        end
-
-        function integrateMotion(self, dt)
-            self.pAngleHistory(end+1) = self.pAngleHistory(end) + dt*self.omega;
-        end
-
+    function changeRotationCenter(self, mass, ener, mom, newCenter)
+        
+    end
+    
+    function integrateMotion(self, dt)
+        self.pAngleHistory(end+1) = self.pAngleHistory(end) + dt*self.omega;
+    end
+    
     end%PUBLIC
     
     %===================================================================================================

@@ -1,8 +1,8 @@
 function sumVal = sumND(array)
 % Finds the total sum of an N dimensional arrray.
 %
-%>> array     array to search through for a maximum value					double  [n1 n2 ...]
-%<< sumVal    sum value for the entire array								double  #
+%>> array     array to search through for a maximum value                double  [n1 n2 ...]
+%<< sumVal    sum value for the entire array                             double  #
 
 
     %--- Find array dimension ---%

@@ -11,18 +11,20 @@ function [host, imogenRootPath, resultPath] = determineHostVariables()
 
     %--- Determine Host ---%
     try [ret1, host] = system('hostname');
-    catch MErr, fprintf('Warning: hostname command unavailable.\n');
+    catch MErr
+        prettyprintException(MErr, 0, 'Warning: hostname command did not work.\n');
     end
     if (ret1 ~= 0)
         if ispc(); host = getenv('COMPUTERNAME');
-        else       host = getenv('HOSTNAME');      
+        else;      host = getenv('HOSTNAME');      
         end
     end
     host = strtrim(lower(host));
     
     %--- Determine User ---%
-    try [ret2, user] = system('whoami');
-    catch MErr, fprintf('Warning: User account unknown.\n');
+    try [~, user] = system('whoami');
+    catch MErr
+        prettyprintException(MErr, 0, 'Warning: User account unknown.\n');
     end
     user = strtrim(user);
     
@@ -54,7 +56,8 @@ function [host, imogenRootPath, resultPath] = determineHostVariables()
             if mpi_amirank0()
                 fprintf('Unable to ascertain host and user id. Environmental paths may be incorrect.\n');
                 fprintf('Imogen registered the following values for your system:\nHost: %s\nUser: %s', ...
-                            host, user); end
+                            host, user);
+            end
         end
     end    
 end

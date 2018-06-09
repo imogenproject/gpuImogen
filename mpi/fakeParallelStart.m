@@ -1,4 +1,4 @@
-function [context topo] = fakeParallelStart()
+function [context, topo] = fakeParallelStart()
 % If it is for some reason called for, fake the output values from real
 % calls to parallel_start() and parallel_topology() as for an mpi-serial
 % program.

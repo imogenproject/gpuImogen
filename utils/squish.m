@@ -2,7 +2,7 @@ function y = squish(x, behavior)
 % Replacement for squeeze that behaves consistently with 1xN
 % (removing the leading 1)
 d = size(x);
-c = cumprod(size(x));
+%c = cumprod(size(x));
 
 if nargin == 1
     % Default to 'rational' behavior of removing all singleton dimensions

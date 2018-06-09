@@ -23,7 +23,6 @@ classdef SimulationAnalyzer < handle
 
     properties(SetAccess = protected, GetAccess = protected)
         inputBasename;
-        inputPadLength;
         inputFrameRange;
         maxFrameno;
         
@@ -129,7 +128,6 @@ methods (Access = public)
     function obj = SimulationAnalyzer(basename, framerange, verbosity)
         if nargin < 3; error('Require: SimulationAnalyzer(base filename, [range:of:frames], verbose=1 or 0=off\n'); end
         
-        obj.inputPadLength = -1; % Flags as undetermined until we try to read things.
         obj.setBaseInputs(basename);
 
         obj.analyzerFields = {'frameT'};
@@ -158,7 +156,7 @@ methods (Access = public)
     end
     
     function setEquilibriumFrame(obj, eqnumber)
-        obj.equil = util_LoadWholeFrame(obj.inputBasename, eqnumber, obj.inputPadLength);
+        obj.equil = util_LoadWholeFrame(obj.inputBasename, eqnumber);
         
         obj.frameX = cumsum(1:size(obj.equil.mass,1))*obj.equil.dGrid{1};
         obj.frameY = cumsum(1:size(obj.equil.mass,2))*obj.equil.dGrid{2};
@@ -211,7 +209,7 @@ methods (Access = public)
                    if mod(iter,25) == 0; fprintf('\n'); end
                 end
 
-                dataframe = util_LoadWholeFrame(obj.inputBasename, obj.inputPadLength, obj.setOfFrames(iter));
+                dataframe = util_LoadWholeFrame(obj.inputBasename, obj.setOfFrames(iter));
 
                 % On first frame of new analysis, calculate the X/K vectors to convenientify things in the future.
                 if iter == 1;
@@ -262,7 +260,7 @@ methods (Access = public)
                 if mod(zf,25) == 0; fprintf('\n'); end
             end
 
-            dataframe = util_LoadWholeFrame(obj.inputBasename, obj.inputPadLength, obj.setOfFrames(iter));
+            dataframe = util_LoadWholeFrame(obj.inputBasename, obj.setOfFrames(iter));
             obj.frameT(iter,1) = sum(dataframe.time.history);
             obj.frameAnalyzerFunction(dataframe, iter);
 
@@ -281,21 +279,10 @@ end
 
 methods (Access = protected)
 
-    function s = framenumToFilename(obj, num, pad)
-        % This function converts a given frame# and padding to the file
-        % which must exist if this is a valid frame (the rank 0 savefile).
-        if num == 0
-            s = sprintf('%s_rank0_START.nc', obj.inputBasename); 
-            return 
-        end
-        
-        if nargin == 2
-            s =sprintf('%s_rank0_%0*i.nc', obj.inputBasename, obj.inputPadLength, num);
-            return;
-        else
-            s =sprintf('%s_rank0_%0*i.nc', obj.inputBasename, pad, num);
-            return;
-        end
+    function s = framenumToFilename(obj, num)
+        % This function converts a given frame number to the filaname of
+	% the rank zero savefile associated with it.
+	[ishere, s] = util_FindSegmentFile(obj.inputBasename, 0, num);
     end
     
     function checkFramesExist(obj)
@@ -305,34 +292,11 @@ methods (Access = protected)
 
         previousDir = pwd();
         cd(obj.originalSrcDirectory);
-
-        if obj.inputPadLength < 1 % Undetermined: Determine it
-            fprintf('   Frame # pad length not set. Determining... ');
-            % List all files matching basename pattern
-            % They are returned in lexicographic order, so the first
-            % will definitely have a numerical value to parse.
-            x0 = dir([obj.inputBasename '_rank0_*.nc']);
-            if numel(x0) == 0; error('No files matching given basename exist! Aborting.\n'); end
-            f0 = x0(1).name;
-            
-            for gl = 0:15
-                if f0(end-3-gl) == '_'; break; end
-            end
-            if gl == 15; error('You probably didn''t run a simulation for a quadrillion iterations.\nConcluding something went wrong.\n'); end
-            
-            obj.inputPadLength = gl;
-            fprintf('Found to be %i\n', gl);
-        end
         
         for ITER = 1:numel(obj.setOfFrames)
-            fnguess = obj.framenumToFilename(obj.setOfFrames(ITER), obj.inputPadLength);
+            fnguess = obj.framenumToFilename(obj.setOfFrames(ITER));
 
             doesExist = exist(fnguess, 'file');
-            % Make one last try if it's the end of the list
-            if (doesExist == 0) && (ITER == numel(obj.setOfFrames))
-                fname = sprintf('%s_rank0_FINAL.nc', obj.inputBasename);
-                doesExist = exist(fname, 'file');
-            end
         
             fexist(ITER) = doesExist;
         end

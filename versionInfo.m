@@ -26,7 +26,7 @@ function [version, detailedVersion] = versionInfo()
                 branch = 'MB';
             end
     
-            pieces   = regexpi(status, sprintf('\n'), 'split');
+            pieces   = regexpi(status, newline(), 'split');
             modified = false;
             
             for i=1:length(pieces)

@@ -6,7 +6,7 @@ function result = indexSet(dims, xset, yset, zset)
 
 % FIXME: This is now done by StaticsInitializer.indexSetForVolume
 
-[u v w] = ndgrid(xset, yset, zset);
+[u, v, w] = ndgrid(xset, yset, zset);
 
 u = u(:);
 v = v(:);

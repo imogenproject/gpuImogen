@@ -44,15 +44,15 @@ classdef Radiation < handle
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function readSubInitializer(obj, SI)
-	    obj.type                 = SI.type;
-	    obj.exponent             = SI.exponent;
-	    obj.initialMaximum       = SI.initialMaximum;
-	    obj.coolLength           = SI.coolLength;
-	    obj.strengthMethod       = SI.strengthMethod;
-	    obj.setStrength          = SI.setStrength;
+            obj.type                 = SI.type;
+            obj.exponent             = SI.exponent;
+            obj.initialMaximum       = SI.initialMaximum;
+            obj.coolLength           = SI.coolLength;
+            obj.strengthMethod       = SI.strengthMethod;
+            obj.setStrength          = SI.setStrength;
         
         if strcmp(obj.type, ENUM.RADIATION_NONE) == 0; obj.active = 1; end
-	end
+        end
 
         function initialize(obj, run, fluid, mag)
 %___________________________________________________________________________________________________ 
@@ -86,7 +86,7 @@ classdef Radiation < handle
                 KE  = 0.5*(mom(1).array.^2 + mom(2).array.^2 + mom(3).array.^2)./ mass.array;
                 Bsq = 0.5*(mag(1).array.^2 + mag(2).array.^2 + mag(3).array.^2);
             
-	        % compute the strength so as to radiate (initialMaximum) of Eint away after t=1
+                % compute the strength so as to radiate (initialMaximum) of Eint away after t=1
                 obj.strength   = (ener.array - KE - Bsq) ./ unscaledRadiation.array;
                 obj.strength   = obj.initialMaximum * mpi_max(max(obj.strength(:)));
 
@@ -94,18 +94,22 @@ classdef Radiation < handle
             end
             
             if strcmp(obj.strengthMethod,'coollen')
-                forceStop_ParallelIncompatible();
-                % FIXME: must have *global* psi(1,0,0) available.
-                vpre = mom(1).array(1,1,1) / mass.array(1,1,1); % preshock vx
+                if mpi_amirank0()
+                     % preshock vx, taken from leftmost cell in the array
+                    vpre = mom(1).array(1,1,1) / mass.array(1,1,1);
+                    mpi_scatter(vpre, 0);
+                else
+                    vpre = mpi_scatter([], 0);
+                end
                 
                 ppost = .75*.5*vpre^2; % strong shock approximation
-                rhopost = 4;
+                %rhopost = 4;
                 obj.strength = (.25*vpre/obj.coolLength) * 4^(obj.exponent-2) * ppost^(1-obj.exponent);
                 
                 fprintf('Radiation strength: %f\n', obj.strength);
             end
 
-	    obj.pureHydro = run.pureHydro;
+            obj.pureHydro = run.pureHydro;
         end
         
 %___________________________________________________________________________________________________ noRadiationSolver

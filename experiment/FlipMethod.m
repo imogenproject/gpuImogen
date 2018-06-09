@@ -1,4 +1,4 @@
-classdef FlipMethod < LinkedListNode;
+classdef FlipMethod < LinkedListNode
     % Class annotation template for creating new classes.
     %___________________________________________________________________________________________________
     
@@ -32,16 +32,16 @@ classdef FlipMethod < LinkedListNode;
         end
 
         function initialize(self, IC, run, fluids, mag)
-            run.cfdMethod = self.iniMethod;; % hllc by default
+            run.cfdMethod = self.iniMethod; % hllc by default
 
             if ~isempty(self.toMethod)
-                if self.toMethod == 1;
+                if self.toMethod == 1
                     myEvent = ImogenEvent([], self.atstep, [], @self.flipToHLL);
                 end
-                if self.toMethod == 2;
+                if self.toMethod == 2
                     myEvent = ImogenEvent([], self.atstep, [], @self.flipToHLLC);
                 end
-                if self.toMethod == 3;
+                if self.toMethod == 3
                     myEvent = ImogenEvent([], self.atstep, [], @self.flipToXJ); 
                 end
                 
@@ -70,13 +70,13 @@ classdef FlipMethod < LinkedListNode;
             p.delete();
         end
 
-        function flipToHLLC(p, run, fluids, mag);
+        function flipToHLLC(p, run, fluids, mag)
             run.save.logPrint('CFD method changed to HLLC at iteration %i\n', run.time.iteration);
             run.cfdMethod = 2; % toggle to HLLC
             p.delete();
         end
         
-        function flipToXJ(p, run, fluids, mag);
+        function flipToXJ(p, run, fluids, mag)
             run.save.logPrint('CFD method changed to XinJin at iteration %i\n', run.time.iteration);
             run.cfdMethod = 3; % toggle to HLLC
             p.delete();

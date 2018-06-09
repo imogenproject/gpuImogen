@@ -3,9 +3,9 @@ function [minVal, minVecIndex] = minFinderND(array)
 %   array dimension. The index for the minimum value along the first array dimension can be used
 %   to determine X, Y or Z directions for vector arrays.
 %
-%>> array		array for the minimum value search									double
-%<< minVal        scalar min value for the entire array								double
-%<| minVecIndex   index of the first array dimension where min occurs				int
+%>> array         array for the minimum value search                                 double
+%<< minVal        scalar min value for the entire array                              double
+%<| minVecIndex   index of the first array dimension where min occurs                int
 
 
     %--- Find array dimension ---%

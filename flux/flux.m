@@ -78,7 +78,7 @@ for gas = 1:size(fluid)
         %            end
         for n = [1 2 3]
             % Skip identity operations
-            if dims(fluxcall(n,sweep)) > 2;
+            if dims(fluxcall(n,sweep)) > 2
                 relaxingFluid(run, fluid(gas), mag, fluxcall(n,sweep));
                 xchgFluidHalos(mass, mom, ener, topo, fluxcall(n, sweep));
             end
@@ -115,7 +115,7 @@ end
 function xchgFluidHalos(mass, mom, ener, topology, dir)
 s = { mass, ener, mom(1), mom(2), mom(3) };
 
-for j = 1:5;
+for j = 1:5
     cudaHaloExchange(s{j}, dir, topology, s{j}.bcHaloShare);
 end
 

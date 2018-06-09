@@ -7,7 +7,7 @@ starterRun();
 
 %--- EDIT ONLY THESE LINES ---%
 
-ResumeDirectory = '~/Results/Nov13/RADHD_B1316_RHD_ms4_ang0_minmod'
+ResumeDirectory = '~/Results/Nov13/RADHD_B1316_RHD_ms4_ang0_minmod';
 ResumeInfo.itermax = 100000;
 ResumeInfo.timemax = 999999;
 ResumeInfo.frame = 20000;

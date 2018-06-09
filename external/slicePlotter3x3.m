@@ -1,16 +1,15 @@
 function slicePlotter(data, pTag, slice)
 % A visualization function to plot the intermediate slice results for 1D, 2D or 3D slice data.
-%
-%>> data	input data structure												struct
-%>> pTag	tag of desired or existing plot										str
-%>> slice	cutting indices for each grid direction								int   [sx sy sz]
+%>> data    input data structure                                                struct
+%>> pTag    tag of desired or existing plot                                        str
+%>> slice   cutting indices for each grid direction                                int   [sx sy sz]
 %---------------------------------------------------------------------------------------------------
     
     %--- Initialization ---%
-	if ( (nargin < 1 ) || isempty(data) )
-		error('ImogenError:SlicePlotter','Missing data structure argument. Plotting aborted.');
-	end
-	
+    if ( (nargin < 1 ) || isempty(data) )
+        error('ImogenError:SlicePlotter','Missing data structure argument. Plotting aborted.');
+    end
+    
     if ( (nargin < 2) || isempty(pTag) ) %HANDLE: missing pTag arg
         for i=1:1000
             pTag = ['SlicePlot_' num2str(i)];
@@ -21,7 +20,7 @@ function slicePlotter(data, pTag, slice)
     if ( (nargin < 3) || isempty(slice) ), slice = []; end
     
 
-	%--- Determine and adjust array dimensions ---%
+    %--- Determine and adjust array dimensions ---%
     dimension = ndims(data.mass);
     
     if (dimension < 3 && any(size(data.mass) == 1))
@@ -39,29 +38,29 @@ function slicePlotter(data, pTag, slice)
     run  = fauxImogenManager(data.dGrid);
     
     mass = FluidArray(ENUM.SCALAR, ENUM.MASS, data.mass, run, []);
-    ener = FluidArray(ENUM.SCALAR, ENUM.ENER,	data.ener, run, []);
-	grav = GravityArray(ENUM.GRAV, run, []);
+    ener = FluidArray(ENUM.SCALAR, ENUM.ENER,    data.ener, run, []);
+    grav = GravityArray(ENUM.GRAV, run, []);
     grav.array = data.grav;
-	
-	mom	 = FluidArray.empty(3,0);
-	mag	 = MagnetArray.empty(3,0);
-	for i=1:3
-		mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, data.(['mom' fields{i}]), run, []);
-		mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, data.(['mag' fields{i}]), run, []);
-	end
     
-	%--- Calculate Array Values ---%
-	data.spen           = ener.array ./ mass.array;
-	data.preT           = pressure('total', mass, mom, ener, mag, data.gamma);
-	data.preG           = pressure('gas', mass, mom, ener, mag, data.gamma);
-	data.preM           = pressure('magnet', mass, mom, ener, mag, data.gamma);
-	data.delB           = magneticDivergence(run,mag);
-	data.speed          = sqrt(getVelocitySquared(mass,mom));
-	data.mach           = getMach(mass, mom, ener, mag, data.gamma);
-	data.comp           = getCompression(run, mom, mass);
-	data.vort           = getVorticity(run, mom, mass);
+    mom     = FluidArray.empty(3,0);
+    mag     = MagnetArray.empty(3,0);
+    for i=1:3
+        mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, data.(['mom' fields{i}]), run, []);
+        mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, data.(['mag' fields{i}]), run, []);
+    end
+    
+    %--- Calculate Array Values ---%
+    data.spen           = ener.array ./ mass.array;
+    data.preT           = pressure('total', mass, mom, ener, mag, data.gamma);
+    data.preG           = pressure('gas', mass, mom, ener, mag, data.gamma);
+    data.preM           = pressure('magnet', mass, mom, ener, mag, data.gamma);
+    data.delB           = magneticDivergence(run,mag);
+    data.speed          = sqrt(getVelocitySquared(mass,mom));
+    data.mach           = getMach(mass, mom, ener, mag, data.gamma);
+    data.comp           = getCompression(run, mom, mass);
+    data.vort           = getVorticity(run, mom, mass);
     data.magStrength    = getMagneticSquared(mag);
-	data.beta           = data.preG ./ (0.5*max(data.magStrength, 1e-5));
+    data.beta           = data.preG ./ (0.5*max(data.magStrength, 1e-5));
     
     %--- Handle 3D Input ---%
     N = size(data.mass);
@@ -129,7 +128,7 @@ function slicePlotter(data, pTag, slice)
     %--- Find or create plot ---%
     hFig = findobj('Tag',pTag);
     if ~isempty(hFig); figure(hFig);
-    else hFig = figure('Tag',pTag,'Name',pTag,'Color','white','KeyReleaseFcn',@Colormap_KeyRelease_Callback);
+    else; hFig = figure('Tag',pTag,'Name',pTag,'Color','white','KeyReleaseFcn',@Colormap_KeyRelease_Callback);
     end
     hold all;
     cmenu = figuresContextMenu(hFig,'2d');
@@ -379,3 +378,4 @@ function resArray = fix1DArray(inArray,isVector)
     end
 
 end
+

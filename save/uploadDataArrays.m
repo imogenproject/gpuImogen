@@ -16,7 +16,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     % Handle magnetic field
     mag  = MagnetArray.empty(3,0);
     fieldnames={'magX','magY','magZ'};
-    for i = 1:3;
+    for i = 1:3
         if run.pureHydro == 0
             mag(i) = MagnetArray(ENUM.VECTOR(i), ENUM.MAG, FieldSource.(fieldnames{i}), run.magnet, statics);
         else
@@ -32,7 +32,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     for F = 1:numel(FieldSource.fluids)
         fluid(F) = FluidManager();
         % HACK HACK HACK this should be in some other init place
-	fluid(F).MINMASS        = FieldSource.ini.minMass;
+        fluid(F).MINMASS        = FieldSource.ini.minMass;
         fluid(F).MASS_THRESHOLD = FieldSource.ini.thresholdMass;
         fluid(F).parent         = run;
 
@@ -50,8 +50,8 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         mom  = FluidArray.empty(3,0);
         fieldnames = {'momX','momY','momZ'};
 
-        for i = 1:3;
-            a = GPU_setslab(DataHolder, 1+i, getfield(FluidData, fieldnames{i}) );
+        for i = 1:3
+            a = GPU_setslab(DataHolder, 1+i, FluidData.(fieldnames{i}));
             mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, fluid(F), statics);
         end
 
@@ -69,7 +69,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         end
     end
 
-    if hasNoCFL;
+    if hasNoCFL
         error('Fatal error: ALL fluids are marked to not have CFL checked!!!');
     end
 

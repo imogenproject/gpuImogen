@@ -1,4 +1,4 @@
-function source1000(run, fluids, mag, tFraction)
+function src1000(run, fluids, mag, tFraction)
 % This function sources cylindrical geometry terms
 
 dTime = tFraction * run.time.dTime;

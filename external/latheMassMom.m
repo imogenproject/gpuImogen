@@ -1,4 +1,4 @@
-function [mass momX momY] = latheMassMom(rhoSlice, momSlice, gridres, h, isAngMom)
+function [mass, momX, momY] = latheMassMom(rhoSlice, momSlice, gridres, h, isAngMom)
 % Assumes zhat is the cylindrical axis
 
 mass = zeros(gridres);
@@ -12,7 +12,7 @@ for zct = 1:gridres(3)
         momSlice(:,zct) = momSlice(:,zct) ./ radVector;
         momSlice(isnan(momSlice)) = 0; % Fix 1/0 problems if they occur
     end
-    [mass(:,:,zct) momX(:,:,zct) momY(:,:,zct)] = cyl2rect(radVector, rhoSlice(:,zct), momSlice(:,zct), gridres(1)/2, h);
+    [mass(:,:,zct), momX(:,:,zct), momY(:,:,zct)] = cyl2rect(radVector, rhoSlice(:,zct), momSlice(:,zct), gridres(1)/2, h);
 end
 
 end

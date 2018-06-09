@@ -21,7 +21,7 @@ function exportResultsToParaview(results, filename)
 		fprintf('WARNING: No data specified. Using %s.\n',vars{i});
 	end
 	
-	if (nargin < 2 || isempty(filename) ); % Use argument name if none provided
+	if (nargin < 2 || isempty(filename) ) % Use argument name if none provided
 		try
 			filename = inputname(1); 
 		catch ME

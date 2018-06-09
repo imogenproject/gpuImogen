@@ -141,16 +141,16 @@ classdef Initializer < handle
         end
 
 
-        function g = get.gamma(self); g = self.fluidDetails(1).gamma; end;
+        function g = get.gamma(self); g = self.fluidDetails(1).gamma; end
         function set.gamma(self, g); self.fluidDetails(1).gamma = g; end
-        function m = get.minMass(self); m = self.fluidDetails(1).minMass; end;
+        function m = get.minMass(self); m = self.fluidDetails(1).minMass; end
         function set.minMass(self, m); self.fluidDetails(1).minMass = m; end
 
         
 %_________________________________________________________________________________________ GS: fades
         function result = get.fades(obj)
             if (obj.pFadesIndex < 2);  result = [];
-            else                      result = obj.pFades(1:(obj.pFadesIndex-1));
+            else;                     result = obj.pFades(1:(obj.pFadesIndex-1));
             end
         end
         
@@ -166,7 +166,7 @@ classdef Initializer < handle
             if ~isempty(obj.image);     result = obj.image; end
             for i=1:length(fields)
                if isfield(obj.image,fields{i}); result.(fields{i}) = obj.image.(fields{i});
-               else result.(fields{i}) = false;
+               else; result.(fields{i}) = false;
                end
             end
             
@@ -178,9 +178,9 @@ classdef Initializer < handle
         function result = get.cfl(obj)
            if isempty(obj.cfl)
                if obj.mode.magnet;      result = 0.35;
-               else                     result = 0.85;
+               else;                     result = 0.85;
                end
-           else result = obj.cfl;
+           else; result = obj.cfl;
            end
         end
         
@@ -188,7 +188,7 @@ classdef Initializer < handle
         function result = get.bcMode(obj)
            if isempty(obj.bcMode)
                 result.x = 'circ'; result.y = 'circ'; result.z = 'circ';
-           else result = obj.bcMode;
+           else; result = obj.bcMode;
            end
         end
         
@@ -244,7 +244,7 @@ classdef Initializer < handle
                 obj.populateValues(ini.ini);
 
             else
-	        obj.geomgr.setup(obj.geomgr.globalDomainRez, obj.bcMode);
+                obj.geomgr.setup(obj.geomgr.globalDomainRez, obj.bcMode);
 
                 if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
                 [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
@@ -279,7 +279,7 @@ classdef Initializer < handle
 
                 % Oh my
                 if rez(gm.partitionDir) < 6
-                    if mpi_amirank0();
+                    if mpi_amirank0()
                         disp('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.');
                     end
                     % Z partition? Try y then x
@@ -290,7 +290,7 @@ classdef Initializer < handle
                         if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
                     end
                 else
-                    if mpi_amirank0();
+                    if mpi_amirank0()
                         disp('NOTE: Initializer checked partition direction & was OK.');
                     end
                 end
@@ -317,9 +317,9 @@ classdef Initializer < handle
              IC.magX = squish(mag(1,:,:,:));
              IC.magY = squish(mag(2,:,:,:));
              IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else IC.selfGravity = selfGravity; end
+             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
+             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
+             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
              IC.ini = ini;
              IC.ini.geometry = obj.geomgr.serialize(); %#ok<STRNU> % FIXME: this ought to perhaps happen elsewhere?
 
@@ -333,11 +333,11 @@ classdef Initializer < handle
              IC.magX = squish(mag(1,:,:,:));
              IC.magY = squish(mag(2,:,:,:));
              IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else IC.selfGravity = selfGravity; end
+             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
+             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
+             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
              IC.ini = ini;
-             IC.ini.geometry = obj.geomgr.serialize(); %#ok<STRNU> % FIXME: this ought to perhaps happen elsewhere?
+             IC.ini.geometry = obj.geomgr.serialize(); % FIXME: this ought to perhaps happen elsewhere?
 
         end
 
@@ -353,7 +353,7 @@ classdef Initializer < handle
             nFields = length(fields);
             
             skips  = cell(nFields, 1);
-            for i=1:nFields;
+            for i=1:nFields
                 if (strcmp(upper(fields{i}),fields{i}))
                     skips{length(skips) + 1} = fields{i};
                 end

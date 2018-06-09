@@ -13,13 +13,10 @@ function includeImogenPaths()
     pathToHere = fileparts(mfilename('fullpath'));
     addpath(pathToHere); % Add base Imogen directory without subdirectories.
     
-    for i=1:length(directories); 
+    for i=1:length(directories)
         addpath(genpath([pathToHere filesep directories{i}])); 
     end
 
-    % There's no actual pressing need to announce this
-    % printf('Imogen directories have been added to the path listing.\n');
-    
     %--- Add compatibility directories ---%
     %       To deal with incompatibilities created by multiple Matlab versions, as well as missing
     %       toolboxes or related functionality, imogen includes a compat directory. Each 
@@ -32,26 +29,6 @@ function includeImogenPaths()
     %--- Matlab version ---%
     version     = ver('matlab');
     verYear     = str2double( version.Release(3:6) );
-	verLabel    = version.Release(7);
-    if (verYear == 2009 && strcmp(verLabel,'a'));
-        addpath(genpath([pathToHere compat 'r2009a']))
-        warning(compWarn,['Parallel functionality in your version is limited. ', ...
-                          'Compatibility functions have been added to facilitate.']);
-    elseif (verYear < 2010 && ~strcmp(verLabel,'a'))
-        addpath(genpath([pathToHere compat 'r2009a']));
-        warning(compWarn,['Imogen uses the functionality of the latest version of '...
-                          'Matlab. Your version may not work properly as result']);
-    end
-    
-    
-    %--- Parallel computing toolbox ---%
-    version = ver('distcomp');
-    if isempty(version)
-        addpath(genpath([pathToHere compat 'distcomp']));
-        warning(compWarn,['Unable to detect a parallel computing toolbox installtion. Imogen ', ...
-                          'must be run in serial mode. Compatibility functions have been added ',...
-                          'to compensate.']);
-    end
-    
+    verLabel    = version.Release(7);    
     
 end

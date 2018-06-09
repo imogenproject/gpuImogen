@@ -111,7 +111,7 @@ classdef Edges < handle
                         WIDTH=16;
                         if (n == 1)
                             uslice  = 1:WIDTH;
-                            uprime = uslice;
+                            %uprime = uslice;
                             yinterp = .2*(1 - (uslice - 3)/(WIDTH-2)); yinterp(1:3) = 1;
                         else
                             uslice  = ((1-WIDTH):0) + size(array,i);
@@ -149,7 +149,7 @@ classdef Edges < handle
             % FIXME: Fix the wall, fade and transparent BCs
             for i = 1:3
                 if numel(obj.boundaryStatics(i).value) == 0; continue; end
-                [obj.boundaryStatics(i).index obj.boundaryStatics(i).value obj.boundaryStatics(i).coeff] = staticsPrecompute(obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, S.geometry.localDomainRez);
+                [obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff] = staticsPrecompute(obj.boundaryStatics(i).index, obj.boundaryStatics(i).value, obj.boundaryStatics(i).coeff, S.geometry.localDomainRez);
 %                [obj.boundaryStatics.index obj.boundaryStatics.value obj.boundaryStatics.coeff] = staticsPrecompute(obj.boundaryStatics.index, obj.boundaryStatics.value, obj.boundaryStatics.coeff, S.arrayDimensions);
 
             end
@@ -164,24 +164,24 @@ classdef Edges < handle
             case ENUM.BCMODE_TRANSPARENT
                 iIndex                = obj.pIndex;
                 iIndex{dim} = obj.pSlices(dim,upper);
-
+                
                 newEdge     = array(iIndex{:});
                 if ~isa(array,'double') %r2009b: iscodistributed
-                    newEdge = gather(newEdge);        
-                end 
+                    newEdge = gather(newEdge);
+                end
                 
-                newEdge     = squish(newEdge); 
+                newEdge     = squish(newEdge);
                 oldEdge     = obj.(Edges.FIELDS{upper}).(Edges.DIMENSION{dim});
-
+                
                 delta       = min(abs(newEdge - oldEdge),obj.TOLERANCE);
                 signTest    = (newEdge - oldEdge) > 0;
                 result      = oldEdge + (signTest - ~signTest) .* delta;
-
+                
                 obj.(Edges.FIELDS{upper}).(Edges.DIMENSION{dim}) = result; %Update edge
-                                    
+                
             case {ENUM.BCMODE_FADE, ENUM.BCMODE_WALL}
                 result = obj.(Edges.FIELDS{upper}).(Edges.DIMENSION{dim});
-            end
+        end
         end
                 
     end%PUBLIC

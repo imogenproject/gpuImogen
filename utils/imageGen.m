@@ -18,9 +18,9 @@ for n = set
 
   mergedH = [];
 
-  for k = 1:size(ranks,2);
+  for k = 1:size(ranks,2)
     mergedV = [];
-    for j = 1:size(ranks,1);
+    for j = 1:size(ranks,1)
       tmp = parts{ j+size(ranks,1)*(k-1)  };
       % Trim the boundary exchanges off
       if j > 1;             tmp=tmp(4:end,:); end
@@ -28,7 +28,7 @@ for n = set
       if k > 1;             tmp=tmp(:,4:end); end
       if k < size(ranks,2); tmp=tmp(:,1:(end-3)); end
 
-      mergedV = [mergedV; tmp ];
+      mergedV = [mergedV; tmp];
     end
 
     mergedH = [mergedH mergedV];

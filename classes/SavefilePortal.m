@@ -48,9 +48,9 @@ classdef SavefilePortal < handle
         end
 
         function setParallelMode(self, enable)
-            if enable;
+            if enable
                 self.pParallelMode = 1;
-                if mpi_isinitialized() == 0;
+                if mpi_isinitialized() == 0
                     warning('SavefilePortal:setParallelMode, parallel mode turned on but MPI not initialized? calling mpi_init()...');
                     mpi_init();
                 end
@@ -90,7 +90,9 @@ classdef SavefilePortal < handle
                 if strcmp(id,'YZ');id = 6; end
                 if strcmp(id,'XYZ');id = 7; end
                 if isa(id,'double') == false
-                    fprintf('Received string ''%s'' for ID.\nValid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\nDefaulting to XYZ.\n');
+                    disp('Received the following for ID:\n');
+                    disp(id)
+                    disp('Valid string values are X, Y, Z, XY, XZ, YZ, XYZ (case sensitive)\n -> Defaulting to XYZ <-\n');
                     id = 7;
                 end
             end
@@ -105,9 +107,9 @@ classdef SavefilePortal < handle
         function accessYZ(self); self.setFrametype(6); end
         function accessXYZ(self); self.setFrametype(7); end
 
-        function IC = returnInitializer(self)
+        function IC = returnInitializer(self) %#ok<STOUT>
             self.pushdir(self.savefileDirectory);
-            load('SimInitializer_rank0');
+            load('SimInitializer_rank0','IC');
             self.popdir();
             return;
         end
@@ -143,12 +145,12 @@ classdef SavefilePortal < handle
             % type; Automatically clamps to [1 ... #frames]
             glitch = 0; % assume no problem...
             if f < 1; f = 1; glitch = -1; end
-            if f >= self.numFrames();
+            if f >= self.numFrames()
                 f = self.numFrames();
                 glitch = 1;
             end
             
-            b = getfield(self.savefileList,self.strnames{self.typeToLoad});
+            b = self.savefileList.(self.strnames{self.typeToLoad});
             self.currentFrame(self.typeToLoad) = f;
             
             self.pushdir(self.savefileDirectory);
@@ -176,8 +178,9 @@ classdef SavefilePortal < handle
 
         function n = numFrames(self)
         % n = numFrames() returns how many frames of the current type are
-        % accessible in the current directory
-            n = numel(getfield(self.savefileList,self.strnames{self.typeToLoad}));
+        % accessible in the current directory. Set the type using the
+        % access* functions, or directly with .setFrametype(1...7)
+            n = numel(self.savefileList.(self.strnames{self.typeToLoad}));
         end
 
         function rescanDirectory(self)

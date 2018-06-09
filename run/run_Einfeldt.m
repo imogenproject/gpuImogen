@@ -9,7 +9,7 @@ run.iterMax     = round(50*run.timeMax*grid(1)); % This will give steps max ~ 1.
 
 run.bcMode.x    = ENUM.BCMODE_CONSTANT;
 
-if 1;
+if 1
     % uses a Mach-based formula
     % The left (right) halfslabs have speeds of - (+) mach(1) with soundspeed normalized to sqrt(gamma)
     % if mach(2) exists, vy values are set to +- that in the same fashion

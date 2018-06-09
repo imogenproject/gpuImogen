@@ -2,6 +2,7 @@ function lp = lowPass(f, c, Nini)
 
 if nargin < 3; Nini = 1; end
 
+lp = zeros(size(f));
 lp(1) = mean(f(1:Nini));
 
 for t = 2:numel(f)

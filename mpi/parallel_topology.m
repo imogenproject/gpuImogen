@@ -9,9 +9,9 @@ myrank = context.rank;
 
 if numDimensions == 1
     mycoord = [myrank 0 0];
-
+    
     nProc  = [nranks 1 1];
-else if numDimensions == 2
+else; if numDimensions == 2
         p = [factor(nranks) 1 1]; % make sure we can pick (2:... and (3:...)
         
         nProc(1) = prod(p(1:2:end));
@@ -22,7 +22,7 @@ else if numDimensions == 2
         r = myrank - mycoord(1) * nProc(2);
         mycoord(2) = r;
         mycoord(3) = 0;
-    else if numDimensions == 3
+    else; if numDimensions == 3
             p = factor(nranks);
             
             nProc(1) = prod(p(1:3:end));
@@ -30,8 +30,8 @@ else if numDimensions == 2
             nProc(3) = prod(p(3:3:end));
             
             mycoord(1) = mod(myrank, nProc(1));
-	    r = (myrank - mycoord(1))/nProc(1);
-
+            r = (myrank - mycoord(1))/nProc(1);
+            
             mycoord(2) = mod(r, nProc(2));
             r = (r - mycoord(2))/nProc(2);
             mycoord(3) = r;

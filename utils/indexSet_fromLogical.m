@@ -5,10 +5,7 @@ function result = indexSet_fromLogical(logic)
 % indicies corresponding to the selected points
 % Logical Awesome: My Codes Are Perfect
 
-dims = size(logic);
-if numel(dims) == 2; dims(3) = 1; end
-
-[u v w] = ndgrid(1:size(logic,1), 1:size(logic,2), 1:size(logic,3) );
+[u, v, w] = ndgrid(1:size(logic,1), 1:size(logic,2), 1:size(logic,3) );
 
 linears = find(logic);
 result = [linears u(linears) v(linears) w(linears)];

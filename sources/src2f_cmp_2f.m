@@ -31,7 +31,7 @@ cudaSource2FluidDrag(fluids, run.geometry, [sigma_gas, mu_gas, sigma_dust, mu_du
 % Take care of any parallel synchronization we need to do to remain self-consistent
 
 if potOrder > 0
-    for N = 1:numel(fluids);
+    for N = 1:numel(fluids)
         fluids(N).synchronizeHalos(1, [0 1 1 1 1]);
         fluids(N).synchronizeHalos(2, [0 1 1 1 1]);
         fluids(N).synchronizeHalos(3, [0 1 1 1 1]);

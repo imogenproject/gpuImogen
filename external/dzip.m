@@ -39,7 +39,7 @@ s = size(M);
 c = class(M);
 cn = strmatch(c,{'double','single','logical','char','int8','uint8',...
     'int16','uint16','int32','uint32','int64','uint64'});
-if cn == 3 | cn == 4
+if cn == 3 || cn == 4
     M=uint8(M);
 end
 M=typecast(M(:),'uint8');

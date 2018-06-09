@@ -63,7 +63,7 @@ classdef ImogenRecord < handle
                     
                 case 'logical';                value = ImogenRecord.logicalToStr(inVal);
                     
-                case {'double','single','uint8'};
+                case {'double','single','uint8'}
                                                value = ImogenRecord.numberToStr(inVal);
                                             
                 case 'codistributed';          value = ImogenRecord.distToStr(inVal);
@@ -72,7 +72,7 @@ classdef ImogenRecord < handle
                     
                 case 'codistributor1d';        value = ImogenRecord.codistToStr(inVal);
 
-                case 'GPU_Type';
+                case 'GPU_Type'
                                                value = ImogenRecord.gputypeToStr(inVal);
                 case 'int64'; value = '';
                     

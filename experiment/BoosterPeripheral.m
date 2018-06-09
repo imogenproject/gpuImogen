@@ -1,4 +1,4 @@
-classdef BoosterPeripheral < LinkedListNode;
+classdef BoosterPeripheral < LinkedListNode
     % Class annotation template for creating new classes.
     %___________________________________________________________________________________________________
     
@@ -28,7 +28,7 @@ classdef BoosterPeripheral < LinkedListNode;
         function self = BoosterPeripheral()
             self = self@LinkedListNode();
 
-            myProperty = 0;
+            %myProperty = 0;
         end
 
         function initialize(self, IC, run, fluid, mag)
@@ -41,7 +41,7 @@ classdef BoosterPeripheral < LinkedListNode;
         end
 
         function finalize(self, run, fluids, mag)
-
+            % ...
         end
 
     end%PUBLIC

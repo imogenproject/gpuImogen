@@ -11,7 +11,7 @@ function object = relocateProfileDirectories(object, oldPath, newPath)
 %>> newPath     Root imogen path on your local workstation to be inserted.              str
 
     if isstruct(object)
-        for n=1:length(object);
+        for n=1:length(object)
             fields = fieldnames(object(n));
             for i=1:length(fields)
                 if isstruct(object(n).(fields{i}))

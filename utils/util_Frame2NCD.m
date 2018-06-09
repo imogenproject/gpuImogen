@@ -1,9 +1,8 @@
 function util_Frame2NCD(frame, nfile)
 % Serializes an Imogen saveframe 'frame' into NetCDF 4 format file 'nfile'
 
-d3 = @(v) {'nx',size(v,1),'ny',size(v,2),'nz',size(v,3')};
-
-d3_fixed = {'nx','ny','nz'};
+%d3 = @(v) {'nx',size(v,1),'ny',size(v,2),'nz',size(v,3')};
+%d3_fixed = {'nx','ny','nz'};
 % or nr, ntheta, nz...
 
 th = frame.time.history;
@@ -140,11 +139,5 @@ else
 end
 
 netcdf.close(ncid);
-
-end
-
-function d = dims3d(v)
-
-d = {'x',size(v,1),'y',size(v,2),'z',size(v,3')};
 
 end

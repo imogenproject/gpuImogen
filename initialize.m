@@ -26,12 +26,12 @@ run.setNumFluids(ini.numFluids);
 if ini.numFluids > 1
     m = ini.multifluidDragMethod;
     if (m < 0) || (m > 4)
-	warning(['initializer had invalid multifluid method ' num2str(m) '. Defaulting to explicit midpoint.']);
+        warning(['initializer had invalid multifluid method ' num2str(m) '. Defaulting to explicit midpoint.']);
         m = 0;
     end
 
     run.multifluidDragMethod = m;
-    if mpi_amirank0();
+    if mpi_amirank0()
         fmnames = {'explicit midpt', 'classic rk4', 'ETD-RK1', 'ETD-RK2 (not impl)', 'logtrap'};
         disp(['    Multifluid mode is active: multifluid drag method to ' fmnames{m+1}]);
     end
@@ -52,7 +52,7 @@ end
 if ~isempty(ini.checkpointSteps)
     run.checkpointInterval = ini.checkpointSteps(1);
 else
-    if mpi_amirank0();
+    if mpi_amirank0()
         disp('WARNING')
         disp('No checkpoint interval given, checkpointing disabled')
     end
@@ -239,7 +239,7 @@ try
     slLabels = {'x','y','z','xy','xz','yz','xyz','cust'};
     for i=1:8
         if ~isfield(ini.activeSlices,slLabels{i}); run.save.ACTIVE(i) = false;
-        else run.save.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i}));
+        else; run.save.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i}));
         end
         if run.save.ACTIVE(i)
             run.appendInfo('Saving slice', upper(slLabels{i}));
@@ -319,19 +319,19 @@ try
         end
         
         if isfield(ini.image,'colordepth');    colordepth = ini.image.colordepth;
-        else                                    colordepth = 256;
+        else;                                  colordepth = 256;
         end
         
         if isfield(ini.image,'colormap'); run.image.createColormap(ini.image.colormap, colordepth);
-        else                                  run.image.createColormap('jet',colordepth);
+        else;                                 run.image.createColormap('jet',colordepth);
         end
         
         imageSaveState = 'Active'; % FIXME: Wh... why is this a string?
-    else imageSaveState = 'Inactive';
+    else; imageSaveState = 'Inactive';
     end
     run.appendInfo('Image saving is', imageSaveState);
     
-    if isfield(ini.image,'parallelUniformColors');
+    if isfield(ini.image,'parallelUniformColors')
         run.image.parallelUniformColors = ini.image.parallelUniformColors; end
     
 catch MERR, loc_initializationError('image',MERR);
@@ -344,8 +344,8 @@ catch MERR, loc_initializationError('fades',MERR);
 end
 
 % fixme: this is overwritten up the state uploader...
-if 0;
-    for F = 1:ini.numFluids; % HACK HACK HACK
+if 0
+    for F = 1:ini.numFluids % HACK HACK HACK
         %% .viscosity                   Artificial viscosity settings
         try
             run.fluid(F).viscosity.type                      = ini.viscosity.type;
@@ -366,6 +366,6 @@ function loc_initializationError(property, caughtError)
 
 
     fprintf('\n\n--- Unable to parse property %s. Run aborted. ---\n', property);
-    rethrow(caghtError);
+    rethrow(caughtError);
 end
 

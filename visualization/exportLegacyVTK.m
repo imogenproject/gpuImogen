@@ -37,7 +37,7 @@ if (numel(frame.dGrid{1}) > 1) || (numel(frame.dGrid{2} > 1)) || (numel(frame.dG
         q = (0:(Nz-1))*frame.dGrid{3};
     end
     fwrite(fid, q, 'float');
-    fwrite(fid, sprintf('\n'));
+    fwrite(fid, newline());
 else
     % Uniform rectilinear coordinates
     fwrite(fid, sprintf('DATASET STRUCTURED_POINTS\nDIMENSIONS %i %i %i\nORIGIN 0 0 0\nSPACING %g %g %g\n', Nx+pvsc, Ny+pvsc, Nz+pvsc, frame.dGrid{1}, frame.dGrid{2}, frame.dGrid{3}));

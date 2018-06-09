@@ -29,7 +29,7 @@ classdef PointFade < handle
         function obj = PointFade(grid, location, fadeSize)
             left        = 1 - location;
             right       = grid - location;
-            [x y z]     = ndgrid(left(1):right(1), left(2):right(2), left(3):right(3));
+            [x, y, z]   = ndgrid(left(1):right(1), left(2):right(2), left(3):right(3));
             distSq      = max(fadeSize.*fadeSize - (x.*x + y.*y + z.*z), 0);
             distSq      = 1 - distSq/maxFinderND(distSq);
             distSq      = pchip([-1 0 1 2], [1 1 0 0], reshape(distSq, [1 numel(distSq)]) );

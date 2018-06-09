@@ -1,9 +1,6 @@
+function [r, px, py, e] = speedLimiter(rho, momx, momy, ener, vmax)
 % Function rudely prevents velocities from exceeding a given max.
 % Maybe this will kill those sodding point-explosions in the disk simulations!
-
-function [r px py e] = speedLimiter(rho, momx, momy, ener, vmax)
-
-grid = size(momx);
 
 vsqr = (momx.^2 + momy.^2) ./ (rho.^2);
 

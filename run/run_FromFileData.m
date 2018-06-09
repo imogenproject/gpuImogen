@@ -17,16 +17,16 @@ run.gravity.constant    = 1;
 
 run.bgDensityCoeff = 3e-5;
 
-run.image.interval	= 1;
-run.image.mass		= true;
-run.image.speed		= true;
+run.image.interval      = 1;
+run.image.mass          = true;
+run.image.speed         = true;
 run.image.grav          = false;
 run.image.ener          = false;
 
 run.activeSlices.xy     = true;
 run.activeSlices.yz     = true;
 %run.activeSlices.xz     = false;
-run.activeSlices.xyz 	= true;
+run.activeSlices.xyz    = true;
 
 run.ppSave.dim3 = 100*(100/10000); % every 20 steps
 run.ppSave.dim2 = 10;

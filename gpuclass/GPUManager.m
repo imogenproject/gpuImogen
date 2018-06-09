@@ -38,7 +38,7 @@ classdef GPUManager < handle
             g.cudaStreamsPtr = int64(0); % initialize to NULL
             g.useExteriorHalo = 0;
 
-            g.init([0], 3, 1);
+            g.init(0, 3, 1);
             g.numStack = 0;
         end
 

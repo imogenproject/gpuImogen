@@ -17,10 +17,10 @@ y=y((j+1):end);
 j = 1; while y(j) ~= '_'; j = j+1; end
 y=y(j:end);
 
-if strcmp( y((end-2):end) ,'mat') == true;
+if strcmp( y((end-2):end) ,'mat') == true
   info.pad = numel(y) - 5;
   info.extension = 'mat';
-else;
+else
   info.pad = numel(y) - 4;
   info.extension = 'nc';
 end

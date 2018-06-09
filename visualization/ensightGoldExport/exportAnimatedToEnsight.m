@@ -21,7 +21,7 @@ pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 
 %--- Initialization ---%
 fprintf('Beginning export of %i files\n', numel(range));
-exportedFrameNumber = 0;
+%exportedFrameNumber = 0;
 
 if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
 if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
@@ -35,7 +35,7 @@ end
 frmexists = util_checkFrameExistence(inBasename, range);
 fprintf('Found %i/%i frames to exist.\n',numel(find(frmexists)),numel(frmexists));
 
-if all(~frmexists);
+if all(~frmexists)
     fprintf('No frames matched patten; Aborting.\n');
     return
 end

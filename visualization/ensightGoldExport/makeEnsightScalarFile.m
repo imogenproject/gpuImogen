@@ -1,4 +1,4 @@
-function makeScalarFile(filebase, M, vardesc)
+function makeEnsightScalarFile(filebase, M, vardesc)
 
 SCAL = fopen(filebase, 'w');
 
@@ -9,7 +9,7 @@ charstr(81:84)             = 'part';
 fwrite(SCAL, charstr, 'char*1');
 
 % Write part number
-fwrite(SCAL, [1], 'int');
+fwrite(SCAL, 1, 'int');
 
 % write 'block'
 charstr = char(32*ones([80 1]));
@@ -17,7 +17,7 @@ charstr(1:5) = 'block';
 fwrite(SCAL, charstr, 'char*1');
 
 % write all scalars in array M
-fwrite(SCAL, reshape(single(M), [prod(size(M)) 1]), 'float');
+fwrite(SCAL, reshape(single(M), [numel(M) 1]), 'float');
 
 fclose(SCAL);
 end

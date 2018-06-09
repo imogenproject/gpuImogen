@@ -1,4 +1,4 @@
-function [inds vals coeffs offsets] = staticsAssemble(statInds, statVals, statCoeffs, boundaries)
+function [inds, vals, coeffs, offsets] = staticsAssemble(statInds, statVals, statCoeffs, boundaries)
 % staticsAssemble takes the "manual" statics we were originally passed, and those created by the
 % specification of boundary conditions, and merges them into one coherent list of indices, values
 % and fade rates that can be quickly and efficiently applied.

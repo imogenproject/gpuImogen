@@ -16,7 +16,7 @@ classdef TimeManager < handle
         WALLMAX;     % Maximum wall time before finishing run in hours.              double
         wallTime;    % Number of hours since run was started.                        double
         startTime;   % Time the run was started.                                     Date Vector
-	startSecs;   % UNIX timestamp at start (used to find avg iter/sec)           unsigned long
+        startSecs;   % UNIX timestamp at start (used to find avg iter/sec)           unsigned long
         timePercent; % Percent complete based on simulation time.                    double
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
@@ -40,10 +40,10 @@ classdef TimeManager < handle
         function result = get.running(obj)
             result = (obj.iteration < obj.ITERMAX) && (obj.time < obj.TIMEMAX) ...
                 && (obj.wallTime < obj.WALLMAX);
-	% Note that < is correct for iterations
-	% This is hit a the start of while(running) {...},
-	% while obj.iteration is updated at the end of the ...,
-	% thus we will see iteration = ITERMAX when we've taken the final step.
+        % Note that < is correct for iterations
+        % This is hit a the start of while(running) {...},
+        % while obj.iteration is updated at the end of the ...,
+        % thus we will see iteration = ITERMAX when we've taken the final step.
         end
         
     end%GET/SET
@@ -85,7 +85,7 @@ classdef TimeManager < handle
             %--- Initialization ---%
             geo = obj.parent.geometry;
             
-	    dtMin = 1e38;
+            dtMin = 1e38;
 
             for f = 1:numel(fluids)
                 if fluids(f).checkCFL == 0; continue; end % Call kenny loggins...
@@ -127,9 +127,9 @@ classdef TimeManager < handle
             %           accounting for maximum simulation time.
             obj.dTime = obj.CFL*dtMin;
             
-	    % I've used this in "unreliable" settings to (slowly) recover CFL is something
-	    % makes the checkpoint restorer set a ridiculously small coefficient;
-	    % usually that situation just means the simulation is hopeless though
+            % I've used this in "unreliable" settings to (slowly) recover CFL is something
+            % makes the checkpoint restorer set a ridiculously small coefficient;
+            % usually that situation just means the simulation is hopeless though
             %if obj.CFL < 0.5
             %    obj.CFL = obj.CFL + .001 * (.5 - obj.CFL);
             %end
@@ -137,7 +137,7 @@ classdef TimeManager < handle
             newTime   = obj.time + 2*obj.dTime; % Each individual fwd or bkwd sweep is a full step in time
             if (newTime > obj.TIMEMAX)
                 obj.dTime = .5*(obj.TIMEMAX - obj.time);
-                newTime = obj.TIMEMAX;
+                %newTime = obj.TIMEMAX;
             end
             
         end
@@ -152,10 +152,10 @@ classdef TimeManager < handle
             if obj.iteration < 5
                 switch obj.iteration
                     
-                    case 1;        %Activate clock timer for the first loop
+                    case 1        %Activate clock timer for the first loop
                         obj.startSecs = tic;
                         
-                    case 4;        %Stop clock timer and use the elapsed time to predict total run time
+                    case 4        %Stop clock timer and use the elapsed time to predict total run time
                         tPerStep = toc(obj.startSecs)/3;
                         save.logPrint('\tFirst three timesteps averaged %0.4g secs ea.\n', tPerStep);
                         
