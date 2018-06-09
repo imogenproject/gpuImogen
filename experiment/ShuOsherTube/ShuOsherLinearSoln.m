@@ -5,7 +5,7 @@ function [rho, P, v] = ShuOsherLinearSoln(gamma, Mach, ampEnt_in, xcoords, Kin, 
 % (static preshock fluid, rightgoing shock) at the given time t.
 
 % This solver normalizes to rhopre = Ppre = 1
-c1  = sqrt(gamma);
+%c1  = sqrt(gamma);
 % First step: Solve the jump equations from preshock to postshock at 0th order
 equil = HDJumpSolver(Mach, 0, gamma);
 
@@ -59,29 +59,32 @@ setD = (z < (c2+v2)*t); % postshock sonic wave extent
 rho = zeros(size(xcoords));
 P = rho; v = rho;
 
+cmpfcn = @(q) imag(conj(q));
+
 % We assume that the preshock entropy wave exists forever...
 % IN Z (shock static) COORDINATES,
 %	at z < 0:
 % rho = 1 + ampEnt_in Re[e^i(Kin z - w t)]
-q = 1 + real(ampEnt_in*exp(1i*Kin*z - 1i*omega*t));
+q = 1 + cmpfcn(ampEnt_in*exp(1i*Kin*z - 1i*omega*t));
 	rho(setA) = q(setA);
 % P   = 1
 P(setA) = 1;
 % v   = v1 - Re[-i w xshockamp e^(-i w t)]
-v(setA) = v1 - real(-1i*omega*xshockamp*exp(-i *omega*t));
+
+v(setA) = v1 - cmpfcn(-1i*omega*xshockamp*exp(-1i *omega*t));
 
 %	at z > 0:
 % rho = rho2 + Re[sndamplitude e^i(Ksonic z - w t) + entamplitude e^i(Kent z - w t)]
-q = rho2 + real(sndamplitude*exp(1i*Ksonic*z - 1i*omega*t).*setD + entamplitude*exp(1i*Kent*z - 1i*omega*t).*setC);
+q = rho2 + cmpfcn(sndamplitude*exp(1i*Ksonic*z - 1i*omega*t).*setD + entamplitude*exp(1i*Kent*z - 1i*omega*t).*setC);
 	rho(setB) = q(setB);
 % P   = P2 + Re[sndamplitude c2^2 e^i(Ksonic z - w t)]
-q = P2 + real(sndamplitude*c2^2 * exp(1i*Ksonic*z - 1i*omega*t).*setD);
+q = P2 + cmpfcn(sndamplitude*c2^2 * exp(1i*Ksonic*z - 1i*omega*t).*setD);
 	P(setB) = q(setB);
 % v   = v2 + Re[sndamplitude c2/rho2 e^(i Ksonic z - w t) -i w xshockamp e^(-i w t)]
-q = v2 + real(sndamplitude*c2*exp(1i*Ksonic*z - 1i*omega*t).*setD/rho2 - 1i*omega*xshockamp*exp(-1i*omega*t));
+q = v2 + cmpfcn(sndamplitude*c2*exp(1i*Ksonic*z - 1i*omega*t).*setD/rho2 - 1i*omega*xshockamp*exp(-1i*omega*t));
 	v(setB) = q(setB);
 
-v = v - (v1 - real(-1i*omega*xshockamp*exp(-1i*omega*t)));
+v = v - (v1 - cmpfcn(-1i*omega*xshockamp*exp(-1i*omega*t)));
 % map back using 
 % x mapped to z and velocities transformed by given formulae
 
