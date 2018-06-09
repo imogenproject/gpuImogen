@@ -6,7 +6,8 @@ DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo -Xptxas="-v"
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+#-Xptxas="-v"
 
 # Debuggable code
 #NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O0 -g -G -lineinfo
@@ -15,7 +16,7 @@ NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo -Xpt
 
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include -I../mpi
 
-MEX_OPTS  = -DUNIX $(GEN_OPTS) -g 
+MEX_OPTS  = -DUNIX $(GEN_OPTS) -g -R2018a
 MEX_INCL  = -I$(CUDA_DIR)/include -I$(MATLAB_DIR)/extern/include -I../mpi
 MEX_LDIR  = -L$(CUDA_DIR)/$(CUDA_LDIR)
 MEX_LIBS  = -lcudart -lcublas
@@ -34,7 +35,7 @@ all: base fluids lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_dbghalo GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
 	
 
 fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones cflTimestep
@@ -150,14 +151,18 @@ GPU_copy.o: GPU_copy.cu
 GPU_copy: GPU_copy.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_copy.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
+
 GPU_dbgtag.o: GPU_dbgtag.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_dbgtag.cu -o GPU_dbgtag.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_dbgtag.cpp
 GPU_dbgtag: GPU_dbgtag.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_dbgtag.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
-
-
+GPU_dbghalo.o: GPU_dbghalo.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_dbghalo.cu -o GPU_dbghalo.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_dbghalo.cpp
+GPU_dbghalo: GPU_dbghalo.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx GPU_dbghalo.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS)
 
 GPU_getslab.o: GPU_getslab.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_getslab.cu -o GPU_getslab.cpp
@@ -308,8 +313,8 @@ cudaMagTVD: cudaCommon.o cudaMagTVD.o
 cudaSourceScalarPotential.o: cudaSourceScalarPotential.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceScalarPotential.cu -o cudaSourceScalarPotential.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaSourceScalarPotential.cpp
-cudaSourceScalarPotential: cudaCommon.o cudaSourceScalarPotential.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+cudaSourceScalarPotential: cudaCommon.o cudaGradientKernels.o cudaSourceScalarPotential.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaGradientKernels.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaSourceRotatingFrame.o: cudaSourceRotatingFrame.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaSourceRotatingFrame.cu -o cudaSourceRotatingFrame.cpp

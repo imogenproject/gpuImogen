@@ -130,20 +130,28 @@ classdef GeometryManager < handle
             dblhalo = 2*obj.haloAmt;
             
             obj.globalDomainRez = global_size;
-            obj.globalDomainRezPlusHalos   = global_size + dblhalo*double(obj.topology.nproc).*double(obj.topology.nproc > 1);
-            % Do NOT add external halo if direction is not circular
-            obj.globalDomainRezPlusHalos = obj.globalDomainRezPlusHalos - dblhalo*(1-obj.circularBCs).*double(obj.topology.nproc > 1);
-
-            % Default size: Ntotal / Nproc
-            propSize = floor(obj.globalDomainRezPlusHalos ./ double(obj.topology.nproc));
+            obj.globalDomainRezPlusHalos   = ...
+                global_size + ... % real cells 
+                dblhalo*double(obj.topology.nproc-1).*double(obj.topology.nproc > 1) + ... % internal edge|edge halo
+                dblhalo*obj.circularBCs.*double(obj.topology.nproc > 1); % external wraparound halo if circular BC
             
-            % Compute offset
-            obj.pLocalDomainOffset = (propSize-dblhalo).*double(obj.topology.coord);
+            % Default size: Ntotal / Nproc - all ranks will compute the
+            % same value here
+            propSize = floor(global_size ./ double(obj.topology.nproc));
+            real_cells = propSize;
+            
+            % add possible left and right side halos
+            propSize = propSize + obj.haloAmt*(obj.nodeHasHalo(0) + obj.nodeHasHalo(1));
 
+            % Compute offset: just real cell count times offset
+            obj.pLocalDomainOffset = real_cells .* obj.topology.coord;
+            
             % If we're at the plus end of the topology in a dimension, increase proposed size to meet global domain resolution.
+            % in event that Ncells / Nprocs != integer
+            deficit = obj.globalDomainRez - obj.topology.nproc .* real_cells;
             for i = 1:obj.topology.ndim
-                if (double(obj.topology.coord(i)) == (obj.topology.nproc(i)-1)) && (propSize(i)*obj.topology.nproc(i) < obj.globalDomainRezPlusHalos(i))
-                    propSize(i) = propSize(i) + obj.globalDomainRezPlusHalos(i) - propSize(i)*obj.topology.nproc(i);
+                if (deficit(i) > 0) && (obj.topology.coord(i) == (obj.topology.nproc(i)-1))
+                    propSize(i) = propSize(i) + deficit(i);
                 end
             end
 
@@ -155,6 +163,16 @@ classdef GeometryManager < handle
             obj.updateGridVecs();
         end % Constructor
 
+        function yn = nodeHasHalo(obj, side)
+            if side==0 % do we have a left halo? If > 1 processor & we are not first, or > 1 processor and circular then yes!
+                yn = (obj.topology.nproc > 1).*((obj.topology.coord > 0) + obj.circularBCs);
+                yn = 1*(yn > 0);
+            else % do we have a right halo? If > 1 processor and (we are not last, or bc is circular) then yes!
+                yn = (obj.topology.nproc > 1).*((obj.topology.coord < (obj.topology.nproc-1)) + obj.circularBCs);
+                yn = 1*(yn > 0);
+            end
+        end
+        
         function makeDimCircular(obj, dim)
             % makeDimCircular(1 <= dim <= 3) declares a circular BC on dim
             % Effect: Outer edge has a halo
@@ -377,10 +395,12 @@ classdef GeometryManager < handle
 
             x   = cell(ndim,1);
             lnh = cell(ndim,1);
+            lefthalo = obj.nodeHasHalo(0);
+            
             for j = 1:ndim
                 q = 1:obj.localDomainRez(j);
                 % This line degerates to the identity operation if nproc(j) = 1
-                q = q + obj.pLocalDomainOffset(j) - obj.haloAmt*(obj.topology.nproc(j) > 1)*(obj.circularBCs(j) == 1);
+                q = q + obj.pLocalDomainOffset(j) - obj.haloAmt*lefthalo(j);
 
                 % If the edges are periodic, wrap coordinates around
                 if (obj.topology.nproc(j) > 1) && (obj.circularBCs(j) == 1)
@@ -691,7 +711,7 @@ classdef GeometryManager < handle
             obj.topology.coord = c;
             c = obj.circularBCs;
             obj.setup(obj.globalDomainRez);
-            for x = 1:n; if c(x) == 0; obj.makeDimNotCircular(x); end; end
+            for x = 1:3; if c(x) == 0; obj.makeDimNotCircular(x); end; end
         end
 
     end % generic methods

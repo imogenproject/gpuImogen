@@ -62,22 +62,22 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 
         fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
         rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
-        frmsize = fs - 2*frame.haloAmt*(rs > 1);
+        frmsize = fs - frame.haloAmt*((bitand(frame.parallel.halobits, [1 4 16]) ~= 0) + (bitand(frame.parallel.halobits, [2 8 32]) ~= 0));
         if numel(frmsize) == 2; frmsize(3) = 1; end
 
         frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...
                   frame.parallel.myOffset(2)+(1:frmsize(2)), ...
                   frame.parallel.myOffset(3)+(1:frmsize(3))};
 
-        bigFrame.mass(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass, ranks, frame.haloAmt);
-        bigFrame.momX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX, ranks, frame.haloAmt);
-        bigFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, ranks, frame.haloAmt);
-        bigFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, ranks, frame.haloAmt);
-        bigFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, ranks, frame.haloAmt);
+        bigFrame.mass(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass, frame);
+        bigFrame.momX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX, frame);
+        bigFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, frame);
+        bigFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, frame);
+        bigFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, frame);
         if numel(frame.magX) > 1
-            bigFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, ranks, frame.haloAmt);
-            bigFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, ranks, frame.haloAmt);
-            bigFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, ranks, frame.haloAmt);
+            bigFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, frame);
+            bigFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, frame);
+            bigFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, frame);
         end
 
         if u == numel(ranks); break; end
@@ -88,13 +88,13 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 end % function
 
 function y = trimHalo(x, subframe)
-    b = subframe.halobits;
+    b = subframe.parallel.halobits;
     h = subframe.haloAmt;
+    ba = (bitand(b, [1 2 4 8 16 32]) ~= 0) * 1;
 
-    U = (1+h*bitand(b, 1)):(size(x,1)-h*bitand(b,2));
-    V = (1+h*bitand(b, 4)):(size(x,2)-h*bitand(b,8));
-    W = (1+h*bitand(b, 16)):(size(x,3)-h*bitand(b,32));
+    U = (1+h*ba(1)):(size(x,1)-h*ba(2));
+    V = (1+h*ba(3)):(size(x,2)-h*ba(4));
+    W = (1+h*ba(5)):(size(x,3)-h*ba(6));
     
     y = x(U,V,W);
 end
-

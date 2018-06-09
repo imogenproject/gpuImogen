@@ -3,7 +3,7 @@ function result = tsEinfeldt(N0, gamma, M, doublings, prettyPictures, methodPick
 % 2^{0, 1, ..., doublings)*N0 cells, all initialized with -ml = mr = M*cs;
 % The normalization rho = P = 1 is used.
 
-if nargin < 4;
+if nargin < 4
     disp('Number of doublings not given; Defaulted to 3.');
     doublings = 3;
 end
@@ -23,6 +23,7 @@ run.checkpointSteps = 50;
 
 run.setupEinfeldt(M, gamma)
 run.bcMode.x    = ENUM.BCMODE_CONSTANT;
+run.geomgr.makeDimNotCircular(1);
 
 run.alias       = '';
 run.info        = 'Einfeldt Strong Rarefaction test.';
@@ -49,32 +50,34 @@ result.L2 = [];
 result.paths = {};
 
 %--- Run tests ---%
-for R = 1:doublings;
+for R = 1:doublings
     % Set resolution and go
     grid(1) = N0 * 2^R;
-    run.geomgr.setup(grid);
+    run.geomgr.setup(grid, run.bcMode);
+    if mpi_amirank0(); pause(1); end
+    
     icfile = run.saveInitialCondsToFile();
-    dirout = imogen(icfile);
+    result.paths{R} = imogen(icfile);
+    
+    dirout = result.paths{R};
     enforceConsistentView(dirout);
-
-    result.paths{end+1} = dirout;
-
+    
     % Access final state
     S = SavefilePortal(dirout);
     S.setFrametype(7);
+    S.setParallelMode(1);
     f = S.jumpToLastFrame();
-
+    
     % Generate analytic solution and compute metrics
-    % NOTE: use run.geometry.localXposition?
     T = sum(f.time.history);
-    X = ((1:run.geomgr.globalDomainRez(1))' + .5)/run.geomgr.globalDomainRez(1) - .5;
-
-    [rho, v, P] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
-
+    %[rho, v, P] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
+    [rho, ~, ~] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
+    
     result.N(end+1) = run.geomgr.globalDomainRez(1);
-    result.L1(end+1) = mpi_sum(norm(f.mass(:,1) - rho,1)) / run.geomgr.globalDomainRez(1);
-    result.L2(end+1) = sqrt(mpi_sum(norm(f.mass(:,1) - rho,2).^2))/sqrt(run.geomgr.globalDomainRez(1));
+    deltas = run.geomgr.withoutHalo(f.mass(:,1) - rho(:,1));
+    
+    result.L1(end+1) = mpi_sum(norm(deltas,1)) / run.geomgr.globalDomainRez(1);
+    result.L2(end+1) = sqrt(mpi_sum(norm(deltas,2).^2))/sqrt(run.geomgr.globalDomainRez(1)); 
 end
-
 
 end
