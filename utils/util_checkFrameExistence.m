@@ -12,7 +12,7 @@ TF = ones(size(frameset));
 for x = 1:numel(frameset);
     frameno = frameset(x);
     
-    [ftype, fname] = util_findSegmentFile(basename, 0, frameno);
+    [ftype, fname] = util_FindSegmentFile(basename, 0, frameno);
 
     if ftype < 0; TF(x) = 0; end
 end

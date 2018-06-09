@@ -207,7 +207,7 @@ function newrange = removeNonexistantEntries(inBasename, range)
 existrange = [];
 
 for ITER = 1:numel(range)
-    ftype = util_findSegmentFile(inBasename, 0, range(ITER));
+    ftype = util_FindSegmentFile(inBasename, 0, range(ITER));
 
     if ftype > 0; existrange(end+1) = ITER; end;
 end
