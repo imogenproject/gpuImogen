@@ -345,7 +345,7 @@ classdef RealtimePlotter <  LinkedListNode
                 Q = fluid.calcPressureOnCPU();
                 Q = Q(u,v,w);
             case 10;% temperature
-	        kmu = fluid.particleMu / 1.381e-23;
+	        kmu = 1;%fluid.particleMu / 1.381e-23;
                 Q = fluid.calcPressureOnCPU();
                 Q = kmu * Q(u,v,w)./fluid.mass.array(u,v,w);
             case 101; % XY velocity
@@ -418,7 +418,12 @@ classdef RealtimePlotter <  LinkedListNode
                 if decor.plottype == 1
                     imagesc(axh, axv, q);
                 else
-                    surf(axh, axv, q,'linestyle','none');
+                    if any(size(q)==1)
+                        el = findobj('Tag','plottypebutton');
+                        self.gcbCyclePlotmode(el, []);
+                    else
+                        surf(axh, axv, q,'linestyle','none');
+                    end
                 end
                 
                 if decor.velvecs == 1
@@ -628,7 +633,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.plotProps(self.pGUISelectedPlotnum).axmode = a;
             
             obj = findobj('tag','axeslabelsbutton');
-	    obj.String = self.pAxisTypeLabels{a+1};
+            obj.String = self.pAxisTypeLabels{a+1};
             
             self.pGUIPlotsNeedRedraw = 1;
         end
@@ -697,6 +702,15 @@ classdef RealtimePlotter <  LinkedListNode
 
             self.plotProps(self.pGUISelectedPlotnum).slice = find(whodunit);
 
+            if self.plotProps(self.pGUISelectedPlotnum).slice < 4
+                if self.plotProps(self.pGUISelectedPlotnum).velvecs == 1
+                    %then turn VV off
+                    element = findobj('Tag','velfieldbutton');
+                    element.Value = 0;
+                    self.gcbToggleVelocityField(element, []);
+                end
+            end
+            
             if src.Value == 0; src.Value = 1; else
                 for n = 1:6; % mark all other buttons off (mutex)
                     if whodunit(n) == 0; element = findobj('Tag',tagnames{n}); element.Value = 0; end
