@@ -1,7 +1,7 @@
-function dataframe = util_LoadFrameSegment(basename, rank, frameno, dry)
+function dataframe = util_LoadFrameSegment(basename, rank, frameno)
 % function dataframe = util_LoadFrameSegment(basename, rank, frameno)
 
-[act, fname] = util_findSegmentFile(basename, rank, frameno);
+[act, fname] = util_FindSegmentFile(basename, rank, frameno);
 
 if act < 0; error('No .mat or .nc with basename %s, rank %i, frame #%i found in pwd=''%s''\n', basename, rank, frameno, pwd()); end
 
