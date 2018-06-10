@@ -10,7 +10,7 @@ function L = selectGPUs(gpus_arg)
 
 if isa(gpus_arg,'double')
     if gpus_arg(1) == -1
-        if mpi_amirank0(); disp('SLURM GPU assignment: all ranks will getenv GPU_DEVICE_ORDINAL'); end
+        SaveManager.logPrint('SLURM GPU assignment: all ranks will getenv GPU_DEVICE_ORDINAL');
         L = str2num(getenv('GPU_DEVICE_ORDINAL'));
     else
         L = gpus_arg;
@@ -26,13 +26,13 @@ try
     load(gpus_arg);
 catch
     failure = 1;
-    fprintf('Rank %i tried to open %s and failed: Run failing.\n', int32(bi(2)), gpus_arg);
+    SaveManager.logAllPrint('Rank %i tried to open %s and failed: Run failing.\n', int32(bi(2)), gpus_arg);
     mpi_errortest(failure);
 end
 
 R = ranksOnHost();
 
-[dump, myself] = system('hostname');
+[~, myself] = system('hostname');
 myself = deblank(myself);
 
 kmax = numel(gpuList);

@@ -16,13 +16,13 @@ function initializeResultPaths(run, IC)
     mpi_barrier(); % force all units to evaluate to the same paths
     run.paths.indexPadding = length(num2str(run.time.ITERMAX));
 
-    if mpi_amirank0(); fprintf('--------- Output preparation\n'); end
+    SaveManager.logPrint('--------- Output preparation\n');
 
     if mpi_amirank0() && (setupDirectories == 1)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
-    disp('Creating directories...');
+    SaveManager.logPrint('Creating directories...');
             
         %--- RESULTS Directory ---%
         MErr = locDirMaker(run, run.paths.results,'Results folder Created');

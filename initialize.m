@@ -45,17 +45,12 @@ if (any(cso(1) == [2 4]) & any(cso(2) == [2 4 6])) == 0
 end
 run.compositeSrcOrders = cso;
 
-if mpi_amirank0()
-    disp(['    If used, cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.']);
-end
+SaveManager.logPrint(['    If used, cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.']);
 
 if ~isempty(ini.checkpointSteps)
     run.checkpointInterval = ini.checkpointSteps(1);
 else
-    if mpi_amirank0()
-        disp('WARNING')
-        disp('No checkpoint interval given, checkpointing disabled')
-    end
+    SaveManager.logPrint('WARNING: No checkpoint interval given; Checkpointing disabled.\n');
 end
 
 %% ===== GPU settings ===== %%
@@ -73,9 +68,7 @@ end
 %% ===== Radiation settings =====%%
 if ~isempty(ini.radiation)
     run.radiation.readSubInitializer(ini.radiation);
-    if mpi_amirank0()
-        disp('Radiation subsystem enabled.');
-    end
+    SaveManager.logPrint('Radiation subsystem enabled.');
 end
 
 %% .VTOSettings Vaccum Taffy Operator (background quiescence enforcement) settings

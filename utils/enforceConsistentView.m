@@ -49,7 +49,7 @@ end
 
 elapsed = toc();
 
-if mpi_amirank0() && (elapsed > 0.05) % do not blather about short times.
+if mpi_amirank0() && (elapsed > 0.1) % do not blather about short times.
     if warnAboutTimeout; fprintf('enforceConsistentView: No timeout given, defaulted to 10 wallclock minutes.\n'); end
     fprintf('All ranks saw consistent size/name/filecount in %s in %f sec\n', directory, elapsed);
 end

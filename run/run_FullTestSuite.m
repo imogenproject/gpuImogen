@@ -39,9 +39,7 @@ doSedovTests          = 0;
 
 baseResolution = 32;
 
-if mpi_amirank0()
-    fprintf('NOTICE: Base resolution is currently set to %i.\nNOTICE: If the number of MPI ranks or GPUs will divide this to below 6, things will Break.\n', baseResolution);
-end
+SaveManager.logPrint('NOTICE: Base resolution is currently set to %i.\nNOTICE: If the number of MPI ranks or GPUs will divide this to below 6, things will Break.\n', baseResolution);
 
 % Picks how far we take the scaling tests
 advectionDoublings  = 5;
@@ -69,12 +67,11 @@ startSimulationsTime = clock();
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
 if doSonicAdvectStaticBG || doALLTheTests
-    if mpi_amirank0(); disp('Testing advection against stationary background.'); end
+    SaveManager.logPrint('Testing advection against stationary background.');
     try
         x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings, realtimePictures, fm);
     catch ME
-        fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -84,12 +81,11 @@ end
 
 %--- Test advection of a sound wave with the background translating at half the speed of sound ---%
 if doSonicAdvectMovingBG || doALLTheTests
-    if mpi_amirank0(); disp('Testing advection against moving background'); end
+    SaveManager.logPrint('Testing advection against moving background');
     try
         x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], -.526172, advectionDoublings, realtimePictures, fm);
     catch ME
-        fprintf('Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Oh dear: 1D Advection test simulation barfed.\nIf this wasn''t a mere syntax error, something is seriously wrong\nRecommend re-run full unit tests. Storing blank.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -100,12 +96,11 @@ end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
 if doSonicAdvectAngleXY || doALLTheTests
-    if mpi_amirank0(); disp('Testing sound advection''s prefactor in 2D'); end
+    SaveManager.logPrint('Testing sound advection''s prefactor in 2D');
     try
         x = tsCrossAdvect('sonic', [256 256 1], [1 0 0], [0 0 0], [0 0 0], realtimePictures, fm);
     catch ME
-        fprintf('2D Advection test simulation barfed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, '2D Advection test simulation barfed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -117,23 +112,22 @@ end
 % This one is unhappy. It expects to have a variable defined (the self-rest-frame oscillation frequency) that isn't set for this type
 %--- Test that an entropy wave just passively coasts along as it ought ---% 
 if doEntropyAdvectStaticBG || doALLTheTests
-    if mpi_amirank0(); disp('Testing entropy wave advection in 1D with static background.'); end
+    SaveManager.logPrint('Testing entropy wave advection in 1D with static background.');
     try
         TestResult.advection.HDentropy_static = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings);
     catch ME
-        fprintf('Stationary entropy wave test simulation failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Stationary entropy wave test simulation failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
 end
+
 if doEntropyAdvectMovingBG || doALLTheTests
-    if mpi_amirank0(); disp('Testing convected entropy wave in 1D.'); end
+    SaveManager.logPrint('Testing convected entropy wave in 1D.');
     try
         TestResult.advection.HDentropy_moving = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 1.178, advectionDoublings);
     catch ME
-        fprintf('Convected entropy wave test simulation failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Convected entropy wave test simulation failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -141,14 +135,13 @@ end
 
 %--- Test the dusty wave solution ---%
 if doDustyWaveStaticBG || doALLTheTests
-    if mpi_amirank0(); disp('Testing dustywave with static BG'); end
+    SaveManager.logPrint('Testing dustywave with static BG\n');
     try
         x = tsDustywave([baseResolution 1 1], advectionDoublings, .1, realtimePictures, fm);
         y = tsDustywave([baseResolution 1 1], advectionDoublings, 1, realtimePictures, fm);
         z = tsDustywave([baseResolution 1 1], advectionDoublings, 25, realtimePictures, fm);
     catch ME
-        fprintf('Dustywave test failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Dustywave test failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -159,12 +152,11 @@ end
 
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
 if doEinfeldtTests || doALLTheTests
-    if mpi_amirank0(); disp('Testing convergence of Einfeldt tube'); end
+    SaveManager.logPrint('Testing convergence of Einfeldt tube');
     try
         x = tsEinfeldt(baseResolution, 1.4, 4, einfeldtDoublings, realtimePictures, fm);
     catch ME
-        fprintf('Einfeldt tube test has failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Einfeldt tube test has failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -174,12 +166,11 @@ end
 
 %--- Test the Sod shock tube for basic shock-capturingness ---%
 if doSodTubeTests || doALLTheTests
-    if mpi_amirank0(); disp('Testing convergence of Sod tube'); end
+    SaveManager.logPrint('Testing convergence of Sod tube');
     try
         x = tsSod(baseResolution, 1, sodDoublings, realtimePictures, fm);
     catch ME
-        fprintf('Sod shock tube test has failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Sod shock tube test has failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -189,12 +180,11 @@ if doSodTubeTests || doALLTheTests
 end
 
 if doNohTubeTests || doALLTheTests
-    if mpi_amirank0(); disp('Testing convergence of Noh tube'); end
+    SaveManager.logPrint('Testing convergence of Noh tube');
     try
         x = tsNohtube(baseResolution, nohDoublings, realtimePictures, fm);
     catch ME
-        fprintf('Noh shock tube test has failed.\n');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Noh shock tube test has failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -204,12 +194,11 @@ if doNohTubeTests || doALLTheTests
 end
 
 if doCentrifugeTests || doALLTheTests
-    if mpi_amirank0(); disp('Testing centrifuge equilibrium-maintainence.'); end
+    SaveManager.logPrint('Testing centrifuge equilibrium-maintainence.');
     try
         x = tsCentrifuge([baseResolution baseResolution 1], 1.5, centrifugeDoublings, realtimePictures, fm);
     catch ME
-        disp('Centrifuge test has failed.');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Centrifuge test has failed.');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
@@ -220,12 +209,11 @@ if doCentrifugeTests || doALLTheTests
 end
 
 if doDoubleBlastTests || doALLTheTests
-   if mpi_amirank0(); disp('Performing refinement test on WC1984 double-blast'); end
+   SaveManager.logPrint('Performing refinement test on WC1984 double-blast');
    try
        x = tsDoubleBlast([baseResolution 1 1], doubleblastDoublings, realtimePictures, fm);
    catch ME
-       disp('Double blast test has failed.');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Double blast test has failed.');
         x = 'FAILED';
         exceptionList{end+1} = ME;
    end
@@ -236,12 +224,11 @@ if doDoubleBlastTests || doALLTheTests
 end
 
 if doDustyBoxes || doALLTheTests
-   if mpi_amirank0(); disp('Performing temporal refinement test on spatially uniform dusty boxes'); end
+   SaveManager.logPrint('Performing temporal refinement test on spatially uniform dusty boxes');
    try
        x = tsDustybox(baseResolution, 5/3, .01, dustyBoxDoublings, realtimePictures, fm);
    catch ME
-       disp('Dusty box test (Mach .01) has failed.');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Dusty box test (Mach .01) has failed.');
         x = 'FAILED';
         exceptionList{end+1} = ME;
    end
@@ -250,8 +237,7 @@ if doDustyBoxes || doALLTheTests
    try
        x = tsDustybox(baseResolution, 5/3, .25, dustyBoxDoublings, realtimePictures, fm);
    catch ME
-       disp('Dusty box test (Mach 0.25) has failed.');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Dusty box test (Mach 0.25) has failed.');
         x = 'FAILED';
         exceptionList{end+1} = ME;
    end
@@ -260,8 +246,7 @@ if doDustyBoxes || doALLTheTests
    try
        x = tsDustybox(baseResolution, 5/3, 2.0, dustyBoxDoublings, realtimePictures, fm);
    catch ME
-       disp('Dusty box test (Mach 2) has failed.');
-        prettyprintException(ME);
+        prettyprintException(ME, 0, 'Dusty box test (Mach 2) has failed.');
         x = 'FAILED';
         exceptionList{end+1} = ME;
    end
@@ -282,12 +267,11 @@ end
 %%% 3D tests
 if doSedovTests || doALLTheTests
     if ~isempty(sedov2D_scales)
-    if mpi_amirank0(); disp('Testing 2D Sedov-Taylor explosion'); end
+    SaveManager.logPrint('Testing 2D Sedov-Taylor explosion');
         try
             x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures, fm);
         catch ME
-            disp('2D Sedov-Taylor test has failed.');
-            prettyprintException(ME);
+            prettyprintException(ME, 0, '2D Sedov-Taylor test has failed.');
             x = 'FAILED';
             exceptionList{end+1} = ME;
         end
@@ -296,12 +280,11 @@ if doSedovTests || doALLTheTests
     end
 
     if ~isempty(sedov3D_scales)
-        if mpi_amirank0(); disp('Testing 3D Sedov-Taylor explosion'); end
+        SaveManager.logPrint('Testing 3D Sedov-Taylor explosion');
         try
             x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures, fm);
         catch ME
-            disp('3D Sedov-Taylor test has failed.');
-            prettyprintException(ME);
+            prettyprintException(ME, 0, '3D Sedov-Taylor test has failed.');
             x = 'FAILED';
             exceptionList{end+1} = ME;
         end

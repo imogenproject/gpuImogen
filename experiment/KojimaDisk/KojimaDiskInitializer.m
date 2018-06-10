@@ -130,14 +130,14 @@ classdef KojimaDiskInitializer < Initializer
                 if nz > 1
                     obj.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_OUTFLOW };
                 else
-                    if mpi_amirank0(); warning('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n'); end
+                    SaveManager.logPrint('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n');
                 end
             end
             
             diskInfo = kojimaDiskParams(obj.q, obj.radiusRatio, obj.gamma);
 
-            switch geo.pGeometryType;
-                case ENUM.GEOMETRY_SQUARE;
+            switch geo.pGeometryType
+                case ENUM.GEOMETRY_SQUARE
                     boxsize = 2*(1+obj.edgePadding)*diskInfo.rout * [1 1 1];
                     
                     if nz > 1
@@ -155,7 +155,7 @@ classdef KojimaDiskInitializer < Initializer
                     
                     geo.makeBoxSize(boxsize);
                     geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
-                case ENUM.GEOMETRY_CYLINDRICAL;
+                case ENUM.GEOMETRY_CYLINDRICAL
                     width = diskInfo.rout - diskInfo.rin;
                     inside = diskInfo.rin - obj.edgePadding * width;
                     outside = diskInfo.rout + obj.edgePadding * width;
@@ -169,14 +169,13 @@ classdef KojimaDiskInitializer < Initializer
                         
                         if availz < needz
                             dz = dr * needz / availz;
-                            
-                            if mpi_amirank0(); warning('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz); end
+                            SaveManager.logPrint('NOTE: nz of %i insufficient to have dr = dz; Need %i; dz increased from r=%f to %f.', int32(nz), int32(ceil(geo.globalDomainRez(1)*needz/availz)), dr, dz);
                         else
                             dz = dr;
                         end
                         
                         % For vertical mirror, offset Z=0 by three cells to agree with mirror BC that has 3 ghost cells
-                        if obj.useZMirror; z0 = -3*dz; else z0 = -round(nz/2)*dz; end
+                        if obj.useZMirror; z0 = -3*dz; else; z0 = -round(nz/2)*dz; end
                     else
                         z0 = 0;
                         dz = 1;

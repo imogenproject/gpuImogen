@@ -5,8 +5,7 @@ result = 0;
 if(nargin == 2)
     funcList = max2d;
     specificRez = 1;
-    disp('Running one test using resolution:');
-    disp(n2d)
+    SaveManager.logPrint('Running one test using resolution: %i\n', int32(n2d));
 else
 
 if(nargin < 4)
@@ -43,10 +42,10 @@ for F = 1:nFuncs
     outcome = iterateOnFunction(funcList{F}, D, R);
 
     switch outcome
-        case 1;  if mpi_amirank0(); fprintf('Tests of %s failed!\n', funcList{F}); result = 1; end
-        case 0;  if mpi_amirank0(); fprintf('Tests of %s successful!\n', funcList{F}); end
-        case -1; if mpi_amirank0(); fprintf('Test for function named %s not implemented\n', funcList{F}); end
-        case -2; if mpi_amirank0(); fprintf('No function named %s...\n', funcList{F}); end
+        case 1;  SaveManager.logPrint('Tests of %s failed!\n', funcList{F}); result = 1;
+        case 0;  SaveManager.logPrint('Tests of %s successful!\n', funcList{F});
+        case -1; SaveManager.logPrint('Test for function named %s not implemented\n', funcList{F});
+        case -2; SaveManager.logPrint('No function named %s...\n', funcList{F});
     end
 
 end
@@ -87,7 +86,7 @@ function outcome = iterateOnFunction(fname, D, R)
             outcome = mpi_max(outcome);
             break;
         end
-        if mpi_amirank0(); fprintf('.'); end
+        SaveManager.logPrint('.');
     end
 end
 

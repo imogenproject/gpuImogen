@@ -246,7 +246,7 @@ classdef Initializer < handle
             else
                 obj.geomgr.setup(obj.geomgr.globalDomainRez, obj.bcMode);
 
-                if mpi_amirank0(); fprintf('---------- Calculating initial conditions\n'); end
+                SaveManager.logPrint('---------- Calculating initial conditions\n');
                 [fluids, mag, statics, potentialField, selfGravity] = obj.calculateInitialConditions();
 
                 for z = 1:numel(fluids)
@@ -279,9 +279,7 @@ classdef Initializer < handle
 
                 % Oh my
                 if rez(gm.partitionDir) < 6
-                    if mpi_amirank0()
-                        disp('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.');
-                    end
+                    SaveManager.logPrint('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.');
                     % Z partition? Try y then x
                     if gm.partitionDir == 3
                         if rez(2) < 6; gm.partitionDir = 1; else; gm.partitionDir = 2; end
@@ -290,9 +288,7 @@ classdef Initializer < handle
                         if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
                     end
                 else
-                    if mpi_amirank0()
-                        disp('NOTE: Initializer checked partition direction & was OK.');
-                    end
+                    SaveManager.logPrint('NOTE: Initializer checked partition direction & was OK.');
                 end
             end
 

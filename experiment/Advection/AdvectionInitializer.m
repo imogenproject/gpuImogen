@@ -15,7 +15,7 @@ classdef AdvectionInitializer < Initializer
         boxLength;
     end %PUBLIC
     
-    properties(SetAccess = private, GetAccess = public);
+    properties(SetAccess = private, GetAccess = public)
         waveOmega;           % Omega is calculated from dispersion relation and K
         waveEigenvector;     % The wave eigenvector used to initialize the sim
     end
@@ -97,13 +97,13 @@ classdef AdvectionInitializer < Initializer
         
         function set.amplitude(self, A)
             % Sets the nonnegative perturbation pAmplitude A
-            if nargin == 1; self.pAmplitude = .001; return; end;
+            if nargin == 1; self.pAmplitude = .001; return; end
             n = self.pWriteFluid;
             self.pAmplitude(:,n) = input2vector(A, 1, .001, false);
         end
         function A = get.amplitude(self); A = self.pAmplitude; end
         
-        function set.phase(self, P, n)
+        function set.phase(self, P)
             % Set the phase of the perturbation wave
             n = self.pWriteFluid;
             if nargin == 1; self.pPhase = 0; return; end
@@ -111,7 +111,7 @@ classdef AdvectionInitializer < Initializer
         end
         function P = get.phase(self); P = self.pPhase; end
 
-        function set.backgroundMach(self, M, n)
+        function set.backgroundMach(self, M)
             % Set the translation speed of the background in units of Mach.
             %> V: 1-3 elements for vector mach; Default <0,0,0> for missing elements.
             n = self.pWriteFluid;
@@ -120,7 +120,7 @@ classdef AdvectionInitializer < Initializer
         end
         function M = get.backgroundMach(self); M = self.pBackgroundMach; end
         
-        function set.wavenumber(self, V, n)
+        function set.wavenumber(self, V)
             % Sets the pWavenumber integer triplet; Does some input validation for us
             %> V: 1, 2, or 3 numbers; Absent elements default to <1,0,0>; noninteger is round()ed. Null vector is an error.
             n = self.pWriteFluid;
@@ -152,8 +152,8 @@ classdef AdvectionInitializer < Initializer
             self.pDensity(1,n) = input2vector(rho, 1, 1e-6, false);
             self.pPressure(1,n) = input2vector(pPressure, 1, 1e-6, false);
             
-            if self.pDensity  < 0; error('Density cannot be negative!'); end;
-            if self.pPressure < 0; error('Pressure cannot be negative!'); end;
+            if self.pDensity  < 0; error('Density cannot be negative!'); end
+            if self.pPressure < 0; error('Pressure cannot be negative!'); end
         end
 
         function addNewFluid(self, copyfrom)
@@ -302,14 +302,14 @@ classdef AdvectionInitializer < Initializer
 
             mag = zeros([3 geo.localDomainRez]);
             
-            if max(abs(obj.backgroundB)) > 0;
+            if max(abs(obj.backgroundB)) > 0
                 obj.mode.magnet = true; obj.cfl = .4; obj.pureHydro = 0;
-            else;
+            else
                 obj.pureHydro = 1;
             end
             
             obj.timeMax = max(tMax);
-            if mpi_amirank0(); fprintf('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed); end
+            SaveManager.logPrint('Running wave type: %s\nWave speed in simulation frame: %f\n', obj.waveType, wavespeed);
         end
     end%PROTECTED
     

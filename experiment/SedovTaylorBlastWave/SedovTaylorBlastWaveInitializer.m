@@ -102,7 +102,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             obj.pSedovAlpha = SedovSolver.findAlpha(obj.pBlastEnergy, obj.backgroundDensity, obj.gamma, 2+1*(obj.geomgr.globalDomainRez(3)>1));
 
             if obj.autoEndtime
-                if mpi_amirank0(); disp('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)'); end
+                SaveManager.logPrint('Automatic end time selected: will run to blast radius = 0.45 (grid cube is normalized to size of 1)');
                 obj.timeMax = SedovSolver.timeUntilSize(obj.pBlastEnergy, .45, obj.backgroundDensity, obj.gamma, 2+1*(obj.geomgr.globalDomainRez(3)>1), obj.pSedovAlpha);
             end
 

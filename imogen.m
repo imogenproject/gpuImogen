@@ -9,12 +9,12 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     if isstruct(srcData) == 0
         load(srcData); %#ok<LOAD>
-        if mpi_amirank0(); fprintf('---------- Imogen starting from file'); end
+        SaveManager.logPrint('---------- Imogen starting from file');
     else
         IC = srcData;
         clear srcData;
         evalin('caller','clear IC'); % Make ML release the memory used above
-        if mpi_amirank0(); fprintf('---------- Imogen starting from passed IC structure'); end
+        SaveManager.logPrint('---------- Imogen starting from passed IC structure');
     end
 
     ini     = IC.ini;
