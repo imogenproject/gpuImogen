@@ -5,12 +5,12 @@ classdef SodShockSolution < handle
     %___________________________________________________________________________________________________
     
     %===================================================================================================
-    properties (Constant = true, Transient = true) %							C O N S T A N T	 [P]
+    properties (Constant = true, Transient = true) %                         C O N S T A N T         [P]
         GAMMA       = 1.4;
     end%CONSTANT
     
     %===================================================================================================
-    properties (SetAccess = public, GetAccess = public) %							P U B L I C  [P]
+    properties (SetAccess = public, GetAccess = public) %                               P U B L I C  [P]
         time;
         x;
         mass;
@@ -21,31 +21,32 @@ classdef SodShockSolution < handle
     end %PUBLIC
     
     %===================================================================================================
-    properties (SetAccess = protected, GetAccess = protected) %				   P R O T E C T E D [P]
+    properties (SetAccess = protected, GetAccess = protected) %                    P R O T E C T E D [P]
         pTubeLength;        % Length of the tube.                                       double
     end %PROTECTED
     
     
     
     %===================================================================================================
-    methods %																	  G E T / S E T  [M]
+    methods %                                                                         G E T / S E T  [M]
         
-        %___________________________________________________________________________________________________ SodShockSolution
-        function obj = SodShockSolution(resolution, time)
+        %______________________________________________________________________________ SodShockSolution
+        function obj = SodShockSolution(xcoords, time)
             
+            rez = size(xcoords);
+
             obj.time                    = time;
             g                           = obj.GAMMA;
-            x0                          = floor(resolution/2);
             
-            obj.mass                    = zeros(1, resolution);
-            obj.mass(1:x0)              = 1;
-            obj.mass(x0:end)            = 0.125;
+            obj.mass                    = zeros(rez);
+            obj.mass(xcoords < 0.0)     = 1;
+            obj.mass(xcoords >= 0.0)    = 0.125;
             
-            obj.pressure                = zeros(1, resolution);
-            obj.pressure(1:x0)          = 1;
-            obj.pressure(x0:end)        = 0.1;
+            obj.pressure                = zeros(rez);
+            obj.pressure(xcoords < 0.0) = 1;
+            obj.pressure(xcoords >= 0.0)= 0.1;
             
-            obj.velocity                = zeros(1, resolution);
+            obj.velocity                = zeros(rez);
             obj.soundSpeed              = sqrt(g*obj.pressure./obj.mass);
             
             %--- Post Shock ---%
@@ -57,24 +58,26 @@ classdef SodShockSolution < handle
             postContactMass             = obj.calculatePostContactMass(postPressure);
             
             %--- Rarefaction ---%
-            rarefactionSoundSpeed       = obj.calculateRarefactionSoundSpeed(0.5, time);
-            rarefactionVelocity         = obj.calculateRarefactionVelocity(0.5, time);
-            rarefactionMass             = obj.calculateRarefactionMass(rarefactionSoundSpeed);
-            rarefactionPressure         = obj.calculateRarefactionPressure(rarefactionMass);
+            %rarefactionSoundSpeed       = obj.calculateRarefactionSoundSpeed(0.5, time);
+            %rarefactionVelocity         = obj.calculateRarefactionVelocity(0.5, time);
+            %rarefactionMass             = obj.calculateRarefactionMass(rarefactionSoundSpeed);
+            %rarefactionPressure         = obj.calculateRarefactionPressure(rarefactionMass);
             
             %--- Find Positions ---%
-            x1true                      = (0.5 - obj.soundSpeed(1)*time); % fan's head
-            x2true = .5 - time*((g+1)/(g-1))*obj.soundSpeed(1)*( (postContactMass/obj.mass(1))^(.5*g-.5) - 2/(g+1));
-            x3true                      = 0.5 + postVelocity*time; % material contact
-            x4true                      = 0.5 + shockSpeed*time; % shock position
+            xoffset = 0;
+            x1true                      = (xoffset - obj.soundSpeed(1)*time); % fan's head
+            x2true = xoffset - time*((g+1)/(g-1))*obj.soundSpeed(1)*( (postContactMass/obj.mass(1))^(.5*g-.5) - 2/(g+1));
+            x3true                      = xoffset + postVelocity*time; % material contact
+            x4true                      = xoffset + shockSpeed*time; % shock position
             
             % Cells' left edge exists at (N-1)h and right edge at Nh,
             % with h = 1/N and N indexing from 1 to resolution.
             % If we consist with the notion of x_initialcontact = 1/2.
-            h = 1/resolution;
-            posLeft = (0:(resolution-1))*h;
-            posRite = (1:resolution)*h;
-            posCtr  = (posLeft + posRite)/2;
+            h = xcoords(2) - xcoords(1); % FIXME nasty hack
+
+            posLeft = xcoords - h/2;
+            posRite = xcoords + h/2;
+            posCtr  = xcoords;
             
             
             % Identify regions consisting entirely of a single function
@@ -95,32 +98,41 @@ classdef SodShockSolution < handle
             
             g = obj.GAMMA;
             G = (g-1)/(g+1);
-            cRF = @(x) G*((0.5-x)/time) + (1-G)*obj.soundSpeed(1);
+            cRF = @(x) G*((0-x)/time) + (1-G)*obj.soundSpeed(1);
             
             % Compute the exact integral average over the cell where the rarefaction's head resides
             denfunc = @(x) obj.calculateRarefactionMass(cRF(x));
-            obj.mass(id) = ( integral(denfunc, x1true, posRite(id)) + (x1true - posLeft(id))*1 ) / h;
-            
+
+            if ~isempty(id)
+                obj.mass(id) = ( integral(denfunc, x1true, posRite(id)) + (x1true - posLeft(id))*1 ) / h;
+            end
+
             % Use cell center mass (accurate to 3rd order of smallness) in rarefaction region
             obj.mass(fanRegion) = denfunc(posCtr(fanRegion));
             
             % Identify fan-to-postcontact cell and average it
             id = cellStraddling(x2true);
-            obj.mass(id) = ( integral(denfunc, posLeft(id), x2true) + (posRite(id) - x2true)*postContactMass ) / h;
+            if ~isempty(id)
+               obj.mass(id) = ( integral(denfunc, posLeft(id), x2true) + (posRite(id) - x2true)*postContactMass ) / h;
+            end
             
             % Plug in post contact mass density as constant
             obj.mass(postContactRegion) = postContactMass;
             
             % Average two halves of the contact's cell
             id = cellStraddling(x3true);
-            obj.mass(id) = ( postContactMass*(x3true-posLeft(id)) + postMass*(posRite(id)-x3true) ) / h;
+            if ~isempty(id)
+                obj.mass(id) = ( postContactMass*(x3true-posLeft(id)) + postMass*(posRite(id)-x3true) ) / h;
+            end
             
             % Plug in precontact/postshock mass
             obj.mass(preContactRegion) = postMass;
             
             % Average the shock's cell
             id = cellStraddling(x4true);
-            obj.mass(id) = ( postMass*(x4true-posLeft(id)) + .125*(posRite(id)-x4true) ) / h;
+            if ~isempty(id)
+                obj.mass(id) = ( postMass*(x4true-posLeft(id)) + .125*(posRite(id)-x4true) ) / h;
+            end
             
             % Plug in original right-state density
             obj.mass(preShockRegion) = .125;
@@ -132,10 +144,14 @@ classdef SodShockSolution < handle
             obj.pressure(pressA) = 1 * (obj.mass(pressA) / 1).^obj.GAMMA; % FIXME: generalize this
             
             id = cellStraddling(x2true);
-            obj.pressure(id) = obj.mass(id)^obj.GAMMA;
+            if ~isempty(id)
+                obj.pressure(id) = obj.mass(id)^obj.GAMMA;
+            end
             
             id = cellStraddling(x3true);
-            obj.pressure(id) = obj.pressure(id-1);
+            if ~isempty(id)
+                 obj.pressure(id) = obj.pressure(id-1);
+            end
             
             % Right of contact is postshock
             obj.pressure(preContactRegion) = postPressure;
@@ -150,10 +166,14 @@ classdef SodShockSolution < handle
             obj.velocity(postContactRegion | preContactRegion) = postVelocity;
             
             id = cellStraddling(x2true);
-            obj.velocity(id) = postVelocity;
+            if ~isempty(id)
+                obj.velocity(id) = postVelocity;
+            end
             id = cellStraddling(x3true);
-            obj.velocity(id) = postVelocity;
-            
+            if ~isempty(id)
+                obj.velocity(id) = postVelocity;
+            end
+
             obj.soundSpeed              = sqrt(g*obj.pressure./obj.mass);
             obj.energy                  = obj.pressure./(g - 1) ...
                 + 0.5*obj.mass.*obj.velocity.^2;
@@ -161,23 +181,23 @@ classdef SodShockSolution < handle
         
     end%GET/SET
     
-    %===================================================================================================
-    methods (Access = public) %														P U B L I C  [M]
+    %===============================================================================================
+    methods (Access = public) %                                                                                                                P U B L I C  [M]
     end%PUBLIC
     
-    %===================================================================================================
-    methods (Access = protected) %											P R O T E C T E D    [M]
+    %===============================================================================================
+    methods (Access = protected) %                                          P R O T E C T E D    [M]
         
-        %___________________________________________________________________________________________________ findPostShockPressure
+        %_____________________________________________________________________ findPostShockPressure
         function result = findPostShockPressure(obj)
             g = obj.GAMMA;
             G = (g-1)/(g+1);
             b = (g-1)/(2*g);
             
-            m1 = obj.mass(1);
-            m2 = obj.mass(end);
-            p1 = obj.pressure(1);
-            p2 = obj.pressure(end);
+            m1 = 1; % FIXME: don't hardcode this crap FFS
+            m2 = .125;
+            p1 = 1;
+            p2 = .1;
             
             func = @(p)...
                 (p1^b - p^b)*sqrt((1-G^2)*p1^(1/g)/(G^2*m1)) ...
@@ -185,13 +205,12 @@ classdef SodShockSolution < handle
             result = fzero(func, 0.3);
         end
         
-        %___________________________________________________________________________________________________ calculatePostShockVelocity
+        %________________________________________________________________ calculatePostShockVelocity
         function result = calculatePostShockVelocity(obj, postPressure)
             g      = obj.GAMMA;
             result = 2*sqrt(g)/(g - 1)*(1 - postPressure^((g - 1)/(2*g)));
         end
-        
-        %___________________________________________________________________________________________________ calculatePostShockMass
+        %____________________________________________________________________ calculatePostShockMass
         function result = calculatePostShockMass(obj, postPressure)
             g      = obj.GAMMA;
             G      = (g-1)/(g+1);
@@ -201,14 +220,14 @@ classdef SodShockSolution < handle
             result = m2*((postPressure/p2) + G) / (1 + G*(postPressure/p2));
         end
         
-        %___________________________________________________________________________________________________ calculateShockSpeed
+        %_______________________________________________________________________ calculateShockSpeed
         function result = calculateShockSpeed(obj, postMass, postVelocity)
             m2     = obj.mass(end);
             
             result = postVelocity*(postMass/m2) / ((postMass/m2) - 1);
         end
         
-        %___________________________________________________________________________________________________ calculatePostContactMass
+        %__________________________________________________________________ calculatePostContactMass
         function result = calculatePostContactMass(obj, postPressure)
             g      = obj.GAMMA;
             p1     = obj.pressure(1);
@@ -216,27 +235,27 @@ classdef SodShockSolution < handle
             result = obj.mass(1)*(postPressure/p1)^(1/g);
         end
         
-        %___________________________________________________________________________________________________ calculateRarefactionSoundSpeed
+        %____________________________________________________________ calculateRarefactionSoundSpeed
         function result = calculateRarefactionSoundSpeed(obj, x0, time)
             g         = obj.GAMMA;
             G         = (g-1)/(g+1);
             c1        = obj.soundSpeed(1);
-            positions = linspace(0, 1, length(obj.mass));
+            positions = obj.x;
             
             result    = G*((x0-positions)./time) + (1 - G)*c1;
         end
         
-        %___________________________________________________________________________________________________ calculateRarefactionVelocity
+        %______________________________________________________________ calculateRarefactionVelocity
         function result = calculateRarefactionVelocity(obj, x0, time)
             g         = obj.GAMMA;
             G         = (g-1)/(g+1);
             c1        = obj.soundSpeed(1);
-            positions = linspace(0, 1, length(obj.soundSpeed));
+            positions = obj.x;
             
             result    = (1 - G)*((positions-x0)/time + c1);
         end
         
-        %___________________________________________________________________________________________________ calculateRarefactionMass
+        %___________________________________________________________________ calculateRarefactionMass
         function result = calculateRarefactionMass(obj, rarefactionSoundSpeed)
             g      = obj.GAMMA;
             m1     = obj.mass(1);
@@ -245,7 +264,7 @@ classdef SodShockSolution < handle
             result = m1.*(rarefactionSoundSpeed./c1).^(2/(g-1));
         end
         
-        %___________________________________________________________________________________________________ calculateRarefactionPressure
+        %______________________________________________________________ calculateRarefactionPressure
         function result = calculateRarefactionPressure(obj, rarefactionMass)
             g      = obj.GAMMA;
             m1     = obj.mass(1);
@@ -256,8 +275,8 @@ classdef SodShockSolution < handle
         
     end%PROTECTED
     
-    %===================================================================================================
-    methods (Static = true) %													  S T A T I C    [M]
+    %==============================================================================================
+    methods (Static = true) %                                                                                                          S T A T I C    [M]
     end%PROTECTED
     
 end%CLASS
