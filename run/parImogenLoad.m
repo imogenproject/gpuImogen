@@ -52,8 +52,12 @@ function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize) %#ok<INUSD>
     if shutDownEverything
         GPU_ctrl('reset'); % Trashcan CUDA context
         % FIXME: Somewhere we need to get to dump the communicators created in ParallelGlobals.topology
-	mpi_barrier();     % make sure nobody tries to talk to the MPI runtime since we're about to...
-        mpi_finalize();    % Trashcan MPI runtime
+        mpi_barrier();     % Make sure nobody tries to talk to the MPI runtime since we're about to...
+
+        PG = ParallelGlobals(); % ... dump all our communicators and ...
+        mpi_deleteDimcomm(PG.topology);
+
+        mpi_finalize();    % trashcan the MPI runtime
         quit               % Trashcan Matlab runtime
     end
 
