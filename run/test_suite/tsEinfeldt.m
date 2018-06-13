@@ -54,7 +54,6 @@ for R = 1:doublings
     % Set resolution and go
     grid(1) = N0 * 2^R;
     run.geomgr.setup(grid, run.bcMode);
-    if mpi_amirank0(); pause(1); end
     
     icfile = run.saveInitialCondsToFile();
     result.paths{R} = imogen(icfile);

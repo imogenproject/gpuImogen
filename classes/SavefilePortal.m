@@ -189,8 +189,15 @@ classdef SavefilePortal < handle
             self.popdir();
         end
         
-        function S = getInitializerFile(self)
+        function S = getIniSettings(self)
            S = load([self.savefileDirectory  '/ini_settings.mat']);
+        end
+        
+        function S = getInitialConditions(self)
+            r = mpi_myrank();
+            f = sprintf('/SimInitializer_rank%i.mat', int32(r));
+            u = load([self.savefileDirectory f], 'IC');
+            S = u.IC;
         end
 
     end%PUBLIC

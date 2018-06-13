@@ -42,24 +42,25 @@ result.L2    = [];
 result.N     = [];
 result.paths = {};
 
-for p = 1:doublings;
+for p = 1:doublings
     % Run test at given resolution
     grid(direct) = N*2^(p-1);
     
-    run.geomgr.setup(grid);
+    run.geomgr.setup(grid, run.bcMode);
     icfile           = run.saveInitialCondsToFile();
     outpath          = imogen(icfile);
     enforceConsistentView(outpath);
 
     % Load last frame
     S = SavefilePortal(outpath);
+    S.setParallelMode(1);
     S.setFrametype(7);
     u = S.jumpToLastFrame();
 
     % Compute L_n integral error norms and output
     % FIXME broken in parallel
     T = sum(u.time.history);
-    X = SodShockSolution(run.geomgr.globalDomainRez(direct), T);
+    X = SodShockSolution(run.geomgr.localXposition, T);
 
     result.L2(p)    = sqrt(mpi_sum(norm(u.mass(:,1)-X.mass',2).^2) / mpi_sum(numel(X.mass)) );
     result.L1(p)    = mpi_sum(norm(u.mass(:,1)-X.mass',1)) / mpi_sum(numel(X.mass));

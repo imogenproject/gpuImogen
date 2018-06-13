@@ -6,32 +6,42 @@ TestResults.name = 'Imogen Master Test Suite';
 
 TestResultFilename = '~/fulltestasdf';
 
-%--- Override: Run ALL the tests! ---%
-doALLTheTests = 0;
 realtimePictures = 0;
+
+%--- Overrides: Run ALL the tests! ---%
+doALLTheTests = 0;
+doAll1DTests  = 0;
+doAll2DTests  = 0;
+doAll3DTests  = 0;
 
 %--- Individual selects ---%
 % Advection/transport tests
+% 1D
 doSonicAdvectStaticBG   = 0;
 doSonicAdvectMovingBG   = 0;
-doSonicAdvectAngleXY    = 0;
 doEntropyAdvectStaticBG = 0;
 doEntropyAdvectMovingBG = 0;
-doDustyWaveStaticBG     = 0;
+doDustyWaveStaticBG     = 1;
 doDustyWaveMovingBG     = 0;
+% 2D
+doSonicAdvectAngleXY    = 0;
 
 % 1D tests
 doSodTubeTests        = 0;
-doEinfeldtTests       = 1;
+doEinfeldtTests       = 0;
 doDoubleBlastTests    = 0;
 doNohTubeTests        = 0;
 doDustyBoxes          = 0;
 
 % 2D tests
 doCentrifugeTests     = 0;
+doSedov2DTests        = 0;
 
 % 3D tests
-doSedovTests          = 0;
+doSedov3DTests        = 0;
+
+% Apply the "do ALL the things" overrides to the individual run/dontrun variables above
+maskSuiteTestsOn
 
 % As regards the choices of arbitrary inputs like Machs...
 % If it works for $RANDOM_NUMBER_WITH_NO_PARTICULAR_SIGNIFICANCE
@@ -42,8 +52,8 @@ baseResolution = 32;
 SaveManager.logPrint('NOTICE: Base resolution is currently set to %i.\nNOTICE: If the number of MPI ranks or GPUs will divide this to below 6, things will Break.\n', baseResolution);
 
 % Picks how far we take the scaling tests
-advectionDoublings  = 5;
-doubleblastDoublings= 6;
+advectionDoublings  = 3;
+doubleblastDoublings= 2;
 dustyBoxDoublings   = 7;
 einfeldtDoublings   = 4;
 nohDoublings        = 7;
@@ -66,8 +76,8 @@ exceptionList = {};
 startSimulationsTime = clock();
 
 %--- Gentle one-dimensional test: Advect a sound wave in X direction ---%
-if doSonicAdvectStaticBG || doALLTheTests
-    SaveManager.logPrint('Testing advection against stationary background.');
+if doSonicAdvectStaticBG
+    SaveManager.logPrint('Testing advection against stationary background.\n');
     try
         x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings, realtimePictures, fm);
     catch ME
@@ -80,8 +90,8 @@ if doSonicAdvectStaticBG || doALLTheTests
 end
 
 %--- Test advection of a sound wave with the background translating at half the speed of sound ---%
-if doSonicAdvectMovingBG || doALLTheTests
-    SaveManager.logPrint('Testing advection against moving background');
+if doSonicAdvectMovingBG
+    SaveManager.logPrint('Testing advection against moving background\n');
     try
         x = tsAdvection('sonic',[baseResolution 1 1], [1 0 0], [0 0 0], -.526172, advectionDoublings, realtimePictures, fm);
     catch ME
@@ -95,8 +105,8 @@ if doSonicAdvectMovingBG || doALLTheTests
 end
 
 %--- Test a sound wave propagating in a non grid aligned direction at supersonic speed---%
-if doSonicAdvectAngleXY || doALLTheTests
-    SaveManager.logPrint('Testing sound advection''s prefactor in 2D');
+if doSonicAdvectAngleXY
+    SaveManager.logPrint('Testing sound advection''s prefactor in 2D\n');
     try
         x = tsCrossAdvect('sonic', [256 256 1], [1 0 0], [0 0 0], [0 0 0], realtimePictures, fm);
     catch ME
@@ -111,38 +121,40 @@ end
 
 % This one is unhappy. It expects to have a variable defined (the self-rest-frame oscillation frequency) that isn't set for this type
 %--- Test that an entropy wave just passively coasts along as it ought ---% 
-if doEntropyAdvectStaticBG || doALLTheTests
-    SaveManager.logPrint('Testing entropy wave advection in 1D with static background.');
+if doEntropyAdvectStaticBG
+    SaveManager.logPrint('Testing entropy wave advection in 1D with static background.\n');
     try
-        TestResult.advection.HDentropy_static = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings);
+        x = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 0, advectionDoublings);
     catch ME
         prettyprintException(ME, 0, 'Stationary entropy wave test simulation failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
+    TestResult.advection.HDentropy_static = x;
 end
 
 if doEntropyAdvectMovingBG || doALLTheTests
-    SaveManager.logPrint('Testing convected entropy wave in 1D.');
+    SaveManager.logPrint('Testing convected entropy wave in 1D.\n');
     try
-        TestResult.advection.HDentropy_moving = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 1.178, advectionDoublings);
+        x = tsAdvection('entropy',[baseResolution 1 1], [1 0 0], [0 0 0], 1.178, advectionDoublings);
     catch ME
         prettyprintException(ME, 0, 'Convected entropy wave test simulation failed.\n');
         x = 'FAILED';
         exceptionList{end+1} = ME;
     end
+    TestResult.advection.HDentropy_moving = x;
 end
 
 %--- Test the dusty wave solution ---%
-if doDustyWaveStaticBG || doALLTheTests
-    SaveManager.logPrint('Testing dustywave with static BG\n');
+if doDustyWaveStaticBG
+    SaveManager.logPrint('Testing dustywave with static BG.\n');
     try
         x = tsDustywave([baseResolution 1 1], advectionDoublings, .1, realtimePictures, fm);
         y = tsDustywave([baseResolution 1 1], advectionDoublings, 1, realtimePictures, fm);
         z = tsDustywave([baseResolution 1 1], advectionDoublings, 25, realtimePictures, fm);
     catch ME
         prettyprintException(ME, 0, 'Dustywave test failed.\n');
-        x = 'FAILED';
+        x = 'FAILED'; y = 'FAILED'; z = 'FAILED';
         exceptionList{end+1} = ME;
     end
     TestResult.advection.dustywave_k0p1 = x;
@@ -151,8 +163,8 @@ if doDustyWaveStaticBG || doALLTheTests
 end
 
 %--- Run an Einfeldt double rarefaction test at the critical parameter ---%
-if doEinfeldtTests || doALLTheTests
-    SaveManager.logPrint('Testing convergence of Einfeldt tube');
+if doEinfeldtTests
+    SaveManager.logPrint('Testing convergence of Einfeldt tube.\n');
     try
         x = tsEinfeldt(baseResolution, 1.4, 4, einfeldtDoublings, realtimePictures, fm);
     catch ME
@@ -165,8 +177,8 @@ if doEinfeldtTests || doALLTheTests
 end
 
 %--- Test the Sod shock tube for basic shock-capturingness ---%
-if doSodTubeTests || doALLTheTests
-    SaveManager.logPrint('Testing convergence of Sod tube');
+if doSodTubeTests
+    SaveManager.logPrint('Testing convergence of Sod tube.\n');
     try
         x = tsSod(baseResolution, 1, sodDoublings, realtimePictures, fm);
     catch ME
@@ -179,8 +191,8 @@ if doSodTubeTests || doALLTheTests
     if mpi_amirank0(); disp('Results for Sod tube refinement:'); disp(x); end
 end
 
-if doNohTubeTests || doALLTheTests
-    SaveManager.logPrint('Testing convergence of Noh tube');
+if doNohTubeTests
+    SaveManager.logPrint('Testing convergence of Noh tube.\n');
     try
         x = tsNohtube(baseResolution, nohDoublings, realtimePictures, fm);
     catch ME
@@ -193,8 +205,8 @@ if doNohTubeTests || doALLTheTests
     if mpi_amirank0(); disp('Results for Noh tube refinement:'); disp(x); end
 end
 
-if doCentrifugeTests || doALLTheTests
-    SaveManager.logPrint('Testing centrifuge equilibrium-maintainence.');
+if doCentrifugeTests
+    SaveManager.logPrint('Testing centrifuge equilibrium-maintainence.\n');
     try
         x = tsCentrifuge([baseResolution baseResolution 1], 1.5, centrifugeDoublings, realtimePictures, fm);
     catch ME
@@ -208,8 +220,8 @@ if doCentrifugeTests || doALLTheTests
     % FIXME: Run a centrifuge with a rotating frame term!
 end
 
-if doDoubleBlastTests || doALLTheTests
-   SaveManager.logPrint('Performing refinement test on WC1984 double-blast');
+if doDoubleBlastTests
+   SaveManager.logPrint('Performing refinement test on WC1984 double-blast.\n');
    try
        x = tsDoubleBlast([baseResolution 1 1], doubleblastDoublings, realtimePictures, fm);
    catch ME
@@ -223,8 +235,8 @@ if doDoubleBlastTests || doALLTheTests
    
 end
 
-if doDustyBoxes || doALLTheTests
-   SaveManager.logPrint('Performing temporal refinement test on spatially uniform dusty boxes');
+if doDustyBoxes
+   SaveManager.logPrint('Performing temporal refinement test on spatially uniform dusty boxes.\n');
    try
        x = tsDustybox(baseResolution, 5/3, .01, dustyBoxDoublings, realtimePictures, fm);
    catch ME
@@ -265,9 +277,9 @@ end
 % Run OTV at moderate resolution, compare difference blah blah blah
 
 %%% 3D tests
-if doSedovTests || doALLTheTests
+if doSedov2DTests
     if ~isempty(sedov2D_scales)
-    SaveManager.logPrint('Testing 2D Sedov-Taylor explosion');
+    SaveManager.logPrint('Testing 2D Sedov-Taylor explosion.\n');
         try
             x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures, fm);
         catch ME
@@ -278,9 +290,11 @@ if doSedovTests || doALLTheTests
         TestResult.sedov2d = x;
     if mpi_amirank0(); disp('Results for 2D (cylindrical) Sedov-Taylor explosion:'); disp(x); end
     end
+end
 
+if doSedov3DTests
     if ~isempty(sedov3D_scales)
-        SaveManager.logPrint('Testing 3D Sedov-Taylor explosion');
+        SaveManager.logPrint('Testing 3D Sedov-Taylor explosion.\n');
         try
             x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures, fm);
         catch ME
@@ -296,11 +310,8 @@ end
 
 endSimulationsTime = clock();
 
-TestResult.einfeldt.L1
-TestResult.einfeldt.L2
-
 %%%%%
-% Test standing shocks, HD and MHD, 1/2/3 dimensional
+% Test standing shocks, HD and MHD, 1/2/3 dimensional?
 
 if mpi_amirank0()
     disp('========================================');

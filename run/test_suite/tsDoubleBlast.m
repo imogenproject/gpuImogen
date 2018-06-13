@@ -54,6 +54,7 @@ result.paths={};
 
 outdirs = cell(doublings,1);
 
+% Run the actual simulations in parallel
 for N = 1:doublings
     % Run test
     disp(['Running at resolution: ',mat2str(grid)]);
@@ -62,14 +63,15 @@ for N = 1:doublings
     outdirs{N}   = imogen(icfile);
     
     grid(1) = grid(1)*2;
+    enforceConsistentView(outdirs{N});
 end
 
+% Perform the analysis in serial
+% It's a few tens of thousands of cells at the absolute most
 if mpi_amirank0()
-
     rhos = cell(doublings,1);
 
     for N = 1:doublings;
-        enforceConsistentView(outdirs{N});
         S = SavefilePortal(outdirs{N});
         S.setParallelMode(0); 
 

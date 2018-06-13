@@ -1,11 +1,8 @@
-function autopsy = AdvectionAnalysis(directory, runParallel);
-
-dir0 = pwd();
-cd(directory);
-load('SimInitializer_rank0.mat','IC');
-cd(dir0);
+function autopsy = SonicAdvectionAnalysis(directory, runParallel)
 
 S = SavefilePortal(directory);
+
+IC = S.getInitialConditions();
 
 % If called by Imogen, this will be true (such that the parallel process can run in parallel)
 % If the savefile portal's parallel switch is flipped on, loaded frames are only this rank's
@@ -20,29 +17,28 @@ Kvec = IC.ini.pWaveK;
 Kmag = norm(Kvec);
 Khat = Kvec / Kmag;
 
-% Compute displacments of a fine grid of characteristic amplitudes
-erange = IC.ini.amplitude*(-1.0001:.0001:1.0001)*IC.ini.pDensity;
-
 c0 = sqrt(IC.ini.gamma * IC.ini.pPressure / IC.ini.pDensity);
 
 % Calculate the initial phases we'll use to project the result onto the
 % full simulation grid
-geo = GeometryManager(IC.ini.geometry.globalDomainRez);
-geo.makeBoxSize(1); % fixme hack we should get this from the savefile portal
+%geo = GeometryManager(IC.ini.geometry.globalDomainRez, [1 1 1]);
+geo = GeometryManager(IC.ini.geometry);
+
+%geo.makeBoxSize(1); % fixme hack we should get this from the savefile portal
 % not assume it
-geo.makeBoxOriginCoord([-.5 -.5 -.5]);
+%geo.makeBoxOriginCoord([-.5 -.5 -.5]);
 
 [xv, yv, zv] = geo.ndgridSetIJK('pos');
 KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 
 % Calculate the linear factor in displacement
 machParallel = IC.ini.backgroundMach' * Khat;
-machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
+%machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
 % Output vars...[]
 qq = zeros([S.numFrames() 1]);
 rhoerr_L1 = qq; rhoerr_L2 = qq;
-velerr_L1 = qq; velerr_L2 = qq;
+%velerr_L1 = qq; velerr_L2 = qq;
 frameT = qq;
 
 % Since we know the initial function is a sine, write down the critical
@@ -56,7 +52,7 @@ for N = 1:S.numFrames()
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
     t = sum(F.time.history) * norm(IC.ini.pWavenumber);
     
-    % Compute the displacement of a reference wave through circular BCs 
+    % Compute the displacement of a reference characteristic packet
     % Parameterized by original phase
     rng = 0:.0001:.9999;
     if strcmp(IC.ini.waveType, 'sonic')
@@ -98,6 +94,7 @@ autopsy.rhoL2 = rhoerr_L2;
 
 if mpi_amirank0()
     cd(directory);
+    dir0 = pwd();
     save('analyzer_results.mat','autopsy');
     cd(dir0);
 end

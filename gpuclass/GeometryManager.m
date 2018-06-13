@@ -71,6 +71,12 @@ classdef GeometryManager < handle
             obj.context  = parInfo.context;
             obj.topology = parInfo.topology;
             
+            % Accept a serialized self representation and shortcut to the deserializer
+            if isa(globalResolution, 'struct')
+                obj.deserialize(globalResolution);
+                return;
+            end
+            
             if nargin < 1
                 warning('GeometryManager received no resolution: going with 512x512x1; Call geo.setup([nx ny nz]) to change.');
                 globalResolution = [512 512 1];
@@ -128,6 +134,7 @@ classdef GeometryManager < handle
                 end
             end
             dblhalo = 2*obj.haloAmt;
+            obj.circularBCs
             
             obj.globalDomainRez = global_size;
             obj.globalDomainRezPlusHalos   = ...
