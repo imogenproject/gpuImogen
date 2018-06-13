@@ -6,7 +6,7 @@ else
     load q;
     x = TestResult.einfeldt;
 end
-q0 = 6
+q0 = 6;
 
 figure(q0); hold on;
 figure(q0+1); hold on;

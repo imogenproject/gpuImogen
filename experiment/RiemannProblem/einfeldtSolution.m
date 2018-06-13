@@ -1,4 +1,4 @@
-function [rho v P] = einfeldtSolution(x, rho0, v0, P0, gamma, t)
+function [rho, v, P] = einfeldtSolution(x, rho0, v0, P0, gamma, t)
 % [rho v P] = einfeldtSolution(nx, rho0, v0, P0, gamma, t) generates the analytic solution of the Einfeldt
 % problem consisting of Uleft = [rho0, -v0, P0] for (x < 0, t=0) and
 %                      Uright = [rho0, +v0, P0] for (x > 0, t=0)
@@ -26,7 +26,7 @@ mach = v0 / c;
 % Determines which branch of solutions to use
 supercritical = (mach > 2/(gamma-1));
 
-if ~supercritical;
+if ~supercritical
     % The retreat speed is low enough that adiabatic decompression can push the fluid from v0 down to v=0
     % And there is a stationary region centered on x=0
     
@@ -47,12 +47,12 @@ if ~supercritical;
     
     rho = zeros(size(x));
     v = zeros(size(x));
-    P = zeros(size(x));
+    %P = zeros(size(x));
     
     % Beyond right tail, initial state holds
     rho(set5) = rho0;
     v(set5)   = v0;
-    P(set5)   = P0;
+    %P(set5)   = P0;
     
     % Right rarefaction fan solution
     xtilde = x(set4) - v0*t;
@@ -78,7 +78,7 @@ if ~supercritical;
     
     rho(set1) = rho0;
     v(set1)   = -v0;
-    P(set1)   = P0;
+    %P(set1)   = P0;
     
     P = polyK*rho.^gamma;
     
@@ -88,7 +88,7 @@ else
 
     % Boundary of nontrival region
     xHead = (mach+1)*c*t;
-    tHead = t;
+    %tHead = t;
     
     inside = (abs(x) < xHead);
 

@@ -59,7 +59,7 @@ classdef RiemannProblemInitializer < Initializer
     %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function orientate(self, yaw, pitch, roll)
-            if nargin == 3; % All angular transforms given
+            if nargin == 3 % All angular transforms given
                 self.pOctantRotation = [yaw(1), pitch(1), roll(1)];
             else
                 self.pOctantRotation = [0 0 0];
@@ -133,7 +133,7 @@ classdef RiemannProblemInitializer < Initializer
                 c0 = sqrt(gam);
                 left = [1 -c0*mach(1) 0 0 1];
                 right= [1  c0*mach(1) 0 0 1];
-                if numel(mach) >= 2;
+                if numel(mach) >= 2
                     left(3) = mach(2)*c0;
                     right(3)= mach(2)*c0;
                 end
@@ -170,39 +170,39 @@ classdef RiemannProblemInitializer < Initializer
         end
         
         function half(self, n, state)
-            switch n;
-                case 1;
+            switch n
+                case 1
                     self.octant(1, state);
                     self.octant(3, state);
                     self.octant(5, state);
                     self.octant(7, state);
-                case 2;
+                case 2
                     self.octant(2, state);
                     self.octant(4, state);
                     self.octant(6, state);
                     self.octant(8, state);
-                otherwise;
+                otherwise
                     warning('invalid half.');
             end
         end
         
         function quadrant(self, n, state)
-            switch n;
-                case 1;
+            switch n
+                case 1
                     self.octant(1, state);
                     self.octant(5, state);
-                case 2;
+                case 2
                     self.octant(2, state);
                     self.octant(6, state);
-                case 3;
+                case 3
                     self.octant(3, state);
                     self.octant(7, state);
-                case 4;
+                case 4
                     self.octant(4, state);
                     self.octant(8, state);
-                otherwise;
+                otherwise
                     warning('Invalid quadrant.');
-            end;
+            end
         end
         
         % OCTANT DEFINITIONS:
@@ -217,19 +217,6 @@ classdef RiemannProblemInitializer < Initializer
         function octant(self, n, state)
             if self.stateIsPhysical(state) && (n >= 1) && (n <= 8)
                 self.pOctantState{n} = state;
-            end
-        end
-        
-        function tf = isOct(self, octant, x, y, z);
-            switch octant;
-                case 1; tf = (x >= 0) & (y >= 0) & (z >= 0);
-                case 2; tf = (x <  0) & (y >= 0) & (z >= 0);
-                case 3; tf = (x >= 0) & (y <  0) & (z >= 0);
-                case 4; tf = (x <  0) & (y <  0) & (z >= 0);
-                case 5; tf = (x >= 0) & (y >= 0) & (z <  0);
-                case 6; tf = (x <  0) & (y >= 0) & (z <  0);
-                case 7; tf = (x >= 0) & (y <  0) & (z <  0);
-                case 8; tf = (x <  0) & (y <  0) & (z <  0);
             end
         end
         
@@ -283,7 +270,7 @@ classdef RiemannProblemInitializer < Initializer
             px = 1.0*mass;
             py = 1.0*mass;
             pz = 1.0*mass;
-            for oh = 1:8;
+            for oh = 1:8
                 psi = obj.pOctantState{oh};
                 
                 t = obj.isOct(oh, U, V, W);
@@ -315,10 +302,23 @@ classdef RiemannProblemInitializer < Initializer
             
             if numel(state) ~= 5; tf = false; else
                 tf = true;
-                if state(1) <= 0; tf = false; end;
-                if state(5) <= 0; tf = false; end;
+                if state(1) <= 0; tf = false; end
+                if state(5) <= 0; tf = false; end
             end
             
+        end
+        
+        function tf = isOct(octant, x, y, z)
+            switch octant
+                case 1; tf = (x >= 0) & (y >= 0) & (z >= 0);
+                case 2; tf = (x <  0) & (y >= 0) & (z >= 0);
+                case 3; tf = (x >= 0) & (y <  0) & (z >= 0);
+                case 4; tf = (x <  0) & (y <  0) & (z >= 0);
+                case 5; tf = (x >= 0) & (y >= 0) & (z <  0);
+                case 6; tf = (x <  0) & (y >= 0) & (z <  0);
+                case 7; tf = (x >= 0) & (y <  0) & (z <  0);
+                case 8; tf = (x <  0) & (y <  0) & (z <  0);
+            end
         end
         
     end
