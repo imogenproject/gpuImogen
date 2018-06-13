@@ -1,9 +1,9 @@
-function frontX = trackFront(mass, x)
+function frontX = trackFront2(mass, x)
 % Given a saveframe from Imogen, Identifies the shock's position.
 
 % Take dRho/dx and find the indices of the max
 d = diff(mass, 1, 1);
-[dRho_dx ind] = max(d, [], 1);
+[dRho_dx, ind] = max(d, [], 1);
 
 halfval = (mass(end,1,1) + mass(1,1,1))/2;
 

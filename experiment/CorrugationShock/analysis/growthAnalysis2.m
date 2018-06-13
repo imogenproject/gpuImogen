@@ -9,7 +9,7 @@ if nargin < 4
     inBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
     range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
     timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt hit enter): ');
-    if timeNormalization == 0; timeNormalization = 1; end;
+    if timeNormalization == 0; timeNormalization = 1; end
 end
 
 ANALYSIS = [];
@@ -24,7 +24,7 @@ if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
 range = removeNonexistantEntries(inBasename, range);
 maxFrameno = max(range);
 
-if nargin == 4; timeNormalization = 1; end;
+if nargin == 4; timeNormalization = 1; end
 
 % Store this to enable the analysis routine to extend a given analysis
 ANALYSIS.about.inBasename = inBasename;
@@ -60,18 +60,18 @@ for ITER = 1:numel(range)
         ANALYSIS.equil.B(1,:) = dataframe.magX(:,1,1)';
         ANALYSIS.equil.B(2,:) = dataframe.magY(:,1,1)';
 
-        xd = size(dataframe.mass,1);
-        xpre = round(xd/2 - xd/6):round(xd/2 - 6);
-        xpost = round(xd/2 + 6):round(xd/2 + xd/6);
+        %xd = size(dataframe.mass,1);
+        %xpre = round(xd/2 - xd/6):round(xd/2 - 6);
+        %xpost = round(xd/2 + 6):round(xd/2 + xd/6);
 
         ANALYSIS.gridXvals = cumsum(dataframe.dGrid{1}(:,1,1));
 
         if size(dataframe.mass,3) == 1; is2d = true; else; is2d = false; end
 
         ANALYSIS.kyValues   = (0:(ANALYSIS.nModes(1)-1))' * (2*pi/(size(dataframe.mass,2)*dataframe.dGrid{2}));
-        ANALYSIS.kyWavenums =  0:(ANALYSIS.nModes(1)-1)';
+        ANALYSIS.kyWavenums = (0:(ANALYSIS.nModes(1)-1))';
         ANALYSIS.kzValues   = (0:(ANALYSIS.nModes(2)-1))' * (2*pi/(size(dataframe.mass,3)*dataframe.dGrid{3}));
-        ANALYSIS.kzWavenums =  0:(ANALYSIS.nModes(2)-1)';
+        ANALYSIS.kzWavenums = (0:(ANALYSIS.nModes(2)-1))';
     end
 
     xd = size(dataframe.mass,1);
@@ -168,35 +168,35 @@ ANALYSIS.linearFrames = linearFrames;
 
 fprintf('\nAnalyzing shock front (eta)...\n');
 
-[growthrates growresidual phaserates phaseresidual] = analyzeFront(ANALYSIS.front.FFT, ANALYSIS.frameTimes, linearFrames);
+[growthrates, growresidual, phaserates, phaseresidual] = analyzeFront(ANALYSIS.front.FFT, ANALYSIS.frameTimes, linearFrames);
 ANALYSIS.linear.omega = phaserates + 1i*growthrates;
 ANALYSIS.linear.omegaResidual = phaseresidual + 1i*growresidual;
 
 fprintf('kx/w from post drho: ');
-[ANALYSIS.post.drhoKx ANALYSIS.omega_fromdrho2] = analyzePerturbedQ(ANALYSIS.post.drho, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.post.drhoKx, ANALYSIS.omega_fromdrho2] = analyzePerturbedQ(ANALYSIS.post.drho, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
 fprintf('kx/w from post dv: ');
-[ANALYSIS.post.dvxKx ANALYSIS.omega_fromdvx2]   = analyzePerturbedQ(ANALYSIS.post.dvx, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.post.dvyKx ANALYSIS.omega_fromdvy2]   = analyzePerturbedQ(ANALYSIS.post.dvy, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.post.dvxKx, ANALYSIS.omega_fromdvx2]   = analyzePerturbedQ(ANALYSIS.post.dvx, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.post.dvyKx, ANALYSIS.omega_fromdvy2]   = analyzePerturbedQ(ANALYSIS.post.dvy, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
 fprintf('kx/w from post db: ');
-[ANALYSIS.post.dbxKx ANALYSIS.omega_fromdbx2]   = analyzePerturbedQ(ANALYSIS.post.dbx, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.post.dbyKx ANALYSIS.omega_fromdby2]   = analyzePerturbedQ(ANALYSIS.post.dby, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.post.dbxKx, ANALYSIS.omega_fromdbx2]   = analyzePerturbedQ(ANALYSIS.post.dbx, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.post.dbyKx, ANALYSIS.omega_fromdby2]   = analyzePerturbedQ(ANALYSIS.post.dby, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
 
 if is2d == 0
     fprintf('kx/w from dvz/dbz: ');
-    [ANALYSIS.post.dvzKx ANALYSIS.omega_fromdvz2] = analyzePerturbedQ(ANALYSIS.post.dvz, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
-    [ANALYSIS.post.dbzKx ANALYSIS.omega_fromdbz2] = analyzePerturbedQ(ANALYSIS.post.dbz, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+    [ANALYSIS.post.dvzKx, ANALYSIS.omega_fromdvz2] = analyzePerturbedQ(ANALYSIS.post.dvz, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
+    [ANALYSIS.post.dbzKx, ANALYSIS.omega_fromdbz2] = analyzePerturbedQ(ANALYSIS.post.dbz, ANALYSIS.post.X, ANALYSIS.frameTimes, 1e-5);
 end
 
 fprintf('kx/w from perturbed pre: ');
-[ANALYSIS.pre.drhoKx ANALYSIS.omega_fromdrho1] = analyzePerturbedQ(ANALYSIS.pre.drho, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.pre.dvxKx ANALYSIS.omega_fromdvx1]   = analyzePerturbedQ(ANALYSIS.pre.dvx, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.pre.dvyKx ANALYSIS.omega_fromdvy1]   = analyzePerturbedQ(ANALYSIS.pre.dvy, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.pre.dbxKx ANALYSIS.omega_fromdbx1]   = analyzePerturbedQ(ANALYSIS.pre.dbx, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
-[ANALYSIS.pre.dbyKx ANALYSIS.omega_fromdby1]   = analyzePerturbedQ(ANALYSIS.pre.dby, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.pre.drhoKx, ANALYSIS.omega_fromdrho1] = analyzePerturbedQ(ANALYSIS.pre.drho, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.pre.dvxKx, ANALYSIS.omega_fromdvx1]   = analyzePerturbedQ(ANALYSIS.pre.dvx, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.pre.dvyKx, ANALYSIS.omega_fromdvy1]   = analyzePerturbedQ(ANALYSIS.pre.dvy, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.pre.dbxKx, ANALYSIS.omega_fromdbx1]   = analyzePerturbedQ(ANALYSIS.pre.dbx, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+[ANALYSIS.pre.dbyKx, ANALYSIS.omega_fromdby1]   = analyzePerturbedQ(ANALYSIS.pre.dby, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
 
 if is2d == 0
-    [ANALYSIS.pre.dvzKx ANALYSIS.omega_fromdvz2] = analyzePerturbedQ(ANALYSIS.pre.dvz, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
-    [ANALYSIS.pre.dbzKx ANALYSIS.omega_fromdbz2] = analyzePerturbedQ(ANALYSIS.pre.dbz, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+    [ANALYSIS.pre.dvzKx, ANALYSIS.omega_fromdvz2] = analyzePerturbedQ(ANALYSIS.pre.dvz, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
+    [ANALYSIS.pre.dbzKx, ANALYSIS.omega_fromdbz2] = analyzePerturbedQ(ANALYSIS.pre.dbz, ANALYSIS.pre.X, ANALYSIS.frameTimes, 1e-5);
 end
 
 
@@ -209,15 +209,15 @@ existrange = [];
 for ITER = 1:numel(range)
     ftype = util_FindSegmentFile(inBasename, 0, range(ITER));
 
-    if ftype > 0; existrange(end+1) = ITER; end;
+    if ftype > 0; existrange(end+1) = ITER; end
 end
 
 newrange = range(existrange);
-if numel(newrange) ~= numel(range);
+if numel(newrange) ~= numel(range)
     fprintf('WARNING: Removed %i entries that could not be opened from list.\n', numel(range)-numel(newrange));
 end
 
-if numel(newrange) == 0;
+if numel(newrange) == 0
    error('UNRECOVERABLE: No files indicated existed. Perhaps remove trailing _ from base name?\n'); 
 end
 

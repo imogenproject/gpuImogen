@@ -17,7 +17,7 @@ if geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     A = { P1 ./ rho + G1.*gravon, P2 ./ rho + G2.*gravon, P3 ./ rho + G3.*gravon};
     
     vphi = fluid.mom(2).array ./ rho;
-    if geometry.frameRotationomega ~= 0
+    if geometry.frameRotationOmega ~= 0
         vphi = vphi + radius * geometry.frameRotationOmega;
     end
     

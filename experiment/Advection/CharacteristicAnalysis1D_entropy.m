@@ -6,9 +6,9 @@ function rho = CharacteristicAnalysis1D_entropy(x0, periodicity, rho0, c0, M0, g
 
 e = e / rho0; % normalize
 
-origShape = size(rho0);
+%origShape = size(rho0);
 
-if numel(x0) == 1;
+if numel(x0) == 1
 	x0 = x0 * (1:size(e));
 	disp('Scalar x0 input: Using x0*(1:numel(rho0)) as initial positions');
 end
@@ -29,7 +29,7 @@ xmap = mod(x1, periodicity);
 
 % Any appearance of disordered coordinates is just the periodic remap
 % and easily removed.
-[xmap ind] = sort(xmap);
+[xmap, ind] = sort(xmap);
 rho1 = rho1(ind);
 
 rho = interp1(xmap, rho1, x0,'pchip','extrap');

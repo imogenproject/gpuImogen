@@ -157,9 +157,7 @@ methods (Access = public)
     end
 
     function help(obj)
-
-    fprintf('This is the Imogen corrugation shock analyzer.\n\nWhen you created me, I took you through gathering a set of files; Access that again with selectFileset().\nTo gather the fourier-space data, run performFourierAnalysis().\nTo have me try to automagically fit all the wavevectors and growth rates, run curveFit_automatic().\nI''m bad at determining what data''s actually valid; run curveFit_manual() on every mode you intend to actually believe, if only to check.\n\nYou can save me using "save(''filename.mat'',''myname'')" at any time and load me back the same way.\n');
-
+        fprintf('This is the Imogen corrugation shock analyzer.\n\nWhen you created me, I took you through gathering a set of files; Access that again with selectFileset().\nTo gather the fourier-space data, run performFourierAnalysis().\nTo have me try to automagically fit all the wavevectors and growth rates, run curveFit_automatic().\nI''m bad at determining what data''s actually valid; run curveFit_manual() on every mode you intend to actually believe, if only to check.\n\nYou can save me using "save(''filename.mat'',''myname'')" at any time and load me back the same way.\n');
     end
 
     function selectFileset(obj, basename, framerange)
@@ -206,7 +204,7 @@ methods (Access = public)
             if ~isa(dataframe, 'struct'); continue; end
             ITER = ITER + 1;
 
-            if verbose; 
+            if verbose
                 fprintf('*');
                 if mod(ITER, 50) == 0; fprintf('\n'); end
             end
@@ -242,9 +240,9 @@ methods (Access = public)
                 if size(dataframe.mass,3) == 1; obj.is2d = true; else; obj.is2d = false; end
 
                 obj.kyValues   = (0:(obj.nModes(1)-1))' * (2*pi/(size(dataframe.mass,2)*dataframe.dGrid{2}));
-                obj.kyWavenums =  0:(obj.nModes(1)-1)';
+                obj.kyWavenums = (0:(obj.nModes(1)-1))';
                 obj.kzValues   = (0:(obj.nModes(2)-1))' * (2*pi/(size(dataframe.mass,3)*dataframe.dGrid{3}));
-                obj.kzWavenums =  0:(obj.nModes(2)-1)';
+                obj.kzWavenums = (0:(obj.nModes(2)-1))';
             end
 
             xd = size(dataframe.mass,1);
@@ -346,43 +344,43 @@ methods (Access = public)
 
 %        obj.lastLinearFrame = util_LoadWholeFrame(obj.inputBasename, obj.inputPadlength, obj.inputFrameRange(obj.linearFrames(end)) );
 
-        linearFrames = obj.linearFrames;
+        linFrames = obj.linearFrames;
         if verbose; fprintf('\nAnalyzing shock front (eta)\n'); end
 
-        [growthrates growresidual phaserates phaseresidual] = analyzeFront(obj.front.FFT, obj.frameTimes, linearFrames);
+        [growthrates, growresidual, phaserates, phaseresidual] = analyzeFront(obj.front.FFT, obj.frameTimes, linFrames);
         obj.omega.front = phaserates + 1i*growthrates;
         obj.omega.frontResidual = phaseresidual + 1i*growresidual;
 
         if verbose; fprintf('kx/w from post drho.\n'); end
-        [obj.post.drhoKx obj.omega.fromdrho2 obj.post.drhoK0 obj.omega.drho2_0] = analyzePerturbedQ(obj.post.drho, obj.post.X, obj.frameTimes, linearFrames,'post');
+        [obj.post.drhoKx, obj.omega.fromdrho2, obj.post.drhoK0, obj.omega.drho2_0] = analyzePerturbedQ(obj.post.drho, obj.post.X, obj.frameTimes, linFrames,'post');
         if verbose; fprintf('kx/w from post dv\n'); end
-        [obj.post.dvxKx obj.omega.fromdvx2 obj.post.dvxK0 obj.omega.dvx2_0]   = analyzePerturbedQ(obj.post.dvx, obj.post.X, obj.frameTimes, linearFrames,'post');
-        [obj.post.dvyKx obj.omega.fromdvy2 obj.post.dvyK0 obj.omega.dvy2_0]   = analyzePerturbedQ(obj.post.dvy, obj.post.X, obj.frameTimes, linearFrames,'post');
+        [obj.post.dvxKx, obj.omega.fromdvx2, obj.post.dvxK0, obj.omega.dvx2_0]   = analyzePerturbedQ(obj.post.dvx, obj.post.X, obj.frameTimes, linFrames,'post');
+        [obj.post.dvyKx, obj.omega.fromdvy2, obj.post.dvyK0, obj.omega.dvy2_0]   = analyzePerturbedQ(obj.post.dvy, obj.post.X, obj.frameTimes, linFrames,'post');
         if verbose; fprintf('kx/w from post db\n'); end
-        [obj.post.dbxKx obj.omega.fromdbx2 obj.post.dbxK0 obj.omega.dbx2_0]   = analyzePerturbedQ(obj.post.dbx, obj.post.X, obj.frameTimes, linearFrames,'post');
-        [obj.post.dbyKx obj.omega.fromdby2 obj.post.dbyK0 obj.omega.dby2_0]   = analyzePerturbedQ(obj.post.dby, obj.post.X, obj.frameTimes, linearFrames,'post');
+        [obj.post.dbxKx, obj.omega.fromdbx2, obj.post.dbxK0, obj.omega.dbx2_0]   = analyzePerturbedQ(obj.post.dbx, obj.post.X, obj.frameTimes, linFrames,'post');
+        [obj.post.dbyKx, obj.omega.fromdby2, obj.post.dbyK0, obj.omega.dby2_0]   = analyzePerturbedQ(obj.post.dby, obj.post.X, obj.frameTimes, linFrames,'post');
 
         if obj.is2d == 0
             if verbose; fprintf('kx/w from dvz/dbz\n'); end
-            [obj.post.dvzKx obj.omega.fromdvz2] = analyzePerturbedQ(obj.post.dvz, obj.post.X, obj.frameTimes, linearFrames,'post');
-            [obj.post.dbzKx obj.omega.fromdbz2] = analyzePerturbedQ(obj.post.dbz, obj.post.X, obj.frameTimes, linearFrames,'post');
+            [obj.post.dvzKx, obj.omega.fromdvz2] = analyzePerturbedQ(obj.post.dvz, obj.post.X, obj.frameTimes, linFrames,'post');
+            [obj.post.dbzKx, obj.omega.fromdbz2] = analyzePerturbedQ(obj.post.dbz, obj.post.X, obj.frameTimes, linFrames,'post');
         end
 
         if verbose; fprintf('kx/w from perturbed pre\n'); end
-        [obj.pre.drhoKx obj.omega.fromdrho1 obj.pre.drhoK0 obj.omega.drho1_0] = analyzePerturbedQ(obj.pre.drho, obj.pre.X, obj.frameTimes, linearFrames,'pre');
-        [obj.pre.dvxKx obj.omega.fromdvx1   obj.pre.dvxK0 obj.omega.dvx1_0] = analyzePerturbedQ(obj.pre.dvx, obj.pre.X, obj.frameTimes, linearFrames,'pre');
-        [obj.pre.dvyKx obj.omega.fromdvy1   obj.pre.dvyK0 obj.omega.dvy1_0] = analyzePerturbedQ(obj.pre.dvy, obj.pre.X, obj.frameTimes, linearFrames,'pre');
-        [obj.pre.dbxKx obj.omega.fromdbx1   obj.pre.dbxK0 obj.omega.dbx1_0] = analyzePerturbedQ(obj.pre.dbx, obj.pre.X, obj.frameTimes, linearFrames,'pre');
-        [obj.pre.dbyKx obj.omega.fromdby1   obj.pre.dbyK0 obj.omega.dby1_0] = analyzePerturbedQ(obj.pre.dby, obj.pre.X, obj.frameTimes, linearFrames,'pre');
+        [obj.pre.drhoKx, obj.omega.fromdrho1, obj.pre.drhoK0, obj.omega.drho1_0] = analyzePerturbedQ(obj.pre.drho, obj.pre.X, obj.frameTimes, linFrames,'pre');
+        [obj.pre.dvxKx, obj.omega.fromdvx1,   obj.pre.dvxK0, obj.omega.dvx1_0] = analyzePerturbedQ(obj.pre.dvx, obj.pre.X, obj.frameTimes, linFrames,'pre');
+        [obj.pre.dvyKx, obj.omega.fromdvy1,   obj.pre.dvyK0, obj.omega.dvy1_0] = analyzePerturbedQ(obj.pre.dvy, obj.pre.X, obj.frameTimes, linFrames,'pre');
+        [obj.pre.dbxKx, obj.omega.fromdbx1,   obj.pre.dbxK0, obj.omega.dbx1_0] = analyzePerturbedQ(obj.pre.dbx, obj.pre.X, obj.frameTimes, linFrames,'pre');
+        [obj.pre.dbyKx, obj.omega.fromdby1,   obj.pre.dbyK0, obj.omega.dby1_0] = analyzePerturbedQ(obj.pre.dby, obj.pre.X, obj.frameTimes, linFrames,'pre');
 
         if obj.is2d == 0
-            [obj.pre.dvzKx obj.omega.fromdvz2] = analyzePerturbedQ(obj.pre.dvz, obj.pre.X, obj.frameTimes, linearFrames,'pre');
-            [obj.pre.dbzKx obj.omega.fromdbz2] = analyzePerturbedQ(obj.pre.dbz, obj.pre.X, obj.frameTimes, linearFrames,'pre');
+            [obj.pre.dvzKx, obj.omega.fromdvz2] = analyzePerturbedQ(obj.pre.dvz, obj.pre.X, obj.frameTimes, linFrames,'pre');
+            [obj.pre.dbzKx, obj.omega.fromdbz2] = analyzePerturbedQ(obj.pre.dbz, obj.pre.X, obj.frameTimes, linFrames,'pre');
         end
 
     end
 
-    function perturbationTrack(obj, xsamplepre, xsamplepost);
+    function perturbationTrack(obj, xsamplepre, xsamplepost)
         sizetemp = size(obj.lastLinearFrame.mass);
         if numel(sizetemp) == 2; sizetemp(3) = 1; end
 
@@ -413,7 +411,7 @@ methods (Access = public)
     end
 
     function manualFrameLinearity(obj)
-        obj.frameLinearity(input('Input set of frames to be accepted as linear: ')) = 1
+        obj.frameLinearity(input('Input set of frames to be accepted as linear: ')) = 1;
         obj.frameLinearity = logical(obj.frameLinearity);
     end
 
@@ -456,7 +454,7 @@ methods (Access = public)
     end
 
     function manfit_setKW(obj, y, z, omega, kx, qty)
-        switch(qty);
+        switch(qty)
             case 1 ; obj.post.drhoKx(y,z) = kx(1,1); obj.omega.fromdrho2(y,z) = omega(1,1);
                      obj.post.dvxKx(y,z)  = kx(2,1); obj.omega.fromdvx2(y,z)  = omega(2,1);
                      obj.post.dvyKx(y,z)  = kx(3,1); obj.omega.fromdvy2(y,z)  = omega(3,1);
@@ -490,22 +488,22 @@ end
 
 methods (Access = protected)
 
-    function newframeranges = removeNonexistantEntries(obj, namebase, frameranges)
+    function newframeranges = removeNonexistantEntries(obj, basename, frameranges)
 
     existframeranges = [];
 
     for ITER = 1:numel(range)
-        ftype = util_FindSegmentFile(inBasename, 0, range(ITER));
+        ftype = util_FindSegmentFile(basename, 0, range(ITER));
 
-        if ftype > 0; existrange(end+1) = ITER; end;
+        if ftype > 0; existrange(end+1) = ITER; end
     end
 
         newframeranges = frameranges(existframeranges);
-        if numel(newframeranges) ~= numel(frameranges);
+        if numel(newframeranges) ~= numel(frameranges)
             fprintf('WARNING: Removed %i entries that could not be opened from list.\n', numel(frameranges)-numel(newframeranges));
         end
 
-        if numel(newframeranges) == 0;
+        if numel(newframeranges) == 0
             error('FATAL: No files indicated existed. Perhaps need to remove _ from base name?'); 
         end
 

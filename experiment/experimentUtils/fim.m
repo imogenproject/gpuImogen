@@ -26,7 +26,7 @@ fE  = y(xend);
   fppE = 1073741824*imag(64*(fcmp(3)+fcmp(2))-fcmp(1)-fcmp(4))/15;
 
 % Order of continuity we wish to have
-switch 3;
+switch 3
   case 0; c1 = 0; c2 = 0; c3 = 0;
   case 1; c1 = (fE-f(1))/w;
           c2 = 0; c3 = 0;

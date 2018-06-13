@@ -1,4 +1,4 @@
-function [R rho ener] = computeBonnerEbert(rho0, GAMMA, dr, rmax, k, rhobg)
+function [R, rho, ener] = computeBonnerEbert(rho0, GAMMA, dr, rmax, k, rhobg)
 % This function computes with extreme accuracy the mass distribution of any hydrostatic
 % self-gravitating isothermal gas sphere obeying an equation of state P = k rho^gamma, which
 % includes the ideal gas (gamma=1). It returns arrays of radii and distance.
@@ -29,8 +29,8 @@ end
 convergenceParameter = exp(.5*log(k/rho0) - 1)/(5*dr);
 
 fprintf('Convergence parameter: %g\n', convergenceParameter);
-if convergenceParameter < 1;
-    if convergenceParameter < .5;
+if convergenceParameter < 1
+    if convergenceParameter < .5
         fprintf('WARNING: Convergence parameter is < .5. Results will most likely be disastrous.\n');
     else
         fprintf('WARNING: Convergence parameter is < 1. Results are not trustworthy.\n');
@@ -46,20 +46,20 @@ theta = 2-GAMMA;
 alpha = beta * rho0^theta;
 
 for q = 1:6
-x      = q - 1;
-R(q)   = x*dr;
-
-% Second order accurate for small r, gauranteed right
-%rho(q) = rho0;
-%M(q) = 4*pi*R(q)^3/3;
-
-% Fourth order accurate for small r, gauranteed right
-%rho(q) = rho0 * (1 - (2/3)*alpha*R(q)^2);
-%M(q)   = 4*pi*rho0*(R(q)^3/3 - .2*alpha*R(q)^5);
-
-% Sixth  order accurate for small r, something fishy but it works
-rho(q) = rho0 * (1 - (2/3)*alpha*R(q)^2 + 4*(8/3)*(theta/12 - .05)*alpha^2*R(q)^4);
-M(q)   = 4*pi*rho0*(R(q)^3/3 - .2*alpha*R(q)^5 + (32/21)*(theta/12 - .05)*alpha^2*R(q)^7);
+    x      = q - 1;
+    R(q)   = x*dr;
+    
+    % Second order accurate for small r, gauranteed right
+    %rho(q) = rho0;
+    %M(q) = 4*pi*R(q)^3/3;
+    
+    % Fourth order accurate for small r, gauranteed right
+    %rho(q) = rho0 * (1 - (2/3)*alpha*R(q)^2);
+    %M(q)   = 4*pi*rho0*(R(q)^3/3 - .2*alpha*R(q)^5);
+    
+    % Sixth  order accurate for small r, something fishy but it works
+    rho(q) = rho0 * (1 - (2/3)*alpha*R(q)^2 + 4*(8/3)*(theta/12 - .05)*alpha^2*R(q)^4);
+    M(q)   = 4*pi*rho0*(R(q)^3/3 - .2*alpha*R(q)^5 + (32/21)*(theta/12 - .05)*alpha^2*R(q)^7);
 end
 
 %--- BEGIN NORMAL NUMERICAL INTEGRATION ---%

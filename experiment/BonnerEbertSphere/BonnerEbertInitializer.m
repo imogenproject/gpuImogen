@@ -101,8 +101,7 @@ classdef BonnerEbertInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [mass, mom, ener, mag, statics, potentialField] = calculateInitialConditions(obj)
-            
+        function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
             %--- Ensure that the grid dimensions are even. ---%
             %       Even grid size means that the star will be correctly placed in the center cell.
             for i=1:3
@@ -114,7 +113,7 @@ classdef BonnerEbertInitializer < Initializer
             
             % Numerically compute the hydrostatic density balance
             % Fine resolution appears important - 
-            [R RHO E]       = computeBonnerEbert(obj.rho0, obj.sphereGAMMA, ...
+            [R, RHO, E]       = computeBonnerEbert(obj.rho0, obj.sphereGAMMA, ...
                                             0.5*obj.sphereRmax / min(obj.grid), ...
                                             obj.sphereRmax, obj.sphereK, ...
                                             obj.rho0 * obj.pBgDensityCoeff);
@@ -140,10 +139,11 @@ classdef BonnerEbertInitializer < Initializer
                                 + 0.5*squish(sum(mom .* mom, 1)) ./ mass ...   % kinetic energy
                                 + 0.5*squish(sum(mag .* mag, 1));              % magnetic energy                    
       
-            fluid = obj.rhoMomEtotToFluid(mass, mom, ener);
+            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
 
             statics = [];
             potentialField = [];
+            selfGravity = []; % FIXME FAIL
         end
         
     end%PROTECTED

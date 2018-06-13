@@ -13,7 +13,7 @@ h = zeros(size(g));
 
 %parfor n = 1:numel(f);
 %    [f(n) g(n) h(n)]
-    [u v h]  = multiwaveFit(y, .01, [kre + 1i*kim, -1.8 - 10*1i], [1, .4]);
+    [u, v, h]  = multiwaveFit(y, .01, [kre + 1i*kim, -1.8 - 10*1i], [1, .4]);
 %    f(n) = u(1); f2(n) = u(2);
 %    g(n) = v(1); g2(n) = v(2);
 

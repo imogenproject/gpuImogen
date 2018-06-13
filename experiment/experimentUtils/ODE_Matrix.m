@@ -24,7 +24,7 @@ classdef ODE_Matrix < handle
     
 %===================================================================================================
     methods (Access = public) %                                                                     G E T / S E T  [M]
-	function me = ODE_Matrix(datafile,nouveau)
+	function me = ODE_Matrix(datafile, nouveau)
 	    if nargin == 1
 	        load(datafile); % Must contain a variable ML of the form given above for MatrixList
 		me.matrixList = ML;

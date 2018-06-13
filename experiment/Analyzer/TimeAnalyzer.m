@@ -30,16 +30,14 @@ methods % SET
 end
 
 methods (Access = public)
-    function object = TimeAnalysis();
+    function object = TimeAnalysis(self)
         object.nFrames = 0;
         object.is2d    = NaN;
 
         object.originalSrcDirectory = pwd();
     end
 
-    function help(obj)
-        fprintf('I am a TimeAnalyzer base class; I help sift through a directory full of Imogen savefiles and generate useful time series data. My basic functions are:\n\tselectFileset(basename, framerange) - select (interactively if I don''t get all 3) what frames to load\n\toutput = runAnonOnFrames(anonymous function) - return a cell array produced by passing dataframes in sequence to the anonymous function which may return whatever it pleases.\n\tsquashed = cellsToMatrix(cells) - takes cells from above and, if they are nice 2x2 matrices, returns a 3d matrix with time stacked in the 3rd dimension.\n\n');
-    end
+
 
     function selectFileset(obj, basename, framerange)
         if nargin ~= 4
@@ -88,22 +86,28 @@ methods (Access = protected)
         existframeranges = [];
 
         for ITER = 1:numel(range)
-            ftype = util_FindSegmentFile(inBasename, 0, range(ITER));
+            ftype = util_FindSegmentFile(namebase, 0, range(ITER));
 
-            if ftype > 0; existrange(end+1) = ITER; end;
+            if ftype > 0; existframeranges(end+1) = ITER; end
         end
 
         newframeranges = frameranges(existframeranges);
-        if numel(newframeranges) ~= numel(frameranges);
+        if numel(newframeranges) ~= numel(frameranges)
             fprintf('WARNING: Removed %i entries that could not be opened from list.\n', numel(frameranges)-numel(newframeranges));
         end
 
-        if numel(newframeranges) == 0;
+        if numel(newframeranges) == 0
             error('FATAL: No files indicated existed. Perhaps need to remove _ from base name?');
         end
 
     end
 
 end % protected methods;
+
+methods (Static = true)
+       function help()
+        fprintf('I am a TimeAnalyzer base class; I help sift through a directory full of Imogen savefiles and generate useful time series data. My basic functions are:\n\tselectFileset(basename, framerange) - select (interactively if I don''t get all 3) what frames to load\n\toutput = runAnonOnFrames(anonymous function) - return a cell array produced by passing dataframes in sequence to the anonymous function which may return whatever it pleases.\n\tsquashed = cellsToMatrix(cells) - takes cells from above and, if they are nice 2x2 matrices, returns a 3d matrix with time stacked in the 3rd dimension.\n\n');
+    end 
+end
 
 end % class

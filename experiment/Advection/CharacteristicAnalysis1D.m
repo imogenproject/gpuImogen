@@ -6,9 +6,9 @@ function rho = CharacteristicAnalysis1D(x0, periodicity, rho0, c0, M0, gamma, e,
 
 e = e / rho0; % normalize
 
-origShape = size(rho0);
+%origShape = size(rho0);
 
-if numel(x0) == 1;
+if numel(x0) == 1
 	x0 = x0 * (1:size(e));
 	disp('Scalar x0 input: Using x0*(1:numel(rho0)) as initial positions');
 end
@@ -29,7 +29,7 @@ x1 = x0 + c0*T.*((1+M0) + gp1*( (1+e).^(gm1/2) - 1 )/gm1);
 
 % fwd diffs
 de_FD = circshift(e,-1) - e;
-de_BD = circshift(de_FD,1);
+%de_BD = circshift(de_FD,1);
 dx_FD = circshift(x0,-1) - x0; dx_FD = mod(dx_FD, periodicity);
 dx_BD = circshift(dx_FD,1);
 % Extract b from the (a + bx + cx^2) Van Der Monde fit
@@ -52,7 +52,7 @@ xmap = mod(x1, periodicity);
 % Assuming we have not surpassed the critical time,
 % any appearance of disordered coordinates is just the periodic remap
 % and easily removed.
-[xmap ind] = sort(xmap);
+[xmap, ind] = sort(xmap);
 rho1 = rho1(ind);
 
 rho = interp1(xmap, rho1, x0,'pchip','extrap');

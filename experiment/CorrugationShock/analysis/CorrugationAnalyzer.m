@@ -67,7 +67,7 @@ classdef CorrugationAnalyzer < Analyzer
 % Initializes properties, overloads desired properties of Analyzer class.        
         function obj = CorrugationAnalyzer(filename)
             obj.pDataIndex = 1;
-            if (nargin > 0 && ~isempty(filename));
+            if (nargin > 0 && ~isempty(filename))
             	obj.fromFile(filename);
             else
             	obj.dimensions = '3D';
@@ -144,7 +144,7 @@ classdef CorrugationAnalyzer < Analyzer
             
             if nargin < 2 || isempty(visible);  visible = 'on'; 
             else
-                if (visible); visible = 'on'; else visible = 'off'; end
+                if (visible); visible = 'on'; else; visible = 'off'; end
             end
             
             width = 2;
@@ -245,7 +245,7 @@ classdef CorrugationAnalyzer < Analyzer
 %___________________________________________________________________________________________________ fromFile 
         function fromFile(obj, filename) 
             res = load(filename); 
-            if ~isfield(res,'corr'); 
+            if ~isfield(res,'corr')
                 error('Unable to load file. Data improperly saved.'); 
             end 
              

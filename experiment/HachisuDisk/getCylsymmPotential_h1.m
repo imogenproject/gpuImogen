@@ -13,7 +13,7 @@ subSel = (rho > 0);
 % X runs from 0 to (Nx-1) * h
 % Z runs from -Nz*h/2 to +Nz*h/2
 D = size(rho);
-[R Z] = ndgrid( (0:(D(1)-1))*dr, ((-D(2)/2 ):(D(2)/2 - 1))*dz + dz/2);
+[R, Z] = ndgrid( (0:(D(1)-1))*dr, ((-D(2)/2 ):(D(2)/2 - 1))*dz + dz/2);
 
 da = dr * dz;
 

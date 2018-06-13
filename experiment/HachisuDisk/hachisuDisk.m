@@ -27,7 +27,7 @@ dr = (a+padding) / gridres(1);
 dz = dr; % for now
 da = dr * dz;
 
-[R Z] = ndgrid((0:(gridres(1)-1))*dr, ((-gridres(2)/2+.5):(gridres(2)/2 -.5))*dz );
+[R, Z] = ndgrid((0:(gridres(1)-1))*dr, ((-gridres(2)/2+.5):(gridres(2)/2 -.5))*dz );
 
 indexA = round(.9/(1.1*dr));
 indexB = round((b+.1)/(1.1*dr));
@@ -76,7 +76,7 @@ hasConverged = 0;
 nIterations = 0;
 
 % --- Run the HSCF loop on the dimensionless system (rhomax = r_outer = G = 1)
-while hasConverged == 0;
+while hasConverged == 0
     %--- 1: Solve gravitational potential ---%
     phi = potSolver(rho, dr, dz, ellipticTable) + phiExtern * diskMass(rho, R, dr);
 
@@ -88,8 +88,8 @@ while hasConverged == 0;
     if strcmp(dtype,'spheroid')
         Phi_b = interp2(R', Z', phi', 0, b);
         Psi_b = omegaIntegral(0);
-    end;
-    if strcmp(dtype, 'torus');
+    end
+    if strcmp(dtype, 'torus')
         Phi_b = interp2(R', Z', phi', b, 0);
         Psi_b = omegaIntegral(a*b);
     end

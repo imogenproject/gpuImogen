@@ -183,7 +183,7 @@ methods (Access = public)
         lasthit = 0;
         
         % Determine array time-axis remap
-        for iter = 1:numel(obj.analyzedFrames);
+        for iter = 1:numel(obj.analyzedFrames)
             for iterB = (lasthit+1):numel(obj.setOfFrames)
                if obj.setOfFrames(iterB) == obj.analyzedFrames(iter); break; end 
             end
@@ -200,11 +200,11 @@ methods (Access = public)
 
         if obj.verbose; fprintf('%i *s (25/line):\n',numel(obj.setOfFrames)-numel(obj.analyzedFrames)); end
 
-        if numel(outcopy) == 0; % No pre-existing analysis; Just run the analyzer function on all elements
+        if numel(outcopy) == 0 % No pre-existing analysis; Just run the analyzer function on all elements
             tic;
-            for iter = 1:numel(outarray);
+            for iter = 1:numel(outarray)
 
-                if obj.verbose;
+                if obj.verbose
                     fprintf('*');
                    if mod(iter,25) == 0; fprintf('\n'); end
                 end
@@ -212,7 +212,7 @@ methods (Access = public)
                 dataframe = util_LoadWholeFrame(obj.inputBasename, obj.setOfFrames(iter));
 
                 % On first frame of new analysis, calculate the X/K vectors to convenientify things in the future.
-                if iter == 1;
+                if iter == 1
                     obj.frameX = (0:(size(dataframe.mass,1)-1))*dataframe.dGrid{1};
                     obj.frameY = (0:(size(dataframe.mass,2)-1))*dataframe.dGrid{2};
                     obj.frameZ = (0:(size(dataframe.mass,3)-1))*dataframe.dGrid{3};
@@ -236,15 +236,15 @@ methods (Access = public)
 
         % In one swoop copies existing time-slice analysis data to expanded arrays
         for FIELD = 1:numel(obj.analyzerFields)
-            u = size(getfield(obj, obj.analyzerFields{FIELD}));
+            u = size(obj.(obj.analyzerFields{FIELD}));
             v = u; v(1) = numel(obj.setOfFrames);
             newf = zeros(v);
 
             existset = {find(outarray)};
             for j = 2:numel(u); existset{j}=1:u(j); end
 
-            newf(existset{:}) = getfield(obj, obj.analyzerFields{FIELD});
-            setfield(obj, obj.analyzerFields{FIELD}, newf);
+            newf(existset{:}) = obj.(obj.analyzerFields{FIELD});
+            obj.(obj.analyzerFields{FIELD}) = newf;
         end
 
         % We now have outarray saying where to copy existing data (entry nonzero) and where
@@ -255,7 +255,7 @@ methods (Access = public)
             if outarray(iter) > 0; continue; end
             
             zf=zf+1;
-            if obj.verbose;
+            if obj.verbose
                 fprintf('*');
                 if mod(zf,25) == 0; fprintf('\n'); end
             end

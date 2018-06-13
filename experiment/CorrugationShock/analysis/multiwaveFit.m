@@ -1,4 +1,4 @@
-function [k a r] = multiwaveFit(q, dx, kguess, aguess)
+function [k, a, r] = multiwaveFit(q, dx, kguess, aguess)
 
 vec = mkVector(kguess, aguess);
 
@@ -26,7 +26,7 @@ for testloop = 1:6
 r = [r vec];
 end
 
-[k a] = unVector(vec);
+[k, a] = unVector(vec);
 
 %r = waveIntegral(q, dx, vec);
 
@@ -60,8 +60,8 @@ epsilon = 1e-6;
 
 H = zeros(numel(v));
 
-for j = (1:numel(v));
-for k = (j:numel(v));
+for j = (1:numel(v))
+for k = (j:numel(v))
     vp = v; vp(j) = vp(j) + epsilon; vp(k) = vp(k) + epsilon;
     f(1) = waveIntegral(q, dx, vp);
 
@@ -83,7 +83,7 @@ H = H / (4*epsilon^2);
 
 end
 
-function v = mkVector(k, a);
+function v = mkVector(k, a)
 
 if numel(k) ~= numel(a); error('Number of wavevectors and amplitudes not equal.'); end
 
@@ -94,7 +94,7 @@ for j = 1:numel(k)
    v(end+1) = imag(k(j));
 end
 
-for j = 1:numel(a);
+for j = 1:numel(a)
    v(end+1) = real(a(j));
    v(end+1) = imag(a(j));
 end
@@ -103,7 +103,7 @@ v = v(:);
 
 end
 
-function [k a] = unVector(v)
+function [k, a] = unVector(v)
 
 % The number of waves present = 1/4 the number of real parameters
 N = numel(v) / 4;
@@ -125,7 +125,7 @@ function ints = waveIntegral(q, dx, vec)
 % w: a scalar, the frequency
 % n: The number of waves to identify
 
-[k a] = unVector(vec);
+[k, a] = unVector(vec);
 n = numel(k);
 
 xvals = dx*(0:(numel(q)-1));

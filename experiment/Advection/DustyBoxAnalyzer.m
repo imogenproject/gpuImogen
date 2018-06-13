@@ -1,4 +1,4 @@
-classdef DustyBoxAnalyzer < LinkedListNode;
+classdef DustyBoxAnalyzer < LinkedListNode
     % Class annotation template for creating new classes.
     %___________________________________________________________________________________________________
     
@@ -51,27 +51,27 @@ classdef DustyBoxAnalyzer < LinkedListNode;
             self.muGas     = fluids(1).particleMu;
             self.muDust    = fluids(2).particleMu;
 
-            vGas  = [fluids(1).mom(1).array(6,1,1) fluids(1).mom(2).array(6,1,1) fluids(1).mom(3).array(6,1,1)] / self.rhoG;
-            vDust = [fluids(2).mom(1).array(6,1,1) fluids(2).mom(2).array(6,1,1) fluids(2).mom(3).array(6,1,1)] / self.rhoD;
+            gasVel  = [fluids(1).mom(1).array(6,1,1) fluids(1).mom(2).array(6,1,1) fluids(1).mom(3).array(6,1,1)] / self.rhoG;
+            dustVel = [fluids(2).mom(1).array(6,1,1) fluids(2).mom(2).array(6,1,1) fluids(2).mom(3).array(6,1,1)] / self.rhoD;
 
             % initial pecuilar velocity magnitude & direction vectors
-            dv = norm(vGas - vDust);
-            dvHat = (vGas - vDust) / dv;
+            dv = norm(gasVel - dustVel);
+            dvHat = (gasVel - dustVel) / dv;
             
             self.analysis(1,:) = [0, dv, dv, 0]; % Initial state entry
 
             % velocity at t=infty when they stick completely
-            vStick = (vGas * self.rhoG + vDust * self.rhoD) / (self.rhoG + self.rhoD);
+            vStick = (gasVel * self.rhoG + dustVel * self.rhoD) / (self.rhoG + self.rhoD);
 
             % simple conservation arguments give us that
             % vGas = vStick + dvHat * dv * d/(d+g)
             % vDust= vStick - dvHat * dv * g/(g+d)
 
             press = fluids(1).calcPressureOnCPU();
-            Pgas  = press(6,1,1);
+            gasP  = press(6,1,1);
             
             % we omit the general arbitrary(v1, v2) case having already solved the sticking velocity above
-            self.solver = DustyBoxSolver(self.sigmaGas, self.muGas, self.sigmaDust, self.muDust, self.rhoG, self.rhoD, dv, 0, self.gammaGas, Pgas);
+            self.solver = DustyBoxSolver(self.sigmaGas, self.muGas, self.sigmaDust, self.muDust, self.rhoG, self.rhoD, dv, 0, self.gammaGas, gasP);
             % save useful info
             self.p_vStick = vStick;
             self.p_dv = dv;
@@ -125,7 +125,7 @@ classdef DustyBoxAnalyzer < LinkedListNode;
         end
 
         function finalize(self, run, fluids, mag)
-            result = struct('time',self.analysis(:,1),'dvExact', self.analysis(:,2), 'dvImogen', self.analysis(:,3), 'error', self.analysis(:,4));
+            result = struct('time',self.analysis(:,1),'dvExact', self.analysis(:,2), 'dvImogen', self.analysis(:,3), 'error', self.analysis(:,4)); %#ok<NASGU>
             save([run.paths.save '/drag_analysis.mat'], 'result');
         end
 

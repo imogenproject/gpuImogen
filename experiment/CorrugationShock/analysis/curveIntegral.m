@@ -1,4 +1,4 @@
-function result = curveIntegral(f,xi, dx)
+function result = curveIntegral(f, xi, dx)
 
 result = 0;
 

@@ -7,14 +7,14 @@ if nargin == 0
 end
 
 dims = size(sx.mass);
-if numel(dims)==2;
+if numel(dims)==2
     dims(3)=1;
     alpha = 1;
 else
     alpha = 2;
 end
 
-[x y z] = ndgrid(1:dims(1), 1:dims(2), 1:dims(3));
+[x, y, z] = ndgrid(1:dims(1), 1:dims(2), 1:dims(3));
 
 x = (x - ceil(dims(1)/2))*sx.dGrid{1};
 y = (y - ceil(dims(2)/2))*sx.dGrid{2};

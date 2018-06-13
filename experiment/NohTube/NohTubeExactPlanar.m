@@ -173,7 +173,7 @@ classdef NohTubeExactPlanar < handle
             rho1 = self.rho0/phi;
             P1   = self.P0 * (self.gamma*(2*self.pMach^2 - 1)+1)/(self.gamma+1);
             gp1 = self.gamma+1;
-            gm1 = self.gamma-1;
+            %gm1 = self.gamma-1;
             
             vin  = self.pMach*c0*(phi-1);
             % Solve RP(preshock) again yielding the double-shocked values

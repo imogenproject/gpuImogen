@@ -12,7 +12,7 @@ phaserate = phaserate(1:(end/2),:);
 groR = groR(1:(end/2),:);
 phaseR = phaseR(1:(end/2),:);
 
-[Kyprime Kzprime] = ndgrid(1:dim0(1), 1:dim0(2));
+[Kyprime, Kzprime] = ndgrid(1:dim0(1), 1:dim0(2));
 Kyprime = Kyprime(1:(end/2),:)-1;
 Kzprime = circshift(Kzprime(1:(end/2),:) - floor(dim0(2)/2) - 1,[0 -floor(dim0(2)/2)]);
 

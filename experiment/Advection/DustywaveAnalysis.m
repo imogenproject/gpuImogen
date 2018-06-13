@@ -1,4 +1,4 @@
-function autopsy = DustywaveAnalysis(directory, runParallel);
+function autopsy = DustywaveAnalysis(directory, runParallel)
 
 dir0 = pwd();
 cd(directory);
@@ -18,8 +18,8 @@ S.setFrametype(7); % Access 3D data frame by frame
 % Pick out the wavevector
 omega = IC.ini.omega; 
 Kvec = IC.ini.pWaveK;
-Kmag = norm(Kvec);
-Khat = Kvec / Kmag;
+%Kmag = norm(Kvec);
+%Khat = Kvec / Kmag;
 evec = IC.ini.waveEigenvector;
 
 % Calculate the initial phases we'll use to project the result onto the
@@ -33,13 +33,14 @@ geo.makeBoxOriginCoord([-.5 -.5 -.5]);
 KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 
 % Calculate the linear factor in displacement
-machParallel = IC.ini.backgroundMach' * Khat;
-machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
+%machParallel = IC.ini.backgroundMach' * Khat;
+%machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
 % Output vars...
-rhoerr_L1 = []; rhoerr_L2 = [];
-velerr_L1 = []; velerr_L2 = [];
-frameT = [];
+rhoerr_L1 = zeros([1 S.numFrames()]);
+rhoerr_L2 = zeros([1 S.numFrames()]);
+%velerr_L1 = []; velerr_L2 = [];
+frameT = zeros([1 S.numFrames()]);
 
 % Iterating over all frames in sequence,
 for N = 1:S.numFrames()
@@ -48,18 +49,18 @@ for N = 1:S.numFrames()
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
     t = sum(F.time.history);
     
-    rhogt = IC.ini.pRho(1) + imag(amp*evec(1)*exp(1i*KotX - 1i*omega*t));
+    rhogt = IC.ini.pRho(1) + imag(amp*evec(1)*exp(1i*KdotX - 1i*omega*t));
     
     % The moment of truth: calculate the 1- and 2-norms
     delta = rhogt - F.mass;
     if runParallel; delta = geo.withoutHalo(delta); end
 
-    if sum(F.time.history) >= tCritical;
+    if sum(F.time.history) >= tCritical
         disp(['At frame', num2str(S.tellFrame()), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
         break;
     end
     
-    frameT(end+1) = t;
+    frameT(N) = t;
 
     rhoerr_L1(N) =      mpi_sum(norm(delta(:),1)  ) / mpi_sum(numel(delta)) ;
     rhoerr_L2(N) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));

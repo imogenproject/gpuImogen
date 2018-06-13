@@ -140,12 +140,12 @@ classdef HachisuDiskInitializer < Initializer
             if obj.useUpperMirror == true
                 z0 = obj.grid(3);
                 for zct = 1:obj.grid(3)
-                    [mass(:,:,zct) mom(1,:,:,zct) mom(2,:,:,zct)] = cyl2rect(R(:,zct+z0), rho(:,zct+z0), lMom(:,zct+z0), obj.grid(1)/2, dGrid);
+                    [mass(:,:,zct), mom(1,:,:,zct), mom(2,:,:,zct)] = cyl2rect(R(:,zct+z0), rho(:,zct+z0), lMom(:,zct+z0), obj.grid(1)/2, dGrid);
                 end
             end
             if obj.useRightMirror == true
                 for yct = 1:obj.grid(2)
-                    [u v w] = cyl2rect(R(:,yct), rho(:,yct), lMom(:,yct), obj.grid(1)/2, dGrid);
+                    [u, v, w] = cyl2rect(R(:,yct), rho(:,yct), lMom(:,yct), obj.grid(1)/2, dGrid);
 %		size(mass(:,yct,:))
 %		size(u(:,(end/2+1):end))
                     mass(:,yct,:)  = u(:,(end/2+1):end);
@@ -155,7 +155,7 @@ classdef HachisuDiskInitializer < Initializer
             end
             if (obj.useUpperMirror == false) && (obj.useRightMirror == false)
                 for zct = 1:obj.grid(3)
-                    [mass(:,:,zct) mom(1,:,:,zct) mom(2,:,:,zct)] = cyl2rect(R(:,zct), rho(:,zct), lMom(:,zct), obj.grid(1)/2, dGrid);
+                    [mass(:,:,zct), mom(1,:,:,zct), mom(2,:,:,zct)] = cyl2rect(R(:,zct), rho(:,zct), lMom(:,zct), obj.grid(1)/2, dGrid);
                 end
             end
 
@@ -191,7 +191,7 @@ classdef HachisuDiskInitializer < Initializer
                 statics.mom.s = uint8(zeros([3 size(stencil)]));
                 for i=1:3; statics.mom.s(i,:,:,:) = 2*stencil; end
                 statics.ener.s = 3*stencil;
-            else statics = [];
+            else; statics = [];
             end
 
             if obj.starMass > 0

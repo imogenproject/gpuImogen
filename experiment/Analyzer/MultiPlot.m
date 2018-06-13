@@ -98,10 +98,10 @@ classdef MultiPlot < handle
                 set(gcf,'Name',name);
                 
                 if obj.saveImages   % save as .png image
-                    if N1 == 1 && isdir('Analyzer_images')
+                    if N1 == 1 && isfolder('Analyzer_images')
                         error('Cannot overwrite existing image files: please rename or delete folder.');
                     end
-                    if ~isdir('Analyzer_images')
+                    if ~isfolder('Analyzer_images')
                         mkdir Analyzer_images;
                     end
                     saveas(gca,sprintf('./Analyzer_images/%04d.png',N1),'png');

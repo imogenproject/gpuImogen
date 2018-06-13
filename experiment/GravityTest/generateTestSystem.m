@@ -1,7 +1,7 @@
-function [mass ener] = generateTestSystem(grid, rhosphere, rhobg, G, K0)
+function [mass, ener] = generateTestSystem(grid, rhosphere, rhobg, G, K0)
 
 %--- Create some constants ---%
-[X Y Z] = ndgrid(1:grid(1), 1:grid(2), 1:grid(3));
+[X, Y, Z] = ndgrid(1:grid(1), 1:grid(2), 1:grid(3));
 ballRad = .375;
 
 %--- Create sphere on left-hand side ---%

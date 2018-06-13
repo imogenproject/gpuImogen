@@ -10,7 +10,7 @@ BoverA = -delta:delta:(1+delta);
 Fi = zeros(size(BoverA));
 
 for alpha = 2:(size(BoverA,2)-2)
-    Fi(alpha) = 2*quadl(@(theta) rinv(theta, BoverA(alpha)), 0, pi, 1e-9);
+    Fi(alpha) = 2*integral(@(theta) rinv(theta, BoverA(alpha)), 0, pi, 'AbsTol',1e-11);
 end
 
 % Avoids problems with NaN and divergence when we get close to 1

@@ -1,4 +1,4 @@
-function result = CentrifugeAnalysis(location, runParallel);
+function result = CentrifugeAnalysis(location, runParallel)
 
 S = SavefilePortal(location);
 
@@ -9,25 +9,25 @@ S.setParallelMode(runParallel);
 
 equil = S.nextFrame(); % Load 1st 
 
-tval =  [];
-l1val = [];
-l2val = [];
+tval =  zeros([1 S.numFrames()]);
+l1val = zeros([1 S.numFrames()]);
+l2val = zeros([1 S.numFrames()]);
 
 initset = S.returnInitializer();
 
 geo = GeometryManager(initset.ini.geometry.globalDomainRez);
 
 
-for N = 2:S.numFrames();
+for N = 2:S.numFrames()
     f = S.nextFrame();
 
-    tval(end+1) = sum(f.time.history);
+    tval(N-1) = sum(f.time.history);
     delta = f.mass - equil.mass;
 
     if runParallel; delta = geo.withoutHalo(delta); end
 
-    l1val(end+1) =      mpi_sum(norm(delta(:),1))   / mpi_sum(numel(delta)) ;
-    l2val(end+1) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));
+    l1val(N-1) =      mpi_sum(norm(delta(:),1))   / mpi_sum(numel(delta)) ;
+    l2val(N-1) = sqrt(mpi_sum(norm(delta(:),2)^2) / mpi_sum(numel(delta)));
 end
 
 result.T = tval;

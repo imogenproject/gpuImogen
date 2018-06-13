@@ -135,15 +135,15 @@ datafields = { 'drho', 'dvx', 'dvy', 'dbx', 'dby' };
 for v = 1:5
     if memory.qty == 1
         if memory.typefit < 3
-            rawline = getWline(getfield(analyzer.post,datafields{v}), memory.ky, memory.kz, 1);
+            rawline = getWline(analyzer.post(datafields{v}), memory.ky, memory.kz, 1);
         else
-            rawline = getKxline(getfield(analyzer.post,datafields{v}), memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
+            rawline = getKxline(analyzer.post(datafields{v}), memory.ky, memory.kz, 1, analyzer.linearFrames((end-10):end));
         end
     else
         if memory.typefit < 3
-            rawline = getWline(getfield(analyzer.pre,datafields{v}), memory.ky, memory.kz, 0);
+            rawline = getWline(analyzer.pre(datafields{v}), memory.ky, memory.kz, 0);
         else
-            rawline = getKxline(getfield(analyzer.pre,datafields{v}), memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
+            rawline = getKxline(analyzer.pre(datafields{v}), memory.ky, memory.kz, 0, analyzer.linearFrames((end-10):end));
         end
     end
 
@@ -151,19 +151,19 @@ for v = 1:5
     plotqty = [];
 
     switch(memory.typefit)
-        case 1;
+        case 1
             plotqty = mean(log(abs(rawline(:,analyzer.linearFrames))));
             ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(analyzer.frameTimes(analyzer.linearFrames), plotqty, plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
-        case 2;
+        case 2
             plotqty = mean(unwrap(angle(rawline(:,analyzer.linearFrames)),pi,2));
             ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(analyzer.frameTimes(analyzer.linearFrames), plotqty,  plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
-        case 3;
+        case 3
             plotqty = mean(log(abs(rawline)));
             ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(xvals{memory.qty+1}, plotqty, plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;
-        case 4;
+        case 4
             plotqty = mean(unwrap(angle(rawline),pi,2));
             ymin = min(ymin, min(plotqty)); ymax = max(ymax, max(plotqty));
             plot(xvals{memory.qty+1}, plotqty,  plotstyles{v}, 'linewidth', 1+2*(v == memory.varfit) ); hold on;

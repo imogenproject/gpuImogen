@@ -27,7 +27,7 @@ end
 methods (Access = public)
 
     function obj = RHD_Analyzer(basename, framerange,  verbosity)
-        if nargin < 3;
+        if nargin < 3
             disp('Did not get enough arguments to run automatically (to do this RHD_Analyzer has to be created with the form RHD_Analyzer(''basename'', [frame:range], 1=verbose/0=silent); e.g. rad = RHD_Analyzer(''2D_XY'', [0:25:100], 1);). Please input them below:');
             basename = input('Base name of savefiles to analyze. Typically either ''2D_XY'' or ''3D_XYZ'':', 's');
             framerange = input('First set of saveframe #s to analyze; Empty is OK: ');
@@ -69,7 +69,7 @@ disp('There should be help here... I''ll write some once the code is not evolvin
         obj.vybar(time_index,:)  = mean(frame.momY./frame.mass, 2);
         obj.Pbar(time_index,:)   = mean(P, 2);
 
-        for zeta = 1:size(frame.mass,1); % Calculates perturbation by subtracting x-axis quantities as "equilibrium"
+        for zeta = 1:size(frame.mass,1) % Calculates perturbation by subtracting x-axis quantities as "equilibrium"
             obj.rmsdrho(time_index, zeta) = sum((frame.mass(zeta,:)-obj.rhobar(time_index,zeta)).^2);
             obj.rmsdP  (time_index, zeta) = sum((P(zeta,:)-obj.Pbar(time_index,zeta)).^2);
         end

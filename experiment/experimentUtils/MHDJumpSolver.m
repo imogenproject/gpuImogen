@@ -1,4 +1,4 @@
-function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
+function [result] = MHDJumpSolver(ms, ma, theta, GAMMA)
 % Solves the 3D MHD Jump Conditions for an equilibrium shock wave assuming that the pre-shock region
 % conforms to zero z components for both velocity and magnetic field (this
 % can always be acheived by a frame transform) as well as unity values for 
@@ -30,8 +30,8 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     P1 = 1;
     g = GAMMA;
   
-    px1 = rho1*vx1;
-    tx1 = rho1*vx1^2;
+    %px1 = rho1*vx1;
+    %tx1 = rho1*vx1^2;
 
     % This is the quartic polynomial resulting from the RH conditions divided by the
     % known (vxpost - vx1) no-shock solution
@@ -41,7 +41,7 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     a2 = vx1^2*rho1^2*(by1^2*q + 2*P1*q + bx^2*(-2 + 4*q) + vx1^2*rho1);
     a3 = (1 - 2*q)*vx1^3*rho1^3;
 
-    vpost = roots([a3 a2 a1 a0])
+    vpost = roots([a3 a2 a1 a0]);
 
     % This prevents a confirmed to exist a numerical instability in the solver wherein the 
     % real-valued solutions acquire an O(epsilon) imaginary part due to truncation error and
@@ -49,7 +49,7 @@ function [result allvx] = MHDJumpSolver(ms, ma, theta, GAMMA)
     vpost = real(vpost(abs(imag(vpost)) < 1e-12)); 
 
     % Admit only nonexpansive shocks as per the entropy condition
-    if vpost > vx1;
+    if vpost > vx1
         vpost = vx1;
         result.isShock = 0;
     else

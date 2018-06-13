@@ -1,4 +1,4 @@
-function [const res] = sTransform(X, u, dx, nwaves)
+function [const, res] = sTransform(X, u, dx, nwaves)
 % X: the set of positions at which we know u.
 % U: the vector of values to which we wish to fit a multiexponential curve
 % dx: the cell spacing
@@ -12,8 +12,7 @@ for a = 2:numel(u)
 	if a == numel(u); p0 = 1/X(round(end/2)); end % this case would suck
 end
 
-D = [];
-Dpr = [];
+D = zeros([2*nWaves 1]);
 
 for a = 0:(2*nwaves - 1)
     v = ((-X).^a) .* exp(-X*p0) .* u;
@@ -47,7 +46,7 @@ if nwaves == 2
 	res(1) = a0 + a1*const(1); res(2) = a0 + a1*const(2);
 end
 
-if nwaves == 3;
+if nwaves == 3
     d0 = D(1); d1 = D(2); d2 = D(3); d3 = D(4); d4 = D(5); d5 = D(6);
 
     B = -[d2 d1 d0; d3 d2 d1; d4 d3 d2]^-1 * [d3; d4; d5];

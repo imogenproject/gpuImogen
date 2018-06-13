@@ -1,4 +1,4 @@
-function [drho dV dB deps] = evaluateEigenvector(EV, KdotX, hphi )
+function [drho, dV, dB, deps] = evaluateWaveEigenvector(EV, KdotX, hphi )
 
     dV = zeros([3 size(KdotX,1) size(KdotX,2) size(KdotX,3)]);
     dB = zeros([3 size(KdotX,1) size(KdotX,2) size(KdotX,3)]);

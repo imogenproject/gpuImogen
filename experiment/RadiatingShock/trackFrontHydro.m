@@ -4,7 +4,7 @@ function frontX = trackFrontHydro(mass, x, y0)
 % Take dRho/dx and find the indices of the max
 jmp = (mass > y0);
 d = diff(jmp, 1, 1);
-[dontcare ind] = max(d, [], 1);
+[~, ind] = max(d, [], 1);
 
 % Stupid edge case BS
 ind(ind == numel(mass)) = ind(ind == numel(mass)) - 1;

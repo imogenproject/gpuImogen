@@ -1,4 +1,4 @@
-function [ev omega] = eigenvectorSonic(rho, csq, v, b, k, direct)
+function [ev, omega] = eigenvectorSonic(rho, csq, v, b, k, direct)
     % This function gives the sonic (hydrodynamic) eigenvector associated with the
     % plane wave with vector k with dispersion relation w = +- c_s |k|
     % direct == 1 choses +, -1 choses - 

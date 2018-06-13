@@ -1,4 +1,4 @@
-function [kx omega kxOffset omegaOffset kxRes omegaRes] = analyzePeturbedQ(dq, x, t, linearFrames, preorpost)
+function [kx, omega, kxOffset, omegaOffset, kxRes, omegaRes] = analyzePerturbedQ(dq, x, t, linearFrames, preorpost)
 % > dq: Perturbed quantity
 % > x: x position values for dq(ymode#, z mode#, x value, t value)
 % > t: t values for ...
@@ -7,20 +7,26 @@ function [kx omega kxOffset omegaOffset kxRes omegaRes] = analyzePeturbedQ(dq, x
 yran = size(dq,1);
 zran = size(dq,2);
 
+omega = zeros([yran, zran]); omegaRes = zeros([yran, zran]);
+omegaOffset = zeros([yran, zran]);
+kx = zeros([yran, zran]);
+kxRes = zeros([yran, zran]);
+kxOffset = zeros([yran, zran]);
+
 for u = 1:yran; for v = 1:zran
     if strcmp(preorpost,'post')
         
-        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,2:15,linearFrames))))));
-        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,2:15,linearFrames))),1,2 )));
+        [wimfit, confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,2:15,linearFrames))))));
+        [wrefit, confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,2:15,linearFrames))),1,2 )));
 
-        [kximfit confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
-        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
+        [kximfit, confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
+        [kxrefit, confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
     else
-        [wimfit confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,(end-10):(end-1),linearFrames))))));
-        [wrefit confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,(end-10):(end-1),linearFrames))),1,2 )));
+        [wimfit, confidenceIm] = monovariateFit(t(linearFrames), mean(squish(log(abs(dq(u,v,(end-10):(end-1),linearFrames))))));
+        [wrefit, confidenceRe] = monovariateFit(t(linearFrames), mean(unwrap(squish(angle(dq(u,v,(end-10):(end-1),linearFrames))),1,2 )));
 
-        [kximfit confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
-        [kxrefit confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
+        [kximfit, confidenceKxIm] = monovariateFit(x, mean(squish(log(abs(dq(u,v,:,linearFrames)))),2));
+        [kxrefit, confidenceKxRe] = monovariateFit(x, mean(unwrap(squish(angle(dq(u,v,:,linearFrames))),pi,1),2));
     end
     omega(u,v) = wrefit(1) + 1i*wimfit(1);
     omegaRes(u,v) = confidenceRe.normr + 1i*confidenceIm.normr;
@@ -59,9 +65,9 @@ weight = ones(size(x));
 
 N = numel(x);
 
-ans = [sum(weight),  sum(x.*weight); sum(x.*weight),  sum(x.^2.*weight) ]^-1 * [sum(y.*weight); sum(x.*y.*weight) ];
+soln = [sum(weight),  sum(x.*weight); sum(x.*weight),  sum(x.^2.*weight) ]^-1 * [sum(y.*weight); sum(x.*y.*weight) ];
 
-fit = [ans(2) ans(1)];
+fit = [soln(2) soln(1)];
 
 residual.normr = sqrt(sum(y - (fit(2) + fit(1)*x)));
 

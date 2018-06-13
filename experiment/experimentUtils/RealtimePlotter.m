@@ -145,11 +145,11 @@ classdef RealtimePlotter <  LinkedListNode
             
             self.pResolution = fluids(1).mass.gridSize;
 
-            for i = 1:numFluids;
+            for i = 1:numFluids
                 self.q0{i} = fluids(i).mass.array;
             end
 
-            for i=1:3;
+            for i=1:3
                 if self.cut(i) < 0; self.cut(i) = ceil(size(self.q0{1},i)/2); end
 
                 if self.indSubs(i,1) < 0; self.indSubs(i,1) = 1; end % start
@@ -195,7 +195,7 @@ classdef RealtimePlotter <  LinkedListNode
             if outtype == 1
                 fieldnames = self.pstatic_ppfields;
                 for pltno = 1:ap
-                    for fname = 1:numel(fieldnames);
+                    for fname = 1:numel(fieldnames)
                         fprintf('%s.plotProps(%i).%s = [%s]; ', rpn, int32(pltno), fieldnames{fname}, num2str(self.plotProps(pltno).(fieldnames{fname})));
                         if mod(fname, 4) == 0; fprintf('\n'); end
                     end
@@ -268,14 +268,14 @@ classdef RealtimePlotter <  LinkedListNode
             
             tfin = sum(run.time.history);
             
-            if self.insertPause;
+            if self.insertPause
                 if self.spawnGUI
                     % spin in a dummy loop so the GUI can respond
                     self.pGUIPauseSpin = 1;
                     btn = findobj('tag','resumebutton');
                     ct = 1;
 
-                    while self.pGUIPauseSpin;
+                    while self.pGUIPauseSpin
                         pause(.33);
                         if self.pGUIPlotsNeedRedraw
                             self.drawGfx(run, fluids)
@@ -332,7 +332,7 @@ classdef RealtimePlotter <  LinkedListNode
             % NOTE NOTE NOTE the values for 'what' are linked to the ordering of the list entries in the GUI quantity-selection
             % NOTE NOTE NOTE box. search RealtimePlotterGUI.m /lis\ =
             % LARGE VALUES SPECIFY OTHER THINGS
-            switch what;
+            switch what
             case 1; Q = fluid.mass.array(u,v,w); % rho
             case 2; Q = fluid.mom(1).array(u,v,w); % px
             case 3; Q = fluid.mom(2).array(u,v,w); % py
@@ -341,26 +341,26 @@ classdef RealtimePlotter <  LinkedListNode
             case 6; Q = fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w); %vy
             case 7; Q = fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w); %vz
             case 8; Q = fluid.ener.array(u,v,w); %etotal
-            case 9; % pressure
+            case 9   % pressure
                 Q = fluid.calcPressureOnCPU();
                 Q = Q(u,v,w);
-            case 10;% temperature
-	        kmu = 1;%fluid.particleMu / 1.381e-23;
+            case 10  % temperature
+	        kmu = 1; %fluid.particleMu / 1.381e-23;
                 Q = fluid.calcPressureOnCPU();
                 Q = kmu * Q(u,v,w)./fluid.mass.array(u,v,w);
-            case 101; % XY velocity
+            case 101 % XY velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w) };
-            case 102; % XZ velocity
+            case 102 % XZ velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
-            case 103; % YZ velocity
+            case 103 % YZ velocity
                 Q = { fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
-            case 104; % 
+            case 104 % 
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{2}(u,v,w)};
-            case 105;
+            case 105
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{3}(u,v,w)};
-            case 106;
+            case 106
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{2}(u,v,w), QQ{3}(u,v,w)};
             default;
@@ -374,19 +374,19 @@ classdef RealtimePlotter <  LinkedListNode
             figure(1);
 
             switch plotmode
-            case 1; % one plot
+            case 1 % one plot
                 subplot(1,1,1);
-            case 2; % 2 left-right plots
-                if plotnumber == 1; subplot(1,2,1); else subplot(1,2,2); end
-            case 3; % 2 vertical plots
-                if plotnumber == 1; subplot(2,1,1); else subplot(2,1,2); end
-            case 4; % 2x2 matrix of plots
+            case 2 % 2 left-right plots
+                if plotnumber == 1; subplot(1,2,1); else; subplot(1,2,2); end
+            case 3 % 2 vertical plots
+                if plotnumber == 1; subplot(2,1,1); else; subplot(2,1,2); end
+            case 4 % 2x2 matrix of plots
                 subplot(2,2,plotnumber);
             end
         end
 
         function drawPlot(self, q, decor, velocityVectors)
-            if decor.slice < 4; % x/y/z cut: one dimensional: do plot()
+            if decor.slice < 4 % x/y/z cut: one dimensional: do plot()
                 axval = self.pCoords{decor.slice};
                 % axmode = 0 -> off, 1 -> px, 2 -> cell #, 3 -> position
                 if decor.axmode == 1; axval = 1:numel(axval); end
@@ -458,7 +458,7 @@ classdef RealtimePlotter <  LinkedListNode
 
             colorset={'b','r','g'};            
             hold off;
-            for i = 1:numel(fluids);
+            for i = 1:numel(fluids)
                 plotdat = fluids(i).mass.array;
                 if self.plotDifference; plotdat = plotdat - self.q0{i}; end
                 
@@ -509,7 +509,7 @@ classdef RealtimePlotter <  LinkedListNode
         end
         
         function finalize(self, run, fluids, mag)
-            if self.spawnGUI; % close the gui control window
+            if self.spawnGUI % close the gui control window
                 f = findobj('tag','ImogenRTP_GUIWindow');
                 if ~isempty(f); close(f); end
             end
@@ -581,11 +581,11 @@ classdef RealtimePlotter <  LinkedListNode
         function gcbSetPlotFluidsrc(self, src, data) % called by the --/++ arrows by 'FLUID: N'
 	    % data is +1 or -1
             F = self.plotProps(self.pGUISelectedPlotnum).fluidnum;
-            if src.UserData < 0;
+            if src.UserData < 0
                 F = F - 1;
                 if F < 1; F = 1; end
             end
-            if src.UserData > 0;
+            if src.UserData > 0
                 F = F + 1;
                 if F > self.pNumFluids; F = self.pNumFluids; end
             end
@@ -601,7 +601,7 @@ classdef RealtimePlotter <  LinkedListNode
         end
         function gcbCyclePlotSelection(self, src, data)
             plotsActive = 1;
-            switch self.plotmode;
+            switch self.plotmode
                 case 1; plotsActive = 1; case 2; plotsActive = 2; case 3; plotsActive = 2; case 4; plotsActive = 4;
             end
 
@@ -640,7 +640,7 @@ classdef RealtimePlotter <  LinkedListNode
         function gcbCyclePlotmode(self, src, data)
             M = mod(self.plotProps(self.pGUISelectedPlotnum).plottype, 2) + 1;
 
-            if self.plotProps(self.pGUISelectedPlotnum).slice < 4; % 1d output
+            if self.plotProps(self.pGUISelectedPlotnum).slice < 4 % 1d output
                 src.String = 'plot';
             else
                 labels = {'imagesc','surf'};
@@ -663,7 +663,7 @@ classdef RealtimePlotter <  LinkedListNode
             if src.Value == 1; G = 1; else; G = 0; end
             self.plotProps(self.pGUISelectedPlotnum).grid = G;
 
-            if G; % yes grid: green it
+            if G % yes grid: green it
                 src.BackgroundColor = self.pCEnab;
             else
                 src.BackgroundColor = self.pCNeut;
@@ -712,13 +712,13 @@ classdef RealtimePlotter <  LinkedListNode
             end
             
             if src.Value == 0; src.Value = 1; else
-                for n = 1:6; % mark all other buttons off (mutex)
+                for n = 1:6 % mark all other buttons off (mutex)
                     if whodunit(n) == 0; element = findobj('Tag',tagnames{n}); element.Value = 0; end
                 end
             end
 
             obj = findobj('tag','plottypebutton');
-            if self.plotProps(self.pGUISelectedPlotnum).slice < 4; 
+            if self.plotProps(self.pGUISelectedPlotnum).slice < 4
                 obj.String='plot';
             else
                 labels = {'imagesc','surf'};
@@ -730,7 +730,7 @@ classdef RealtimePlotter <  LinkedListNode
             N = str2double(src.Tag(8:9)); % quick'n'dirty
          
             val = str2double(src.String);
-            if (isfinite(val) == 0) || (isreal(val) == 0); src.String=':('; return; end;
+            if (isfinite(val) == 0) || (isreal(val) == 0); src.String=':('; return; end
             val = round(val); if val < 1; val = 1; end % true for all inputs
 
             switch N
@@ -883,7 +883,7 @@ classdef RealtimePlotter <  LinkedListNode
 
 	    % vector field?
 	    x = findobj('tag','velfieldbutton');
-	    if pp.velvecs; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
+	    if pp.velvecs; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end
 
 	    % plot qty box
 	    x = findobj('tag','qtylistbox');
@@ -894,18 +894,18 @@ classdef RealtimePlotter <  LinkedListNode
 	    x.String = self.pAxisTypeLabels{pp.axmode+1};
 
 	    % image/surf/plot selection
-	    x = findobj('tag','plottypebutton');
-	    M = mod(pp.plottype, 2)+1;
-	    if pp.slice < 4; % 1d output
-                x.String = 'plot';
-            else
-                labels = {'imagesc','surf'};
-                x.String = labels{M};
-            end
+        x = findobj('tag','plottypebutton');
+        M = mod(pp.plottype, 2)+1;
+        if pp.slice < 4 % 1d output
+            x.String = 'plot';
+        else
+            labels = {'imagesc','surf'};
+            x.String = labels{M};
+        end
 
 	    % colorbar
 	    x = findobj('tag','colorbarbutton');
-	    if pp.cbar == 1; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end;
+	    if pp.cbar == 1; x.Value = 1; x.BackgroundColor = self.pCEnab; else; x.Value = 0; x.BackgroundColor = self.pCNeut; end
 
 	    % grid
 	    x = findobj('tag','gridbutton');

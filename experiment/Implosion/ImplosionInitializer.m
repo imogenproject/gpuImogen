@@ -35,7 +35,7 @@ classdef ImplosionInitializer < Initializer
             obj.runCode          = 'IMPLOSION';
             obj.info             = 'Implosion symmetry test';
             obj.pureHydro        = true;
-	    obj.cfl              = 0.85;
+	        obj.cfl              = 0.85;
             obj.mode.fluid       = true;
             obj.mode.magnet      = false;
             obj.mode.gravity     = false;
@@ -78,7 +78,7 @@ classdef ImplosionInitializer < Initializer
 
             % Ensure that the grid is square.
             if rez(1) ~= rez(2)
-                warning(sprintf('WARNING: grid [%g %g %g] was not square.\n', rez(1), rez(2), rez(3)));
+                warning('WARNING: grid [%g %g %g] was not square.\n', rez(1), rez(2), rez(3));
             end
             
             % Initialize arrays

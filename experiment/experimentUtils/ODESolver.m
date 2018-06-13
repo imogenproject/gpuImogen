@@ -20,7 +20,7 @@ classdef ODESolver < handle
         stepsize;
         integrate;
         f; % @function(x, y);
-    end; %READONLY
+    end %READONLY
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
@@ -102,21 +102,30 @@ classdef ODESolver < handle
             error('integrate() called but setMethod() has not been. See help()');
         end
         
-        function status = integrateImplicit(self, L, abort_cond)
+        function status = integrateImplicit(self, L, intsteps)
         % Take steps until a distance L is covered using an implicit method
             if self.requireIC == 1
                 error('Cannot initiate integration without initial conditions: self.setInitialCondition(x0, y0);');
             end
             
+            strapped = 0;
             if self.requireBootstrap == 1
                 self.bootstrapHistory();
+                strapped = 1;
             end
             
             nder = size(self.methMatrix,1);
             npts = size(self.methMatrix,2);
             
             h = self.stepsize;
-            n = ceil(L/h);
+            if nargin < 3
+                n = ceil(L/h);
+            else
+                n = L;
+            end
+            if strapped
+                n = n - size(self.solution,1) + 1;
+            end
             
             % Calculate the Step weighting Matrix for constant step size h
             sm = ones(size(self.methMatrix));
@@ -146,7 +155,7 @@ classdef ODESolver < handle
             end
         end
         
-        function status = integrateExplicit(self, L, abort_cond)
+        function status = integrateExplicit(self, L, intsteps)
         % Takes steps until a distance L is covered using an explicit method 
             if self.requireIC == 1
                 error('Cannot initiate integration without initial conditions: self.setInitialCondition(x0, y0);');
@@ -162,13 +171,18 @@ classdef ODESolver < handle
             
             h = self.stepsize;
             n = ceil(L/h);
+            if nargin < 3
+                n = ceil(L/h);
+            else
+                n = L;
+            end
             if strapped
                 n = n - size(self.solution,1) + 1;
             end
             
             % Calculate the Step weighting Matrix for constant step size h
             sm = ones(size(self.methMatrix));
-            for u = 1:nder; sm(u,:) = h^u; end;
+            for u = 1:nder; sm(u,:) = h^u; end
             % elementwise product it with the method weighting coefficients
             sm = sm .* self.methMatrix;
             
@@ -289,20 +303,6 @@ classdef ODESolver < handle
             end
         end
         
-        function help(self)
-            disp('How to start ODESolver in a single go:');
-            disp('S = ODE_Solver([@f(x, y), D, x0, y0, h0, method, methType])');
-            disp('Where @f is the ode y''=f(x,y) to solve, D (if true) indicates that the function returns a vector of (not approximated) derivatives of f equal in number to that required by the method matrix, x0, y0 and h0 give initial conditions and step size, method is a HCAM/HCAB constraint matrix and methType is ODESolver.methodExplicit or ODESolver.methodImplicit');
-            disp('Consider also the sequence:');
-            disp('S = ODE_Solver()');
-            disp('S.setODE(@f(x,y), tf)');
-            disp('S.setMethod(method, methType)');
-            disp('S.setInitialCondition(x0, y0)');
-            disp('S.setStep(h)');
-            disp('Now either way the solve can be run:');
-            disp('S.integrate(length)');
-        end
-        
     end%GET/SET
     
     %===================================================================================================
@@ -388,7 +388,7 @@ classdef ODESolver < handle
             hf = cumprod(ones(size(M))*h,1).*M;
             
             for i = 1:size(M,3)
-                for j = 1:numel(xn);
+                for j = 1:numel(xn)
                     q(i) = q(i) + sum(hf(:,j,i).*self.f(xn(j),yn(j)));
                 end
             end
@@ -410,7 +410,7 @@ classdef ODESolver < handle
             y0 = self.solution(end,2);
             ypoints = zeros(needpoints, 1);
             % Increasing index looks back in time to the past
-            for a = 1:needpoints; ypoints(a) = self.solution(end,2) + ders(1)*(needpoints+1-a)*h; end
+            for a = 1:needpoints; ypoints(a) = self.solution(end,2) + 0*ders(1)*(needpoints+1-a)*h; end
             
             if needpoints == 1
                 xi = [h 0] + self.solution(end,1);
@@ -464,6 +464,19 @@ classdef ODESolver < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
+        function help()
+            disp('How to start ODESolver in a single go:');
+            disp('S = ODE_Solver([@f(x, y), D, x0, y0, h0, method, methType])');
+            disp('Where @f is the ode y''=f(x,y) to solve, D (if true) indicates that the function returns a vector of (not approximated) derivatives of f equal in number to that required by the method matrix, x0, y0 and h0 give initial conditions and step size, method is a HCAM/HCAB constraint matrix and methType is ODESolver.methodExplicit or ODESolver.methodImplicit');
+            disp('Consider also the sequence:');
+            disp('S = ODE_Solver()');
+            disp('S.setODE(@f(x,y), tf)');
+            disp('S.setMethod(method, methType)');
+            disp('S.setInitialCondition(x0, y0)');
+            disp('S.setStep(h)');
+            disp('Now either way the solve can be run:');
+            disp('S.integrate(length)');
+        end
     end%PROTECTED
     
 end%CLASS

@@ -201,7 +201,7 @@ classdef AdvectionInitializer < Initializer
             
             [xGrid, yGrid, zGrid] = geo.ndgridSetIJK('pos');
 
-            tMax = [];
+            tMax = zeros([obj.numFluids 1]);
             
             if obj.numFluids > 1
                 % zeros are gas velocity then dust velocity

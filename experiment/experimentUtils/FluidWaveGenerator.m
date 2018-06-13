@@ -158,7 +158,7 @@ classdef FluidWaveGenerator < handle
             
             [eigvecs, eigvals] = eig(M);
             % pick the forward-going eigenvalue
-            for N = 1:5;
+            for N = 1:5
                 % pick the antisense-propagating wave
                 if (eigensense == 1) && (imag(eigvals(N,N)) < -1e-9); break; end
                 % pick the evanescent wave

@@ -5,7 +5,7 @@ function fig = RealtimePlotterGUI(RTP)
 % This is, I am told, a useful thing in a program.
 
 fig = findobj('Tag','ImogenRTP_GUIWindow');
-if ~isempty(fig);
+if ~isempty(fig)
     fprintf('Realtime visualization control window already open. Closing it.\n');
     close(fig);
 end
@@ -150,8 +150,8 @@ slicePanel = uipanel(fig,'title','Slicing control','units','pixels','position',[
     % FIXME: these need to plug the existing default values into the text windows on startup... bleh.
     % NOTE: this should be run regardless of whether the window is new or not
     % 3x4 matrix of text areas: [cut   a:b:c] entries for each dimension
-    for yn = 1:3;
-        for xn = 4:-1:1;
+    for yn = 1:3
+        for xn = 4:-1:1
             
             val = xn + 10*yn;
             tag = ['editcut' num2str(val)];

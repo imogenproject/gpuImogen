@@ -80,11 +80,11 @@ classdef DoubleBlastInitializer < Initializer
             geo.makeBoxSize(1); % double blast is done on box normalized to length = 1
             
             % Initialize parallel vectors
-            X = geo.ndgridSetIJ();
-            left = (X <= geo.globalDomainRez(1)/10);
-            right= (X > geo.globalDomainRez(1)*9/10);
+            Xpos = geo.ndgridSetIJ();
+            left = (Xpos <= geo.globalDomainRez(1)/10);
+            right= (Xpos > geo.globalDomainRez(1)*9/10);
 
-            [mass, mom, mag, ener]   = obj.geomgr.basicFluidXYZ();
+            [mass, mom, mag, ~]   = obj.geomgr.basicFluidXYZ();
 
             P                        = obj.geomgr.onesXYZ() * obj.pMid;        %Pressure of inner zone = .01
             % Assign pressures of the two shockwave-creating regions

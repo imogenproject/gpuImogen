@@ -254,7 +254,7 @@ classdef CorrugationShockInitializer < Initializer
             seedIndices = (1:10) + obj.grid(1)/2 - 20 - obj.geomgr.pLocalDomainOffset(1);
             mine = find((seedIndices >= 1) & (seedIndices < obj.geomgr.localDomainRez(1)));
 
-            if any(mine);
+            if any(mine)
                 switch (obj.perturbationType)
                     
                     % RANDOM Seeds ____________________________________________________________________

@@ -38,7 +38,7 @@ classdef NohTubeColdGeneral < handle
 	    self.v0 = -c0*self.pMach;
         end
 
-        function [rho v P] = solve(self, spaceDim, R, r0);
+        function [rho, v, P] = solve(self, spaceDim, R, r0)
             % Solves the N-dimensional radial strong shock equations
             % Works in D > 1 by neglecting pressure term
             % R : Array of radii (must be positive semidefinite)

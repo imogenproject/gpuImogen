@@ -86,7 +86,7 @@ classdef CentrifugeInitializer < Initializer
         %fmin = 5/self.grid(1);
         % FIXME: Not clear what to do because this can be called before grid resolution is set...
         fmin = 0;
-        if f <= fmin;
+        if f <= fmin
             warning('Positive amount of edge required: Set to 5 cells');
             f = fmin;
         end
@@ -104,7 +104,7 @@ classdef CentrifugeInitializer < Initializer
         rho = max(rho, self.minMass);
         self.pRho0 = rho;
     end
-    function r = get.rho0(self); r = self.pRho0; end;
+    function r = get.rho0(self); r = self.pRho0; end
 
     function set.P0(self, P)
         if P <= 0; error('Pressure cannot be nonpositive!'); end
@@ -173,7 +173,7 @@ classdef CentrifugeInitializer < Initializer
             [Xv, Yv] = geo.ndgridSetIJ('pos');
             
             % Evaluate the \int r w(r)^2 dr curve 
-            rads   = [0:.0001:1];
+            rads   = 0:.0001:1;
             igrand = @(r) r.*obj.pOmegaCurve(r).^2;
             Rphi = fim(rads, igrand); Rphi = Rphi - Rphi(end); %Reset potential to zero at outer edge
             Rphi(end+1) = 0;
@@ -198,7 +198,7 @@ classdef CentrifugeInitializer < Initializer
             ener(:,:,1)  = interp1(rads, Pgas, gridR) / (obj.gamma-1);
 
             % Oh, lawd
-            for c = 2:size(mass,3);
+            for c = 2:size(mass,3)
                 mass(:,:,c)  = mass(:,:,1);
                 mom(:,:,:,c) = mom(:,:,:,1);
                 ener(:,:,c)  = ener(:,:,1);

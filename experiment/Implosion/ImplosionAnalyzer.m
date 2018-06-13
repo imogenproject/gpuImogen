@@ -41,7 +41,7 @@ classdef ImplosionAnalyzer < handle
     function finish(obj, run)
         implode.time = obj.time;
         % mult by h^2 scales sqrt(sum(Mij^2)) to be resolution-invariant
-        implode.asymmetry = obj.asymmetryNorm * run.geometry.d3h(1)^2;
+        implode.asymmetry = obj.asymmetryNorm * run.geometry.d3h(1)^2; %#ok<STRNU>
         
         save([run.paths.save '/asymmetryTracking.mat'], 'implode');
     end

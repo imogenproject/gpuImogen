@@ -1,6 +1,7 @@
-function f = evaluatePadeApproximant(cv, m, n, x)
-% Given the power series coefficients c_n defining a power series, computes the P_a(x)/Q_b(x)
-% Pade approximant and evaluates it at the given x. Requires a+b<4.
+function f = pade(cv, m, n, x)
+% Given the power series coefficients c_n defining a power series of the form
+% c_1 + c_2 x + c_3 x^2 + ..., computes the P_a(x)/Q_b(x)
+% Pade approximant and evaluates it at the given x. Requires a+b<7.
 
 M = numel(cv);
 
@@ -19,7 +20,7 @@ if(abs(a) < 1e-8); m = m + n; n = 0; end
 
 P = 10*n+m;
 
-switch P;
+switch P
   case 0;  f = a;
   case 1;  f = a + b*x;
   case 2;  f = a + x.*(b + c*x);
@@ -28,7 +29,7 @@ switch P;
   case 5;  f = a + x.*(b + x.*(c + x.*(d + x.*(e + f*x))));
   case 6;  f = a + x.*(b + x.*(c + x.*(d + x.*(e + x.*(f + g*x)))));
 
-  case 10; f = a^2/(a - b*x);
+  case 10; f = a^2./(a - b*x);
   case 11; f = (a*b + b^2.*x - a*c*x)/(b - c*x);
   case 12; f = (a*(c - d*x) + x.*(c^2.*x + b*(c - d*x)))/(c - d*x);
   case 13; f = (a*(d - e*x) + x.*(b*(d - e*x) + x.*(c*d + d^2.*x - c*e*x)))/(d - e*x);

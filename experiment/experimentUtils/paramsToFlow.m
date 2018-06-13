@@ -1,4 +1,4 @@
-function f = paramToFlow(ms, ma, theta, gamma)
+function f = paramsToFlow(ms, ma, theta, gamma)
 
 f.rho = 1;
 f.P   = 1;

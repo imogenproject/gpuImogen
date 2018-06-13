@@ -1,4 +1,4 @@
-function [V err] = input2vector(user, N, padvalue, makeint)
+function [V, err] = input2vector(user, N, padvalue, makeint)
 % input2vector(user, N, padvalue, makeint) is a one-stop shop
 % covering many common cases of getting an N-vector
 %> user: user's input

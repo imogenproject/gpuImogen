@@ -45,17 +45,17 @@
             if isempty(obj.fieldNames{obj.N2}), array = []; return; end
             
             % Calculate magnitude of velocity.
-            if strcmpi(obj.fieldNames{obj.N2},'speed') == true;
+            if strcmpi(obj.fieldNames{obj.N2},'speed') == true
                 array = sqrt(obj.vars.momX .^2 + obj.vars.momY .^2 ...
                                 + obj.vars.momZ .^2) ./ obj.vars.mass;
 
             % Calculate magnitude of momentum.
-            elseif strcmpi(obj.fieldNames{obj.N2},'magMom') == true;
+            elseif strcmpi(obj.fieldNames{obj.N2},'magMom') == true
                 array = sqrt(obj.vars.momX .^2 + obj.vars.momY .^2 ...
                                                  + obj.vars.momZ .^2);
                                              
             % Calculate magnitude of magnetic field.
-            elseif strcmpi(obj.fieldNames{obj.N2},'magMF') == true;
+            elseif strcmpi(obj.fieldNames{obj.N2},'magMF') == true
                 array = sqrt(obj.vars.magX .^2 + obj.vars.magY .^2 ...
                                                 + obj.vars.magZ .^2);            
             % Or just return array.

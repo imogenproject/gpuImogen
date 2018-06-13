@@ -1,4 +1,4 @@
-classdef MassConservationAnalyzer < LinkedListNode;
+classdef MassConservationAnalyzer < LinkedListNode
     % Class annotation template for creating new classes.
     %___________________________________________________________________________________________________
     
@@ -64,7 +64,7 @@ classdef MassConservationAnalyzer < LinkedListNode;
 
         function finalize(self, run, fluids, mag)
             % called by ImogenManager after exit from fluid iteration loop
-            result = struct('time',self.analysis(:,1),'mass', self.analysis(:,2));
+            result = struct('time',self.analysis(:,1),'mass', self.analysis(:,2)); %#ok<NASGU>
             save([run.paths.save '/mass_conservation_analysis.mat'], 'result');
 
             if self.plotResult
