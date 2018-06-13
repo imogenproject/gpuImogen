@@ -43,8 +43,11 @@ classdef GeometryManager < handle
         d3h; % The [dx dy dz] or [dr dphi dz] spacing
         pInnerRadius;   % Used only if geometryType = ENUM.GEOMETRY_CYLINDRICAL
 
-        localXposition; localYposition; localZposition; % Used by cartesian
-        localRposition; localPhiPosition;               % Used by cylindrical (uses Z too)
+        localXposition; % X coordinate, cell-centered, on this node (cartesian geometry)
+        localYposition; % Y coordinate, cell-centered, on this node (cartesian geometry)
+        localZposition; % Z coordinate, cell-centered, on this node (cartesian & cylindrical geometry)
+        localRposition; % R coordinate, cell-centered, on this node (cylindrical geometry
+        localPhiPosition; % Angular coordinate, cell centered, on this node (cylindrical geometry)
         
         % FIXME: Add spacing-vectors for calculating updates over nonuniform grids here
     end % Readonly
@@ -134,7 +137,6 @@ classdef GeometryManager < handle
                 end
             end
             dblhalo = 2*obj.haloAmt;
-            obj.circularBCs
             
             obj.globalDomainRez = global_size;
             obj.globalDomainRezPlusHalos   = ...
@@ -470,20 +472,6 @@ classdef GeometryManager < handle
             end
         end
 
-        % 123 = xyz, 456 = xy, xz, yz, 7 = xyz
-        function [a, b, c] = buildOuterProduct(obj, dim, form)
-           if any(dim == [1 2 3])
-               
-           end
-           if any(dim == [4 5 6])
-               
-           end
-           
-           if dim == 7
-               
-           end
-        end
-        
         function [x, y, z] = ndgridSetIJK(obj, form, geotype)
             % [x y z] = ndgridsetIJK(['pos' | 'coords'], ['square','cyl']) returns the part of
             % the global domain that lives on this node.
@@ -642,20 +630,25 @@ classdef GeometryManager < handle
             if isnan(val); out = rand(makesize); else; out = val*ones(makesize); end
         end 
 
-        % These generate a set of zeros of the size of the part of the global grid residing on this node
-        function O = zerosXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 0); end
+        
+        function O = zerosXY(obj, dtype)
+        % These generate a set of zeros of the size of the part of the global grid residing on this node    
+            if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 0); end
         function O = zerosXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 0); end
         function O = zerosYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 0); end
         function O = zerosXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 0); end
 
-        % These generate a set of ones of the size of the part of the global grid residing on this node
-        function O = onesXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 1); end
+        
+        function O = onesXY(obj, dtype)
+            % These generate a set of ones of the size of the part of the global grid residing on this node
+            if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, 1); end
         function O = onesXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, 1); end
         function O = onesYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, 1); end
         function O = onesXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, 1); end
 
-        % These generate a set of zeros of the size of the part of the global grid residing on this node
-        function O = randsXY(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, NaN); end
+        function O = randsXY(obj, dtype)
+            % These generate a set of random #s of the size of the part of the global grid residing on this node
+            if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(4, dtype, NaN); end
         function O = randsXZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(5, dtype, NaN); end
         function O = randsYZ(obj, dtype);  if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(6, dtype, NaN); end
         function O = randsXYZ(obj, dtype); if nargin < 2; dtype = obj.SCALAR; end; O = obj.makeValueArray(7, dtype, NaN); end
