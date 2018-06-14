@@ -10,8 +10,8 @@ doAll3DTests  = doAll3DTests | doALLTheTests;
 % 1D
 doSonicAdvectStaticBG   = doSonicAdvectStaticBG | doAll1DTests; 
 doSonicAdvectMovingBG   = doSonicAdvectMovingBG | doAll1DTests;
-doEntropyAdvectStaticBG = doEntropyAdvectStaticBG | doAll1DTests;
-doEntropyAdvectMovingBG = doEntropyAdvectMovingBG | doAll1DTests;
+doEntropyAdvectStaticBG=doEntropyAdvectStaticBG | doAll1DTests;
+doEntropyAdvectMovingBG=doEntropyAdvectMovingBG | doAll1DTests;
 doDustyWaveStaticBG     = doDustyWaveStaticBG   | doAll1DTests;
 doDustyWaveMovingBG     = doDustyWaveMovingBG   | doAll1DTests;
 % 2D
@@ -26,6 +26,7 @@ doDustyBoxes          = doDustyBoxes            | doAll1DTests;
 
 % 2D tests
 doCentrifugeTests     = doCentrifugeTests       | doAll2DTests;
+doSedov2DTests        = doSedov2DTests          | doAll3DTests;
 
 % 3D tests
-doSedovTests          = doSedovTests            | doAll3DTests;
+doSedov3DTests        = doSedov3DTests          | doAll3DTests;
