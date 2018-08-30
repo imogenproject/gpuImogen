@@ -20,12 +20,12 @@ void printAboutDevice(cudaDeviceProp info, int devno)
 {
 printf("Information on device %i (%s):\n", devno, info.name);
 printf("\tCompute capability: %i.%i\n", info.major, info.minor);
-printf("\tGlobal mem        = %iMB\n", info.totalGlobalMem/1048576);
-printf("\tConstant mem      = %iKB\n", info.totalConstMem/1024);
-printf("\tShared mem/block  = %iKB\n", info.sharedMemPerBlock/1024);
+printf("\tGlobal mem        = %iMB\n", (int)(info.totalGlobalMem/1048576));
+printf("\tConstant mem      = %iKB\n", (int)(info.totalConstMem/1024));
+printf("\tShared mem/block  = %iKB\n", (int)(info.sharedMemPerBlock/1024));
 printf("\tRegisters/block   = %i\n", info.regsPerBlock);
 printf("\tWarp size         = %i\n", info.warpSize);
-printf("\tMemory pitch      = %i\n", info.memPitch);
+printf("\tMemory pitch      = %i\n", (int)info.memPitch);
 printf("\tMax threads/block = %i\n", info.maxThreadsPerBlock);
 printf("\tMax block dim     = %ix%ix%i\n", info.maxThreadsDim[0], info.maxThreadsDim[1], info.maxThreadsDim[2]);
 printf("\tMax grid dim      = %ix%ix%i\n", info.maxGridSize[0], info.maxGridSize[1], info.maxGridSize[2]);
@@ -167,7 +167,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if(strcmp(c, "memory") == 0) {
 		size_t freemem; size_t totalmem;
 
-		cudaError_t fail;
+		//cudaError_t fail;
 
 		mwSize dims[3];
 		dims[0] = nDevices;

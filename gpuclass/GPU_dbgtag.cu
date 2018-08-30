@@ -38,10 +38,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   printf("| |-currentPermutation = [%i %i %i]\n", thetag.currentPermutation[0], thetag.currentPermutation[1], thetag.currentPermutation[2]);
   printf("| |-dim = [%i %i %i]\n", thetag.dim[0], thetag.dim[1], thetag.dim[2]);
   printf("| |-numSlabs = %i\n", thetag.numSlabs);
-  printf("| |-numel = %i\n", thetag.numel);
+  printf("| |-numel = %li\n", thetag.numel);
   printf("| |-permtag = %i\n", thetag.permtag);
   printf("|-Internal parameters\n");
-  printf("| |-matlabClassHandle=%#lx\n", (void *)(thetag.matlabClassHandle));
+  printf("| |-matlabClassHandle=%#lx\n", (unsigned long int)(thetag.matlabClassHandle));
   printf("| |-mlClassHandleIndex=%i\n", thetag.mlClassHandleIndex);
   printf("|-Parallel parameters\n");
   printf("| |-This system configured to use max of %i GPUs\n", MAX_GPUS_USED);
@@ -52,8 +52,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   for(pc = 0; pc < thetag.nGPUs; pc++) {
 	  printf("| |-partition %i information\n", pc);
 	  printf("| | |-deviceID = %i\n", thetag.deviceID[pc]);
-	  printf("| | |-devicePtr = %#lx\n", (void *)thetag.devicePtr[pc]);
-	  printf("| | |-partNumel = %li\n", thetag.partNumel[pc]);
+	  printf("| | |-devicePtr = %#lx\n", (unsigned long int)thetag.devicePtr[pc]);
+	  printf("| | |-partNumel = %i\n", thetag.partNumel[pc]);
 	  printf("| | |-slabPitch = %li\n", thetag.slabPitch[pc]);
 	  calcPartitionExtent(&thetag, pc, &sub[0]);
 	  printf("| | |-calcPartitionExtent returns [%i %i %i %i %i %i]\n", sub[0], sub[1], sub[2], sub[3], sub[4], sub[5]);

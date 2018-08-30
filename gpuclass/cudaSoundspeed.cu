@@ -96,6 +96,8 @@ int calculateSoundspeed(MGArray *fluid, MGArray *mag, MGArray *cs, double gamma)
 
 	int pureHydro = (mag == NULL);
 
+	int fail = SUCCESSFUL;
+
 	int i, j;
 	int sub[6];
 	double *srcs[8];
@@ -110,12 +112,12 @@ int calculateSoundspeed(MGArray *fluid, MGArray *mag, MGArray *cs, double gamma)
 
 		if(pureHydro == 1) {
 			cukern_Soundspeed_hd<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], cs->devicePtr[i], fluid[0].partNumel[i]);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda hydro soundspeed");
+			fail = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda hydro soundspeed");
 		} else {
 			for(j = 0; j < 3; j++) { srcs[j+5] = mag[j].devicePtr[i]; }
 
 			cukern_Soundspeed_mhd<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], cs->devicePtr[i], fluid[0].partNumel[i]);
-			CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda mhd soundspeed");
+			fail = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda mhd soundspeed");
 		}
 	}
 

@@ -38,11 +38,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	  MGArray *haloinfo;
 	  returnCode = MGA_allocArrays(&haloinfo, 1, &skel);
 
-	  int nd = 3;
-	  mwSize odims[3];
-	  int i;
-	  for(i = 0; i < 3; i++) { odims[i] = skel.dim[i]; }
-
 	  returnCode = MGA_wholeFaceToLinear(&thetag, dir, side, 0, depth, &haloinfo->devicePtr[0]);
 
 	  MGA_returnOneArray(plhs, haloinfo);

@@ -91,7 +91,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *scalars = mxGetPr(prhs[3]);
 	if(mxGetNumberOfElements(prhs[3]) != 5) {
 		PRINT_FAULT_HEADER;
-		printf("The 4th argument must be a five element vector: [rho_nog, rho_fullg, dt, space order, temporal order]. It contains %i elements.\n", mxGetNumberOfElements(prhs[3]));
+		printf("The 4th argument must be a five element vector: [rho_nog, rho_fullg, dt, space order, temporal order]. It contains %lui elements.\n", mxGetNumberOfElements(prhs[3]));
 		PRINT_FAULT_FOOTER;
 		DROP_MEX_ERROR("Invalid arguments, brah!");
 	}
