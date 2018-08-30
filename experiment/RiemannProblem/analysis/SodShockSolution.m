@@ -1,7 +1,5 @@
 classdef SodShockSolution < handle
-    % Class annotation template for creating new classes.
-    
-    
+    % Class that generates exact solutions to the Sod Tube code test
     %___________________________________________________________________________________________________
     
     %===================================================================================================
@@ -32,6 +30,11 @@ classdef SodShockSolution < handle
         
         %______________________________________________________________________________ SodShockSolution
         function obj = SodShockSolution(xcoords, time)
+            % obj = SodShockSolution(xcoords, time)
+            % returns an object containing the exact solution of the classic Sod tube evaluated
+            % at the coordinate list xcoords at time 'time'. The initial state is presumed to
+            % consist of the classic state, u_{left} = {rho = 1, v = 0, P = 1} and
+            % u_{right} = {rho = .125, v = 0, P = .1}, and the adiabatic index is 1.4.
             
             rez = size(xcoords);
 
