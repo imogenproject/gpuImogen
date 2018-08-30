@@ -222,8 +222,6 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	double gamma = params.thermoGamma;
 	double rhomin= params.minimumRho;
 
-	int flag_is2D_RZ = 0;
-
 	// We let the callers just tell us X/Y/Z (~ directions 1/2/3),
 	// At this point we know enough to map these to different templates
 	// (e.g. the two Theta direction fluxes depend on current array orientation)
@@ -832,7 +830,6 @@ __global__ void __launch_bounds__(128, 6) cukern_HLLC_1storder(double *Qin, doub
 
 		/* Convert to primitive variables */
 		F = 1.0/A;			
-
 
 		B -= .5*(C*C+D*D+E*E)*F; /* internal energy */
 #ifdef HLLC_ENFORCE_MINVALS
