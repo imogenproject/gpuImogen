@@ -33,7 +33,7 @@ if ini.numFluids > 1
     run.multifluidDragMethod = m;
     if mpi_amirank0()
         fmnames = {'explicit midpt', 'classic rk4', 'ETD-RK1', 'ETD-RK2 (not impl)', 'logtrap'};
-        disp(['    Multifluid mode is active: multifluid drag method to ' fmnames{m+1}]);
+        disp(['    Multifluid mode is active: multifluid drag method is ' fmnames{m+1}]);
     end
 end
 
@@ -45,7 +45,7 @@ if (any(cso(1) == [2 4]) & any(cso(2) == [2 4 6])) == 0
 end
 run.compositeSrcOrders = cso;
 
-SaveManager.logPrint(['    If used, cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.']);
+SaveManager.logPrint(['    If used, cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.\n']);
 
 if ~isempty(ini.checkpointSteps)
     run.checkpointInterval = ini.checkpointSteps(1);
