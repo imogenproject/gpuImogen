@@ -125,13 +125,15 @@ classdef ShearingBoxInitializer < Initializer
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(self)
             geo = self.geomgr;
             nz = geo.globalDomainRez(3);
+
+            r_c    = self.normalizationRadius;
             
             %           self.bcMode.x = ENUM.BCMODE_CONSTANT;
             if self.useZMirror == 1
                 if nz > 1
                     self.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_OUTFLOW };
                 else
-                    if mpi_amirank0(); warning('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n'); end
+                    SaveManager.logPrint('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n');
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
             else
@@ -143,8 +145,9 @@ classdef ShearingBoxInitializer < Initializer
                 end
             end
             
-            switch geo.pGeometryType;
-                case ENUM.GEOMETRY_SQUARE;
+            switch geo.pGeometryType
+                case ENUM.GEOMETRY_SQUARE
+		    % fixme this is gonna dump if it's ever run again
                     boxsize = 2*(1+self.edgePadding)*diskInfo.rout * [1 1 1];
                     
                     if nz > 1
@@ -164,7 +167,7 @@ classdef ShearingBoxInitializer < Initializer
                     geo.makeBoxOriginCoord(round(geo.globalDomainRez/2)+0.5);
                     
                     error('Shearing box does not support square coordinates at this time.');
-                case ENUM.GEOMETRY_CYLINDRICAL;
+                case ENUM.GEOMETRY_CYLINDRICAL
                     width = self.outerRadius - self.innerRadius;
                     
                     dr = (width) / geo.globalDomainRez(1);
@@ -179,22 +182,21 @@ classdef ShearingBoxInitializer < Initializer
                         %else
                             dz = dr;
                         %end
-                        
-                        % For vertical mirror, offset Z=0 by three cells to agree with mirror BC that has 3 ghost cells
-                        if self.useZMirror; z0 = -3*dz; else z0 = -round(nz/2)*dz; end
+                    
+		        % FIXME this needs to autodetect the number of ghost cells in use
+                        % For vertical mirror, offset Z=0 by four cells to agree with mirror BC that has 4 ghost cells
+                        if self.useZMirror; z0 = -4*dz; else; z0 = -round(nz/2)*dz; end
                     else
                         z0 = 0;
                         dz = 1;
                     end
                     
-                    geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
+                    geo.geometryCylindrical(self.innerRadius/r_c, 1, dr/r_c, z0/r_c, dz/r_c);
+%                    geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
             end
             
             % Fetch and normalize coordinates
             [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
-            r_c    = self.normalizationRadius;
-            radpts = radpts / r_c;
-            zpts   = zpts / r_c;
             rsph   = sqrt(radpts.^2+zpts.^2);
 
             self.gravity.constant = 6.673e-11; % physical value
@@ -204,11 +206,17 @@ classdef ShearingBoxInitializer < Initializer
 
             % Calculate several dimensionful scale factors
             w0    = sqrt(GM/r_c^3); % kepler omega @ r_c
-            v0    = r_c*w0;    % Kepler orbital velocity @ r_c
-            h0    = cs_0 / w0; % scale height @ r_c
-            phi_0 = -GM / r_c; % stellar potential @ r_c
-            rho_0 = self.Sigma0 / (sqrt(2*pi)*h0);
+            v0    = r_c*w0;         % Kepler orbital velocity @ r_c
+            h0    = cs_0 / w0;      % scale height @ r_c
+            phi_0 = -GM / r_c;      % stellar potential @ r_c
+            rho_0 = self.Sigma0 / (sqrt(2*pi)*h0); % characteristic density @ r_c
             P0    = -rho_0 * phi_0; % pressure scale @ r_c
+
+            % r0 = r_c              % LENGTH UNIT
+            m0    = rho_0 * r_c^3;  % MASS UNIT
+            t0    = r_c / v0;       % TIME UNIT
+            %--- derived:
+            u0    = m0 * v0^2;      % ENERGY UNIT
 
             nt = self.temperatureExponent;
             np = self.densityExponent;
@@ -221,9 +229,10 @@ classdef ShearingBoxInitializer < Initializer
             q      = (-nt - 3 + 2*np)/2;
             rho_mp = rho_0 * radpts.^q;
 
-            % Calculate rho at all elevations given T(r,z) = T(r,z=0) (locally isothermal)
-            % solve dP/dz = T drho/dz = -dphi/dz
-            deltaphi = -phi_0*(1./sqrt(radpts.^2 + zpts.^2) - 1./radpts);
+            % Calculate rho at all elevations given T(r,z) = T(r,z=0) (vertically isothermal)
+            % solve dP/dz = T drho/dz = -dphi/dzi
+            %deltaphi = -phi_0*(1./sqrt(radpts.^2 + zpts.^2) - 1./radpts);
+            deltaphi = -phi_0*(1./rsph - 1./radpts);
             mass = rho_mp .* exp(deltaphi .* radpts.^(-nt) / cs_0^2);
 
             % Still more or less fudging the thermodynamics for now
@@ -247,9 +256,9 @@ classdef ShearingBoxInitializer < Initializer
                 Eint = Eint / P0;
                 nfact = rho_0 / P0;
 
-                m0 = rho_0 * r_c^3;
-                self.fluidDetails(1).sigma = self.fluidDetails(1).sigma *r_c^-2;
-                self.fluidDetails(1).mu    = self.fluidDetails(1).mu / m0;
+                %self.fluidDetails(1).sigma = self.fluidDetails(1).sigma *r_c^-2;
+                %self.fluidDetails(1).mass  = self.fluidDetails(1).mass / m0;
+                %self.fluidDetails(1).kBolt = self.fluidDetails(1).kBolt / u0;
             else
                 nfact = 1;
             end
@@ -262,11 +271,13 @@ classdef ShearingBoxInitializer < Initializer
                 self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
                 self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
 
-                self.fluidDetails(2).sigma = self.fluidDetails(2).sigma *r_c^-2;
-                self.fluidDetails(2).mu    = self.fluidDetails(2).mu / m0;
+                %self.fluidDetails(2).sigma = self.fluidDetails(2).sigma *r_c^-2;
+                %self.fluidDetails(2).mass    = self.fluidDetails(2).mass / m0;
                 
                 self.fluidDetails(2).sigma = self.fluidDetails(2).sigma * 10000;
-                self.fluidDetails(2).mu = self.fluidDetails(2).mu * 1e6;
+                self.fluidDetails(2).mass = self.fluidDetails(2).mass * 1e6;
+                
+                %self.fluidDetails(2).kBolt = self.fluidDetails(2).kBolt / u0;
 
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
@@ -274,8 +285,13 @@ classdef ShearingBoxInitializer < Initializer
             else
                 self.numFluids = 1;
             end
+            
+            for n = 1:self.numFluids
+                self.fluidDetails(n) = rescaleFluidDetails(self.fluidDetails(n), m0, r_c, t0);
+            end
 
-            % Compute frame boost that minimizes the average advection speed & maximizes timestep
+
+            % Compute frame boost that minimizes the average advection speed & so maximizes timestep
             velInner = sqrt(GM / self.innerRadius);
             velOuter = sqrt(GM / self.outerRadius);
             self.frameParameters.rotateCenter = [0 0 0];
@@ -307,11 +323,6 @@ classdef ShearingBoxInitializer < Initializer
                 sphericalR = r_c*sqrt(radpts.^2 + zpts.^2);
                 potentialField.field = -GM ./ sphericalR;
                 potentialField.constant = 1;
-            end
-
-            % If necessary, re-initialize the geometry with the normalized coordinates as input.
-            if self.normalizeValues
-                geo.geometryCylindrical(self.innerRadius/r_c, 1, dr/r_c, z0/r_c, dz/r_c);
             end
 
             % Constructs a single-parameter softened potential -sqrt(2)/sqrt(r^2 + r0^2) inside pointRadius to avoid

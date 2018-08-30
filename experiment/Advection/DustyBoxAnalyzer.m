@@ -9,21 +9,25 @@ classdef DustyBoxAnalyzer < LinkedListNode
     %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         % The thermodynamic properties & constants that define the solution
-        sigmaGas,muGas,sigmaDust,muDust,rhoG,rhoD,vGas,vDust,gammaGas,Pgas;
+        thermoGas, thermoDust; % Copied in from the fluids(x).thermoDetails structure
+        
+        % Gas and dust mass density
+        rhoG, rhoD;
 
         % how far to go between analyses in timesteps
         stepsPerPoint;
-
+        
+        % The results of the postmortem as they happen
         analysis; 
     end %PUBLIC
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
-        solver;
-
         p_vStick;
         p_dv;
         p_dvHat;
+
+        P0;
     end %PROTECTED
     
     %===================================================================================================
@@ -45,11 +49,8 @@ classdef DustyBoxAnalyzer < LinkedListNode
             self.rhoD = fluids(2).mass.array(6,1,1);
 
             % eat the thermodynamic props from the fluid managers
-            self.gammaGas  = fluids(1).gamma;
-            self.sigmaGas  = fluids(1).particleSigma;
-            self.sigmaDust = fluids(2).particleSigma;
-            self.muGas     = fluids(1).particleMu;
-            self.muDust    = fluids(2).particleMu;
+            self.thermoGas = fluids(1).thermoDetails;
+            self.thermoDust= fluids(2).thermoDetails;
 
             gasVel  = [fluids(1).mom(1).array(6,1,1) fluids(1).mom(2).array(6,1,1) fluids(1).mom(3).array(6,1,1)] / self.rhoG;
             dustVel = [fluids(2).mom(1).array(6,1,1) fluids(2).mom(2).array(6,1,1) fluids(2).mom(3).array(6,1,1)] / self.rhoD;
@@ -68,15 +69,14 @@ classdef DustyBoxAnalyzer < LinkedListNode
             % vDust= vStick - dvHat * dv * g/(g+d)
 
             press = fluids(1).calcPressureOnCPU();
-            gasP  = press(6,1,1);
-            
-            % we omit the general arbitrary(v1, v2) case having already solved the sticking velocity above
-            self.solver = DustyBoxSolver(self.sigmaGas, self.muGas, self.sigmaDust, self.muDust, self.rhoG, self.rhoD, dv, 0, self.gammaGas, gasP);
-            % save useful info
+            %gasP  = press(6,1,1);
+
             self.p_vStick = vStick;
             self.p_dv = dv;
             self.p_dvHat = dvHat;
             self.stepsPerPoint = 1; 
+
+            self.P0 = press(6,1,1);
 
             if(self.stepsPerPoint < 0)
                 run.save.logPrint(sprintf('WARNING: DustyBoxAnalyzer stepsPerPoint never set; Defaulting to %i\n', int32(abs(self.stepsPerPoint))));
@@ -86,38 +86,40 @@ classdef DustyBoxAnalyzer < LinkedListNode
             myEvent = ImogenEvent([], self.stepsPerPoint, [], @self.analyzeDrag);
             myEvent.armed = 1;
             run.attachEvent(myEvent);
+        end
 
+        function a = computeAcceleration(self, t, dv)
+            press = self.PofV(dv);
+            T = (self.thermoGas.mass * press) / (self.rhoG * self.thermoGas.kBolt);
+            
+            visc = self.thermoGas.dynViscosity * (T/298.15)^self.thermoGas.viscTindex;
+            Rey = self.rhoG * dv * sqrt(self.thermoDust.sigma / pi) / visc;
+            
+            mfp = self.thermoGas.mass * (T/298.15)^self.thermoGas.sigmaTindex / (self.rhoG * self.thermoGas.sigma * sqrt(2));
+            Kn = 2*mfp / sqrt(self.thermoDust.sigma / pi);
+
+            Fone = self.computeCdrag(Rey, Kn);
+            a = -Fone * .5 * dv^2 * (self.thermoDust.sigma/4) * (self.rhoG + self.rhoD) / self.thermoDust.mass;
         end
 
         function analyzeDrag(self, evt, run, fluids, mag)
             
             tFinal = sum(run.time.history);
             
-            if 1
-                % Apply out-of-the-box ODE solver with most stringent error tolerances...
-                opts = odeset('Reltol',1e-13,'AbsTol',1e-14);
-                [tout, yout] = ode113(self.solver.f, [0 tFinal], self.solver.solution(1,2),opts);
-                dv_exact = yout(end);
-            else % This uses my crappy homebrew ODE solver... why the hell was I let to wander down THAT road?
-                self.solver.setInitialCondition(0, self.p_dv);
-                
-                % Largest safe timestep, or largest that takes 4 steps: whichever is less
-                tau = .005/abs(self.solver.computeJacobian);
-                N = ceil(tFinal / tau);
-                if N < 6; N = 6; end
-                self.solver.setStep(tFinal / N);
-                %fprintf('%12e\n',self.solver.stepsize)
-                
-                self.solver.integrate(N, 1);%- 3*self.solver.stepsize);% - .001 * self.solver.stepsize);
-                dv_exact = self.solver.solution(end,2);
-            end
+            % Apply out-of-the-box ODE solver with most stringent error tolerances...
+            opts = odeset('Reltol',1e-13,'AbsTol',1e-14);
+            
+            f = @(t, x) self.computeAcceleration(t, x);
+            
+            [tout, yout] = ode113(f, [0 tFinal], self.p_dv, opts);
+            dv_exact = yout(end);
             
             nvGas  = [fluids(1).mom(1).array(6,1,1) fluids(1).mom(2).array(6,1,1) fluids(1).mom(3).array(6,1,1)] / self.rhoG;
             nvDust = [fluids(2).mom(1).array(6,1,1) fluids(2).mom(2).array(6,1,1) fluids(2).mom(3).array(6,1,1)] / self.rhoD;
             
             dv_numeric = norm(nvGas - nvDust);
 
-            self.analysis(end+1,:) = [tFinal, dv_exact, dv_numeric, dv_exact - dv_numeric];
+            self.analysis(end+1,:) = [tFinal, dv_exact, dv_numeric, dv_numeric/dv_exact - 1];
             
             % rearm to fire again
             evt.iter = evt.iter + self.stepsPerPoint;
@@ -129,6 +131,14 @@ classdef DustyBoxAnalyzer < LinkedListNode
             save([run.paths.save '/drag_analysis.mat'], 'result');
         end
 
+        function P = PofV(self, dv)
+            % reduced density
+            mu = self.rhoG * self.rhoD / (self.rhoG + self.rhoD);
+            
+            % hydrostatic part of dissipated relative KE added
+            P = self.P0 + (self.thermoGas.gamma-1)*.5*mu*(self.p_dv^2 - dv^2);
+        end
+
     end%PUBLIC
     
     %===================================================================================================
@@ -138,6 +148,11 @@ classdef DustyBoxAnalyzer < LinkedListNode
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
 
+        function c = computeCdrag(Rey, Kn)
+            c = (24/Rey + 4*Rey^(-1/3) + .44*Rey/(12000+Rey)) / (1 + 1*Kn*(1.142+.558*exp(-.999/Kn)));
+        end
+        
     end%PROTECTED
     
 end%CLASS
+

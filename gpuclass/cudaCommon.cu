@@ -90,7 +90,7 @@ bool sanityCheckTag(const mxArray *tag)
 		if(permtag == 0) {
 			// meh
 		} else {
-			printf((const char *)"Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n");
+			printf((const char *)"Permutation tag is %i: Valid values are 1 (XYZ), 2 (XZY), 3 (YXZ), 4 (YZX), 5 (ZXY), 6 (ZYX)\n", permtag);
 			return false;
 		}
 	}
@@ -123,7 +123,7 @@ bool sanityCheckTag(const mxArray *tag)
 	// CUDA device #s are nonnegative, and it is nonsensical that there would be over 16 of them.
 	for(j = 0; j < nDevs; j++) {
 		if((x[2*j] < 0) || (x[2*j] >= MAX_GPUS_USED)) {
-			printf((const char *)"Going through .deviceID: Found %i < 0 or > %i is impossible. Dumping.\n", x[2*j], MAX_GPUS_USED);
+			printf((const char *)"Going through .deviceID: Found %i < 0 or > %i is impossible. Dumping.\n", (int)x[2*j], MAX_GPUS_USED);
 			return false;
 		}
 	}
@@ -2095,8 +2095,8 @@ for(j = 0; j < ndims; j++) {
 
 if(failed) {
 	PRINT_FAULT_HEADER;
-	printf("Matlab array was %i dimensional, dims [", ndims);
-	for(j = 0; j < ndims; j++) { printf("%i ", arraydims[j]); }
+	printf("Matlab array was %i dimensional, dims [", (int)ndims);
+	for(j = 0; j < ndims; j++) { printf("%i ", (int)arraydims[j]); }
 	printf("].\nGPU_Type target array was of size [%i %i %i] which is not the same. Not happy :(.\n", g->dim[0], g->dim[1], g->dim[2]);
 	PRINT_FAULT_FOOTER;
 	return ERROR_INVALID_ARGS;
@@ -2261,6 +2261,23 @@ int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *flui
     return SUCCESSFUL;
 }
 
+ThermoDetails accessMatlabThermoDetails(const mxArray *thermstruct)
+{
+	ThermoDetails thermo;
+	thermo.gamma = derefXdotAdotB_scalar(thermstruct, "gamma", NULL);
+
+	thermo.m     = derefXdotAdotB_scalar(thermstruct, "mass", NULL);
+
+	thermo.mu0   = derefXdotAdotB_scalar(thermstruct, "dynViscosity", NULL);
+	thermo.muTindex = derefXdotAdotB_scalar(thermstruct, "viscTindex", NULL);
+	thermo.sigma0 = derefXdotAdotB_scalar(thermstruct, "sigma", NULL);
+	thermo.sigmaTindex= derefXdotAdotB_scalar(thermstruct, "sigmaTindex", NULL);
+
+	thermo.kBolt = derefXdotAdotB_scalar(thermstruct, "kBolt", NULL);
+
+	return thermo;
+}
+
 GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 {
 	GeometryParams g;
@@ -2279,6 +2296,7 @@ GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 	case 2: g.shape = CYLINDRICAL; break;
 	// default: ?
 	}
+
 	derefXdotAdotB_vector(geoclass, "affine", NULL, &v[0], 3);
 	g.x0 = v[0];
 	g.y0 = v[1];
@@ -2287,10 +2305,11 @@ GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 	return g;
 }
 
-/* A utility to ease access to Matlab structures/classes, fetches in.{fieldA}.{fieldB}
- * or in.{fieldA} if fieldB is blank and returns the resulting mxArray*. */
-mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB)
+/* A utility to ease access to Matlab structures/classes: fetches in(idx).{fieldA}.{fieldB}
+ * or in(idx).{fieldA} if fieldB is NULL and returns the resulting mxArray* */
+mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const char *fieldB)
 {
+
 	if(fieldA == NULL) mexErrMsgTxt("In derefAdotBdotC: fieldA null!");
 
 	mxArray *A; mxArray *B;
@@ -2300,14 +2319,14 @@ mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *field
 	char *estring = (char *)calloc(snum, sizeof(char));
 
 	if(t0 == mxSTRUCT_CLASS) { // Get structure field from A
-		A = mxGetField(in, 0, fieldA);
+		A = mxGetField(in, idx, fieldA);
 
 		if(A == NULL) {
 			sprintf(estring,"Failed to get X.%s", fieldA);
 			mexErrMsgTxt(estring);
 		}
 	} else { // Get field struct A and fail if it doesn't work
-		A = mxGetProperty(in, 0, fieldA);
+		A = mxGetProperty(in, idx, fieldA);
 
 		if(A == NULL) {
 			sprintf(estring,"Failed to get X.%s", fieldA);
@@ -2318,9 +2337,9 @@ mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *field
 	if(fieldB != NULL) {
 		t0 = mxGetClassID(A);
 		if(t0 == mxSTRUCT_CLASS) {
-			B = mxGetField(A, 0, fieldB);
+			B = mxGetField(A, idx, fieldB);
 		} else {
-			B = mxGetProperty(A, 0, fieldB);
+			B = mxGetProperty(A, idx, fieldB);
 		}
 
 		sprintf(estring,"Failed to get X.%s.%s", fieldA, fieldB);
@@ -2330,6 +2349,13 @@ mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *field
 	} else {
 		return A;
 	}
+}
+
+/* A utility to ease access to Matlab structures/classes: fetches in.{fieldA}.{fieldB}
+ * or in.{fieldA} if fieldB is NULL and returns the resulting mxArray* */
+mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB)
+{
+	return derefXatNdotAdotB(in, 0, fieldA, fieldB);
 }
 
 /* Fetches in.{fieldA}.{fieldB}, or in.{fieldA} if fieldB is NULL,
@@ -2416,11 +2442,11 @@ void MGA_debugPrintAboutArray(MGArray *x)
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	printf("========== RANK %i DEBUG INFORMATION ABOUT ARRAY\n", rank);
-	printf("  This array's address: %x\n", x);
+	printf("  This array's address: %lx\n", (unsigned long)x);
 	printf("===== Device information\n");
 	printf("Array distributed onto    %i GPUs\n", x->nGPUs);
 	int j;
-	for(j = 0; j < n; j++) { printf("Device %i: [%i | %x]\n", j, x->deviceID[j], x->devicePtr[j]); }
+	for(j = 0; j < n; j++) { printf("Device %i: [%i | %lx]\n", j, x->deviceID[j], (unsigned long)x->devicePtr[j]); }
 
 	printf("Array's host-side extent: [%i %i %i]\n", x->dim[0], x->dim[1], x->dim[2]);
 	printf("Array's host #elements  : %li; ", x->numel);
@@ -2490,7 +2516,8 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	case ERROR_GET_GPUTAG_FAILED:         estring = "Attempt to get GPU tag failed."; break;
 	case ERROR_DESERIALIZE_GPUTAG_FAILED: estring = "Deserialization of gputag -> MGArray failed."; break;
 	case ERROR_CUDA_BLEW_UP:              estring = "CUDA API returned an error. Crashing."; break;
-	case ERROR_NOIMPLEMENT:                estring = "Required functionality not implemented."; break;
+	case ERROR_NOIMPLEMENT:               estring = "Required functionality not implemented."; break;
+	default:                              estring = "Invalid error code or no error."; break;
 	}
 	printf("Rank %i | In %s (%s:%i): %s\n", mpirank, infunc, infile, atline, estring);
 	return errtype;
@@ -2532,7 +2559,7 @@ int dbgfcn_CheckArrayVals(MGArray *x, int maxslab, int crashit)
 int rank;
 MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-int fail;
+int fail = SUCCESSFUL;
 
 int badnews = 0;
 
@@ -2550,20 +2577,20 @@ for(j = 0; j < maxslab; j++) {
 	for(i = 0; i < x->nGPUs; i++) {
 		cudaSetDevice(x->deviceID[i]);
 
-		fail = CHECK_CUDA_ERROR("fuck");
+		fail = CHECK_CUDA_ERROR("set device");
 
 		int qq = 1;
 		cudaMemcpy((void *)&evilAddresses[0], (void *)&qq, 1*sizeof(int), cudaMemcpyHostToDevice);
-		fail = CHECK_CUDA_ERROR("fuck");
+		fail = CHECK_CUDA_ERROR("memcopy");
 		cukern_dbcheck_array<<<16, 256>>>(&evilAddresses[0], x->devicePtr[i] + (j*x->slabPitch[i]/8), x->partNumel[i]);
-		fail = CHECK_CUDA_ERROR("fuck");
+		fail = CHECK_CUDA_ERROR("cukern_dbcheck_array");
 		cudaMemcpy((void *)&qq, (void *)&evilAddresses[0], 1*sizeof(int), cudaMemcpyDeviceToHost);
-		fail = CHECK_CUDA_ERROR("fuck");
+		fail = CHECK_CUDA_ERROR("memcopy");
 		if(qq > 1) {
-			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %x[0] to %x[%i] and hit %i invalid values!", rank, j, x->devicePtr[i], x->devicePtr[i], x->partNumel[i]-1, qq);
+			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %lx[0] to %lx[%i] and hit %i invalid values!\n", rank, j, (unsigned long)x->devicePtr[i], (unsigned long)x->devicePtr[i], x->partNumel[i]-1, qq);
 			printf("break at %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
 			cudaMemcpy((void *)&hostBadVals[0], (void *)&evilAddresses[0], qq*sizeof(int), cudaMemcpyDeviceToHost);
-			fail = CHECK_CUDA_ERROR("fuck");
+			fail = CHECK_CUDA_ERROR("memcopy");
 			badnews = 1;
 			break;
 		}
@@ -2583,7 +2610,7 @@ for(j = 0; j < maxslab; j++) {
 }
 
 cudaFree(evilAddresses);
-return 0;
+return fail;
 
 }
 
@@ -2595,7 +2622,7 @@ int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit)
 	int i;
 	for(i = 0; i < 4; i++) {
 		badnews = dbgfcn_CheckArrayVals(fluid + i, 1, crashit);
-		if(badnews) { return badnews; }
+		if(CHECK_IMOGEN_ERROR(badnews) != SUCCESSFUL) { return badnews; }
 	}
 
 	return 0;

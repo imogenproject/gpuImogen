@@ -19,8 +19,8 @@ classdef FluidManager < handle
         isDust;
 
         gamma;                    % Adiabatic index of the fluid
-        particleMu;               % mu, the average mass of a molecule/particle
-        particleSigma;            % the mean geometric collision cross-section 
+                                  % Note that we copy gamma to here from .thermoDetails.gamma
+        thermoDetails;
     end%PUBLIC
    
     properties (SetAccess = public, GetAccess = public)
@@ -106,15 +106,12 @@ classdef FluidManager < handle
             % This is called in uploadDataArrays with the ini.fluid(:).details structure
             % It sets all per-fluid properties, including adiabatic index and radiation
             % properties
-            self.MINMASS       = details.minMass;
             self.gamma         = details.gamma;
-
-            % We assume these will be set to meaningful values if needed (multiphase flow / radiation)
-            if isfield(details,'sigma'); self.particleSigma = details.sigma; else; self.particleSigma = 1.0; end
-            if isfield(details,'mu'); self.particleMu = details.mu; else; self.particleMu = 1.0; end
-
+            if isfield(details,'minMass');  self.MINMASS    = details.minMass;  end
             if isfield(details,'isDust');   self.isDust     = details.isDust;   end
             if isfield(details,'checkCFL'); self.checkCFL   = details.checkCFL; end
+
+	    self.thermoDetails = details;
         end
         
         function DEBUG_uploadData(self, rho, E, px, py, pz)

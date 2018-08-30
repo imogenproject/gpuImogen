@@ -3,9 +3,9 @@ function Kdrag = dustyBoxDragTime(fluidDetails, rhoG, rhoD, vGas, vDust, gammaGa
 % gas and dust fluids for a fully general drag law.
 
 sigmaGas = fluidDetails(1).sigma;
-muGas    = fluidDetails(1).mu;
+muGas    = fluidDetails(1).mass;
 sigmaDust= fluidDetails(2).sigma;
-muDust   = fluidDetails(2).mu;
+muDust   = fluidDetails(2).mass;
 
 
 alpha   = 128.0 * sigmaGas * sqrt(sigmaDust) / (5*muGas*pi*sqrt(gammaGas-1));

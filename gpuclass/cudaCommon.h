@@ -47,6 +47,19 @@ typedef struct __GeometryParams {
 	// TODO: add allocatable vectors here for variable spacing in the future
 } GeometryParams;
 
+typedef struct __ThermoDetails {
+	double gamma; // (fixed) adiabatic index
+	double m; // particle mass
+
+	double kBolt; // Boltzmann constant referred to our units of length/mass/time (T = Kelvin);
+
+	double mu0; // dynamic viscosity at reference temperature
+	double muTindex; // temperature exponent for viscosity; mu = mu0 (T/Tref)^muTindex
+
+	double sigma0; // kinetic cross section at reference temperature (~ pi * diameter^2)
+	double sigmaTindex; // temperature exp for cross section; sigma = sigma0 (T/Tref)^sigmaTindex
+} ThermoDetails;
+
 typedef struct {
         double *fluidIn[5];
         double *fluidOut[5];
@@ -268,7 +281,7 @@ int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit);
 
 #define CHECK_IMOGEN_ERROR(errtype) checkImogenError(errtype, __FILE__, __func__, __LINE__)
 #define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
-checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
+     checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
 #define CHECK_CUDA_ERROR(astring) CHECK_IMOGEN_ERROR(checkCudaError(astring, __FILE__, __LINE__))
 #define BAIL_ON_FAIL(errtype) if( CHECK_IMOGEN_ERROR(errtype) != SUCCESSFUL) { return errtype; }
 
@@ -319,6 +332,9 @@ int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
 int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *fluid);
 GeometryParams accessMatlabGeometryClass(const mxArray *geoclass);
 
+ThermoDetails accessMatlabThermoDetails(const mxArray *thermstruct);
+
+mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const char *fieldB);
 mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB);
 double derefXdotAdotB_scalar(const mxArray *in, const char *fieldA, const char *fieldB);
 void derefXdotAdotB_vector(const mxArray *in, const char *fieldA, const char *fieldB, double *x, int N);
