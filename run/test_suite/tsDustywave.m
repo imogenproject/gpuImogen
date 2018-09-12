@@ -28,33 +28,34 @@ run.backgroundMach = 0;
 run.waveType = 'sonic';
 run.amplitude = .001;
 
+run.setBackground(.0824, 101325);
+
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 %                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
 run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
-run.cycles = 16;
+run.cycles = 1;
 
 run.addNewFluid(1);
 
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e-3 * kcouple^2;
-% rescale this to set Kcouple
-% FIXME this will not handle nonlinear drag correctly for obvious reasons!!!
-run.fluidDetails(2).mu = run.fluidDetails(2).mu * 1e-5 * (.495 / 1 ) * 8 / norm(run.wavenumber);
+run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e1;
+
+run.multifluidCouplingConstant = kcouple;
 
 run.writeFluid = 2;
   run.amplitude = 0;
   run.backgroundMach = 0;
-  run.setBackground(1, .001);
+  run.setBackground(1, .00001*101325);
 
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
 
-if 1
+if prettyPictures
   rp = RealtimePlotter();
   rp.plotmode = 5;
   rp.plotDifference = 0;
@@ -69,10 +70,11 @@ if 1
   rp.cut = [round(grid(1)/2), 1, 1];
   rp.indSubs = [1 1 grid(1);1 1 1;1 1 1];
   rp.movieProps(0, 0, 'RTP_');
-  rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
-  rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
-  rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
-  rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1 0 0 0]);
+  rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   3   0   1  10   1   8   1   0   0   0]);
+  rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   3   0   1  10   1   8   1   0   0   0]);
+  rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   3   0   1  10   1   8   1   0   0   0]);
+  rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   3   0   1  10   1   8   1   0   0   0]);
+  
 run.peripherals{end+1} = rp;
 
 end
@@ -101,6 +103,7 @@ for N = 1:doublings
     disp(['Running at resolution: ',mat2str(grid)]);
     run.geomgr.setup(grid);
     icfile   = run.saveInitialCondsToFile();
+    
     outdirs{N}   = imogen(icfile);
     
     grid(1) = grid(1)*2;
@@ -114,7 +117,7 @@ rhoGs = cell(doublings, 1);
 rhoDs = cell(doublings, 1);
 phases =cell(doublings, 1);
 
-for N = 1:doublings;
+for N = 1:doublings
     enforceConsistentView(outdirs{N});
     S = SavefilePortal(outdirs{N});
     S.setFrametype('X');
@@ -124,25 +127,27 @@ for N = 1:doublings;
     rhoGs{N} = F.mass;
     rhoDs{N} = F.mass2;
     
-    ic = S.getInitializerFile();
+    ic = S.getIniSettings();
     phases{N} = ((1:size(F.mass,1))'+0.5)*2*pi*ic.ini.wavenumber(1) / size(F.mass,1);
     
-     ev = conj(ic.ini.waveEigenvector);
-     w0 = -conj(ic.ini.waveOmega);
+     ev = ic.ini.waveEigenvector;
+     w0 = ic.ini.waveOmega;
      tau = sum(F.time.history);
         
-    if 1
+    if prettyPictures
         figure(1); % plot absolute errors
 
+        TSD = exp(1i*(phases{N} - w0*tau));
+        
         hold off;
         % gas rho
-        plot((F.mass - ic.ini.pDensity(1) - imag(ic.ini.amplitude(1) * ev(1) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'r-o'); 
+        plot((F.mass - ic.ini.pDensity(1) - imag(ic.ini.amplitude(1) * ev(1) * TSD))/ic.ini.amplitude(1),'r-o'); 
         hold on;
-        plot((F.mass2 - ic.ini.pDensity(2) - imag(ic.ini.amplitude(1) * ev(4) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'r-x');
+        plot((F.mass2 - ic.ini.pDensity(2) - imag(ic.ini.amplitude(1) * ev(4) * TSD))/ic.ini.amplitude(1),'r-x');
         % gas V
-        plot((F.momX ./ F.mass - imag(ic.ini.amplitude(1) * ev(2) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'g-o');
+        plot((F.momX ./ F.mass - imag(ic.ini.amplitude(1) * ev(2) * TSD))/ic.ini.amplitude(1),'g-o');
         % dust v
-        plot((F.momX2 ./ F.mass2 - imag(ic.ini.amplitude(1) * ev(5) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'g-x');
+        plot((F.momX2 ./ F.mass2 - imag(ic.ini.amplitude(1) * ev(5) * TSD))/ic.ini.amplitude(1),'g-x');
 
         title(['Resolution: ' num2str(size(F.mass,1)) ]);
         
@@ -153,16 +158,16 @@ for N = 1:doublings;
         % gas rho
         plot((F.mass - ic.ini.pDensity(1))/ic.ini.amplitude(1),'ro'); 
         hold on;
-        plot(( imag(ic.ini.amplitude(1) * ev(1) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'r-'); 
+        plot(( imag(ic.ini.amplitude(1) * ev(1) * TSD))/ic.ini.amplitude(1),'r-'); 
 
         plot((F.mass2 - ic.ini.pDensity(2))/ic.ini.amplitude(1),'rx');
-        plot((imag(ic.ini.amplitude(1) * ev(4) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'r-');
+        plot((imag(ic.ini.amplitude(1) * ev(4) * TSD))/ic.ini.amplitude(1),'r-');
         % gas V
         plot(F.momX ./ F.mass/ic.ini.amplitude(1) ,'go');
-        plot((imag(ic.ini.amplitude(1) * ev(2) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'g-');
+        plot((imag(ic.ini.amplitude(1) * ev(2) * TSD))/ic.ini.amplitude(1),'g-');
         % dust v
         plot(F.momX2 ./ F.mass2/ic.ini.amplitude(1),'gx');
-        plot((imag(ic.ini.amplitude(1) * ev(5) * exp(1i*(phases{N} - w0*tau))))/ic.ini.amplitude(1),'g-');
+        plot((imag(ic.ini.amplitude(1) * ev(5) * TSD))/ic.ini.amplitude(1),'g-');
 
         title(['Resolution: ' num2str(size(F.mass,1)) ]);
         

@@ -13,6 +13,8 @@ classdef AdvectionInitializer < Initializer
         
         waveType;            % One of the 4 MHD wave types, or 'sound' for adiabatic fluid sound.
         boxLength;
+        
+        overplotFunc;
     end %PUBLIC
     
     properties(SetAccess = private, GetAccess = public)
@@ -35,6 +37,8 @@ classdef AdvectionInitializer < Initializer
         pDensity;
         pPressure;
 
+        pMultifluidCoupleConst;
+
         pBeLinear; % If true, uses linear wave eigenvectors; If false, uses exact characteristic
         pUseStationaryFrame; % If true, ignores pBackgroundMach and calculates the
         % background speed such that <p|x> = exactly zero
@@ -45,6 +49,7 @@ classdef AdvectionInitializer < Initializer
     properties (Dependent = true)
         amplitude; phase; backgroundMach;
         wavenumber; cycles; writeFluid;
+        multifluidCouplingConstant;
     end
     
     %===============================================================================================
@@ -86,6 +91,8 @@ classdef AdvectionInitializer < Initializer
             obj.bcMode.y        = ENUM.BCMODE_CIRCULAR;
             obj.bcMode.z        = ENUM.BCMODE_CIRCULAR;
             
+            obj.multifluidCouplingConstant = 1; 
+
             obj.operateOnInput(input, [512 1 1]);
         end
 
@@ -111,6 +118,12 @@ classdef AdvectionInitializer < Initializer
         end
         function P = get.phase(self); P = self.pPhase; end
 
+        function set.multifluidCouplingConstant(self, c)
+            self.pMultifluidCoupleConst = abs(c);
+        end
+
+        function c = get.multifluidCouplingConstant(self); c = self.pMultifluidCoupleConst; end
+        
         function set.backgroundMach(self, M)
             % Set the translation speed of the background in units of Mach.
             %> V: 1-3 elements for vector mach; Default <0,0,0> for missing elements.
@@ -166,7 +179,7 @@ classdef AdvectionInitializer < Initializer
             self.setBackground(self.pDensity(1,copyfrom), self.pPressure(1,copyfrom));
             self.fluidDetails(end+1) = fluidDetailModel('10um_iron_balls');
 
-	    self.numFluids = self.numFluids + 1; 
+            self.numFluids = self.numFluids + 1; 
         end
 
     end%GET/SET
@@ -174,16 +187,52 @@ classdef AdvectionInitializer < Initializer
     %===============================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
         function waveLinearity(self, tf)
-        % If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact stationary frame
+        % If called with true, flips linearity on: Use of infinitesmal eigenvectors and turns exact
+        % stationary frame
             if tf; self.pBeLinear = 1; self.pUseStationaryFrame = 0; else; self.pBeLinear = 0; end
         end
 
         function waveStationarity(self, tf)
-        % If called with true, regardless of use of linear wavevector, will ignore backgroundMach and put the wave in an exactly stationary frame
+        % If called with true, regardless of use of linear wavevector, will ignore backgroundMach
+        %and put the wave in an exactly stationary frame
             if tf; self.pUseStationaryFrame = 1; else; self.pUseStationaryFrame = 0; end
         end
 
+        function md = findMdustGivenKcouple(self, kcpl)
+            m0 = self.fluidDetails(2).mass;
+            
+            % Generate lower bound for mass
+            mlow = m0;
+            while self.cplSolve(mlow) < kcpl; mlow = mlow / 4; end
+            
+            % generate upper bound
+            mhigh = mlow;
+            while self.cplSolve(mhigh) > kcpl; mhigh = mhigh * 4; end
+            
+            md = fzero(@(x) self.cplSolve(x) - kcpl, [mlow mhigh]);
+            
+            self.fluidDetails(2).mass = m0; % avoid any external side effects of calling this
+        end
+        
+        function y = cplSolve(self, m)
+            self.fluidDetails(2).mass = m;
+            
+            k = norm(self.pWavenumber(:,1)) * 2 * pi;
+            c0 = sqrt(self.pPressure(1)*self.fluidDetails(1).gamma/self.pDensity(1));
 
+            kDrag = dustyBoxDragTime(self.fluidDetails, self.pDensity(1), self.pDensity(2), self.pBackgroundMach(1) * c0, 0, self.gamma(1), self.pPressure(1));
+            M = FluidWaveGenerator.dustyMatrix(self.pDensity(1), k, self.fluidDetails(1).gamma, self.pPressure(1), self.pDensity(2), -kDrag);
+            
+            [eigvecs, eigvals] = eig(M);
+            for N = 1:5
+                if real(eigvals(N,N)) < -1e-9; break; end
+            end
+            
+            omega = eigvals(N,N);
+
+            y = 2*pi*abs(kDrag) / abs(real(omega));
+        end
+        
     end%PUBLIC
     
     %===============================================================================================
@@ -203,8 +252,15 @@ classdef AdvectionInitializer < Initializer
 
             tMax = zeros([obj.numFluids 1]);
             
+            obj.gamma = obj.fluidDetails(1).gamma;
+            
             if obj.numFluids > 1
-                % zeros are gas velocity then dust velocity
+                Md = obj.findMdustGivenKcouple(obj.pMultifluidCoupleConst);
+                obj.fluidDetails(2).mass = Md;
+
+                SaveManager.logPrint('To acheive gas-dust coupling constant of %f, set mDust to %e\n', obj.pMultifluidCoupleConst, Md);
+
+                % the zeros are gas velocity then dust velocity
                 dragConstant = dustyBoxDragTime(obj.fluidDetails, obj.pDensity(1), obj.pDensity(2), 0, 0, obj.gamma(1), obj.pPressure(1));
             end
             
@@ -212,8 +268,7 @@ classdef AdvectionInitializer < Initializer
                 % Calculate the background velocity
                 % FIXME HACK HACK HACK using wrong EoS if fluidCt != 1...
                 % FIXME note that P = rho kb T / mu extremely small if mu is dust-like
-                %c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,fluidCt)/obj.pDensity(1,fluidCt)  ); % The infinitesmal soundspeed of gas'
-                c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,1)/obj.pDensity(1,1)  ); % The infinitesmal soundspeed of gas
+                c_s      = sqrt(obj.gamma(1,1)*obj.pPressure(1,1)/obj.pDensity(1,1)  );
 
                 if obj.pAmplitude(1,1) ~= 0
                     % omega = c_wave k
@@ -231,7 +286,7 @@ classdef AdvectionInitializer < Initializer
                     %KdotX(pik) = K(1)*xGrid(pik)+ K(2)*yGrid(pik) + K(3)*zGrid(pik); % K.X is used much.
                     
                     if obj.pUseStationaryFrame
-                        bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude(1,fluidCt), obj.gamma(1,fluidCt))*K/norm(K);
+                        bgvelocity = -c_s*finampRelativeSoundspeed(obj.pAmplitude(1,fluidCt), obj.gamma)*K/norm(K);
                     else
                         bgvelocity = c_s * obj.pBackgroundMach;
                     end
@@ -259,6 +314,10 @@ classdef AdvectionInitializer < Initializer
                             end
                         else
                             [omega, evector] = FW.dustyLinear(abs(obj.pAmplitude(1,1)), KdotX + obj.pPhase(1,1), K, fluidCt, dragConstant, 1);
+                            
+                            r = obj.locatePeripheral('RealtimePlotter');
+                            if ~isempty(r); r.overplot = @(u, v, w, t, fluid, what) FluidWaveGenerator.evalEvecComponent(u, v, w, t, K(:,1), omega, obj.pAmplitude(1), evector, [obj.pDensity(1), 0, obj.pPressure(1), obj.pDensity(2), 0], what, fluid); end
+%  function f = evalEvecComponent(x, y, z, t, k, omega, a, eigvector, u0, part, fluid)
                         end
                     elseif strcmp(obj.waveType, 'dustydamp')
                         if obj.numFluids ~= 2

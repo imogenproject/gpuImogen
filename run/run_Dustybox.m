@@ -1,7 +1,7 @@
 % Wave advection simulation
 
 %grid = [512 512 1];
-grid = [32 1 1];
+grid = [8 1 1];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
@@ -19,47 +19,52 @@ run.activeSlices.xyz = false;
 run.ppSave.dim1 = 100;
 run.ppSave.dim2 = 10;
 
-run.cfl = 0.45/4;
 % Set a background speed at which the fluid is advected
-run.backgroundMach = .39;
+run.backgroundMach = .0001;
 
 % Set the type of wave to be run.
-% One of 'entropy', 'sound', 'alfven', 'slow ma', 'fast ma'
-% The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
-% Any nonzero B will automatically activate magnetic fluxing
+% One of 'entropy', 'sound'
+% Zero amplitude just tests the drag code
 run.waveType = 'sonic';
-run.amplitude = .0;
-
+run.amplitude = 0;
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 %                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
 run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
-run.cycles = 25;
+run.cycles = 5;
+
+% Hydrogen at room temp and density
+run.setBackground(.084, 101325);
+run.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen');
 
 run.addNewFluid(1);
 
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-run.fluidDetails(2).sigma = run.fluidDetails(2).sigma*1000;
-
-run.peripherals{end+1} = DustyBoxAnalyzer();
+run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e1;
+run.fluidDetails(2).mass = run.fluidDetails(2).mass * 1e-3; %
 
 run.writeFluid = 2;
   run.amplitude = 0;
   run.backgroundMach = 0;
-  run.setBackground(.1, .001);
+  run.setBackground(.0084, .00001*101325);
+
+run.peripherals{end+1} = DustyBoxAnalyzer();
 
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
   
-fm = FlipMethod(); % 1 = HLL, 2 = HLLC, 3 = XJ
-  fm.iniMethod = 2; 
+fm = FlipMethod();
+  fm.iniMethod = ENUM.CFD_HLLC; 
 %  fm.toMethod = 2;
 %  fm.atstep = -1;
 run.peripherals{end+1} = fm;
+
+run.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP;
+%run.multifluidDragMethod = ENUM.MULTIFLUID_ETDRK1;
 
 run.waveLinearity(0);
 run.waveStationarity(0);
@@ -68,7 +73,7 @@ run.waveStationarity(0);
 if true
     IC = run.saveInitialCondsToStructure();
     outpath = imogen(IC);
-    if mpi_amirank0(); fprintf('RUN STORED AT: %s\n', outpath); end
+    SaveManager.logPrint('RUN STORED AT: %s\n', outpath);
 end
 
 if run.numFluids == 1

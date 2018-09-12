@@ -152,36 +152,49 @@ classdef FluidWaveGenerator < handle
 
         function [omega, evec] = dustyLinear(self, amp, phase, k, forfluid, kDrag, eigensense)
             % Make and solve the 5x5 matrix
-            kDrag = kDrag * self.pRho(1)*self.pRho(1) / (self.pRho(1)+self.pRho(2));
-            [M, m2] = self.dustyMatrix(self.pRho(1), norm(k), self.pGamma(1), self.pP(1), self.pRho(2), kDrag);
-            cs = sqrt(self.pGamma(1)*self.pP(1) / self.pRho(1));
             
+            M = self.dustyMatrix(self.pRho(1), norm(k), self.pGamma(1), self.pP(1), self.pRho(2), -(self.pRho(1)+self.pRho(2))*kDrag/self.pRho(1));
+            
+            w0 = sqrt(self.pP(1)/(self.pRho(1)+self.pRho(2)))*norm(k);
             [eigvecs, eigvals] = eig(M);
             % pick the forward-going eigenvalue
             for N = 1:5
                 % pick the antisense-propagating wave
-                if (eigensense == 1) && (imag(eigvals(N,N)) < -1e-9); break; end
+                if (eigensense == 1) && (real(eigvals(N,N)) > .01*w0); break; end
                 % pick the evanescent wave
                 if (eigensense == 0) && (abs(real(eigvals(N,N))) < 1e-12) && (imag(eigvals(N,N)) < 0); break; end
                 % pick the prosense-propagating wave
-                if (eigensense == -1) && (imag(eigvals(N,N)) > 1e-9); break; end
+                if (eigensense == -1) && (real(eigvals(N,N)) < -01*w0); break; end
             end
             
-            omega = -1i*eigvals(N,N);
-            evec = eigvecs(:,N); % [drho dv dP dpsi du]'
-            evec = evec/evec(1);
+            omega = eigvals(N,N);
+            evec  = eigvecs(:,N); % [drho dv dP dpsi du]'
+            evec = evec / evec(1);
+
+            csq = self.pGamma(1) * self.pP(1) / self.pRho(1);
             
-            -kDrag / real(omega)
+            evec2 = [1, 17350, csq, 2.6525e-3 * 1i, 3.9 * 1i];
+            
+            if forfluid==1
+                qc = 2*pi*kDrag / real(omega);
+                SaveManager.logPrint("Dusty wave generator: k_couple/re[f_osc]=%f\n", qc);
+                if qc > 10; SaveManager.logPrint('    q > 10: Strong coupling\n'); end
+                if (.1 < qc) && (qc < 10); SaveManager.logPrint('    .1 < q < 10: Intermediate coupling\n'); end
+                if qc < .1; SaveManager.logPrint('    q < .1: Weak coupling\n'); end
+                SaveManager.logPrint("Dusty wave generator: t_damp * re[f_osc]=%f\n", 2*pi*imag(omega) / real(omega));
+            end
+            %evec = evec2;
+            heavdef = 1.0;%*(phase < 12*pi);
             
             %evecb./evec
-            if forfluid == 1; q = conj(evec(1)); else q = conj(evec(4)); end
+            if forfluid == 1; q = (evec(1)); else; q = (evec(4)); end
             %if forfluid == 1; q = evec(1); else q = evec(4); end
-            self.waveRho = self.pRho(forfluid) + imag(q*amp*exp(1i*phase));
+            self.waveRho = self.pRho(forfluid) + heavdef.*imag(q*amp*exp(1i*phase));
             
             khat = k / norm(k);
-            if forfluid == 1; q = conj(evec(2)); else q = conj(evec(5)); end
+            if forfluid == 1; q = (evec(2)); else; q = (evec(5)); end
             %if forfluid == 1; q = evec(2); else q = evec(5); end
-            dv = imag(q*amp*exp(1i*phase));
+            dv = heavdef.*imag(q*amp*exp(1i*phase));
             self.waveVel = zeros([3 size(dv)]);
             self.waveVel(1,:,:,:) = self.pV(1,1) + khat(1)*dv;
             self.waveVel(2,:,:,:) = self.pV(2,1) + khat(2)*dv;
@@ -189,7 +202,7 @@ classdef FluidWaveGenerator < handle
 
             % This is meaningful only for the gas, obviously.
             if forfluid == 1
-                self.wavePressure = self.pP(1) + imag(conj(evec(3))*amp*exp(1i*phase));
+                self.wavePressure = self.pP(1) + heavdef.*imag((evec(3))*amp*exp(1i*phase));
             else
                 self.wavePressure = self.pP(2) * ones(size(self.waveRho));
             end
@@ -217,10 +230,10 @@ classdef FluidWaveGenerator < handle
     methods (Access = protected) %                                      P R O T E C T E D    [M]
         function updateDerivedConstants(self)
             % Update polytropic K constant
-            self.polyK = self.pP / self.pRho^self.pGamma;
+            self.polyK = self.pP ./ self.pRho.^self.pGamma;
 
             % Update soundspeed
-            self.cs0 = sqrt(self.pGamma*self.pP /self.pRho);
+            self.cs0 = sqrt(self.pGamma * self.pP ./ self.pRho);
         end
 
 
@@ -228,35 +241,33 @@ classdef FluidWaveGenerator < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
-        function [M,m2] = dustyMatrix(rho, wavek, gam, P, psi, kd)
-            c0 = sqrt(gam*P/rho);
-            w0 = c0*wavek;
-
-            M = [...
-                0,        -w0,   0, 0,          0;...
-                0, -kd*1i/rho, -w0, 0,  kd*1i/rho;...
-                0,        -w0,   0, 0,          0;...
-                0,          0,   0, 0,     -w0*psi/rho;...
-                0,  kd*1i/psi,   0, 0, -kd*1i/psi];
+        function M = dustyMatrix(rho, wavek, gam, P, psi, kd)
+            kd=kd * rho*psi/(rho+psi);
+            c = sqrt(gam*P/rho);
             
-            M = -[0,   rho*1i*wavek,            0, 0,            0;...
-                  0,        -kd/rho, 1i*wavek/rho, 0,       kd/rho;...
-                  0, 1i*wavek*gam*P,            0, 0,            0;...
-                  0,              0,            0, 0, psi*1i*wavek;...
-                  0,         kd/psi,            0, 0,      -kd/psi];
-              
-              m2 = [0, -1i*wavek, 0, 0; -1i*c0^2*wavek, -kd/rho, 0, kd/psi; 0, 0, 0, -1i*wavek; 0, kd/rho, 0, -kd/psi];
-              
+            M =  [0,   rho*wavek,         0, 0,            0;...
+                  0,  -1i*kd/rho, wavek/rho, 0,    1i*kd/rho;...
+                  0, wavek*gam*P,         0, 0,            0;...
+                  0,           0,         0, 0, psi*wavek;...
+                  0,   1i*kd/psi,         0, 0,      -1i*kd/psi];
         end
         
-        function M0 = dustyMatrix_nonnormalized(rho, k, gam, P, psi, td)
-            M0 = ...
-[ 0,                   -k*rho,      0, 0,                        0;...
-  0, -(psi*td*1i)/(psi + rho), -k/rho, 0,  (psi*td*1i)/(psi + rho);...
-  0,                 -P*gam*k,      0, 0,                        0;...
-  0,                        0,      0, 0,                   -k*psi;...
-  0,  (rho*td*1i)/(psi + rho),      0, 0, -(rho*td*1i)/(psi + rho)];
-
+        function f = evalEvecComponent(x, y, z, t, k, omega, a, eigvector, u0, part, fluid)
+            phase = k(1)*x+k(2)*y+k(3)*z-omega*t;
+            
+            switch(part)
+                case 1; k = 1;
+                case 5; k = 2;
+                case 9; k = 3;
+                    default; k = 6;
+            end
+            if fluid.gamma < 1.1; k = k + 3; end
+            
+            if k > 5
+                f = zeros(size(x));
+            else
+                f = u0(k) + a*imag(eigvector(k)*exp(1i*phase));
+            end
         end
     end%PROTECTED
     

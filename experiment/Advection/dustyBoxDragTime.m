@@ -2,41 +2,35 @@ function Kdrag = dustyBoxDragTime(fluidDetails, rhoG, rhoD, vGas, vDust, gammaGa
 % Inefficiently but very readably computes the relative accelerations of the
 % gas and dust fluids for a fully general drag law.
 
-sigmaGas = fluidDetails(1).sigma;
-muGas    = fluidDetails(1).mass;
-sigmaDust= fluidDetails(2).sigma;
-muDust   = fluidDetails(2).mass;
+thermoGas = fluidDetails(1);
+thermoDust= fluidDetails(2);
 
+T = (thermoGas.mass * Pgas) / (rhoG * thermoGas.kBolt);
+dv = norm(vGas - vDust, 2);
 
-alpha   = 128.0 * sigmaGas * sqrt(sigmaDust) / (5*muGas*pi*sqrt(gammaGas-1));
-beta    = 128.0 * (gammaGas-1)/(9*pi);
-epsilon = 1/gammaGas;
-theta   = 5*pi*sqrt(pi/2)*muGas / (144*sigmaGas);
+visc = thermoGas.dynViscosity * (T/298.15)^thermoGas.viscTindex;
+Rey = rhoG * dv * sqrt(thermoDust.sigma / pi) / visc;
 
-dv0 = vGas - vDust;
-dv = dv0; % makes an analytic extrapolation for uinternal go away 
+mfp = thermoGas.mass * (T/298.15)^thermoGas.sigmaTindex / (rhoG * thermoGas.sigma * sqrt(2));
+Kn = 2*mfp / sqrt(thermoDust.sigma / pi);
 
-sg = sign(dv);
-dv = abs(dv);
+% Use the full calculation for meaningful Re but ignore for extremely low speeds
+if Rey > 1e-6
+    Fone = computeCdrag(Rey, Kn);
+    a = -Fone * .5 * dv^2 * (thermoDust.sigma/4) * (rhoG + rhoD) / thermoDust.mass;
+    
+    Kdrag = a / dv;
+else
+    cu = (1 + 1*Kn*(1.142+.558*exp(-.999/Kn)));
+    
+    Kgrain = -3*visc * sqrt(pi*thermoDust.sigma); % for f = k*dv
+    %Kvol = Kgrain * rhoD / thermoDust.mass;
+    Kdrag = Kgrain / (thermoDust.mass * cu); % force / (mass * velocity) = drag time constant
 
-% initial internal energy
-u0 = (Pgas / (gammaGas-1)) / rhoG;
-
-% make sure computation includes gas heating term!
-% what we're "really" want is c_s, so use only translational Dof (gamma-1)
-uinternal = u0 + .5*(gammaGas-1)*rhoD * (dv0^2 - dv^2) / (rhoG + rhoD);
-
-kEpstein = sqrt(beta*uinternal + epsilon * dv^2);
-
-% FIXME this implementation is poorly conditioned (re ~ 1/v for v << v0)
-Re = alpha * dv * rhoG / sqrt(uinternal);
-kStokes = stokesDragCoeff(Re) * dv;
-if Re < 1e-6
-    kStokes = 12 * sqrt(uinternal) / (alpha*rhoG);
 end
-        
-sigma0 = (theta  / rhoG)^2; % sqrt(pi)*(4 l_mfp / 9) = sqrt(pi) * s0
-                            % = pi s0^2 = epstein/stokes cutover crossection
-Kdrag = ( sigma0 * kEpstein + sigmaDust * kStokes) * sigmaDust * (rhoG + rhoD) / (muDust * (sigma0 + sigmaDust));
 
+end
+
+function c = computeCdrag(Rey, Kn)
+            c = (24/Rey + 4*Rey^(-1/3) + .44*Rey/(12000+Rey)) / (1 + 1*Kn*(1.142+.558*exp(-.999/Kn)));
 end

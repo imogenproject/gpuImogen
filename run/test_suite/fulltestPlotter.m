@@ -106,7 +106,7 @@ end
 
 function p = prepNextPlot(maxplot, plotno)
 p = plotno + 1;
-if p > maxplot;
+if p > maxplot
     x = figure();
     x.Position = [x.Position(1:2) 700 400];
     p = 1;
@@ -148,17 +148,20 @@ function plotDustybox(q)
 shiftA = 0;%floor(log2(abs(q.mid.L2(1)/q.slow.L2(1))));
 shiftB = 0;%ceil(log2(abs(q.mid.L2(1)/q.supersonic.L2(1))));
 
-plot(log2(q.slow.N), shiftA + log2(abs(q.slow.L2)),'b-x');
-plot(log2(q.mid.N), log2(abs(q.mid.L2)),'g-x');
-plot(log2(q.supersonic.N), shiftB + log2(abs(q.supersonic.L2)),'r-x');
+plot(log2(q.slow_etd.N), shiftA + (abs(q.slow_etd.L2)),'b-x');
+plot(log2(q.slow_lt.N), shiftA + (abs(q.slow_lt.L2)),'b-o');
 
+plot(log2(q.mid_etd.N), (abs(q.mid_etd.L2)),'g-x');
+plot(log2(q.mid_lt.N), (abs(q.mid_lt.L2)),'g-o');
+plot(log2(q.supersonic_etd.N), shiftB + (abs(q.supersonic_etd.L2)),'r-x');
+plot(log2(q.supersonic_lt.N), shiftB + (abs(q.supersonic_lt.L2)),'r-o');
 z = ones(size(q.mid.N));
 
-plot(log2(q.mid.N), -16.61*z,'k-');
-plot(log2(q.mid.N), -29.9*z,'k-.');
+%plot(log2(q.mid.N), -16.61*z,'k-');
+%plot(log2(q.mid.N), -29.9*z,'k-.');
 
 xlabel('log_2(# pts)');
-ylabel('Velocity error at t=5');
+ylabel('Velocity error @ 10 drag times');
 
 legend('M_{ini} = .01', 'M_{ini} = .25', 'M_{ini} = 2.0', '10^{-5} error','10^{-9} error');
 

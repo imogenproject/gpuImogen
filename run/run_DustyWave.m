@@ -1,6 +1,6 @@
 % Wave advection simulation
 
-grid = [2048 1 1];
+grid = [128 1 1];
 %grid = [32 1 1];
 
 %--- Initialize test ---%
@@ -27,31 +27,35 @@ run.backgroundMach = -0;
 % The MHD waves require a B to be set; Setting one is optional for the Entropy wave.
 % Any nonzero B will automatically activate magnetic fluxing
 run.waveType = 'sonic';
-run.amplitude = .05;
+run.amplitude = .001;
 
 % FWIW an amplitude of .0001 corresponds to a roughly 100dB sound in air
 %                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
-run.wavenumber = [16 0 0];
+run.wavenumber = [1 0 0];
 % 1st method of setting run duration: normalized by cycle time
-run.cycles = 50;
+run.cycles = 25;
+
+run.setBackground(.084, 101325);
 
 run.addNewFluid(1);
 
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e-1;
-run.fluidDetails(2).mu = run.fluidDetails(2).mu * 1e-4; % k = 17.549 * (1e-4 mu0) / mu
+run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e1;
+run.fluidDetails(2).mass = run.fluidDetails(2).mass * 1e-4; %
 
 run.writeFluid = 2;
   run.amplitude = 0;
   run.backgroundMach = 0;
-  run.setBackground(1, .001);
+  run.setBackground(1, .0001*101325);
 
 run.alias= 'dustybox';
 
 run.ppSave.dim3 = 100;
+
+%run.multifluidDragMethod = ENUM.MULTIFLUID_RK4;
 
 fm = FlipMethod();
   fm.iniMethod = ENUM.CFD_HLLC; 
@@ -72,13 +76,16 @@ rp = RealtimePlotter();
   rp.plotmode = 4;
 rp.cut = [round(grid(1)/2), 1, 1];
 rp.indSubs = [1 1 grid(1);1 1 1;1 1 1];
+
 rp.movieProps(0, 0, 'RTP_');
-rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1]);
-rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1]);
+
+    rp.vectorToPlotprops(1, [1   1   0   1   1   1   0   1   0   1  10   1   8   1   0   0   0]);
+rp.vectorToPlotprops(2, [1   5   0   1   1   1   0   1   0   1  10   1   8   1   0   0   0]);
+rp.vectorToPlotprops(3, [2   1   0   1   1   1   0   1   0   1  10   1   8   1   0   0   0]);
+rp.vectorToPlotprops(4, [2   5   0   1   1   1   0   1   0   1  10   1   8   1   0   0   0]);
 
 run.peripherals{end+1} = rp;
+
 
 run.waveLinearity(0);
 run.waveStationarity(0);

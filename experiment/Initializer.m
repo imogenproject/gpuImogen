@@ -334,9 +334,15 @@ classdef Initializer < handle
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
              IC.ini = ini;
              IC.ini.geometry = obj.geomgr.serialize(); % FIXME: this ought to perhaps happen elsewhere?
-
         end
 
+        function y = locatePeripheral(obj, name)
+            y = [];
+             for N = 1:numel(obj.peripherals)
+                 if isa(obj.peripherals{N}, name); y = obj.peripherals{N}; break; end
+             end
+        end
+        
 %___________________________________________________________________________________________________ getRunSettings
         function result = getRunSettings(obj)
             % This function dumps the initializer class' members into a big fat dynamic structure for

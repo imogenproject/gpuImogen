@@ -89,6 +89,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
         end
 
         function a = computeAcceleration(self, t, dv)
+            % computes d(delta-v)/dt
             press = self.PofV(dv);
             T = (self.thermoGas.mass * press) / (self.rhoG * self.thermoGas.kBolt);
             

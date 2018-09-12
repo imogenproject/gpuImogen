@@ -32,6 +32,7 @@ classdef RealtimePlotter <  LinkedListNode
         spawnGUI;
         forceRedraw;
 
+        overplot; % overplot(u, v, w, t, fluid, what) f(...) will draw f(...) over the plot when in 1d plot mode
     end %PUBLIC
     
     %===================================================================================================
@@ -100,9 +101,11 @@ classdef RealtimePlotter <  LinkedListNode
 
             self.outputMovieFrames = 0;
             self.pMovieNextFrame = 0;
-	    self.pMovieFramePrefix = 'RTP_';
+            self.pMovieFramePrefix = 'RTP_';
 
             self.plotmode = 1; % default to one plot
+            
+            self.overplot = @(u,v,w,t,fluid,what) []; % blank default overplot routine
         end
 
         function vectorToPlotprops(self, id, v)
@@ -176,6 +179,7 @@ classdef RealtimePlotter <  LinkedListNode
             self.pGUIFigureNumber = fignum;
             % FIXME: set some gui element refs here for callbacks to play games with
         end
+        
         function closeGUI(self)
             close(32);
         end
@@ -232,10 +236,11 @@ classdef RealtimePlotter <  LinkedListNode
 
                 params = self.plotProps(plotid);
 
-                q = self.fetchPlotQty(fluids(params.fluidnum), params.slice, params.what);
+                [q, qoverlay] = self.fetchPlotQty(fluids(params.fluidnum), params.slice, params.what);
 
                 if params.logscale
                     q = abs(q);
+                    qoverlay = abs(qoverlay);
                 end
                 
                 if params.velvecs == 1
@@ -249,8 +254,24 @@ classdef RealtimePlotter <  LinkedListNode
                 end
 
                 self.pickSubplot(plotnum, self.plotmode);
-                self.drawPlot(q, params, vv);
+                self.drawPlot(q, qoverlay, params, vv);
+                if 0
+                xpos = self.pCoords{1};
                 
+                omega =  3.956487280363698e+04 - 4.128188983445955e+03i;
+                evec = [1, 17350, 2.6525e-3 * 1i, 3.9 * 1i];
+                evec = [ 1.0000e+00 + 0.0000e+00i   4.7762e+03 - 4.9835e+02i  2.7020e+00i + 1.1807e+01   4.7578e+03 + 5.7856e+02i];
+                evec=evec/evec(1);
+                amp = .001;
+                wt = run.time.time * omega*1i;
+                
+                u0 = [.0824 0 1 0];
+                
+                hold on;
+                plot(xpos, u0(plotnum) + imag(evec(plotnum)*amp*exp(16*1i*2*pi*xpos - wt)) );
+                hold off;
+                 
+                end
                 % FIXME this requires the RealtimePlotterGUI to be open...
                 obj = findobj('tag','qtylistbox');
                 if ~isempty(obj)
@@ -313,12 +334,13 @@ classdef RealtimePlotter <  LinkedListNode
             imwrite(imgdat.cdata, sprintf('%s/%s%05i.png', path, prefix, int32(self.pMovieNextFrame)));
         
             self.pMovieNextFrame = self.pMovieNextFrame+1;
-	    x = findobj('tag','movieframereport');
-	    x.String = sprintf('Next frame: %i', int32(self.pMovieNextFrame));
+            x = findobj('tag','movieframereport');
+            x.String = sprintf('Next frame: %i', int32(self.pMovieNextFrame));
         end
 
-        function Q = fetchPlotQty(self, fluid, sliceID, what)
+        function [Q, Qoverlay] = fetchPlotQty(self, fluid, sliceID, what)
             u = []; v = []; w = [];
+            Qoverlay = [];
             
             switch sliceID
                 case 1; u = self.pSubsX; v = self.cut(2); w = self.cut(3); % x
@@ -329,6 +351,11 @@ classdef RealtimePlotter <  LinkedListNode
                 case 6; u = self.cut(1); v = self.pSubsY; w = self.pSubsZ; % yz
             end
 
+            if (sliceID < 4) && (~isempty(self.overplot)) % one dimensional
+                t = fluid.parent.time.time;
+                Qoverlay = self.overplot(self.pCoords{1}(u), self.pCoords{2}(v), self.pCoords{3}(w), t, fluid, what);
+            end
+            
             % NOTE NOTE NOTE the values for 'what' are linked to the ordering of the list entries in the GUI quantity-selection
             % NOTE NOTE NOTE box. search RealtimePlotterGUI.m /lis\ =
             % LARGE VALUES SPECIFY OTHER THINGS
@@ -345,7 +372,7 @@ classdef RealtimePlotter <  LinkedListNode
                 Q = fluid.calcPressureOnCPU();
                 Q = Q(u,v,w);
             case 10  % temperature
-	        kmu = 1; %fluid.particleMu / 1.381e-23;
+                kmu = fluid.thermoDetails.mass/fluid.thermoDetails.kBolt;
                 Q = fluid.calcPressureOnCPU();
                 Q = kmu * Q(u,v,w)./fluid.mass.array(u,v,w);
             case 101 % XY velocity
@@ -385,8 +412,9 @@ classdef RealtimePlotter <  LinkedListNode
             end
         end
 
-        function drawPlot(self, q, decor, velocityVectors)
+        function drawPlot(self, q, qoverlay, decor, velocityVectors)
             if decor.slice < 4 % x/y/z cut: one dimensional: do plot()
+                % this mode also supports self.overplot()
                 axval = self.pCoords{decor.slice};
                 % axmode = 0 -> off, 1 -> px, 2 -> cell #, 3 -> position
                 if decor.axmode == 1; axval = 1:numel(axval); end
@@ -395,9 +423,20 @@ classdef RealtimePlotter <  LinkedListNode
                 if decor.logscale
                     %q = fft(q); q = abs(q(2:16));
                     semilogy(axval, q)
+                    if ~isempty(qoverlay)
+                        hold on;
+                        semilogy(axval, qoverlay);
+                        hold off;
+                    end
+                    
                 else
                     %q = fft(q); q = abs(q(2:16));
                     plot(axval, q);
+                    if ~isempty(qoverlay)
+                        hold on;
+                        plot(axval, qoverlay);
+                        hold off;
+                    end
                 end
                 if decor.axmode == 0; axis off; else; axis on; end
                 if decor.grid; grid on; end
@@ -469,7 +508,7 @@ classdef RealtimePlotter <  LinkedListNode
                         plot(squish(plotdat(c(1),:,c(3)) ), colorset{i});
                     case 3
                         plot(squish(plotdat(c(1),c(2),:)), colorset{i});
-                    ase 4
+                    case 4
                         q = plotdat(:,:,c(3));
                         if run.geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
                            [r, phi] = run.geometry.ndgridSetIJ('pos');
