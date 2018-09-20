@@ -824,8 +824,11 @@ __device__ double allregimeCdrag(double Re, double Kn)
 	// Prevent 1/0 errors which may occur when a simulation is initialized with dv = 0
 	// The only physical way to acheive Re = 0 is if dv = 0, and if dv =0 then skip wasting time
 
+	// Note that all leading numeric coefficients in C_drag are divided by 8 from their normal
+	// presentation to absorb numeric factors elsewhere in the drag equations
+
 	double cunningham = 1 + Kn*(1.142 + 1*0.558*exp(-0.999/Kn));
-	double C_drag = (3 / Re + .5*pow(Re, -1.0/3.0) + .055*Re/(12000+Re)) / cunningham;
+	double C_drag = (3 / Re + .45*pow(Re, -.319) + .0509*Re/(8710+Re)) / cunningham;
 	#ifdef THREAD0_PRINTS_DBG
 	if(threadIdx.x == 0) { printf("b=%i,t=%i: Cdrag reporting: Cd0 = %.12lf, Cu = %.12lf\n, Cd = %.12lf\n", blockIdx.x, threadIdx.x, C_drag, cunningham, C_drag / cunningham); }
 	#endif
@@ -1625,14 +1628,8 @@ __global__ void cukern_LogTrapSolve(double *gas, double *dust, double t, double 
 			// store k_half in register 0: This is needed separately from k0 and k1
 			cukern_GasDustDrag_GeneralLinearCore<true>(gas, dust, tmpmem, 0, 0, partNumel);
 
-			// Richardson extrapolation formula for trapezoid method yields this formula
-			// Note formula is convex combination of stable values and therefore unconditionally stable
-			// This experimentally results in 3rd order convergence
+			// Richardson extrapolation formula for trapezoid method
 			k = (0.16666666666666666667 *tmpmem[5*FLUID_SLABPITCH] +  0.66666666666666666667*tmpmem[0]);
-			// if 3rd order
-			//k = (0.21428571428571428571*tmpmem[5*FLUID_SLABPITCH] + 0.57142857142857142857*tmpmem[0]);
-			// if 1st order
-			//k = tmpmem[0];
 		} else {
 			k = .5*tmpmem[5*FLUID_SLABPITCH];
 		}
