@@ -44,6 +44,13 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
         bigFrame.magY = 0;
         bigFrame.magZ = 0;
     end
+    if isfield(frame,'mass2')
+        bigFrame.mass2 = zeros(globalRes, precise);
+        bigFrame.momX2 = zeros(globalRes, precise);
+        bigFrame.momY2 = zeros(globalRes, precise);
+        bigFrame.momZ2 = zeros(globalRes, precise);
+        bigFrame.ener2 = zeros(globalRes, precise);
+    end
 
     ranks = frame.parallel.geometry;
     fieldset = {'mass','momX','momY','momZ','ener'};
@@ -78,6 +85,14 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
             bigFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, frame);
             bigFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, frame);
             bigFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, frame);
+        end
+        
+        if isfield(frame,'mass2') % also load secondary plane
+            bigFrame.mass2(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass2, frame);
+            bigFrame.momX2(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX2, frame);
+            bigFrame.momY2(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY2, frame);
+            bigFrame.momZ2(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ2, frame);
+            bigFrame.ener2(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener2, frame);
         end
 
         if u == numel(ranks); break; end
