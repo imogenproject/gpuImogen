@@ -279,7 +279,7 @@ classdef Initializer < handle
 
                 % Oh my
                 if rez(gm.partitionDir) < 6
-                    SaveManager.logPrint('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.');
+                    SaveManager.logPrint('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.\n');
                     % Z partition? Try y then x
                     if gm.partitionDir == 3
                         if rez(2) < 6; gm.partitionDir = 1; else; gm.partitionDir = 2; end
@@ -288,7 +288,7 @@ classdef Initializer < handle
                         if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
                     end
                 else
-                    SaveManager.logPrint('NOTE: Initializer checked partition direction & was OK.');
+                    SaveManager.logPrint('NOTE: Initializer checked partition direction & was OK.\n');
                 end
             end
 

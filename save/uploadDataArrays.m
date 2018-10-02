@@ -76,6 +76,6 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     nowGPUMem = GPU_ctrl('memory'); usedGPUMem = sum(iniGPUMem-nowGPUMem(gm.deviceList+1,1))/1048576;
     asize = mass.gridSize();
 
-    run.save.logAllPrint('rank %i: %06.3fMB used by fluid state arrays of size [%i %i %i] partitioned on %i GPUs\n', mpi_myrank(), usedGPUMem, asize(1), asize(2), asize(3), int32(numel(gm.deviceList)) );
+    run.save.logAllPrint('%06.3fMB used by fluid state arrays of size [%i %i %i] partitioned on %i GPUs\n', usedGPUMem, asize(1), asize(2), asize(3), int32(numel(gm.deviceList)) );
 
 end
