@@ -81,7 +81,9 @@ classdef SaveManager < LinkedListNode
 % Creates a new SaveManager instance: Presumably only called by the ImogenManager constructor
     function obj = SaveManager()
         obj = obj@LinkedListNode(); % Initialize the LL to blank
-        
+
+        obj.whatami = 'SaveManager';
+
         obj.SLICEINDEX              = ones(1,3);
         obj.ACTIVE                  = false(1,8);
         obj.previousUpdateTimes     = zeros(1,5);

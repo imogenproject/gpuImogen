@@ -114,7 +114,9 @@ classdef ImogenManager < handle
 
             % Serve as roots for the event queuing system lists
             obj.peripheralListRoot = LinkedListNode();
-            obj.eventListRoot = LinkedListNode;
+	    obj.peripheralListRoot.whatami = 'ImogenManager.peripheralListRoot';
+            obj.eventListRoot = LinkedListNode();
+	    obj.eventListRoot.whatami = 'ImogenManager.eventListRoot';
             
             
             obj.bc          = BCManager();                  obj.bc.parent           = obj;

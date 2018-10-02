@@ -13,13 +13,14 @@ classdef LinkedListNode < handle
     end %PUBLIC
     
     %===================================================================================================
-    properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
+    properties (SetAccess = public, GetAccess = public) %                P R O T E C T E D [P]
+	whatami;
     end %PROTECTED
     
     %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
 	function node = LinkedListNode()
-		
+		node.whatami = 'UnnamedLLN';
 	end
 
 	function delete(node)
@@ -27,6 +28,8 @@ classdef LinkedListNode < handle
 	end
 
 	function unlink(node)
+	        % Helper for if debugging
+                %disp(['A ' node.whatami ' is dying.']);
 		p = node.Prev;
 		n = node.Next;
 		
@@ -59,8 +62,20 @@ classdef LinkedListNode < handle
 		if ~isempty(self.Next)
 			self.Next.Prev = self;
 		end
-	end
+    end
 
+    function f = findThe(self, name)
+        if isa(self, name)
+            f = self;
+        else 
+            if ~isempty(self.Next)
+                f = self.Next.findThe(name);
+            else
+                f = [];
+            end
+        end
+    end
+    
     end%GET/SET
     
     %===================================================================================================

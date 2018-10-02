@@ -27,7 +27,7 @@ classdef BoosterPeripheral < LinkedListNode
     methods (Access = public) %                                                     P U B L I C  [M]
         function self = BoosterPeripheral()
             self = self@LinkedListNode();
-
+            self.whatami = 'BoosterPeripheral';
             %myProperty = 0;
         end
 

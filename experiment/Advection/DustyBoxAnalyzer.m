@@ -38,7 +38,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
     methods (Access = public) %                                                     P U B L I C  [M]
         function self = DustyBoxAnalyzer()
             self = self@LinkedListNode();
-
+            self.whatami = 'DustyBoxAnalyzer';
             self.stepsPerPoint = -25;
         end
 
