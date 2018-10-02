@@ -509,9 +509,9 @@ int MGA_allocArrays(MGArray **ret, int N, MGArray *skeleton)
 #ifdef ALLOCFREE_DEBUG
 printf((const char *)"============= MGA_allocArrays invoked\n");
 printf((const char *)"Creating %i arrays\n", N);
-printf((const char *)"Array ptr: %x\n", m);
+printf((const char *)"Array ptr: %lx\n", (unsigned long)m);
 for(i = 0; i < N; i++) {
-	for(j = 0; j < m[i].nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", m[i].deviceID[j], m[i].devicePtr[j]);
+	for(j = 0; j < m[i].nGPUs; j++) printf((const char *)"	Pointer %i: %lx\n", m[i].deviceID[j], (unsigned long)m[i].devicePtr[j]);
 }
 #endif
 
@@ -554,11 +554,11 @@ int MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs)
 #ifdef ALLOCFREE_DEBUG
 printf((const char *)"======== MGA_allocSlab invoked\n");
 printf((const char *)"Creating    %i slabs\n", Nslabs);
-printf((const char *)"Template *: %x\n", skeleton);
-printf((const char *)"Dest *:     %x\n", nu);
+printf((const char *)"Template *: %lx\n", (unsigned long)skeleton);
+printf((const char *)"Dest *:     %lx\n", (unsigned long)nu);
 int j;
 for(i = 0; i < Nslabs; i++) {
-	for(j = 0; j < nu->nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", nu->deviceID[j], nu->devicePtr[j]);
+	for(j = 0; j < nu->nGPUs; j++) printf((const char *)"	Pointer %i: %lx\n", nu->deviceID[j], (unsigned long)(nu->devicePtr[j]+j*nu->slabPitch/sizeof(double)));
 }
 #endif
 
@@ -658,9 +658,9 @@ int MGA_delete(MGArray *victim)
 
 #ifdef ALLOCFREE_DEBUG
 printf((const char *)"MGA_delete invoked ==============\n");
-printf((const char *)"Victim *: %x\n", victim);
+printf((const char *)"Victim *: %lx\n", (unsigned long)victim);
 for(j = 0; j < victim->nGPUs; j++) {
-	printf((const char *)"	Device: %i, ptr %x\n", victim->deviceID[j], victim->devicePtr[j]);
+	printf((const char *)"	Device: %i, ptr %lx\n", victim->deviceID[j], (unsigned long)victim->devicePtr[j]);
 }
 fflush(stdout);
 #endif
@@ -670,7 +670,7 @@ fflush(stdout);
 		returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete, setting device");
 
 		cudaFree(victim->devicePtr[j]);
-		if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after free");
+		if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after cudaFree");
 
 		if(returnCode != SUCCESSFUL) break;
 	}

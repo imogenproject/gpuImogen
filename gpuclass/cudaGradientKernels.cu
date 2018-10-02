@@ -44,7 +44,7 @@ __global__ void  cukern_computeScalarGradientRZ_h4(double *phi, double *fx, doub
 int computeCentralGradient(MGArray *phi, MGArray *gradient, GeometryParams geom, int spaceOrder, double scalingParameter)
 {
 	dim3 gridsize, blocksize;
-	int3 arraysize;
+	//int3 arraysize;
 
 	double lambda[11];
 

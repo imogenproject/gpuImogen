@@ -65,17 +65,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	if(pureHydro == 1) {
 		gamma    = *mxGetPr(prhs[5]);
 		worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
+		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@67 failed to access arrays!"); }
 		MGArray *dest = MGA_createReturnedArrays(plhs, 1, &fluid[0]);
 
-		calculateSoundspeed(&fluid[0], NULL, dest, gamma);
+		worked = calculateSoundspeed(&fluid[0], NULL, dest, gamma);
+		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@71 dumped!"); }
 		free(dest);
 	} else {
 		gamma = *mxGetPr(prhs[8]);
 		worked = MGA_accessMatlabArrays(prhs, 0, 4, &fluid[0]);
+		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@77 failed to access arrays!"); }
 		worked = MGA_accessMatlabArrays(prhs, 5, 7, &mag[0]);
+		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@79 failed to access arrays!"); }
 		MGArray *dest = MGA_createReturnedArrays(plhs, 1, &fluid[0]);
 
-		calculateSoundspeed(&fluid[0], &mag[0], dest, gamma);
+		worked = calculateSoundspeed(&fluid[0], &mag[0], dest, gamma);
+		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@82 dumped!"); }
 		free(dest);
 	}
 
@@ -96,7 +101,7 @@ int calculateSoundspeed(MGArray *fluid, MGArray *mag, MGArray *cs, double gamma)
 
 	int pureHydro = (mag == NULL);
 
-	int fail = SUCCESSFUL;
+	int status = SUCCESSFUL;
 
 	int i, j;
 	int sub[6];
@@ -104,24 +109,28 @@ int calculateSoundspeed(MGArray *fluid, MGArray *mag, MGArray *cs, double gamma)
 	for(i = 0; i < fluid[0].nGPUs; i++) {
 		calcPartitionExtent(&fluid[0], i, &sub[0]);
 		cudaSetDevice(fluid[0].deviceID[i]);
-		CHECK_CUDA_ERROR("Setting device.");
+		status = CHECK_CUDA_ERROR("Setting device.");
+		if(status != SUCCESSFUL) { break; }
+
 		cudaMemcpyToSymbol((const void *)pressParams, &hostParams[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
-		CHECK_CUDA_ERROR("cudaSoundspeed memcpy to constants.");
+		status = CHECK_CUDA_ERROR("cudaSoundspeed memcpy to constants.");
+		if(status != SUCCESSFUL) { break; }
 
 		for(j = 0; j < 5; j++) { srcs[j] = fluid[j].devicePtr[i]; }
 
 		if(pureHydro == 1) {
 			cukern_Soundspeed_hd<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], cs->devicePtr[i], fluid[0].partNumel[i]);
-			fail = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda hydro soundspeed");
+			status = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda hydro soundspeed");
 		} else {
 			for(j = 0; j < 3; j++) { srcs[j+5] = mag[j].devicePtr[i]; }
 
 			cukern_Soundspeed_mhd<<<gridsize, blocksize>>>(srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5], srcs[6], srcs[7], cs->devicePtr[i], fluid[0].partNumel[i]);
-			fail = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda mhd soundspeed");
+			status = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, i, "cuda mhd soundspeed");
 		}
+		if(status != SUCCESSFUL) { break; }
 	}
 
-	return 0;
+	return status;
 }
 
 // THIS KERNEL CALCULATES SOUNDSPEED IN THE MHD CASE, TAKEN AS THE FAST MA SPEED
