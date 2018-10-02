@@ -50,15 +50,19 @@ function parImogenLoad(runFile, logFile, alias, gpuInfo, nofinalize) %#ok<INUSD>
     mpi_barrier(); % If testing n > 1 procs on one node, don't let anyone reset GPUs before we're done.
 
     if shutDownEverything
-        GPU_ctrl('reset'); % Trashcan CUDA context
-        % FIXME: Somewhere we need to get to dump the communicators created in ParallelGlobals.topology
-        mpi_barrier();     % Make sure nobody tries to talk to the MPI runtime since we're about to...
-
-        PG = ParallelGlobals(); % ... dump all our communicators and ...
+        % Make sure everyone's on the same page & dump the MPI cartesian directional communicators
+        mpi_barrier();
+        PG = ParallelGlobals();
         mpi_deleteDimcomm(PG.topology);
 
-        mpi_finalize();    % trashcan the MPI runtime
-        quit               % Trashcan Matlab runtime
+        % Make the GC run now so there are no remaining ImogenArray()s to have .delete called after
+        % we trashcan CUDA
+        clear classes;
+        GPU_ctrl('reset');
+
+        % And, goodnight
+        mpi_finalize();
+        quit;
     end
 
 
