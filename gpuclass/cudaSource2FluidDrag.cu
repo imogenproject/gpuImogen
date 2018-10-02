@@ -789,7 +789,7 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams *geo, doub
 	if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
 
 // Make extra sure node's internal boundaries are consistent
-if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 5);
+if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 4);
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(dust + 1, 4);
 
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_delete(gs);
