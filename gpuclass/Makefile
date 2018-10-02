@@ -3,10 +3,11 @@
 include ../Make.config
 
 DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
+#-DALLOCFREE_DEBUG      - printf()s to console with every MGA_Alloc/AllocSlab/Free call
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -O2 -lineinfo
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -Wno-deprecated-gpu-targets -O2 -lineinfo
 #-Xptxas="-v"
 
 # Debuggable code
@@ -23,7 +24,7 @@ MEX_LIBS  = -lcudart -lcublas
 
 PAR_INCL = -I../mpi -I$(MPI_DIR)/include
 PAR_LDIR = -L$(MPI_DIR)/lib
-PAR_LIBS = -lmpi -lmpi_cxx
+PAR_LIBS = -lmpi
 
 OUTPUTCMD = -output
 
