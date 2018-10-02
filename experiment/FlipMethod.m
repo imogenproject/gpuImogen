@@ -26,6 +26,7 @@ classdef FlipMethod < LinkedListNode
     methods (Access = public) %                                                     P U B L I C  [M]
         function self = FlipMethod()
             self = self@LinkedListNode();
+            self.whatami = 'FlipMethod';
             self.iniMethod = 2; % default hllc
             self.toMethod = [];
             self.atstep = [];
