@@ -555,9 +555,10 @@ int MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs)
 printf((const char *)"======== MGA_allocSlab invoked\n");
 printf((const char *)"Creating    %i slabs\n", Nslabs);
 printf((const char *)"Template *: %x\n", skeleton);
-printf((const char *)"Dest *:     %x\n", mu);
-for(i = 0; i < N; i++) {
-	for(j = 0; j < mu->nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", mu->deviceID[j], mu->devicePtr[j]);
+printf((const char *)"Dest *:     %x\n", nu);
+int j;
+for(i = 0; i < Nslabs; i++) {
+	for(j = 0; j < nu->nGPUs; j++) printf((const char *)"	Pointer %i: %x\n", nu->deviceID[j], nu->devicePtr[j]);
 }
 #endif
 
