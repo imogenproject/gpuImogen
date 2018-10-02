@@ -558,7 +558,7 @@ printf((const char *)"Template *: %lx\n", (unsigned long)skeleton);
 printf((const char *)"Dest *:     %lx\n", (unsigned long)nu);
 int j;
 for(i = 0; i < Nslabs; i++) {
-	for(j = 0; j < nu->nGPUs; j++) printf((const char *)"	Pointer %i: %lx\n", nu->deviceID[j], (unsigned long)(nu->devicePtr[j]+j*nu->slabPitch/sizeof(double)));
+	for(j = 0; j < nu->nGPUs; j++) printf((const char *)"	Pointer %i: %lx\n", nu->deviceID[j], (unsigned long)(nu->devicePtr[j]+j*nu->slabPitch[j]/sizeof(double)));
 }
 #endif
 
