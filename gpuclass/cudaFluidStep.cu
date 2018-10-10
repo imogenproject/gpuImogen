@@ -466,7 +466,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 				// Fire off the fluid update step
 				if(params.stepMethod == METHOD_HLL) {
-					cukern_PressureSolverHydro<<<32, 256>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
+					cukern_PressureSolverHydro<<<256, 128>>>(fluid[0].devicePtr[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 #ifdef DEBUGMODE
 				returnDebugArray(fluid, 1, wStepValues, dbOutput);
@@ -516,7 +516,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				}
 
 				if(params.stepMethod == METHOD_HLL) {
-					cukern_PressureSolverHydro<<<32, 256>>>(wStepValues[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
+					cukern_PressureSolverHydro<<<256, 128>>>(wStepValues[i], wStepValues[i] + 5*fluid->slabPitch[i]/sizeof(double) );
 					CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureSolverHydro");
 				}
 				cudaError_t ohboy = invokeFluidKernel(params.stepMethod, stepdirect, 2, gridsize, blocksize, fluid->devicePtr[i], wStepValues[i], lambda);
@@ -1622,7 +1622,7 @@ DBGSAVE(1, E);
 
 }
 
-#define N_SHMEM_BLOCKS 10
+#define N_SHMEM_BLOCKS 6
 
 #define HLL_LEFT 0
 #define HLL_HLL  1
