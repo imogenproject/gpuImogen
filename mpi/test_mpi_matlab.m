@@ -130,6 +130,11 @@ mpi_barrier();
 
 mpi_deleteDimcomm(geometry.topology);
 
-%mpi_finalize();
+mpi_barrier();
+
+if context.size > 1
+    mpi_finalize();
+end
 
 end
+
