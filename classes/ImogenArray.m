@@ -23,6 +23,7 @@ classdef ImogenArray < handle
         
         edgeshifts;     % Handles to shifting functions for each grid direction.    handle(2,3)
         isZero;         % Specifies that the array is statically zero.              logical
+        streamptr;      % .pArray.manager.cudaStreamsPtr
     end %PROPERTIES
     
     %===================================================================================================
@@ -39,7 +40,6 @@ classdef ImogenArray < handle
         gridSize;       % Size of the data array.                                   int(3)
         array;          % Storage of the 3D array data: copied out of gpu memory on demand double(Nx,Ny,Nz)
         gputag;         % GPU tag of the array for passing to cuda
-        streamptr;      % .pArray.manager.cudaStreamsPtr
         idString;       % String form of the id cell array.                         str
         fades;          % The fade objects influencing the ImogenArray object.      cell{?}
     end %DEPENDENT
@@ -61,7 +61,7 @@ classdef ImogenArray < handle
         function result = get.gputag(obj)
             result = obj.pArray.GPU_MemPtr;
         end
-        function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
+        %function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
         
         function initialArray(obj, array)
             obj.pArray.array = array;

@@ -25,6 +25,7 @@ __global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny
 int actuallyNeedToReorder(int *dims, int code);
 int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode);
 
+__global__ void cukern_memmove(double *s, double *d, long n);
 
 #define BDIM 16
 
@@ -72,6 +73,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 }
 #endif
 
+int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs);
+
 /* flipArrayIndices alters the memory layout of the input arrays according to the exchange code.
  * If new arrays are created, consumes additional memory equal to sum of input arrays. If changes
  * are in place, consumes temporary memory equal to largest single input array.
@@ -90,7 +93,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
  * 	- other than (2, 3, 4, 5, 6): Return ERROR_INVALID_ARGS
  * 	- If nz=1, codes 3/4 are identity and 5/6 reduce to transposition.
  */
-int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode)
+int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode, cudaStream_t *streamPtrs)
 {
 	int returnCode = SUCCESSFUL;
 
@@ -107,6 +110,10 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		if(MGA_arraysAreIdenticallyShaped(phi, phi+j) == 0) {
 			reallocatePerArray = 1;
 		}
+	}
+
+	if((reallocatePerArray == 0) && (newArrays == NULL) && (streamPtrs != NULL)) {
+		return flipArrayIndices_multisame(phi, nArrays, exchangeCode, streamPtrs);
 	}
 
 	MGArray *psi = NULL;
@@ -246,7 +253,8 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 			for(i = 0; i < trans.nGPUs; i++) {
 				phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers
 				cudaSetDevice(tmp.deviceID[i]); // And overwrite original data
-				cudaMemcpyAsync(phi->devicePtr[i], nuClone->devicePtr[i], phi->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+//				cudaMemcpyAsync(phi->devicePtr[i], nuClone->devicePtr[i], phi->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice);
+				cukern_memmove<<<128, 256>>>(nuClone->devicePtr[i], phi->devicePtr[i], phi->partNumel[i]);
 				returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaMemcpyAsync()"));
 				if(returnCode != SUCCESSFUL) break;
 			}
@@ -263,6 +271,170 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 		phi++;
 		if(psi != NULL) psi++;
+	}
+
+	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
+	return returnCode;
+}
+
+/* This routine is optimized to perform out-of-place exchange on multiple identical arrays
+ * at once by taking advantage of concurrent copy + execute
+ */
+int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs)
+{
+	int returnCode = SUCCESSFUL;
+
+	MGArray trans;
+
+	int i, sub[6];
+	int is3d, isRZ;
+
+	int j;
+
+	MGArray *nuCloneA;
+	MGArray *nuCloneB;
+
+	returnCode = MGA_allocArrays(&nuCloneA, 1, phi);
+	returnCode = MGA_allocArrays(&nuCloneB, 1, phi);
+
+	int tempBlock = 1;
+	MGArray *tmparr;
+	cudaStream_t tmpstr;
+
+	for(j = 0; j < nArrays; j++) {
+
+		if(actuallyNeedToReorder(&phi->dim[0], exchangeCode) == 0) {
+			// Just rewrite input metadata
+			alterArrayMetadata(phi, phi, exchangeCode);
+			phi++;
+			continue;
+		}
+
+		if(tempBlock==0) {
+			tmparr = nuCloneA;
+		} else {
+			tmparr = nuCloneB;
+		}
+
+		// Oh, it looks like we got actual work to do. Womp-womp-woooomp.
+		trans = *phi;
+		alterArrayMetadata(phi, &trans, exchangeCode);
+
+		is3d = (phi->dim[2] > 3);
+		isRZ = (phi->dim[1] == 1) && (phi->dim[2] > 3);
+
+		dim3 blocksize, gridsize;
+
+		for(i = 0; i < trans.nGPUs; i++) {
+			cudaSetDevice(trans.deviceID[i]);
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaSetDevice()"));
+			if(returnCode != SUCCESSFUL) break;
+
+			calcPartitionExtent(phi, i, sub);
+
+			tmpstr = (tempBlock) ? streamPtrs[trans.nGPUs+i] : streamPtrs[i];
+
+			switch(exchangeCode) {
+			case 2: // Flip XY
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[1], BDIM) / BDIM;
+				gridsize.z = 1;
+
+				if(is3d) {
+					cukern_ArrayExchangeXY<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3],sub[4],sub[5]);
+				} else {
+					cukern_ArrayTranspose2D<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[4]);
+				}
+				break;
+			case 3: // Flip XZ
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+				gridsize.z = 1;
+
+				if(isRZ) {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+					cukern_ArrayTranspose2D<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[5]);
+				} else {
+				if(is3d) {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[2], BDIM) / BDIM;
+					cukern_ArrayExchangeXZ<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[4], sub[5]);
+				} else {
+					gridsize.x = ROUNDUPTO(phi->dim[0], BDIM) / BDIM;
+					gridsize.y = ROUNDUPTO(phi->dim[1], BDIM) / BDIM;
+					cukern_ArrayTranspose2D<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[4]);
+				}
+				}
+				break;
+
+			case 4: // Flip YZ
+				blocksize.x = 32;
+				blocksize.y = blocksize.z = 4;
+
+				gridsize.x = ROUNDUPTO(sub[3], blocksize.x) / blocksize.x;
+				gridsize.y = ROUNDUPTO(sub[4], blocksize.y) / blocksize.y;
+				gridsize.z = 1;
+
+				cukern_ArrayExchangeYZ<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3],sub[4],sub[5]);
+
+				break;
+			case 5: // Rotate left
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM)/BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[1], BDIM)/BDIM;
+				gridsize.z = 1;
+
+				cukern_ArrayRotateLeft<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[4], sub[5]);
+
+				break;
+			case 6: // Rotate right
+				blocksize.x = blocksize.y = BDIM; blocksize.z = 1;
+
+				gridsize.x = ROUNDUPTO(phi->dim[0], BDIM)/BDIM;
+				gridsize.y = ROUNDUPTO(phi->dim[2], BDIM)/BDIM;
+				gridsize.z = 1;
+
+				cukern_ArrayRotateRight<<<gridsize, blocksize, 0, tmpstr>>>(phi->devicePtr[i], tmparr->devicePtr[i], sub[3], sub[4], sub[5]);
+
+				break;
+			}
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, phi, i, "array transposition call"));
+			if(returnCode != SUCCESSFUL) break;
+
+		}
+
+		if(returnCode != SUCCESSFUL) break;
+
+		MGArray tmp = phi[0];
+		phi[0] = trans; // Nuke original MGArray
+
+		//phi->numSlabs = tmp.numSlabs; /* Retain original is/isnot allocated status */
+		//phi->vectorComponent = tmp.vectorComponent; /* retain original vector component. */
+
+		for(i = 0; i < trans.nGPUs; i++) {
+			phi->devicePtr[i] = tmp.devicePtr[i]; // But keep same pointers
+			cudaSetDevice(tmp.deviceID[i]); // And overwrite original data
+
+			tmpstr = (tempBlock) ? streamPtrs[trans.nGPUs+i] : streamPtrs[i];
+			//cudaMemcpyAsync(phi->devicePtr[i], tmparr->devicePtr[i], phi->partNumel[i]*sizeof(double), cudaMemcpyDeviceToDevice, tmpstr);
+			cukern_memmove<<<128, 256, 0, tmpstr>>>(tmparr->devicePtr[i], phi->devicePtr[i], phi->partNumel[i]);
+			returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("cudaMemcpyAsync()"));
+			if(returnCode != SUCCESSFUL) break;
+		}
+
+		tempBlock = 1 - tempBlock; // alternate between 0 and 1
+		phi++;
+	}
+
+	phi -= nArrays; // return to beginning
+
+	// Clean up allocated arrays
+	if(returnCode == SUCCESSFUL) {
+		MGA_delete(nuCloneA);
+		MGA_delete(nuCloneB);
 	}
 
 	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
@@ -375,6 +547,18 @@ int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode)
 
 	return SUCCESSFUL;
 }
+
+__global__ void cukern_memmove(double *s, double *d, long n)
+{
+long h = blockDim.x*gridDim.x;
+long x = threadIdx.x + blockIdx.x*blockDim.x;
+
+while(x < n) {
+	d[x] = s[x];
+	x += h;  
+}
+}
+
 
 /* Very efficiently swaps XY for YX ordering in a 2D array */
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny)

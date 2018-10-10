@@ -102,6 +102,14 @@ classdef FluidManager < handle
             self.mom = mom;
         end
 
+        function attachStreams(self, streams)
+            self.mass.streamptr = streams;
+            self.mom(1).streamptr = streams;
+            self.mom(2).streamptr = streams;
+            self.mom(3).streamptr = streams;
+            self.ener.streamptr = streams;
+        end
+
         function processFluidDetails(self, details)
             % This is called in uploadDataArrays with the ini.fluid(:).details structure
             % It sets all per-fluid properties, including adiabatic index and radiation

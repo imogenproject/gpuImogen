@@ -199,7 +199,8 @@ int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer);
  *     getGPUTypeTagIndexed(..., M) fetches the Mth element of the cell array
  */
 int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex);
-cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
+int getGPUTypeStreams(const mxArray *fluidarray, cudaStream_t **streams, int *numel);
+//cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
 
 /* Not meant for user calls: Checks basic properties of the input
  * tag; Returns FALSE if they clearly violate basic properties a

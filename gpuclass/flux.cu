@@ -51,7 +51,11 @@ if(flag_1D) {
 }
 
 if(order > 0) { /* If we are doing forward sweep */
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
+	cudaStream_t *streams = NULL;
+	int nstreams;
+	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
+
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
@@ -66,12 +70,16 @@ if(order > 0) { /* If we are doing forward sweep */
 		}
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
 } else { /* If we are doing backwards sweep */
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep]) : SUCCESSFUL);
+	cudaStream_t *streams = NULL;
+	int nstreams;
+	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
+
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
@@ -88,7 +96,7 @@ if(order > 0) { /* If we are doing forward sweep */
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep]) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 }

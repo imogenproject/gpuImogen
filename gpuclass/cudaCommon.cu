@@ -17,7 +17,7 @@
 #include "cudaCommon.h"
 #include "mpi_common.h"
 
-/* THIS FUNCTION ACCEPTS THE FOLLOWING FLAGS VIA -D:
+/* THIS FILE, WHEN COMPILED, RESPONDS TO THE FOLLOWING -D FLAG:
  * -DALLOCFREE_DEBUG
  *     Causes every call to MGA_allocArrays and MGA_delete to emit a message to stdout;
  *     A poor man's valgrind.
@@ -242,10 +242,17 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 	return SUCCESSFUL;
 }
 
-cudaStream_t *getGPUTypeStreams(const mxArray *fluidarray) {
+int getGPUTypeStreams(const mxArray *fluidarray, cudaStream_t **streams, int *numel) {
 	mxArray *streamptr  = mxGetProperty(fluidarray, 0, (const char *)"streamptr");
 
-	return (cudaStream_t *)(*((int64_t *)mxGetData(streamptr)) );
+	if(streamptr != NULL) {
+		*numel = (int)mxGetNumberOfElements(streamptr);
+		streams[0] = (cudaStream_t *)mxGetData(streamptr);
+		return 0;
+	} else {
+		*numel = 0;
+		return 0;
+	}
 }
 
 // SERDES: Unpacks a uint64_t vector into an MGArray
@@ -1538,12 +1545,12 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 
 				jn = (j+1) % a->nGPUs; jp = (j - 1 + a->nGPUs) % a->nGPUs;
 				if(a->addExteriorHalo || (j > 0)) {
-					cudaMemcpyPeer(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
+					cudaMemcpyPeerAsync(buffs[4*jp+3], a->deviceID[jp], buffs[4*j], a->deviceID[j], numHalo * sizeof(double));
 					returnCode = CHECK_CUDA_ERROR("cudaMemcpyPeer");
 					if(returnCode != SUCCESSFUL) break;
 				}
 				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
-					cudaMemcpyPeer(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
+					cudaMemcpyPeerAsync(buffs[4*jn+2], a->deviceID[jn], buffs[4*j+1], a->deviceID[j], numHalo * sizeof(double));
 					returnCode = CHECK_CUDA_ERROR("cudaMemcpyPeer");
 					if(returnCode != SUCCESSFUL) break;
 				}
@@ -1603,7 +1610,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				// fill the +side halo of THIS partition (j) with data from the -side of the next one (jn):
 				if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
 					// Fill right halo with left's source
-					cudaMemcpy((void *)(a->devicePtr[j]+R_halo),
+					cudaMemcpyAsync((void *)(a->devicePtr[j]+R_halo),
 						   (void *)(a->devicePtr[jn]+halotile*a->haloSize), byteblock, cudaMemcpyDeviceToDevice);
 					returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
 					if(returnCode != SUCCESSFUL) break;
@@ -1613,7 +1620,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 				// fill the -side halo of this partition (j) with data from the +side of the previous one (jp):
 				if(a->addExteriorHalo || (j > 0)) {
 					// Fill left halo with right's source
-					cudaMemcpy((void *)(a->devicePtr[j]),
+					cudaMemcpyAsync((void *)(a->devicePtr[j]),
 							(void *)(a->devicePtr[jp]+L_src), byteblock, cudaMemcpyDeviceToDevice);
 					returnCode = CHECK_CUDA_ERROR("cudaMemcpy");
 					if(returnCode != SUCCESSFUL) break;\

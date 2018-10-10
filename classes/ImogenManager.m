@@ -228,6 +228,9 @@ classdef ImogenManager < handle
                 p.finalize(obj, fluids, mag);
                 p = p.Next;
             end
+
+            gm = GPUManager.getInstance();
+            GPU_ctrl('destroyStreams',gm.deviceList,fluids(1).mass.streamptr);
         end
     
 %__________________________________________________________________________________________ addFades
