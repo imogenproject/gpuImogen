@@ -4,6 +4,11 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     gm = GPUManager.getInstance();
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
+    % create two sets of cuda event streams
+    % This is currently only needed to acheive concurrency in the array rotater code...
+    streams = GPU_ctrl('createStreams', gm.deviceList);
+    streams = [streams; GPU_ctrl('createStreams', gm.deviceList)];
+
     memtot = sum(iniGPUMem);
     memneed = numel(FieldSource.fluids(1).mass) * 11 * 8 * numel(FieldSource.fluids);
     mpi_barrier(); % Keep anybody from drinking up available memory before we check
@@ -58,6 +63,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         fluid(F).processFluidDetails(FluidData.details);
         if fluid(F).checkCFL; hasNoCFL = 0; end
         fluid(F).attachFluid(DataHolder, mass, ener, mom);
+        fluid(F).attachStreams(streams);
 
         % Outflows will not have set right: They are driven by the mass BC alone
         % but all other arrays are uploaded after mass.
