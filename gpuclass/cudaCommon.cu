@@ -1462,6 +1462,8 @@ __global__ void cukern_TwoElementwiseReduce(double *a, double *b, int numel)
 #define HALO_READ 0
 #define HALO_WRITE 1
 
+int MGA_exchangeLocalHalos_identical(MGArray *a, int nArrays);
+
 /* Synchronizes the halo regions between data partitions of a[0] to a[n-1].
  * Does nothing if a[i].haloSize == 0 or a[i].nGPUs == 1.
  * returns error if something failed, or SUCCESSFUL */
@@ -1471,7 +1473,7 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 	dim3 blocksize, gridsize;
 	int returnCode = SUCCESSFUL;
 
-	// Checking this @ runtime costs a very small price (< 1usec * n) but may save as many as n*nGPUs
+	// Checking this @ runtime is as good as free but may save as many as n*nGPUs
 	// cudaMallocs and cudaFrees, potentially saving entire msecs.
 	int arrayGeometryIdentical = 1;
         for(j = 1; j < n; j++) {
@@ -1480,7 +1482,11 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
                 }
         }
 
-	double *buffs[a->nGPUs * 4];
+    //if(arrayGeometryIdentical) {
+     // 	return CHECK_IMOGEN_ERROR(MGA_exchangeLocalHalos_identical(a, n));
+    //}
+
+    double *buffs[a->nGPUs * 4];
 
 	for(i = 0; i < n; i++) {
 		// Can't do this if there are no halos
@@ -1638,6 +1644,122 @@ int MGA_exchangeLocalHalos(MGArray *a, int n)
 
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
+
+/* This is called to do the local exchange if MGA_arraysAreIdenticallyShaped(a, a+i)
+ * is true for 0 <= i < n (i.e. all arrays are the same). Allocations are done only
+ * once, and all memcopies are aggreggated into a single move which yields much
+ * improved IO throughput.
+ */
+int MGA_exchangeLocalHalos_identical(MGArray *a, int nArrays)
+{
+	int i, j, jn, jp;
+	dim3 blocksize, gridsize;
+	int returnCode = SUCCESSFUL;
+
+	// Can't do this if there are no halos
+	if(a->haloSize == 0) { return SUCCESSFUL; }
+	// Or there's only one partition to begin with
+	if(a->nGPUs == 1) { return SUCCESSFUL; }
+
+	int sub[6];
+	calcPartitionExtent(a, 0, &sub[0]);
+
+	// Acquire sufficient RW linear buffers to R and W both sides
+	int numTransverse = a->partNumel[0] / sub[2+a->partitionDir];
+	int numHalo = a->haloSize * numTransverse;
+
+	// We don't distinguish between Z- and not-Z partitioning here because we need
+	// to aggregate all the data to be copied over pcie into one block anyway
+
+	double *allocedLinear[a->nGPUs];
+	double *buffA, *buffB;
+	//total storage required: (numHalo * 4) * n
+
+	int totHalo = numHalo * nArrays;
+
+	for(j = 0; j < a->nGPUs; j++) {
+		cudaSetDevice(a->deviceID[j]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+		cudaMalloc((void **)&allocedLinear[j], nArrays*4*numHalo*sizeof(double));
+		returnCode = CHECK_CUDA_ERROR("cudaMalloc");
+		if(returnCode != SUCCESSFUL) break;
+	}
+
+	// All arrays fetch linear blocks
+	for(i = 0; i < nArrays; i++) {
+		// Fetch current partition's halo to linear strips, letting jn denote next and jp denote previous
+		for(j = 0; j < a->nGPUs; j++) {
+			buffA = allocedLinear[j] + (0*nArrays+i)*numHalo;
+			buffB = allocedLinear[j] + (1*nArrays+i)*numHalo;
+
+			if(a->addExteriorHalo || (j > 0)) {
+				returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, LEFT_SIDE, HALO_READ, a->haloSize, &buffA);
+				if(returnCode != SUCCESSFUL) break;
+			}
+			if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
+				returnCode = MGA_partitionHaloToLinear(a, j, a->partitionDir, RIGHT_SIDE, HALO_READ, a->haloSize, &buffB);
+				if(returnCode != SUCCESSFUL) break;
+			}
+		}
+	}
+	MGA_sledgehammerSequentialize(a);
+	// Transfer linear strips
+	for(j = 0; j < a->nGPUs; j++) {
+		jn = (j+1) % a->nGPUs;
+		jp = (j - 1 + a->nGPUs) % a->nGPUs;
+
+		cudaSetDevice(a->deviceID[j]);
+		CHECK_CUDA_ERROR("cudaSetDevice()");
+
+		// Copy j's left side read to j-previous' right-side write
+		if(a->addExteriorHalo || (j > 0)) {
+			cudaMemcpyPeerAsync(allocedLinear[jp]+3*totHalo, a->deviceID[jp], allocedLinear[j]+0*totHalo, a->deviceID[j], totHalo * sizeof(double));
+			returnCode = CHECK_CUDA_ERROR("cudaMemcpyPeer");
+			if(returnCode != SUCCESSFUL) break;
+		}
+		// Copy j's right side read to j-previous' left-side write
+		if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
+			cudaMemcpyPeerAsync(allocedLinear[jn]+2*totHalo, a->deviceID[jn], allocedLinear[j]+1*totHalo, a->deviceID[j], totHalo * sizeof(double));
+			returnCode = CHECK_CUDA_ERROR("cudaMemcpyPeer");
+			if(returnCode != SUCCESSFUL) break;
+		}
+
+	}
+	MGA_sledgehammerSequentialize(a);
+	for(i = 0; i < nArrays; i++) {
+		// Dump the strips back to halo
+		for(j = 0; j < a->nGPUs; j++) {
+			jn = (j+1) % a->nGPUs;
+			jp = (j - 1 + a->nGPUs) % a->nGPUs;
+
+			buffA = allocedLinear[jp] + (3*nArrays+i)*numHalo;
+			buffB = allocedLinear[jn] + (2*nArrays+i)*numHalo;
+
+			if(a->addExteriorHalo || (j > 0)) {
+				returnCode = MGA_partitionHaloToLinear(a, jp, a->partitionDir, RIGHT_SIDE, HALO_WRITE, a->haloSize, &buffA);
+				if(returnCode != SUCCESSFUL) break;
+			}
+			if(a->addExteriorHalo || (j < (a->nGPUs-1))) {
+				returnCode = MGA_partitionHaloToLinear(a, jn, a->partitionDir, LEFT_SIDE, HALO_WRITE, a->haloSize, &buffB);
+				if(returnCode != SUCCESSFUL) break;
+			}
+		}
+
+	}
+
+	// Let go of temp memory
+	for(j = 0; j < a->nGPUs; j++) {
+		cudaSetDevice(a->deviceID[j]);
+		CHECK_CUDA_ERROR("cudaSetDevice");
+		cudaFree(allocedLinear[j]);
+		returnCode = CHECK_CUDA_ERROR("cudaFree");
+		if(returnCode != SUCCESSFUL) break;
+	}
+
+	return CHECK_IMOGEN_ERROR(returnCode);
+}
+
+
 
 
 int MGA_wholeFaceHaloNumel(MGArray *a, int direction, int h)

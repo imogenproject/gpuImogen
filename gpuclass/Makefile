@@ -211,28 +211,34 @@ GPU_clone.o: GPU_clone.cu
 GPU_clone: GPU_clone.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
-GPU_download.o: GPU_download.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_download.cu -o GPU_download.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_download.cpp 
-GPU_download: GPU_download.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
-GPU_upload.o: GPU_upload.cu
-	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_upload.cu -o GPU_upload.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_upload.cpp 
-GPU_upload: GPU_upload.o cudaCommon.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
 GPU_cudamemcpy.o: GPU_cudamemcpy.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_cudamemcpy.cu -o GPU_cudamemcpy.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_cudamemcpy.cpp 
 GPU_cudamemcpy: GPU_cudamemcpy.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
+GPU_download.o: GPU_download.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_download.cu -o GPU_download.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_download.cpp 
+GPU_download: GPU_download.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
 GPU_memavail.o: GPU_memavail.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_memavail.cu -o GPU_memavail.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_memavail.cpp 
 GPU_memavail: GPU_memavail.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
+GPU_partitionStatics.o: GPU_partitionStatics.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_partitionStatics.cu -o GPU_partitionStatics.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_partitionStatics.cpp 
+GPU_partitionStatics: GPU_partitionStatics.o cudaCommon.o
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+
+GPU_upload.o: GPU_upload.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda GPU_upload.cu -o GPU_upload.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c GPU_upload.cpp 
+GPU_upload: GPU_upload.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 ######## CUDA FLUID ROUTINES

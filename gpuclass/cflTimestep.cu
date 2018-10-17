@@ -19,7 +19,6 @@
 
 #include "fluidMethod.h"
 
-
 /* THIS FUNCTION:
    directionalMaxFinder has three different behaviors depending on how it is called.
    m = directionalMaxFinder(array) will calculate the global maximum of array
@@ -81,7 +80,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     blocksize.x = GLOBAL_BLOCKDIM; blocksize.y = blocksize.z = 1;
 
     // Launches enough blocks to fully occupy the GPU
-    gridsize.x = 32;
+    gridsize.x = 128;
     gridsize.y = gridsize.z =1;
 
     // Allocate enough pinned memory to hold results
@@ -109,7 +108,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	calcPartitionExtent(&fluid[0], i, &sub[0]);
 
     	gridsize.x = ROUNDUPTO(fluid[0].partNumel[i], blocksize.x) / blocksize.x;
-    	if(gridsize.x > 32) gridsize.x = 32;
+    	if(gridsize.x > 128) gridsize.x = 128;
 
     	numBlocks[i] = gridsize.x;
 

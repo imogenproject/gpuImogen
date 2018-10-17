@@ -27,6 +27,11 @@ for pg = 1:6
     nx = arrdims(P(1)); ny = arrdims(P(2)); nz = arrdims(P(3));
     % Standard C-style memory arrangement, plus 1-indexing to 0-indexing factor
     linind = indices(:,P(1)) + nx*indices(:,P(2)) + nx*ny*indices(:,P(3)) - nx*(ny+1);
+    
+    % Don't sort, leaves them in more intelligible order for debugging
+    %I = 1:size(linind,1);
+    %indextab(:,pg) = linind(I);
+    % sorted is more computationally efficient
     [indextab(:,pg), I] = sort(linind,1);
     valstab(:,pg)      = values(I);
     coeffstab(:,pg)    = coeffs(I);

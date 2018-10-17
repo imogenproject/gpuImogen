@@ -170,7 +170,7 @@ classdef ImogenArray < handle
         end
         
         function delete(obj)
-	    obj.cleanup();
+            obj.cleanup();
             if isfield(obj, 'boundaryData')
                 obj.boundaryData.staticsData.clearArray();
             end
@@ -244,8 +244,15 @@ classdef ImogenArray < handle
             % And compile the whole thing into one triplet of 1D arrays, plus indexing offsets
             [compIndex, compValue, compCoeff, obj.boundaryData.compOffset] = ...
                 staticsAssemble(SI, SV, SC, boundaryConds.boundaryStatics);
-            
-            obj.boundaryData.staticsData = GPU_Type([compIndex compValue compCoeff]);
+   
+            % '1' forces the statics data to be cloned onto all GPUs.
+            % This assures that sufficient storage is available for all
+            % partitions' statics w/o reallocation
+            obj.boundaryData.staticsData = GPU_Type([compIndex compValue compCoeff], 1);
+
+            % 
+            obj.boundaryData.compOffset = GPU_partitionStatics(obj, obj.boundaryData.staticsData, obj.boundaryData.compOffset);
+
             obj.boundaryData.bcModes = obj.bcModes;
             
             obj.pBCUninitialized = false;

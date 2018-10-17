@@ -143,17 +143,17 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
 
 	/* Parameter describes what block size to launch with... */
-	int blockdim = 8;
+	int blockdim = 32;
 
 	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
-	if(griddim.x > 32768) {
-		griddim.x = 32768;
+	if(griddim.x > 1024) {
+		griddim.x = 1024;
 		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
 	}
 
 	/* Every call results in applying specials */
 	if(staticsNumel > 0) {
-		PAR_WARN(phi);
+		//PAR_WARN(phi);
 		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
 		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
 		if(worked != SUCCESSFUL) return worked;
@@ -256,17 +256,17 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
 
 	/* Parameter describes what block size to launch with... */
-	int blockdim = 8;
+	int blockdim = 32;
 
 	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
-	if(griddim.x > 32768) {
-		griddim.x = 32768;
+	if(griddim.x > 1024) {
+		griddim.x = 1024;
 		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
 	}
 
 	/* Every call results in applying specials */
 	if(staticsNumel > 0) {
-		PAR_WARN(phi);
+//		PAR_WARN(phi);
 		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
 		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
 		if(worked != SUCCESSFUL) return worked;
