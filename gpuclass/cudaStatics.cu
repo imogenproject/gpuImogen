@@ -130,7 +130,7 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	BAIL_ON_FAIL(worked)
 
 	int *perm = &phi.currentPermutation[0];
-	int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
+	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
 
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
 	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
@@ -138,9 +138,9 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
-	double *offsetcount = mxGetPr(offsets);
-	long int staticsOffset = (long int)offsetcount[2*offsetidx];
-	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
+	double *offsetCount = mxGetPr(offsets);
+	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
+	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];
 
 	/* Parameter describes what block size to launch with... */
 	int blockdim = 32;
@@ -152,11 +152,21 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	}
 
 	/* Every call results in applying specials */
-	if(staticsNumel > 0) {
-		//PAR_WARN(phi);
-		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
-		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
-		if(worked != SUCCESSFUL) return worked;
+	int i;
+	for(i = 0; i < phi.nGPUs; i++) {
+ 		staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
+		staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
+
+		if(staticsNumel > 0) {
+			cudaSetDevice(phi.deviceID[i]);
+			CHECK_CUDA_ERROR("setDevice");
+
+			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
+
+			cudaDeviceSynchronize(); // fixme debug!
+			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
+			if(worked != SUCCESSFUL) return worked;
+		}
 	}
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
@@ -243,7 +253,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 	BAIL_ON_FAIL(worked)
 
 	int *perm = &phi.currentPermutation[0];
-	int offsetidx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
+	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
 
 	/* The offset array describes the index offsets for the data in the gpuStatics array */
 	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
@@ -251,9 +261,9 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
 		return ERROR_INVALID_ARGS;
 	}
-	double *offsetcount = mxGetPr(offsets);
-	long int staticsOffset = (long int)offsetcount[2*offsetidx];
-	int staticsNumel  = (int)offsetcount[2*offsetidx+1];
+	double *offsetCount = mxGetPr(offsets);
+	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
+	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];
 
 	/* Parameter describes what block size to launch with... */
 	int blockdim = 32;
@@ -264,14 +274,22 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
 	}
 
-	/* Every call results in applying specials */
-	if(staticsNumel > 0) {
-//		PAR_WARN(phi);
-		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[0], statics.devicePtr[0] + staticsOffset, staticsNumel, statics.dim[0]);
-		worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
-		if(worked != SUCCESSFUL) return worked;
-	}
+	int i;
+	for(i = 0; i < phi.nGPUs; i++) {
+ 		staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
+		staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
 
+		if(staticsNumel > 0) {
+			cudaSetDevice(phi.deviceID[i]);
+			CHECK_CUDA_ERROR("setDevice");
+
+			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
+
+			cudaDeviceSynchronize(); // fixme debug!
+			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
+			if(worked != SUCCESSFUL) return worked;
+		}
+	}
 
 	int vectorComponent = phi.vectorComponent;
 

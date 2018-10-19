@@ -1037,7 +1037,12 @@ if(addrIn < 0) {
 	double delta = in[1]-in[0];
 	out[addrOut] = in[0]+delta*addrIn;
 } else {
-	out[addrOut] = in[addrIn];
+	if(addrIn >= nodeN) {
+		double delta = in[1]-in[0];
+		out[addrOut] = in[nodeN-1] + (addrIn-nodeN+1)*delta;
+	} else {
+		out[addrOut] = in[addrIn];
+	}
 }
 
 }

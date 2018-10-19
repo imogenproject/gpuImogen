@@ -2698,11 +2698,16 @@ int hostBadVals[MAX_BAD_VALUES];
 if(maxslab == 0) { maxslab = 1; }
 if(maxslab > x->numSlabs) { maxslab = x->numSlabs; }
 
-int *evilAddresses;
+int *evilAddresses[x->nGPUs];
 
-cudaMalloc(&evilAddresses, MAX_BAD_VALUES*sizeof(int));
 
 int i, j;
+
+for(i = 0; i < x->nGPUs; i++) {
+	cudaSetDevice(x->deviceID[i]);
+	cudaMalloc(&evilAddresses[i], MAX_BAD_VALUES*sizeof(int));
+}
+
 for(j = 0; j < maxslab; j++) {
 	for(i = 0; i < x->nGPUs; i++) {
 		cudaSetDevice(x->deviceID[i]);
@@ -2710,16 +2715,16 @@ for(j = 0; j < maxslab; j++) {
 		fail = CHECK_CUDA_ERROR("set device");
 
 		int qq = 1;
-		cudaMemcpy((void *)&evilAddresses[0], (void *)&qq, 1*sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy((void *)evilAddresses[i], (void *)&qq, 1*sizeof(int), cudaMemcpyHostToDevice);
 		fail = CHECK_CUDA_ERROR("memcopy");
-		cukern_dbcheck_array<<<16, 256>>>(&evilAddresses[0], x->devicePtr[i] + (j*x->slabPitch[i]/8), x->partNumel[i]);
+		cukern_dbcheck_array<<<16, 256>>>(evilAddresses[i], x->devicePtr[i] + (j*x->slabPitch[i]/8), x->partNumel[i]);
 		fail = CHECK_CUDA_ERROR("cukern_dbcheck_array");
-		cudaMemcpy((void *)&qq, (void *)&evilAddresses[0], 1*sizeof(int), cudaMemcpyDeviceToHost);
+		cudaMemcpy((void *)&qq, (void *)evilAddresses[i], 1*sizeof(int), cudaMemcpyDeviceToHost);
 		fail = CHECK_CUDA_ERROR("memcopy");
 		if(qq > 1) {
-			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %lx[0] to %lx[%i] and hit %i invalid values!\n", rank, j, (unsigned long)x->devicePtr[i], (unsigned long)x->devicePtr[i], x->partNumel[i]-1, qq);
+			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %lx[0] to %lx[%i] and hit %i invalid values in partition %i!\n", rank, j, (unsigned long)x->devicePtr[i], (unsigned long)x->devicePtr[i], x->partNumel[i]-1, qq, i);
 			printf("break at %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
-			cudaMemcpy((void *)&hostBadVals[0], (void *)&evilAddresses[0], qq*sizeof(int), cudaMemcpyDeviceToHost);
+			cudaMemcpy((void *)&hostBadVals[0], (void *)evilAddresses[i], qq*sizeof(int), cudaMemcpyDeviceToHost);
 			fail = CHECK_CUDA_ERROR("memcopy");
 			badnews = 1;
 			break;
@@ -2739,7 +2744,11 @@ for(j = 0; j < maxslab; j++) {
 
 }
 
-cudaFree(evilAddresses);
+for(i = 0; i < x->nGPUs; i++) {
+	cudaSetDevice(x->deviceID[i]);
+	cudaFree(evilAddresses[i]);
+}
+
 return fail;
 
 }

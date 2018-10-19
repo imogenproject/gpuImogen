@@ -36,7 +36,7 @@ all: base fluids lambda
 #base: GPU_ctrl GPU_free GPU_cudamemcpy GPU_memavail cudaBasicOperations
 #	echo "Done building base operations!"
 
-base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_dbghalo GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations
+base: GPU_free GPU_upload GPU_clone GPU_download GPU_ctrl GPU_dbgtag GPU_dbghalo GPU_getslab GPU_makeslab GPU_setslab GPU_copy cudaBasicOperations GPU_partitionStatics
 	
 
 fluids: cudaArrayAtomic cudaBasicOperations directionalMaxFinder freezeAndPtot fluidstep standalones cflTimestep
