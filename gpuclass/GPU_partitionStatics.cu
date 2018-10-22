@@ -30,7 +30,7 @@ typedef struct singleStaticList {
 void cvtLinearToTriple(fadeElement *f, int3 *dim);
 void disassembleStaticsLists(MGArray *bigarray, singleStaticList *origs, singleStaticList *sublists, double *offsets);
 void filterStaticList(MGArray *bigarray, singleStaticList *full);
-void reassembleStaticsLists(singleStaticList *nulists, singleStaticList *forpart, double *nuoffsets);
+void reassembleStaticsLists(singleStaticList *nulists, singleStaticList *forpart, double *nuoffsets, int originalStaticNx);
 int3 permutateIndices(int3 *in, int dir);
 
 int vomitDebug;
@@ -122,7 +122,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 		if(vomitDebug) { printf("Static list reassembly in progress for partition %i...\n", parts); }
 
-		reassembleStaticsLists(&newStatics[6*parts], &finalnewlist, newost + 12*parts);
+		reassembleStaticsLists(&newStatics[6*parts], &finalnewlist, newost + 12*parts, stats.dim[0]);
 		for(dirs = 0; dirs < 6; dirs++) { free(newStatics[6*parts+dirs].list); }
 
 		if(finalnewlist.nstatics > 0) {
@@ -315,14 +315,15 @@ free(q);
 /* Reads nulists[0] to nulists[5] (the 6 directions) and and merges all 6 lists into
  * forpart->list[] and outputs appropriate #s and offsets into nuoffests[0..11]
  */
-void reassembleStaticsLists(singleStaticList *nulists, singleStaticList *forpart, double *nuoffsets)
+void reassembleStaticsLists(singleStaticList *nulists, singleStaticList *forpart, double *nuoffsets, int originalStaticNx)
 {
 int dirct;
 int ntotal = 0;
 
-for(dirct = 0; dirct < 6; dirct++) {
-	ntotal += nulists[dirct].nstatics;
-}
+//for(dirct = 0; dirct < 6; dirct++) {
+//	ntotal += nulists[dirct].nstatics;
+//}
+ntotal = originalStaticNx; // Just go with it
 
 forpart->list = (double *)malloc(ntotal*3*sizeof(double));
 forpart->nstatics = ntotal;
