@@ -2236,6 +2236,39 @@ return CHECK_IMOGEN_ERROR(MGA_uploadArrayToGPU(mxGetPr(m), g, partitionTo));
 
 }
 
+/* Assuming that srcPtr and dstPtr are the pointers returned by cudaMalloc()s to arrays of size
+ * sizeof(src) = sDim and sizeof(dst) = dDim, and we wish to copy a block of size imax from
+ * src[sOffset] ... src[sOffset + imax] to dst[dOffset] ... dst[dOffset + imax],
+ * the host code must pass this kernel
+ * src = srcPtr + sOffset.x + sDim.x*(sOffset.y+sDim.y*sOffset.z)
+ * dst = dstPtr + dOffset.x + dDim.x*(dOffset.y+dDim.z*dOffset.z)
+ * i.e. perform the base offset translate itself, then this kernel will copy the data from
+ * src to dst.
+ * 
+ * This kernel may be launched with arbitrary x+y block size and dimensions and z size of one. */
+__global__ void cukern_BlockSubsetCopy(double *dst, double *src, int3 dDim, int3 sDim, int3 imax)
+{
+int myx = threadIdx.x + blockIdx.x * blockDim.x;
+int myy = threadIdx.y + blockIdx.y * blockDim.y;
+
+if((myx >= imax.x) || (myy >= imax.y)) return;
+
+dst += myx + dDim.x * myy;
+src += myx + sDim.x * myy;
+// Now done with those variables, compiler can dump them
+
+int d_nxy = dDim.x*dDim.y;
+int s_nxy = sDim.x*sDim.y;
+
+int q;
+for(q = 0; q < imax.z; q++) {
+	dst[0] = src[0];
+	dst += d_nxy;
+	src += s_nxy;
+}
+
+}
+
 /* Assuming that p points to an array whose size is compatible with either
  * the whole of g (partitionOnto < 0) or a specific partition of g (if
  * partitionOnto >= 0), transfers elements of p to g.
@@ -2254,8 +2287,7 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		return ERROR_NULL_POINTER;
 	}
 
-	int u, v, w, i;
-	int64_t iT, iS;
+	int i;
 	double *gmem[g->nGPUs];
 
 	int fromPart, toPart;
@@ -2268,8 +2300,21 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		toPart = g->nGPUs;
 	}
 
+	/* By way of explanation:
+	 * This is done by coping the whole array to every device and then invoking
+	 * a subset copy function on the GPU because to acheive any level of acceptable
+	 * performance on the host would require OMP #pragmas on the for() for() for() loop
+ 	 * that copies the subset on the host, but getting compiler flags to work with
+	 * just matlab and cuda proved difficult enough */
+
 	for(i = fromPart; i < toPart; i++) {
-		gmem[i] = (double *)malloc(g->partNumel[i]*sizeof(double));
+		cudaSetDevice(g->deviceID[i]);
+		CHECK_CUDA_ERROR("cudaSetDevice");
+		long NE = g->dim[0] * g->dim[1] * g->dim[2];
+		cudaMalloc((void **)(&gmem[i]), NE * sizeof(double));
+		CHECK_CUDA_ERROR("cudaMalloc");
+		cudaMemcpyAsync((void *)gmem[i], (void *)p, NE * sizeof(double), cudaMemcpyHostToDevice);
+
 		if(gmem[i] == NULL) {
 			PRINT_FAULT_HEADER;
 			printf("Unable to allocate upload buffer!\n");
@@ -2280,10 +2325,8 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 	}
 
 	int3 ptSize, ptOff, partExtent, readOff;
-
 	int *usedims;
 
-	double *currentTarget;
 	for(i = fromPart; i < toPart; i++) {
 		calcPartitionExtent(g, i, &sub[0]);
 
@@ -2294,8 +2337,6 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		partExtent = ptSize;
 
 		ptOff.x = 0; ptOff.y = 0; ptOff.z = 0;
-
-		currentTarget = gmem[i];
 
 		if(g->nGPUs > 1) {
 			// left halo removal
@@ -2323,18 +2364,18 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 			usedims = &g->dim[0];
 		}
 
-		for(w = 0; w < partExtent.z; w++) {
-			for(v = 0; v < partExtent.y; v++) {
-				for(u = 0; u < partExtent.x; u++) {
-					iT = u + ptOff.x + ptSize.x*(v + ptOff.y + ptSize.y*(w + ptOff.z));
-					iS = u + readOff.x + usedims[0]*(v + readOff.y + usedims[1] * (w + readOff.z));
-					currentTarget[iT] = p[iS];
-				}
-			}
-		}
-
 		cudaSetDevice(g->deviceID[i]);
-		cudaError_t fail = cudaMemcpyAsync((void *)g->devicePtr[i], (void *)gmem[i], g->partNumel[i]*sizeof(double), cudaMemcpyHostToDevice);
+		CHECK_CUDA_ERROR("cudaSetDevice");
+
+		dim3 blockdim = makeDim3(16, 8, 1);
+		dim3 griddim = makeDim3(ROUNDUPTO(partExtent.x, 16)/16, ROUNDUPTO(partExtent.y, 8)/8, 1);
+		
+		double *dstos = g->devicePtr[i] + ptOff.x + ptSize.x * (ptOff.y + ptSize.y * ptOff.z);
+		double *srcos = gmem[i] + readOff.x + usedims[0] * (readOff.y + usedims[1] * readOff.z);
+		int3 srcDims = makeInt3(usedims[0], usedims[1], usedims[2]);
+
+		cukern_BlockSubsetCopy<<<griddim, blockdim>>>(dstos, srcos, ptSize, srcDims, partExtent);
+
 		returnCode = CHECK_CUDA_ERROR((const char *)"MGArray_uploadArrayToGPU");
 		if(returnCode != SUCCESSFUL) break;
 
@@ -2342,8 +2383,14 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 
 	for(i = fromPart; i < toPart; i++) {
 		cudaSetDevice(g->deviceID[i]);
+		returnCode = CHECK_CUDA_ERROR("cudaSetDevice");
+		if(returnCode != SUCCESSFUL) break;
 		cudaDeviceSynchronize();
-		free(gmem[i]);
+		returnCode = CHECK_CUDA_ERROR("cudaDeviceSynchronize");
+		if(returnCode != SUCCESSFUL) break;
+		cudaFree(gmem[i]);
+		returnCode = CHECK_CUDA_ERROR("cudaFree");
+		if(returnCode != SUCCESSFUL) break;
 	}
 
 	if(returnCode != SUCCESSFUL) {

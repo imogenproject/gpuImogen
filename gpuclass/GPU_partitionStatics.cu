@@ -70,7 +70,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	if(vomitDebug == 0) {
-		if(main.nGPUs == 1) {
+		if((main.nGPUs <= 1) || (stats.nGPUs <= 1)) {
+			// one gpu = only one partition so this is a passthru
+			// zero gpus = no statics in use on this node
 			mwSize dims[2];
 	        	dims[0] = 12;
         		dims[1] = 1;
