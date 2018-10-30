@@ -87,7 +87,7 @@ rotate_standalone: cudaArrayRotateB.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaArrayRotateB.cu -o cudaArrayRotateB.cpp
 	mex $(MEX_OPTS) -c cudaArrayRotateB.cpp
 
-cudaArrayRotateB: rotate_standalone
+cudaArrayRotateB: rotate_standalone cudaCommon.o
 	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o $(OUTPUTCMD) cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaArrayRotateB.o
 	
@@ -100,7 +100,7 @@ halo_standalone: cudaHaloExchange.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL)  -cuda cudaHaloExchange.cu -o cudaHaloExchange.cpp
 	mex $(MEX_OPTS) $(PAR_INCL) -c cudaHaloExchange.cpp
 
-cudaHaloExchange: halo_standalone
+cudaHaloExchange: halo_standalone cudaCommon.o
 	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaHaloExchange.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaHaloExchange $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaHaloExchange.o
 
@@ -113,7 +113,7 @@ fluid_standalone: cudaFluidStep.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
 	mex $(MEX_OPTS) -c cudaFluidStep.cpp
 
-cudaFluidStep: fluid_standalone cudaStaticsFcn.o
+cudaFluidStep: fluid_standalone cudaStaticsFcn.o cudaCommon.o
 	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o cudaStaticsFcn.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaFluidStep.o
 
@@ -126,7 +126,7 @@ statics_standalone: cudaStatics.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaStatics.cu -o cudaStatics.cpp
 	mex $(MEX_OPTS) -c cudaStatics.cpp
 
-cudaStatics: statics_standalone
+cudaStatics: statics_standalone cudaCommon.o
 	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaCommon.o $(OUTPUTCMD) cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaStatics.o
 	
@@ -139,7 +139,7 @@ soundspeed_standalone: cudaSoundspeed.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaSoundspeed.cu -o cudaSoundspeed.cpp
 	mex $(MEX_OPTS) -c cudaSoundspeed.cpp
 
-cudaSoundspeed: soundspeed_standalone
+cudaSoundspeed: soundspeed_standalone cudaCommon.o
 	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaSoundspeed.o cudaCommon.o $(OUTPUTCMD) cudaSoundspeed $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 	rm cudaSoundspeed.o
 
