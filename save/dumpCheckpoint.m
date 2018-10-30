@@ -1,8 +1,6 @@
 function backup = dumpCheckpoint(run)
 
-if mpi_amirank0()
-    fprintf('NOTE: Dumping checkpoint at iteration %i.\n', run.time.iteration);
-end
+SaveManager.logPrint('NOTE: Dumping checkpoint at iteration %i.\n', run.time.iteration);
 
 backup.iteration = run.time.iteration;
 backup.oldTime   = run.time.time;

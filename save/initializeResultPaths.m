@@ -103,19 +103,8 @@ function initializeResultPaths(run, IC)
 
     end
 
-
-        % Wait forever until save directory is globally visible
-        secspaused = 0;
-        while true
-            ready = exist(run.paths.save,'dir');
-
-            if ready == 7; break; end
-            pause(1);
-            secspaused = secspaused+1;
-        end
-        fprintf('%i ', int32(mpi_myrank()));
-        mpi_barrier();
-        if mpi_amirank0(); pause(.032); fprintf('\nResults directory was globally visible in %.1f sec\n', secspaused);end
+    timeTaken = enforceConsistentView(run.paths.save, 600, 1);
+    SaveManager.logPrint('\nResults directory was globally visible in %.1f sec\n', timeTaken);
   
 end
 
