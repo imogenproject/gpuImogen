@@ -45,6 +45,8 @@ for N = 1:numel(typelist)
         f = dir([typelist{N} '_rank0_*mat']);
     elseif format == ENUM.FORMAT_NC
         f = dir([typelist{N} '_rank0_*nc']);
+    elseif format == ENUM.FORMAT_HDF
+        f = dir([typelist{N} '_rank0_*h5']);
     end
 
     flist = [];

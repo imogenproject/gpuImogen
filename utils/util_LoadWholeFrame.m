@@ -69,7 +69,7 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 
         fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
         rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
-        frmsize = fs - frame.haloAmt*((bitand(frame.parallel.halobits, [1 4 16]) ~= 0) + (bitand(frame.parallel.halobits, [2 8 32]) ~= 0));
+        frmsize = fs - frame.parallel.haloAmt*double((bitand(frame.parallel.haloBits, int64([1 4 16])) ~= 0) + (bitand(frame.parallel.haloBits, int64([2 8 32])) ~= 0));
         if numel(frmsize) == 2; frmsize(3) = 1; end
 
         frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...
@@ -103,9 +103,9 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 end % function
 
 function y = trimHalo(x, subframe)
-    b = subframe.parallel.halobits;
-    h = subframe.haloAmt;
-    ba = (bitand(b, [1 2 4 8 16 32]) ~= 0) * 1;
+    b = subframe.parallel.haloBits;
+    h = subframe.parallel.haloAmt;
+    ba = (bitand(b, int64([1 2 4 8 16 32])) ~= 0) * 1;
 
     U = (1+h*ba(1)):(size(x,1)-h*ba(2));
     V = (1+h*ba(3)):(size(x,2)-h*ba(4));

@@ -1,0 +1,77 @@
+function util_Frame2HDF(hname, frame)
+% function util_Frame2HDF(hname, frame)
+% saves the Imogen data frame 'frame' to the file named by 'hname' as a HDF5 file
+
+% prevent 0 elements glitch
+if numel(frame.time.history) == 0; frame.time.history = 0; end
+% Save the 'time' struct
+h5create(hname, '/timehist', size(frame.time.history), 'Datatype','double');
+
+h5create(hname, '/dgridx', size(frame.dGrid{1}), 'Datatype', 'double');
+h5create(hname, '/dgridy', size(frame.dGrid{2}), 'Datatype', 'double');
+h5create(hname, '/dgridz', size(frame.dGrid{3}), 'Datatype', 'double');
+
+fluvars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
+for i = 1:5
+    h5create(hname, ['/fluid1/' fluvars{i}], size(frame.(fluvars{i})), 'Datatype', 'double');
+end
+
+if isfield(frame, 'mass2')
+    flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+    for i = 1:5
+        h5create(hname, ['/fluid2/' fluvars{i}], size(frame.(flu2vars{i})), 'Datatype', 'double');
+    end
+end
+
+if numel(frame.magX)==0; frame.magX = 0; frame.magY = 0; frame.magZ = 0; end
+
+h5create(hname, '/mag/X', size(frame.magX));
+h5create(hname, '/mag/Y', size(frame.magY));
+h5create(hname, '/mag/Z', size(frame.magZ));
+
+h5write(hname, '/timehist', frame.time.history);
+
+timeatts = {'time', 'iterMax', 'timeMax', 'wallMax', 'iteration', 'started'};
+for i = 1:5
+    h5writeatt(hname, '/timehist', timeatts{i}, frame.time.(timeatts{i}));
+end
+
+h5writeatt(hname, '/', 'iter', frame.iter);
+
+paratts = {'geometry', 'globalDims', 'myOffset', 'haloBits', 'haloAmt'};
+
+for i = 1:5
+    h5writeatt(hname, '/', ['par_ ' paratts{i}], frame.parallel.(paratts{i}));
+end
+
+h5writeatt(hname, '/', 'gamma', frame.gamma);
+
+h5writeatt(hname, '/', 'about', frame.about(:)');
+h5writeatt(hname, '/', 'ver', frame.ver(:)');
+
+% handle this in a reasonably graceful manner... not that we'll ever get nonscalars for these again. HAH!
+h5write(hname, '/dgridx', frame.dGrid{1});
+h5write(hname, '/dgridy', frame.dGrid{2});
+h5write(hname, '/dgridz', frame.dGrid{3});
+
+% is this even relevant? lol!
+%frame.dim
+
+% dump fluid 1, it always exists...
+for i = 1:5
+    h5write(hname, ['/fluid1/' fluvars{i}], frame.(fluvars{i}));
+end
+
+if isfield(frame, 'mass2')
+     flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+    for i = 1:5
+        h5write(hname, ['/fluid2/' fluvars{i}], frame.(flu2vars{i}));
+    end
+
+end
+
+h5write(hname, '/mag/X', frame.magX);
+h5write(hname, '/mag/Y', frame.magY);
+h5write(hname, '/mag/Z', frame.magZ);
+
+end
