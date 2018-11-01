@@ -2269,6 +2269,25 @@ for(q = 0; q < imax.z; q++) {
 
 }
 
+__global__ void cukern_BlockSubsetCopyLarge(double *dst, double *src, int3 dDim, int3 sDim, int3 imax)
+{
+int myx = threadIdx.x + blockIdx.x * blockDim.x;
+int myy = threadIdx.y + blockIdx.y * blockDim.y;
+
+int d_nxy = dDim.x*dDim.y;
+int s_nxy = sDim.x*sDim.y;
+
+int q, u, v;
+for(u = myx; u < imax.x; u+= blockDim.x*gridDim.x) {
+	for(v = myy; v < imax.y; v+= blockDim.y*gridDim.y) {
+		for(q = 0; q < imax.z; q++) {
+			dst[u+dDim.x*(v+d_nxy*q)] = src[u+sDim.x*(v+s_nxy*q)];
+		}
+	}
+}
+
+}
+
 /* Assuming that p points to an array whose size is compatible with either
  * the whole of g (partitionOnto < 0) or a specific partition of g (if
  * partitionOnto >= 0), transfers elements of p to g.
@@ -2302,15 +2321,21 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 
 	/* By way of explanation:
 	 * This is done by coping the whole array to every device and then invoking
-	 * a subset copy function on the GPU because to acheive any level of acceptable
+	 * a subset copy function on the GPU because to achieve any level of acceptable
 	 * performance on the host would require OMP #pragmas on the for() for() for() loop
  	 * that copies the subset on the host, but getting compiler flags to work with
 	 * just matlab and cuda proved difficult enough */
 
 	for(i = fromPart; i < toPart; i++) {
+		long NE;
+		if(g->haloSize==0) { // partition cloned: g->dim will contain a dim Xed by nGPUs somewhere
+			NE = g->partNumel[i];
+		} else { // normal: g->dim equals Matlab array size
+			NE = g->dim[0] * g->dim[1] * g->dim[2];
+		}
+
 		cudaSetDevice(g->deviceID[i]);
 		CHECK_CUDA_ERROR("cudaSetDevice");
-		long NE = g->dim[0] * g->dim[1] * g->dim[2];
 		cudaMalloc((void **)(&gmem[i]), NE * sizeof(double));
 		CHECK_CUDA_ERROR("cudaMalloc");
 		cudaMemcpyAsync((void *)gmem[i], (void *)p, NE * sizeof(double), cudaMemcpyHostToDevice);
@@ -2367,15 +2392,43 @@ int MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo)
 		cudaSetDevice(g->deviceID[i]);
 		CHECK_CUDA_ERROR("cudaSetDevice");
 
-		dim3 blockdim = makeDim3(16, 8, 1);
-		dim3 griddim = makeDim3(ROUNDUPTO(partExtent.x, 16)/16, ROUNDUPTO(partExtent.y, 8)/8, 1);
+		dim3 blockdim = makeDim3(16, 16, 1);
+		// partially ameliorate the problem if it occurs:
+		if(partExtent.x*partExtent.y >= 256) {
+			if(partExtent.x < 16) {
+				// we want to maintain proper striding so keep x a power of 2
+				blockdim.x = 8;
+				while(blockdim.x*blockdim.y < 256) blockdim.y *= 2;
+			}
+			if(partExtent.y < 16) {
+				blockdim.y = partExtent.y;
+				while(blockdim.x * blockdim.y < 256) blockdim.x *= 2;
+		}
+		}
+
+		// block size should result in reasonable dims extent for large vector-like objects
+		dim3 griddim = makeDim3(
+				ROUNDUPTO(partExtent.x, blockdim.x)/blockdim.x,
+				ROUNDUPTO(partExtent.y, blockdim.y)/blockdim.y,
+				1);
+
+		// or it may not!
+		int useLargeCopy = 0;
+
+		if(griddim.x > 512) { griddim.x = 512; useLargeCopy = 1; }
+		if(griddim.y > 512) { griddim.y = 512; useLargeCopy = 1; }
 		
+		// Potential trip-up: extremely long, narrow array (limiting case: a vector)
+
 		double *dstos = g->devicePtr[i] + ptOff.x + ptSize.x * (ptOff.y + ptSize.y * ptOff.z);
 		double *srcos = gmem[i] + readOff.x + usedims[0] * (readOff.y + usedims[1] * readOff.z);
 		int3 srcDims = makeInt3(usedims[0], usedims[1], usedims[2]);
 
-		cukern_BlockSubsetCopy<<<griddim, blockdim>>>(dstos, srcos, ptSize, srcDims, partExtent);
-
+		if(useLargeCopy) {
+			cukern_BlockSubsetCopyLarge<<<griddim, blockdim>>>(dstos, srcos, ptSize, srcDims, partExtent);
+		} else {
+			cukern_BlockSubsetCopy<<<griddim, blockdim>>>(dstos, srcos, ptSize, srcDims, partExtent);
+		}
 		returnCode = CHECK_CUDA_ERROR((const char *)"MGArray_uploadArrayToGPU");
 		if(returnCode != SUCCESSFUL) break;
 

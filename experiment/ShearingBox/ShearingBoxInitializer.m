@@ -58,18 +58,32 @@ classdef ShearingBoxInitializer < Initializer
 
 %===================================================================================================
     properties (Dependent = true) %                                            D E P E N D E N T [P]
+        azimuthalMode;
     end %DEPENDENT
     
 %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
+        pAzimuthalMode;
     end %PROTECTED
     
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
-        
+
+        function set.azimuthalMode(self, m)
+            if m >= 1
+                self.pAzimuthalMode = m;
+            else
+                Save.logPrint('Error: cylindrical azimuthal symmetry mode must be >= 1, rx''d %f\n', m)
+            end
+        end
+
+        function m = get.azimuthalMode(self)
+            m = self.pAzimuthalMode;
+        end
+
 %____________________________________________________________________________ ShearingBoxInitializer
         function self = ShearingBoxInitializer(input)
-	    if nargin == 0; input = [64 64 1]; end
+            if nargin == 0; input = [64 64 1]; end
             self                  = self@Initializer();            
             self.runCode          = 'SHEARBOX';
             self.mode.fluid       = true;
@@ -105,6 +119,8 @@ classdef ShearingBoxInitializer < Initializer
             self.gamma            = 7/5;
             
             self.useZMirror       = 0;
+
+            self.azimuthalMode = 1; % global
 
             self.operateOnInput(input, [64 64 1]);
         end
@@ -147,7 +163,7 @@ classdef ShearingBoxInitializer < Initializer
             
             switch geo.pGeometryType
                 case ENUM.GEOMETRY_SQUARE
-		    % fixme this is gonna dump if it's ever run again
+                    % fixme this is gonna dump if it's ever run again
                     boxsize = 2*(1+self.edgePadding)*diskInfo.rout * [1 1 1];
                     
                     if nz > 1
@@ -183,7 +199,7 @@ classdef ShearingBoxInitializer < Initializer
                             dz = dr;
                         %end
                     
-		        % FIXME this needs to autodetect the number of ghost cells in use
+                        % FIXME this needs to autodetect the number of ghost cells in use
                         % For vertical mirror, offset Z=0 by four cells to agree with mirror BC that has 4 ghost cells
                         if self.useZMirror; z0 = -4*dz; else; z0 = -round(nz/2)*dz; end
                     else
@@ -191,7 +207,8 @@ classdef ShearingBoxInitializer < Initializer
                         dz = 1;
                     end
                     
-                    geo.geometryCylindrical(self.innerRadius/r_c, 1, dr/r_c, z0/r_c, dz/r_c);
+                    geo.geometryCylindrical(self.innerRadius/r_c, self.azimuthalMode, dr/r_c, z0/r_c, dz/r_c);
+                    SaveManager.logPrint('Using cylindrical geometry; Angular slice set to %fdeg\n', 360/self.azimuthalMode);
 %                    geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
             end
             
