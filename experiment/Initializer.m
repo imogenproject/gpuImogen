@@ -99,7 +99,7 @@ classdef Initializer < handle
             obj.ppSave.cust          = 50;
             obj.profile              = false;
             obj.save                 = true;
-            obj.saveFormat           = ENUM.FORMAT_NC;
+            obj.saveFormat           = ENUM.FORMAT_HDF;
             obj.thresholdMass        = 0;
             obj.timeMax              = 1e5;
             obj.wallMax              = 1e5;
