@@ -66,6 +66,7 @@ classdef ENUM
 
         FORMAT_MAT  = 1;
         FORMAT_NC   = 2;
+	FORMAT_HDF  = 3;
         
         CFD_HLL = 1;
         CFD_HLLC = 2;

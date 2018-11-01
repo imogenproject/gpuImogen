@@ -42,7 +42,6 @@ function resultsHandler(saveEvent, run, fluids, mag)
         sl.about  = run.about;
         sl.ver    = run.version;
         sl.iter   = iteration;
-        sl.amtHalo= gm.useHalo;
             
         for i = find(run.save.ACTIVE)
             switch (i)
@@ -109,6 +108,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 pInfo.myOffset   = run.geometry.pLocalDomainOffset;
                     % Garbage FIXME HACK: swipe the .circularHaloBits field from fluid(1).mass's gpu array tag
                 pInfo.haloBits   = run.fluid(1).mass.gputag(10);
+                pInfo.haloAmt    = gm.useHalo;
 
                 sl.parallel = pInfo;
                 sl.dim = sliceDim;
@@ -126,7 +126,8 @@ function resultsHandler(saveEvent, run, fluids, mag)
                 try
                     switch(run.save.format)
                         case ENUM.FORMAT_MAT; eval([sliceName '= sl;']); save(fileName, sliceName);
-                        case ENUM.FORMAT_NC;  util_Frame2NCD(sl, [fileName '.nc']);
+                        case ENUM.FORMAT_NC;  util_Frame2NCD([fileName '.nc'], sl);
+			            case ENUM.FORMAT_HDF; util_Frame2HDF([fileName '.h5'], sl);
                     end
                 catch MERR
                     fprintf('In resultsHandler:115, unable to save frame. Skipping\n');

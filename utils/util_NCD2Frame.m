@@ -16,7 +16,7 @@ ts = netcdf.getVar(ncid, v);
   frame.iter = frame.time.iteration;
 
 v = netcdf.inqVarID(ncid, 'timeinfo_tstart');
-frame.time.started = netcdf.getVar(ncid, v);
+frame.time.started = netcdf.getVar(ncid, v)';
 
 % Deserialize parallel substructure
 v = netcdf.inqVarID(ncid, 'parallel_geom');
@@ -26,17 +26,17 @@ frame.parallel.globalDims = netcdf.getVar(ncid, v)';
 v = netcdf.inqVarID(ncid, 'parallel_offset');
 frame.parallel.myOffset = netcdf.getVar(ncid, v)';
 v = netcdf.inqVarID(ncid, 'parallel_halobits');
-frame.parallel.halobits = netcdf.getVar(ncid, v);
+frame.parallel.haloBits = netcdf.getVar(ncid, v);
+v = netcdf.inqVarID(ncid, 'parallel_haloamt');
+frame.parallel.haloAmt = netcdf.getVar(ncid, v);
 
 % Deserialize small stuff
 v = netcdf.inqVarID(ncid, 'gamma');
 frame.gamma = netcdf.getVar(ncid, v);
 v = netcdf.inqVarID(ncid, 'about');
-frame.about = netcdf.getVar(ncid, v);
+frame.about = netcdf.getVar(ncid, v)';
 v = netcdf.inqVarID(ncid, 'version');
-frame.ver = netcdf.getVar(ncid, v);
-v = netcdf.inqVarID(ncid, 'amtHalo');
-frame.haloAmt = netcdf.getVar(ncid, v);
+frame.ver = netcdf.getVar(ncid, v)';
 
 % Note: copy frame.time.iteration above back to frame.iter upon load
 v = netcdf.inqVarID(ncid, 'dgrid_x');

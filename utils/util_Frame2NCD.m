@@ -1,4 +1,4 @@
-function util_Frame2NCD(frame, nfile)
+function util_Frame2NCD(nfile, frame)
 % Serializes an Imogen saveframe 'frame' into NetCDF 4 format file 'nfile'
 
 %d3 = @(v) {'nx',size(v,1),'ny',size(v,2),'nz',size(v,3')};
@@ -51,12 +51,12 @@ parallel_geom   = netcdf.defVar(ncid, 'parallel_geom', 'double', [geomnx geomny 
 parallel_gdims  = netcdf.defVar(ncid, 'parallel_gdims', 'double', vecdim);
 parallel_offset = netcdf.defVar(ncid, 'parallel_offset', 'double', vecdim);
 parallel_halobits=netcdf.defVar(ncid, 'parallel_halobits', 'double', scaldim);
+parallel_haloamt= netcdf.defVar(ncid, 'parallel_haloamt', 'double', scaldim);
 
 % Define small parameters
 gammavar   = netcdf.defVar(ncid, 'gamma', 'double', scaldim);
 aboutvar   = netcdf.defVar(ncid, 'about', 'char', aboutstr);
 versionvar = netcdf.defVar(ncid, 'version', 'char', versionstr);
-halovar    = netcdf.defVar(ncid, 'amtHalo', 'double', scaldim);
 
 % Define dgrid parameters
 dgrid_x = netcdf.defVar(ncid, 'dgrid_x', 'double', dgridnx);
@@ -102,7 +102,7 @@ netcdf.putVar(ncid, parallel_geom, frame.parallel.geometry);
 netcdf.putVar(ncid, parallel_gdims, frame.parallel.globalDims);
 netcdf.putVar(ncid, parallel_offset, frame.parallel.myOffset);
 netcdf.putVar(ncid, parallel_halobits, frame.parallel.haloBits);
-netcdf.putVar(ncid, halovar, frame.amtHalo);
+netcdf.putVar(ncid, parallel_haloamt, frame.parallel.haloAmt);
 
 % Serialize parameters and other small stuff
 netcdf.putVar(ncid, gammavar, frame.gamma(1));

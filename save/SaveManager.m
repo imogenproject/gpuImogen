@@ -95,7 +95,7 @@ classdef SaveManager < LinkedListNode
         obj.saveCustomData          = false;
         obj.done                    = false;
         
-        obj.format = ENUM.FORMAT_NC;
+        obj.format = ENUM.FORMAT_HDF;
     end
     
 %_______________________________________________________________________________________ preliminary
