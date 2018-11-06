@@ -70,7 +70,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	}
 
 	if(vomitDebug == 0) {
-		if((main.nGPUs <= 1) || (stats.nGPUs <= 1)) {
+		if(stats.nGPUs == 0) { // no statics in use
+                        // zero gpus = no statics in use on this node
+                        mwSize dims[2];
+                        dims[0] = 12*main.nGPUs;
+                        dims[1] = 1;
+                        plhs[0] = mxCreateNumericArray(2, &dims[0], mxDOUBLE_CLASS, mxREAL);
+
+                        double *newost = mxGetPr(plhs[0]);
+                        int i;
+                        for(i = 0; i < dims[0]; i++) { newost[i] = 0; }
+
+                        return; // no partitioning problem can exist
+
+		}
+		if(main.nGPUs <= 1) {
 			// one gpu = only one partition so this is a passthru
 			// zero gpus = no statics in use on this node
 			mwSize dims[2];
