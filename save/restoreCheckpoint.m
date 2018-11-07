@@ -43,6 +43,10 @@ for a = 1:numel(run.fluid)
         ignoreit = GPU_setslab(DH, b, dump.arrays{ctr});
         ctr = ctr + 1;
     end
+
+    run.fluid(a).synchronizeHalos(1);
+    run.fluid(a).synchronizeHalos(2);
+    run.fluid(a).synchronizeHalos(3);
 end
 
 end
