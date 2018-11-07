@@ -175,6 +175,27 @@ void calcPartitionExtent(MGArray *m, int P, int *sub)
 
 }
 
+/* Given an address on a partition addr and the results of the partition it came from stored in
+int sub[6], stores the address in the partition in *subAddr and the global address as will be seen
+in Matlab in *globAddr */
+void decodePartitionAddress(long addr, int *sub, int3 *subAddr, int3 *globAddr)
+{
+long partnxy = sub[3]*sub[4];
+
+subAddr->z = addr / partnxy;
+
+addr -= subAddr->z * partnxy;
+
+subAddr->y = addr / sub[3];
+
+subAddr->x = addr - sub[3] * subAddr->y;
+
+globAddr->x = subAddr->x + sub[0];
+globAddr->y = subAddr->y + sub[1];
+globAddr->z = subAddr->z + sub[2];
+
+}
+
 /* Given an mxArray *X, it searches "all the places you'd expect" any function in Imogen to have
  * stored the uint64_t pointer to the tag itself. Specifically, if X is a:
  *   uint64_t class: returns mxGetData(X)
@@ -2823,9 +2844,22 @@ for(j = 0; j < maxslab; j++) {
 		fail = CHECK_CUDA_ERROR("memcopy");
 		if(qq > 1) {
 			printf("Rank %i reporting: dbgfcn_CheckArrayVals investigated slab %i, %lx[0] to %lx[%i] and hit %i invalid values in partition %i!\n", rank, j, (unsigned long)x->devicePtr[i], (unsigned long)x->devicePtr[i], x->partNumel[i]-1, qq, i);
-			printf("break at %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
-			cudaMemcpy((void *)&hostBadVals[0], (void *)evilAddresses[i], qq*sizeof(int), cudaMemcpyDeviceToHost);
+			printf("If repeatable, set break %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
+			printf("Dumping up to the first 32 problems below:\n");
+			cudaMemcpy((void *)&hostBadVals[1], (void *)evilAddresses[i], (qq-1)*sizeof(int), cudaMemcpyDeviceToHost);
 			fail = CHECK_CUDA_ERROR("memcopy");
+
+			int dispmax = qq; if(qq > 32) { dispmax = 32; }
+
+			int3 pad, gad;
+			int ctbad;
+			int sub[6];
+			calcPartitionExtent(x, j, &sub[0]);
+
+			for(ctbad = 0; ctbad < dispmax; ctbad++) {
+				decodePartitionAddress(hostBadVals[ctbad+1], &sub[0], &pad, &gad);
+				printf("Rank %i: Bad address #%i=%x, partition idx = [%i %i %i], global idx = [%i %i %i]\n", rank, ctbad, hostBadVals[ctbad+1], pad.x, pad.y, pad.z, gad.x, gad.y, gad.z);
+			}
 			badnews = 1;
 			break;
 		}
@@ -2835,6 +2869,7 @@ for(j = 0; j < maxslab; j++) {
 		printf("Rank %i providing information on array where fault was found:\n", rank);
 		MGA_debugPrintAboutArray(x);
 
+		
 		if(crashit) {
 			printf("Rank %i returning error to cause automatic backtrace output.\n", rank);
 			cudaFree(evilAddresses);
