@@ -35,6 +35,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 
     % Handle each fluid
     for F = 1:numel(FieldSource.fluids)
+        SaveManager.logPrint('Fluid %i: ', int32(F));
         fluid(F) = FluidManager();
         % HACK HACK HACK this should be in some other init place
         fluid(F).MINMASS        = FieldSource.ini.minMass;
@@ -47,9 +48,11 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         DataHolder.createSlabs(5);
 
         a = GPU_getslab(DataHolder, 0);
+        SaveManager.logPrint('rho; ');
         mass = FluidArray(ENUM.SCALAR, ENUM.MASS, a, fluid(F), statics);
 
         a = GPU_setslab(DataHolder, 1, FluidData.ener);
+        SaveManager.logPrint('ener; ');
         ener = FluidArray(ENUM.SCALAR, ENUM.ENER, a, fluid(F), statics);
 
         mom  = FluidArray.empty(3,0);
@@ -57,9 +60,11 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 
         for i = 1:3
             a = GPU_setslab(DataHolder, 1+i, FluidData.(fieldnames{i}));
+            SaveManager.logPrint('%s; ',fieldnames{i});
             mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, fluid(F), statics);
         end
 
+        SaveManager.logPrint('Process thermodynamic details; ');
         fluid(F).processFluidDetails(FluidData.details);
         if fluid(F).checkCFL; hasNoCFL = 0; end
         fluid(F).attachFluid(DataHolder, mass, ener, mom);
@@ -69,10 +74,12 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         % but all other arrays are uploaded after mass.
         outflows = strcmp(mass.bcModes,ENUM.BCMODE_OUTFLOW);
         if any(outflows(:))
+            SaveManager.logPrint('Asserting outflow BC.');
             mass.applyBoundaryConditions(1);
             mass.applyBoundaryConditions(2);
             mass.applyBoundaryConditions(3);
         end
+        SaveManager.logPrint('\n');
     end
 
     if hasNoCFL

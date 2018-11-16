@@ -10,7 +10,7 @@ function L = selectGPUs(gpus_arg)
 
 if isa(gpus_arg,'double')
     if gpus_arg(1) == -1
-        SaveManager.logPrint('SLURM GPU assignment: all ranks will getenv GPU_DEVICE_ORDINAL');
+        SaveManager.logPrint('SLURM GPU assignment: all ranks will getenv GPU_DEVICE_ORDINAL\n');
         L = str2num(getenv('GPU_DEVICE_ORDINAL'));
     else
         L = gpus_arg;

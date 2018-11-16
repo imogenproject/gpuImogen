@@ -5,11 +5,59 @@ function isUnphysical = checkPhysicality(fluids)
 
 isUnphysical = 0;
 
+s = size(fluids(1).mass.array);
+
 for N = 1:numel(fluids)
-   if any(fluids(N).mass.array(:) < 0); isUnphysical = 1; end
-   if any(isnan(fluids(N).mass.array(:))); isUnphysical = 1; end
-   if any(fluids(N).ener.array(:) < 0); isUnphysical = 1; end
-   if any(isnan(fluids(N).ener.array(:))); isUnphysical = 1; end
+   theta = (fluids(N).mass.array(:) < 0);
+   if any(theta);
+     SaveManager.logAllPrint('checked fluid %i for rho < 0. Shit.\n', int32(N));
+     isUnphysical = 1;
+     printRant(theta, s);
+   end
+   
+   theta = isnan(fluids(N).mass.array(:));
+   if any(theta)
+     SaveManager.logAllPrint('checked fluid %i for rho is NaN. Shit.\n', int32(N));
+     isUnphysical = 1;
+     printRant(theta, s);
+   end
+
+   theta = (fluids(N).ener.array(:) < 0);
+   if any(theta)
+     SaveManager.logAllPrint('checked fluid %i for E < 0. Shit.\n', int32(N));
+      isUnphysical = 1;
+      printRant(theta, s);
+   end
+
+   theta = isnan(fluids(N).ener.array(:));
+   if any(theta)
+     SaveManager.logAllPrint('checked fluid %i for E is NaN. Shit.\n', int32(N));
+      isUnphysical = 1;
+      printRant(theta, s)
+   end
+
 end
+
+end
+
+function printRant(theta, dims)
+
+b = find(theta);
+x = numel(b);
+SaveManager.logAllPrint('Total of %f invalid elements.\n', x);
+
+if numel(dims)==2; dims(3)=1; end
+
+if x > 50; b = b(1:50); end
+
+b = b-1; % convert to zero based indices
+
+nxy = dims(1)*dims(2);
+
+z = floor(b/nxy);
+y = floor((b-z*nxy)/dims(1));
+x = b-z*nxy-dims(1)*y;
+
+disp([b x y z]);
 
 end
