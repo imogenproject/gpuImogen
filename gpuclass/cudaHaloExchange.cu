@@ -71,7 +71,6 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 
 	int totalBlockAlloc = 0;
 	int arraysOffset[nArrays], leftCirc[nArrays], rightCirc[nArrays], blockSize[nArrays];
-	double *hostbuffer;
 
 	MGArray *phi = theta;
 	// Run through the arrays and learn how much we need to allocate.
@@ -116,8 +115,16 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		phi++;
 	}
 
-	cudaMallocHost((void **)&hostbuffer, totalBlockAlloc * sizeof(double));
-	returnCode = CHECK_CUDA_ERROR("cudaHostAlloc");
+	// Allocate some normal memory, have cuda pin it and get a pointer to pass to the MGA halo reader.
+	double *hostbuffer = (double *)malloc(totalBlockAlloc * sizeof(double));
+
+	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
+	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
+	if(returnCode != SUCCESSFUL) return returnCode;
+
+	double *devbufptr;
+	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
+	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
 	if(returnCode != SUCCESSFUL) return returnCode;
 
 	double *ptrHalo;
@@ -127,9 +134,7 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	for(i = 0; i < nArrays; i++) {
 		int haloDepth = phi->haloSize;
 
-		MPI_Comm commune = MPI_Comm_f2c(topo->comm);
-
-		ptrHalo = hostbuffer + arraysOffset[i];
+		ptrHalo = devbufptr + arraysOffset[i];
 
 		double *ptmp = ptrHalo;
 		// Fetch left face
@@ -145,18 +150,19 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		phi++;
 	}
 
-	if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) {
-		cudaFreeHost((void **)hostbuffer);
-		return returnCode;
-	}
-
-	// synchronize to make sure host sees what was uploaded
-	// DANGER - this DOES assume
+	// make quite sure the face read/writes are complete so we can unregister
 	int j;
 	for(j = 0; j < theta->nGPUs; j++) {
 		cudaSetDevice(theta->deviceID[j]);
 		cudaDeviceSynchronize();
 	}
+
+	// This is necessary because otherwise a horrible silent failure occurs on RDMA-capable
+	// MPI substrates - the mpi communication simply fails to transfer data without any
+	// error of any kind
+	//
+	// God ****ing damn it took a long time to realize that that was what was going on
+	cudaHostUnregister((void *)hostbuffer);
 
 	phi = theta;
 	for(i = 0; i < nArrays; i++) {
@@ -170,6 +176,20 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 				(void*)(ptrHalo+3*blockSize[i]), blockSize[i], MPI_DOUBLE);
 		MPI_Barrier(MPI_COMM_WORLD);
 
+	}
+
+	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
+	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
+	if(returnCode != SUCCESSFUL) return returnCode;
+
+	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
+	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
+	if(returnCode != SUCCESSFUL) return returnCode;
+
+	for(i = 0; i < nArrays; i++) {
+		int haloDepth = phi->haloSize;
+		ptrHalo = devbufptr + arraysOffset[i];
+		double *ptmp = ptrHalo;
 		// write left face
 		ptmp = ptrHalo + 2*blockSize[i];
 		if(leftCirc[i])
@@ -186,9 +206,16 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		phi++;
 	}
 
+	for(j = 0; j < theta->nGPUs; j++) {
+                cudaSetDevice(theta->deviceID[j]);
+                cudaDeviceSynchronize();
+        }
+
 	CHECK_IMOGEN_ERROR(returnCode);
 
-	cudaFreeHost((void **)hostbuffer);
+	cudaHostUnregister((void *)hostbuffer);
+
+	free((void **)hostbuffer);
 
 	return returnCode;
 }

@@ -1829,7 +1829,7 @@ int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehal
 			double *ptmp = linear[0] + q;
 			returnCode = MGA_partitionHaloToLinear(a, ctr, direction, rightside, writehalo, h, &ptmp);
 			if(returnCode != SUCCESSFUL) break;
-			q += MGA_partitionHaloNumel(a, ctr, direction, 3);
+			q += MGA_partitionHaloNumel(a, ctr, direction, a->haloSize);
 		}
 	}
 
@@ -1877,7 +1877,7 @@ int MGA_partitionHaloToLinear(MGArray *a, int partition, int direction, int righ
 
 
 	if(linear[0] == NULL) {
-//	printf("pointer was null: allocating at cudaCommon.cu:1731\n");
+//	printf("pointer was null: allocating at cudaCommon.cu:%i\n", __LINE__);
 		cudaMalloc((void **)linear, 2*haloNumel*sizeof(double));
 		returnCode = CHECK_CUDA_ERROR((const char *)"cudaMalloc()");
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
