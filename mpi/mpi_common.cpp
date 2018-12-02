@@ -8,6 +8,8 @@
 
 #include "mpi_common.h"
 
+void printAboutMPIStatus(MPI_Status *s);
+
 MPI_Datatype typeid_ml2mpi(mxClassID id)
 {
 
@@ -94,7 +96,7 @@ int topoCToStructure(ParallelTopology *topo, mxArray **plhs)
 	mxSetFieldByNumber(mlTopology, 0, 1, mxCreateDoubleScalar((double)topo->comm));
 	mxSetFieldByNumber(mlTopology, 0, 2, cIntegerVectorToMatlab(topo->coord, 3));
 	mxSetFieldByNumber(mlTopology, 0, 3, cIntegerVectorToMatlab(topo->neighbor_left, 3));
-	mxSetFieldByNumber(mlTopology, 0, 4, cIntegerVectorToMatlab(topo->neighbor_right, 4));
+	mxSetFieldByNumber(mlTopology, 0, 4, cIntegerVectorToMatlab(topo->neighbor_right, 3));
 	mxSetFieldByNumber(mlTopology, 0, 5, cIntegerVectorToMatlab(topo->nproc, 3));
 	mxSetFieldByNumber(mlTopology, 0, 6, cIntegerVectorToMatlab(topo->dimcomm, 3));
 
@@ -252,10 +254,14 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 
 	/** MPI variables for asynchronous communication
 	 */
-	MPI_Request requests[2];
+	MPI_Request requests[4];
+	MPI_Status  howDidItGo[4];
 
-	// probably MPI_COMM_WORLD
-	MPI_Comm topo_comm = MPI_Comm_f2c(topo->comm);
+	MPI_Comm topo_comm = MPI_Comm_f2c(topo->dimcomm[dim]);
+
+                int rank;
+                MPI_Comm_rank(topo_comm, &rank);
+
 
 #ifdef DEBUG_OUTPUT
 	{
@@ -278,25 +284,101 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 	 * This can be done with blocking sends as we
 	 * don't really have anything else to do anyway.
 	 */
-	MPI_Send(sendLeft,  numel, dt, topo->neighbor_left [dim], 14, topo_comm);
-	MPI_Send(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm);
+	MPI_Isend(sendLeft,  numel, dt, topo->neighbor_left [dim], 14, topo_comm, &requests[2]);
+	MPI_Isend(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &requests[3]);
 
 	// Wait until all transceiving is complete
-	MPI_Waitall(2, requests, MPI_STATUSES_IGNORE);
+	int ohdear = MPI_Waitall(4, &requests[0], &howDidItGo[0]);
+
+	if(ohdear != MPI_SUCCESS) {
+		printf("RANK %i: Oh dear, return was not success!");
+		switch(ohdear) { 
+			case MPI_ERR_REQUEST: printf("MPI_ERR_REQUEST\n"); break;
+			case MPI_ERR_ARG: printf("MPI_ERR_ARG\n"); break;
+			case MPI_ERR_IN_STATUS: printf("MPI_ERR_IN_STATUS\n"); break;
+			}
+		}
+
+	printf("RANK %i: Emitting excessive debug info just because.\n");
+        printf("RANK %i: status 0 (rx left):  ", rank); printAboutMPIStatus(&howDidItGo[0]);
+        printf("RANK %i: status 1 (rx right): ", rank); printAboutMPIStatus(&howDidItGo[1]);
+        printf("RANK %i: status 2 (tx left):  ", rank); printAboutMPIStatus(&howDidItGo[2]);
+        printf("RANK %i: status 3 (tx right): ", rank); printAboutMPIStatus(&howDidItGo[3]);
+
+// This turd was written to make the communication as absolutely, positively explicit as it can possibly be
+// 
+// Worth noting, this will deadlock forever if there are an uneven number of ranks... 
+if(0) {
+MPI_Status rxStatus[2];
+
+int isodd = (topo->coord[dim]) % 2;
+printf("RANK %i: My coordinate in dimension %i is %i which is %s\n", rank, dim, topo->coord[dim], isodd ? "odd" : "not odd");
+
+// rightward shift
+if(rank == 0) printf("Phase 1: even ranks sending right, odd ranks recv from left...\n");
+if(isodd) {
+	// receive
+	printf("Rank %i is odd; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvLeft, topo->neighbor_left[dim]);
+	MPI_Recv(recvLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm, &rxStatus[0]);
+} else {
+	// transmit
+	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendRight, topo->neighbor_right[dim]);
+	MPI_Send(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm);
+}
+MPI_Barrier(topo_comm);
+if(rank == 0) printf("Phase 2: odd ranks sending right, even ranks recv from left...\n");
+
+if(isodd==0) {
+	// transmit
+	printf("Rank %i is even; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvLeft, topo->neighbor_left[dim]);
+	MPI_Recv(recvLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm, &rxStatus[0]);
+} else {
+	// receive
+	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendRight, topo->neighbor_right[dim]);
+        MPI_Send(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm);
+}
+MPI_Barrier(topo_comm);
+
+// leftward shift
+if(rank == 0) printf("Phase 3: even ranks sending left, odd ranks recv from right...\n");
+if(isodd) {
+	// receive
+	printf("Rank %i is odd; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvRight, topo->neighbor_right[dim]);
+	MPI_Recv(recvRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &rxStatus[1]);
+} else {
+	// transmit
+	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendLeft, topo->neighbor_left[dim]);
+	MPI_Send(sendLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm);
+}
+MPI_Barrier(topo_comm);
+if(rank == 0) printf("Phase 4: odd ranks sending left, even ranks recv from right...\n");
+
+if(isodd==0) {
+	// transmit
+	printf("Rank %i is even; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvRight, topo->neighbor_right[dim]);
+	MPI_Recv(recvRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &rxStatus[1]);
+} else {
+	// receive
+	printf("Rank %i is odd; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendLeft, topo->neighbor_left[dim]);
+        MPI_Send(sendLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm);
+}
+MPI_Barrier(topo_comm);
+} // end the if(0) for this mess
+
+
+
 }
 
-/*mxClassID typeid_mpi2ml(MPI_Datatype md)
+void printAboutMPIStatus(MPI_Status *s)
 {
-switch((int)md) {
-  case MPI_BYTE: return mxCHAR_CLASS; break;
-  case MPI_PACKED: return mxCHAR_CLASS; break;
-  case MPI_CHAR: return mxCHAR_CLASS; break;
-  case MPI_SHORT: return mxINT16_CLASS; break;
-  case MPI_INT: return mxINT32_CLASS; break;
-  case MPI_LONG: return mxINT64_ClASS; break;
-  case MPI_FLOAT: return mxFLOAT_CLASS; break;
-  case MPI_DOUBLE: return mxDOUBLE_CLASS; break;
-  case MPI_LONG_DOUBLE: return MPI_BYTE; break;  we're scrwed 
-  case MPI_UNSIGNED_CHAR: return mxCHAR_CLASS; break;
-  }
-}*/
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+char shitshitshit[MPI_MAX_ERROR_STRING]; int slen;
+MPI_Error_string(s->MPI_ERROR, &shitshitshit[0], &slen);
+shitshitshit[slen+1] = 0x00;
+
+printf("RANK %i: mpi status source = %i, tag = %i, error = %i. The MPI says: %s\n", rank, s->MPI_SOURCE, s->MPI_TAG, s->MPI_ERROR, shitshitshit);
+
+}
+

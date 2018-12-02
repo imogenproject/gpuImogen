@@ -2720,6 +2720,18 @@ void MGA_debugPrintAboutArray(MGArray *x)
 
 }
 
+void MGA_debugPrintAboutArrayBrief(MGArray *x)
+{
+        int n = x->nGPUs;
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        printf("RANK %i BRIEF DEBUG INFORMATION ABOUT ARRAY: Distributed onto %i GPUs. Pointers: ", rank, x->nGPUs);
+        int j;
+        for(j = 0; j < n; j++) { printf("%lx ", (unsigned long)x->devicePtr[j]); }
+        printf("RANK %i Array's host-side extent = [%i %i %i]; ", rank, x->dim[0], x->dim[1], x->dim[2]);
+        printf("RANK %i Halo size = %i; partition dir = %i, exteriorHalo=%i, boundary bits=%i\n", rank, x->haloSize, x->partitionDir, x->addExteriorHalo, x->circularBoundaryBits);
+}
+
 /* This should be polled after CUDA API calls. In the event of a problem, it provides detailed
  * metadata feedback to assist with debugging. If it returns unsuccessful, the function
  * should immediately cleanup & return its return value.
@@ -2837,6 +2849,7 @@ for(j = 0; j < maxslab; j++) {
 
 		int qq = 1;
 		cudaMemcpy((void *)evilAddresses[i], (void *)&qq, 1*sizeof(int), cudaMemcpyHostToDevice);
+		cudaDeviceSynchronize();
 		fail = CHECK_CUDA_ERROR("memcopy");
 		cukern_dbcheck_array<<<16, 256>>>(evilAddresses[i], x->devicePtr[i] + (j*x->slabPitch[i]/8), x->partNumel[i]);
 		fail = CHECK_CUDA_ERROR("cukern_dbcheck_array");
@@ -2847,6 +2860,7 @@ for(j = 0; j < maxslab; j++) {
 			printf("If repeatable, set break %s:%i, data has been D/Led to host for convenience.\n", __FILE__, __LINE__);
 			printf("Dumping up to the first 32 problems below:\n");
 			cudaMemcpy((void *)&hostBadVals[1], (void *)evilAddresses[i], (qq-1)*sizeof(int), cudaMemcpyDeviceToHost);
+			cudaDeviceSynchronize();
 			fail = CHECK_CUDA_ERROR("memcopy");
 
 			int dispmax = qq; if(qq > 32) { dispmax = 32; }
@@ -2858,7 +2872,7 @@ for(j = 0; j < maxslab; j++) {
 
 			for(ctbad = 0; ctbad < dispmax; ctbad++) {
 				decodePartitionAddress(hostBadVals[ctbad+1], &sub[0], &pad, &gad);
-				printf("Rank %i: Bad address #%i=%x, partition idx = [%i %i %i], global idx = [%i %i %i]\n", rank, ctbad, hostBadVals[ctbad+1], pad.x, pad.y, pad.z, gad.x, gad.y, gad.z);
+				printf("Rank %i: Bad address #%i=%i, partition idx = [%i %i %i], global idx = [%i %i %i]\n", rank, ctbad, hostBadVals[ctbad+1], pad.x, pad.y, pad.z, gad.x, gad.y, gad.z);
 			}
 			badnews = 1;
 			break;
