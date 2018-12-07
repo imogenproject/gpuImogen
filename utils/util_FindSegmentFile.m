@@ -44,7 +44,7 @@ for trypads = 1:11
     
 end
 
-if (ftype < 0) && (frame == 0) % compat w/old versions
+if (ftype < 0) && (frameno == 0) % compat w/old versions
     f1 = sprintf('%s_rank%i_START.nc', basename,rank);
     if exist(f1, 'file') == 0
         f2 = sprintf('%s_rank%i_START.mat',basename,rank);
@@ -60,7 +60,7 @@ if (ftype < 0) && (frame == 0) % compat w/old versions
     end
 end
 
-if (ftype < 0) && (frame > 0) % One last guess...
+if (ftype < 0) && (frameno > 0) % One last guess...
     % try end
     f3 = sprintf('%s_rank%i_FINAL.nc', basename,rank);
     f4 = sprintf('%s_rank%i_FINAL.mat', basename,rank);

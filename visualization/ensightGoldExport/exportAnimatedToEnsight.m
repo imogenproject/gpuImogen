@@ -46,11 +46,10 @@ equilframe = [];
 
 % Runs in parallel if MPI has been started
 if mpi_isinitialized() == 0
-  minf = [1 0];
-else
-  minf = mpi_basicinfo();
+  mpi_init();
 end
 
+minf = mpi_basicinfo();
 nworkers = minf(1); myworker = minf(2);
 
 ntotal = numel(range); % number of frames to write
@@ -63,7 +62,6 @@ tic;
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
     dataframe = util_LoadWholeFrame(inBasename, range(ITER));
-
     writeEnsightDatafiles(outBasename, ITER-1, dataframe,varset);
     if range(ITER) == maxFrameno
         writeEnsightMasterFiles(outBasename, range, dataframe, varset, timeNormalization);
