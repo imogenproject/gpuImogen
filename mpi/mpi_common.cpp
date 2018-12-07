@@ -259,16 +259,12 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 
 	MPI_Comm topo_comm = MPI_Comm_f2c(topo->dimcomm[dim]);
 
-                int rank;
-                MPI_Comm_rank(topo_comm, &rank);
+	int rank;
+	MPI_Comm_rank(topo_comm, &rank);
 
 
 #ifdef DEBUG_OUTPUT
-	{
-		int rank;
-		MPI_Comm_rank(topo_comm, &rank);
-		fprintf(stderr, "[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d) data=(%p %p %p %p)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim], send_lbuf, send_rbuf, recv_lbuf, recv_rbuf);
-	}
+	fprintf(stderr, "[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d) data=(%p %p %p %p)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim], send_lbuf, send_rbuf, recv_lbuf, recv_rbuf);
 #endif
 
 	/** Post recvs of data _into_ this processor's halo regions.
@@ -298,74 +294,13 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 			case MPI_ERR_IN_STATUS: printf("MPI_ERR_IN_STATUS\n"); break;
 			}
 		}
-
+#ifdef DEBUG_OUTPUT
 	printf("RANK %i: Emitting excessive debug info just because.\n");
         printf("RANK %i: status 0 (rx left):  ", rank); printAboutMPIStatus(&howDidItGo[0]);
         printf("RANK %i: status 1 (rx right): ", rank); printAboutMPIStatus(&howDidItGo[1]);
         printf("RANK %i: status 2 (tx left):  ", rank); printAboutMPIStatus(&howDidItGo[2]);
         printf("RANK %i: status 3 (tx right): ", rank); printAboutMPIStatus(&howDidItGo[3]);
-
-// This turd was written to make the communication as absolutely, positively explicit as it can possibly be
-// 
-// Worth noting, this will deadlock forever if there are an uneven number of ranks... 
-if(0) {
-MPI_Status rxStatus[2];
-
-int isodd = (topo->coord[dim]) % 2;
-printf("RANK %i: My coordinate in dimension %i is %i which is %s\n", rank, dim, topo->coord[dim], isodd ? "odd" : "not odd");
-
-// rightward shift
-if(rank == 0) printf("Phase 1: even ranks sending right, odd ranks recv from left...\n");
-if(isodd) {
-	// receive
-	printf("Rank %i is odd; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvLeft, topo->neighbor_left[dim]);
-	MPI_Recv(recvLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm, &rxStatus[0]);
-} else {
-	// transmit
-	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendRight, topo->neighbor_right[dim]);
-	MPI_Send(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm);
-}
-MPI_Barrier(topo_comm);
-if(rank == 0) printf("Phase 2: odd ranks sending right, even ranks recv from left...\n");
-
-if(isodd==0) {
-	// transmit
-	printf("Rank %i is even; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvLeft, topo->neighbor_left[dim]);
-	MPI_Recv(recvLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm, &rxStatus[0]);
-} else {
-	// receive
-	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendRight, topo->neighbor_right[dim]);
-        MPI_Send(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm);
-}
-MPI_Barrier(topo_comm);
-
-// leftward shift
-if(rank == 0) printf("Phase 3: even ranks sending left, odd ranks recv from right...\n");
-if(isodd) {
-	// receive
-	printf("Rank %i is odd; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvRight, topo->neighbor_right[dim]);
-	MPI_Recv(recvRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &rxStatus[1]);
-} else {
-	// transmit
-	printf("Rank %i is even; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendLeft, topo->neighbor_left[dim]);
-	MPI_Send(sendLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm);
-}
-MPI_Barrier(topo_comm);
-if(rank == 0) printf("Phase 4: odd ranks sending left, even ranks recv from right...\n");
-
-if(isodd==0) {
-	// transmit
-	printf("Rank %i is even; doing mpi_recv of %i elements into %p from rank %i\n", rank, numel, recvRight, topo->neighbor_right[dim]);
-	MPI_Recv(recvRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &rxStatus[1]);
-} else {
-	// receive
-	printf("Rank %i is odd; doing mpi_send of %i elements from %p to rank %i\n", rank, numel, sendLeft, topo->neighbor_left[dim]);
-        MPI_Send(sendLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm);
-}
-MPI_Barrier(topo_comm);
-} // end the if(0) for this mess
-
-
+#endif
 
 }
 

@@ -270,6 +270,7 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 
 //
 void MGA_debugPrintAboutArray(MGArray *x);
+void MGA_debugPrintAboutArrayBrief(MGArray *x);
 
 int dbgfcn_CheckArrayVals(MGArray *x, int maxslab, int crashit);
 int dbgfcn_CheckArrayVals(MGArray *x, int crashit);
