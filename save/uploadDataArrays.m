@@ -1,6 +1,8 @@
 function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 % Utility function uploads input data arrays on CPU to GPU
 
+    SaveManager.logPrint('---------- Transferring arrays to GPU(s)\n');
+
     gm = GPUManager.getInstance();
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
@@ -64,7 +66,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
             mom(i) = FluidArray(ENUM.VECTOR(i), ENUM.MOM, a, fluid(F), statics);
         end
 
-        SaveManager.logPrint('Process thermodynamic details; ');
+        SaveManager.logPrint('Processing thermodynamic details; ');
         fluid(F).processFluidDetails(FluidData.details);
         if fluid(F).checkCFL; hasNoCFL = 0; end
         fluid(F).attachFluid(DataHolder, mass, ener, mom);

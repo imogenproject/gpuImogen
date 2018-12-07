@@ -5,18 +5,18 @@ function initializeResultPaths(run, IC)
 %<> run              manager object for the Imogen run                                ImogenManager
 %>> IC               Initial condition structure containing path, time, and grid info
 
+    SaveManager.logPrint('--------- Preparing for output\n');
+
     if isfield(IC, 'originalPathStruct')
         run.paths.deserialize(IC.originalPathStruct); 
-    setupDirectories = 0;
+        setupDirectories = 0;
     else
         run.paths.initialize(run);
-    setupDirectories = 1;
+        setupDirectories = 1;
     end
    
     mpi_barrier(); % force all units to evaluate to the same paths
     run.paths.indexPadding = length(num2str(run.time.ITERMAX));
-
-    SaveManager.logPrint('--------- Output preparation\n');
 
     if mpi_amirank0() && (setupDirectories == 1)
     %-----------------------------------------------------------------------------------------------
@@ -105,6 +105,13 @@ function initializeResultPaths(run, IC)
 
     timeTaken = enforceConsistentView(run.paths.save, 600, 1);
     SaveManager.logPrint('\nResults directory was globally visible in %.1f sec\n', timeTaken);
+    
+    switch run.save.format;
+	case ENUM.FORMAT_MAT; sp = 'Output format: .MAT files\n';
+	case ENUM.FORMAT_NC;  sp = 'Output format: .NC NetCDF files\n';
+	case ENUM.FORMAT_HDF; sp = 'Output format: .H5 HDF-5 files\n';
+    end
+    SaveManager.logPrint(sp);
   
 end
 

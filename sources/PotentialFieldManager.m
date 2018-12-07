@@ -40,7 +40,6 @@ classdef PotentialFieldManager < handle
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
                 self.field = 0;
-                run.save.logPrint('Static potential field not used.\n');
             else
                 self.ACTIVE = true;
                 self.currentCoefficient = initialConds.constant;

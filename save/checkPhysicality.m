@@ -10,28 +10,28 @@ s = size(fluids(1).mass.array);
 for N = 1:numel(fluids)
    theta = (fluids(N).mass.array(:) < 0);
    if any(theta);
-     SaveManager.logAllPrint('checked fluid %i for rho < 0. Shit.\n', int32(N));
+     SaveManager.logAllPrint('checked fluid %i for rho < 0: Problem!\n', int32(N));
      isUnphysical = 1;
      printRant(theta, s);
    end
    
    theta = isnan(fluids(N).mass.array(:));
    if any(theta)
-     SaveManager.logAllPrint('checked fluid %i for rho is NaN. Shit.\n', int32(N));
+     SaveManager.logAllPrint('checked fluid %i for rho is NaN: Problem!\n', int32(N));
      isUnphysical = 1;
      printRant(theta, s);
    end
 
    theta = (fluids(N).ener.array(:) < 0);
    if any(theta)
-     SaveManager.logAllPrint('checked fluid %i for E < 0. Shit.\n', int32(N));
+     SaveManager.logAllPrint('checked fluid %i for E < 0: Problem!\n', int32(N));
       isUnphysical = 1;
       printRant(theta, s);
    end
 
    theta = isnan(fluids(N).ener.array(:));
    if any(theta)
-     SaveManager.logAllPrint('checked fluid %i for E is NaN. Shit.\n', int32(N));
+     SaveManager.logAllPrint('checked fluid %i for E is NaN: Problem!\n', int32(N));
       isUnphysical = 1;
       printRant(theta, s)
    end
