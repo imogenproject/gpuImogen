@@ -1,21 +1,26 @@
-function result = util_DerivedQty(f, thing, component)
-% util_DerivedQty(f, thing, component) computes all the (simple) derived quantities commonly of interest from the
-% conserved variables that Imogen computes:
-%>> f: The data frame returned by util_LoadWholeFrame or similar
+function result = util_DerivedQty(f, thing, component, fluidno)
+% util_DerivedQty(f, thing, component) computes all the (simple) derived quantities commonly of
+% interest from the conserved variables that Imogen computes:
+%>> f: The data frame as returned by util_LoadWholeFrame or util_LoadFrameSegment
 %>> thing: One of the strings mass, ener, mom, mag, pressure, gaspressure, velocity, speed, vorticity, compression, magpressure, plasmabeta, or current.
-%>> component: Required only if thing is a vector, either 0 (returns structure.X .Y .Z vector) or 1/2/3 for X/Y/Z component only
+%>> component: Required only if thing is a vector; Then either 0 (returns structure.X .Y .Z
+%       vector) or 1/2/3 for X/Y/Z component only
+%>> fluidno: For cases where this is meaningful, specifies to return either the fluid 1 (gas) or
+%     fluid 2 (dust) quantity; Defaults to gas
+
+if nargin < 4; fluidno = 1; end
 
 if strcmpi(thing, 'mass') % The 8 conserved variables we have anyway for completeness
-    result = f.mass;
+    if fluidno == 1; result = f.mass; else; result = f.mass2; end
 elseif strcmpi(thing, 'ener')
-    result = f.ener;
+    if fluidno == 1; result = f.ener; else; result = f.ener2; end
 elseif strcmpi(thing, 'mom')
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''mom'', component'); end
     switch component
-        case 0; result.X = f.momX; result.Y = f.momY; result.Z = f.momZ;
-        case 1; result = f.momX;
-        case 2; result = f.momY;
-        case 3; result = f.momZ;
+        case 0; if fluidno == 1; result.X = f.momX; result.Y = f.momY; result.Z = f.momZ; else; result.X = f.momX2; result.Y = f.momY2; result.Z = f.momZ2; end
+        case 1; if fluidno == 1; result = f.momX; else; result = f.momX2; end
+        case 2; if fluidno == 1; result = f.momY; else; result = f.momY2; end
+        case 3; if fluidno == 1; result = f.momZ; else; result = f.momZ2; end
     end
 elseif strcmpi(thing, 'mag')
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''mag'', component'); end
@@ -25,29 +30,41 @@ elseif strcmpi(thing, 'mag')
         case 2; result = f.magY;
         case 3; result = f.magZ;
     end
-elseif strcmpi(thing, 'pressure') % And now derived and/or primitives
+% And now derived and/or primitives
+elseif strcmpi(thing, 'pressure')
     result = (f.gamma-1)*(f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass) + (2-f.gamma)*util_DerivedQty(f,'magpressure');
 elseif strcmpi(thing, 'gaspressure')
     result = (f.gamma-1)*(f.ener - .5*(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass - .5*(f.magX.^2+f.magY.^2+f.magZ.^2));
 elseif strcmpi(thing, 'velocity')
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''velocity'', component'); end
     switch component
-        case 0; minv = 1./f.mass; result.X = f.momX.*minv; result.Y = f.momY.*minv; result.Z = f.momZ.*minv;
-        case 1; result = f.momX./f.mass;
-        case 2; result = f.momY./f.mass;
-        case 3; result = f.momZ./f.mass;
+        case 0; if fluidno == 1; 
+	    minv = 1./f.mass; result.X = f.momX.*minv; result.Y = f.momY.*minv; result.Z = f.momZ.*minv;
+	else
+	    minv = 1./f.mass2; result.X = f.momX2.*minv; result.Y = f.momY2 .* minv; result.Z = f.momZ2 .* minv;
+	end
+        case 1; if fluidno == 1; result = f.momX./f.mass; else; result = f.momX2 ./ f.mass2; end
+        case 2; if fluidno == 1; result = f.momY./f.mass; else; result = f.momY2 ./ f.mass2; end
+        case 3; if fluidno == 1; result = f.momZ./f.mass; else; result = f.momZ2 ./ f.mass2; end
     end
 elseif strcmpi(thing, 'speed') % = |mom| / mass
-    result = sqrt(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass;
+    if fluidno == 1; result = sqrt(f.momX.^2+f.momY.^2+f.momZ.^2)./f.mass; else; result = sqrt(f.momX2.^2 + f.momY2.^2 + f.momZ2.^2)./f.mass; end
 elseif strcmpi(thing, 'soundspeed') % = sqrt(gamma P / rho)
     P = util_DerivedQty(f, 'gaspressure');
     result = sqrt(f.gamma*P./f.mass);    
 elseif strcmpi(thing, 'vorticity') % = curl(V)
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''vorticity'', component'); end
-    minv = 1./f.mass;
-    vx = f.momX.*minv;
-    vy = f.momY.*minv;
-    vz = f.momZ.*minv;
+    if fluidno == 1; 
+        minv = 1./f.mass;
+        vx = f.momX.*minv;
+        vy = f.momY.*minv;
+        vz = f.momZ.*minv;
+    else
+	minv = 1./f.mass2;
+	vx = f.momX2.*minv;
+	vy = f.momY2.*minv;
+	vz = f.momZ2.*minv;
+    end
     clear minv;
     switch component
         case 0
@@ -59,12 +76,20 @@ elseif strcmpi(thing, 'vorticity') % = curl(V)
         case 3; result = d_di(vy, 1, f.dGrid{1}) - d_di(vx, 2, f.dGrid{2}); 
     end
 elseif strcmpi(thing, 'compression') % = div(V)
-    minv = 1./f.mass;
-    vx = f.momX.*minv;
-    vy = f.momY.*minv;
-    vz = f.momZ.*minv;
+    if fluidno == 1
+        minv = 1./f.mass;
+        vx = f.momX.*minv;
+        vy = f.momY.*minv;
+        vz = f.momZ.*minv;
+    else
+        minv = 1./f.mass2;
+        vx = f.momX2.*minv;
+        vy = f.momY2.*minv;
+        vz = f.momZ2.*minv;
+    end
+
     clear minv;
-    result = +d_di(vx, 1, -f.dGrid{1}) + d_di(vy, 2, -f.dGrid{2}) + d_di(vz, 3, -f.dGrid{3});
+    result = d_di(vx, 1, -f.dGrid{1}) + d_di(vy, 2, -f.dGrid{2}) + d_di(vz, 3, -f.dGrid{3});
 elseif strcmpi(thing, 'magpressure') % = B.B / 2
     result = .5*(f.magX.^2+f.magY.^2+f.magZ.^2);
 elseif strcmpi(thing, 'plasmabeta') % = pgas / pmag
@@ -72,13 +97,25 @@ elseif strcmpi(thing, 'plasmabeta') % = pgas / pmag
 elseif strcmpi(thing, 'current') % = curl(B) as we neglect displacement current
     if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''current'', component'); end
     switch component
-        case 0
+        case 0;
             result.X = d_di(f.magZ, 2, f.dGrid{2}) - d_di(f.magY, 3, f.dGrid{3});
             result.Y =-d_di(f.magZ, 1, f.dGrid{1}) + d_di(f.magX, 3, f.dGrid{3});
             result.Z = d_di(f.magY, 1, f.dGrid{1}) - d_di(f.magX, 2, f.dGrid{2});
         case 1; result = d_di(f.magZ, 2, f.dGrid{2}) - d_di(f.magY, 3, f.dGrid{3});
         case 2; result =-d_di(f.magZ, 1, f.dGrid{1}) + d_di(f.magX, 3, f.dGrid{3});
         case 3; result = d_di(f.magY, 1, f.dGrid{1}) - d_di(f.magX, 2, f.dGrid{2});
+    end
+elseif strcmpi(thing, '2fluid_dv')
+if nargin < 3; error('component (0 = all, 1/2/3 = vector part) required: util_DerivedQty(f, ''velocity'', component'); end
+    switch component
+        case 0;
+            minv = 1./f.mass; minv2 = 1./f.mass2;
+	    result.X = f.momX.*minv - f.momX2.*minv2;
+	    result.Y = f.momY.*minv - f.momY2.*minv2;
+	    result.Z = f.momZ.*minv - f.momZ2.*minv2;
+	case 1; result = f.momX ./ f.mass - f.momX2 ./ f.mass2; 
+	case 2; result = f.momY ./ f.mass - f.momY2 ./ f.mass2;
+	case 3; result = f.momZ ./ f.mass - f.momZ2 ./ f.mass2;
     end
 end
 

@@ -1,4 +1,6 @@
-function writeEnsightMasterFiles(basename, range, frame, varset, timeNormalization)
+function writeEnsightMasterFiles(basename, range, SP, varset, timeNormalization)
+
+frame = SP.jumpToLastFrame();
 
 CASE = fopen([basename '.case'], 'w');
 
@@ -8,6 +10,7 @@ fprintf(CASE, 'FORMAT\ntype: ensight gold\n');
 % prepare geometry info
 fprintf(CASE, '\nGEOMETRY\n');
 fprintf(CASE, 'model: 1 %s.geom\n', basename);
+fprintf('writing geometry file\n');
 makeEnsightGeometryFile(frame, basename);
 
 % prepare variables
@@ -44,10 +47,14 @@ fprintf(CASE, 'time set:              1 time_data\n');
 fprintf(CASE, 'number of steps:       %i\n', numel(range));
 fprintf(CASE, 'filename start number: 0\n');
 fprintf(CASE, 'filename increment:    1\n');
-
+fprintf('Emitting CASE file...\n');
 nwritten = fprintf(CASE, 'time values: ');
 for q = 1:numel(range)
-    nwritten = nwritten + fprintf(CASE,'%5.5g ', sum(frame.time.history(1:min(range(q),numel(frame.time.history)) ))/timeNormalization);
+    fprintf('Writing time meta for %i\n', int32(q));
+    m = SP.getMetadata(range(q))
+    tau = sum(m.time.history);
+
+    nwritten = nwritten + fprintf(CASE,'%5.5g ', tau/timeNormalization);
     if nwritten > 72; fprintf(CASE, '\n'); nwritten = 0; end
 end
 fprintf(CASE, '\n');

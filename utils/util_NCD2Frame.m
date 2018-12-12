@@ -1,5 +1,9 @@
-function frame = util_NCD2Frame(nfile)
+function frame = util_NCD2Frame(nfile, options)
 % Deserializes an Imogen NC4 file into a saveframe
+
+if nargin < 2; options = 'nothing'; end
+
+metaonly = strcmpi(options, 'metaonly');
 
 ncid = netcdf.open(nfile,'NC_NOWRITE');
 
@@ -48,6 +52,8 @@ frame.dGrid{3} = netcdf.getVar(ncid, v);
 
 v = netcdf.inqVarID(ncid, 'dim');
 frame.dim = netcdf.getVar(ncid, v);
+
+if metaonly; netcdf.close(ncid); return; end
 
 % The main event: Deserialize the data arrays.
 v = netcdf.inqVarID(ncid, 'mass');

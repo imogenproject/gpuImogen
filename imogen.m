@@ -28,7 +28,6 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       establishes all of the save directories for the run, creating whatever directories are
     %       needed in the process.
     run = initialize(ini);
-    run.save.logPrint('---------- Preparing physics subsystems\n');
 
     if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
 
@@ -39,7 +38,6 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.saveIniSettings(ini);
 
     mpi_barrier();
-    run.save.logPrint('----- Transferring arrays to GPU(s)\n');
 
     if RESTARTING
         run.save.logPrint('   Accessing restart data files\n');
@@ -70,7 +68,9 @@ function outdirectory = imogen(srcData, resumeinfo)
     mpi_errortest(collectiveFailure);
 
     writeSimInitializer(run, IC);
+
     %--- Pre-loop actions ---%
+    SaveManager.logPrint('---------- Setting up any other physics subsystems\n');
     run.initialize(IC, mag);
 
     srcFunc = sourceChooser(run, run.fluid, mag);

@@ -1,6 +1,11 @@
-function frame = util_HDF2Frame(hname)
+function frame = util_HDF2Frame(hname, options);
 %function frame = util_Frame2HDF(hname)
 % loads the hdf5 file at 'hname' and returns Imogen saveframe 'frame'.
+
+if nargin < 2; options = 'nothing'; end
+metaonly = strcmpi(options, 'metaonly');
+
+fprintf('Metaonly is: %f\n', metaonly)
 
 frame.time = struct('history',[], 'time', [], 'iterMax', [], 'timeMax', [], 'wallMax', [], 'iteration', [], 'started', []);
 frame.time.history = h5read(hname, '/timehist');
@@ -35,6 +40,7 @@ frame.dGrid{1} = h5read(hname, '/dgridx');
 frame.dGrid{2} = h5read(hname, '/dgridy');
 frame.dGrid{3} = h5read(hname, '/dgridz');
 
+if metaonly; return; end
 
 frame.mass = h5read(hname, '/fluid1/mass');
 frame.momX = h5read(hname, '/fluid1/momX');

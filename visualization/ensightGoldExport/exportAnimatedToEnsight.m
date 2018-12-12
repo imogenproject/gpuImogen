@@ -1,4 +1,4 @@
-function exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNormalization)
+function exportAnimatedToEnsight(outBasename, inType, range, varset, timeNormalization)
 % exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNormalization)
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
@@ -10,11 +10,18 @@ function exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNor
 if nargin < 5
     fprintf('Not enough input arguments to run automatically. Input them now:\n');
     outBasename = input('Base filename for exported files (e.g. "torus1"): ', 's');
-    inBasename  = input('Base filename for source files, (e.g. "3D_XYZ", no trailing _):','s');
+    inType      = input('Frame type to read (e.g. "3D_XYZ", no trailing _):','s');
     range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
     varset      = eval(input('Cell array of variable names: ','s'));
     if isempty(varset) || ~isa(varset,'cell'); disp('Not valid; Defaulting to mass, velocity, pressure'); varset={'mass','velocity','pressure'}; end
     timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt enter 1): ');
+end
+
+SP = SavefilePortal('./', inType);
+
+if range == -1;
+    fprintf('Defaulting to all frames: %i total\n', int32(SP.numFrames()));
+    range = 1:SP.numFrames();
 end
 
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
@@ -23,25 +30,6 @@ pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 fprintf('Beginning export of %i files\n', numel(range));
 %exportedFrameNumber = 0;
 
-if max(round(range) - range) ~= 0; error('ERROR: Frame range is not integer-valued.\n'); end
-if min(range) < 0; error('ERROR: Frame range must be nonnegative.\n'); end
-
-% Automatically remove tailing _ but scorn the user
-if inBasename(end) == '_'
-    inBasename = inBasename(1:(end-1));
-    warning('inBasename had a trailing _; This causes a no-frames-found error & has been automatically stripped out.');
-end
-
-frmexists = util_checkFrameExistence(inBasename, range);
-fprintf('Found %i/%i frames to exist.\n',numel(find(frmexists)),numel(frmexists));
-
-if all(~frmexists)
-    fprintf('No frames matched patten; Aborting.\n');
-    return
-end
-
-range      = range(frmexists == 1);
-maxFrameno = max(range);
 equilframe = [];
 
 % Runs in parallel if MPI has been started
@@ -59,14 +47,20 @@ fprintf('Work distributed among %i workers.\n', nworkers);
 
 tic;
 
+stepnums = zeros([ntotal 1]);
+
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
-    dataframe = util_LoadWholeFrame(inBasename, range(ITER));
-    writeEnsightDatafiles(outBasename, ITER-1, dataframe,varset);
-    if range(ITER) == maxFrameno
-        writeEnsightMasterFiles(outBasename, range, dataframe, varset, timeNormalization);
+    dataframe = SP.setFrame(ITER); 
+
+% FIXME this fails in parallel horribly...
+    stepnums(ITER) = sum(dataframe.time.history);
+
+    writeEnsightDatafiles(outBasename, ITER-1, dataframe, varset);
+    if ITER == ntotal
+        writeEnsightMasterFiles(outBasename, range, SP, varset, timeNormalization);
     end
-    fprintf('%i',myworker);
+    fprintf('%i ',myworker);
 
 end
 

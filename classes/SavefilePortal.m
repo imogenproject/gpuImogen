@@ -164,17 +164,33 @@ classdef SavefilePortal < handle
             self.popdir();
         end
             
-       function arewe = atLastFrame(self)
-           % true if the portal is currently aimed at the last frame of the
-           % current type, otherwise false
-            arewe = (self.currentFrame(self.typeToLoad) == self.numFrames());
-       end
+        function met = getMetadata(self, f)
+            glitch = 0; % assume no problem...
+            if f < 1; f = 1; glitch = -1; end
+            if f >= self.numFrames()
+                f = self.numFrames();
+                glitch = 1;
+            end
 
-       function n = tellFrame(self)
-           % N = tellFrame() indicates which frame was the last
-           % loaded/returned
+            b = self.savefileList.(self.strnames{self.typeToLoad});
+            self.currentFrame(self.typeToLoad) = f;
+
+            self.pushdir(self.savefileDirectory);
+            rankToLoad = 0;
+            met = util_LoadFrameMetadata(self.typeToLoad, rankToLoad, b(f));
+        end
+
+        function arewe = atLastFrame(self)
+            % true if the portal is currently aimed at the last frame of the
+            % current type, otherwise false
+            arewe = (self.currentFrame(self.typeToLoad) == self.numFrames());
+        end
+
+        function n = tellFrame(self)
+            % N = tellFrame() indicates which frame was the last
+            % loaded/returned
             n = self.currentFrame(self.typeToLoad);
-       end
+        end
 
         function n = numFrames(self)
         % n = numFrames() returns how many frames of the current type are
@@ -190,7 +206,7 @@ classdef SavefilePortal < handle
         end
         
         function S = getIniSettings(self)
-           S = load([self.savefileDirectory  '/ini_settings.mat']);
+            S = load([self.savefileDirectory  '/ini_settings.mat']);
         end
         
         function S = getInitialConditions(self)
