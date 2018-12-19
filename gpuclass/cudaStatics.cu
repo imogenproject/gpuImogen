@@ -39,16 +39,16 @@ __global__ void cukern_xplusSymmetrize(double *phi, int nx, int ny, int nz);
 __global__ void cukern_xplusAntisymmetrize(double *phi, int nx, int ny, int nz);
 /* Y DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
 /* assume a block size of [N 1 M] */
-__global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz);
-__global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz);
-__global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz);
-__global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz);
+__global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth);
 /* Z DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
 /* Assume launch with size [U V 1] */
-__global__ void cukern_zminusSymmetrize(double *Phi, int nx, int ny, int nz);
-__global__ void cukern_zminusAntisymmetrize(double *Phi, int nx, int ny, int nz);
-__global__ void cukern_zplusSymmetrize(double *Phi, int nx, int ny, int nz);
-__global__ void cukern_zplusAntisymmetrize(double *Phi, int nx, int ny, int nz);
+__global__ void cukern_zminusSymmetrize(double *Phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_zminusAntisymmetrize(double *Phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_zplusSymmetrize(double *Phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_zplusAntisymmetrize(double *Phi, int nx, int ny, int nz, int depth);
 
 /* X direction extrapolated boundary conditions */
 /* Launch size [3 A B] */
@@ -57,10 +57,10 @@ __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, in
 
 __global__ void cukern_extrapolateFlatConstBdyXMinus(double *phi, int nx, int ny, int nz);
 __global__ void cukern_extrapolateFlatConstBdyXPlus(double *phi, int nx, int ny, int nz);
-__global__ void cukern_extrapolateFlatConstBdyYMinus(double *phi, int nx, int ny, int nz);
-__global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny, int nz);
-__global__ void cukern_extrapolateFlatConstBdyZMinus(double *phi, int nx, int ny, int nz);
-__global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny, int nz);
+__global__ void cukern_extrapolateFlatConstBdyYMinus(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_extrapolateFlatConstBdyZMinus(double *phi, int nx, int ny, int nz, int depth);
+__global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny, int nz, int depth);
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
@@ -678,87 +678,7 @@ if(a*direct > 0) {
 
 }
 
-
-/* Sets the given array's boundary in the following manner:
-   side      -> 0 = negative edge  1 = positive edge
-   direction -> 1 = X	      2 = Y               3 = Z*
-   sas       -> 0 = symmetrize      1 => antisymmetrize
-	     -> 2 = extrap constant 3-> extrap linear
-
- *: As passed, assuming ImogenArray's indexPermute has been handled for us.
- */
-int callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable)
-{
-	unsigned int nx = domainRez.x;
-	unsigned int ny = domainRez.y;
-	unsigned int nz = domainRez.z;
-	int problem = 0;
-
-	switch(ktable) {
-	// 0-15: X direction
-	case 0: cukern_xminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 1: cukern_xminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 2: cukern_extrapolateFlatConstBdyXMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 3: cukern_extrapolateLinearBdyXMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-
-	case 8: cukern_xplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 9: cukern_xplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 10: cukern_extrapolateFlatConstBdyXPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 11: cukern_extrapolateLinearBdyXPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-
-	// 16-31: Y direction
-	case 16: cukern_yminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 17: cukern_yminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 18: cukern_extrapolateFlatConstBdyYMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 19:
-		problem = ERROR_NOIMPLEMENT;
-		PRINT_FAULT_HEADER;
-		printf("Fatal: This boundary condition (y-minus, linear) has not been implemented yet.\n");
-		break;
-	case 24: cukern_yplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 25: cukern_yplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 26: cukern_extrapolateFlatConstBdyYPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 27:
-		problem = ERROR_NOIMPLEMENT;
-		PRINT_FAULT_HEADER;
-		printf("Fatal: This boundary condition (y-plus, linear) has not been implemented yet.\n");
-		PRINT_FAULT_FOOTER; break;
-
-	// 32-40: Z direction
-	case 32: cukern_zminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 33: cukern_zminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 34: cukern_extrapolateFlatConstBdyZMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 35:
-		problem = ERROR_NOIMPLEMENT;
-		PRINT_FAULT_HEADER;
-		printf("Fatal: This boundary condition (z-minus linear) has not been implemented yet.\n");
-		PRINT_FAULT_FOOTER; break;
-
-	case 40: cukern_zplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 41: cukern_zplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 42: cukern_extrapolateFlatConstBdyZPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
-	case 43:
-		problem = ERROR_NOIMPLEMENT;
-		PRINT_FAULT_HEADER;
-		printf("Fatal: This boundary condition (z-plus linear) has not been implemented yet.\n");
-		PRINT_FAULT_FOOTER; break;
-
-	default:
-		problem = ERROR_INVALID_ARGS;
-		PRINT_FAULT_HEADER;
-		printf("ERROR: callBCKernel invoked with INVALID ktable argument of %i\n", ktable);
-		PRINT_FAULT_FOOTER;
-		break;
-
-	}
-
-	if(problem == SUCCESSFUL) {
-	    return CHECK_CUDA_ERROR("callBCKernel call");
-	} else {
-		return problem;
-	}
-
-}
+int callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable, int bcDepth);
 
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 {
@@ -768,7 +688,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 	int returnCode;
 
 	switch(direction) {
-	case 1: { blockdim.x = 3; blockdim.y = 16; blockdim.z = 8; } break;
+	case 1: { blockdim.x = phi->haloSize; blockdim.y = 16; blockdim.z = 8; } break;
 	case 2: { blockdim.x = 16; blockdim.y = 1; blockdim.z = 16; } break;
 	case 3: { blockdim.x = 16; blockdim.y = 16; blockdim.z = 1; } break;
 	}
@@ -798,7 +718,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 		calcPartitionExtent(phi, i, sub);
 
 		dim3 rez; rez.x = sub[3]; rez.y = sub[4]; rez.z = sub[5];
-		returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
+		returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1), phi->haloSize);
 		if(returnCode != SUCCESSFUL) return returnCode;
 	} else {
 		// If the BC isn't on a face that's aimed in the partitioned direction,
@@ -825,7 +745,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 			if(returnCode != SUCCESSFUL) return returnCode;
 
 			dim3 rez; rez.x = sub[3]; rez.y = sub[4]; rez.z = sub[5];
-			returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1));
+			returnCode = callBCKernel(griddim, blockdim, phi->devicePtr[i], rez, sas + 8*side + 16*(direction-1), phi->haloSize);
 			if(returnCode != SUCCESSFUL) return returnCode;
 		}
 
@@ -834,7 +754,97 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
 	return SUCCESSFUL;
 }
 
+/* Sets the given array's boundary in the following manner:
+   side      -> 0 = negative edge  1 = positive edge
+   direction -> 1 = X	      2 = Y               3 = Z*
+   sas       -> 0 = symmetrize      1 => antisymmetrize
+	     -> 2 = extrap constant 3-> extrap linear
 
+ * As passed, assuming ImogenArray's indexPermute has been handled for us.
+ * This function is just a thin veil around a switch(){}ed cukern_ invocation for setBoundarySAS.
+ */
+int callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable, int bcDepth)
+{
+	unsigned int nx = domainRez.x;
+	unsigned int ny = domainRez.y;
+	unsigned int nz = domainRez.z;
+	int problem = 0;
+
+	switch(ktable) {
+	// 0-15: X direction
+	case 0: cukern_xminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 1: cukern_xminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 2: cukern_extrapolateFlatConstBdyXMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 3: cukern_extrapolateLinearBdyXMinus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+
+	case 8: cukern_xplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 9: cukern_xplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 10: cukern_extrapolateFlatConstBdyXPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break;
+	case 11: cukern_extrapolateLinearBdyXPlus<<<griddim, blockdim>>>(x, nx, ny, nz); break; // not done
+
+	// 16-31: Y direction
+	case 16: cukern_yminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 17: cukern_yminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 18: cukern_extrapolateFlatConstBdyYMinus<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 19:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (y-minus, linear) has not been implemented yet.\n");
+		break;
+	case 24: cukern_yplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 25: cukern_yplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 26: cukern_extrapolateFlatConstBdyYPlus<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 27:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (y-plus, linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
+
+	// 32-40: Z direction
+	case 32: cukern_zminusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 33: cukern_zminusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 34: cukern_extrapolateFlatConstBdyZMinus<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 35:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (z-minus linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
+
+	case 40: cukern_zplusSymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 41: cukern_zplusAntisymmetrize<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 42: cukern_extrapolateFlatConstBdyZPlus<<<griddim, blockdim>>>(x, nx, ny, nz, bcDepth); break;
+	case 43:
+		problem = ERROR_NOIMPLEMENT;
+		PRINT_FAULT_HEADER;
+		printf("Fatal: This boundary condition (z-plus linear) has not been implemented yet.\n");
+		PRINT_FAULT_FOOTER; break;
+
+	default:
+		problem = ERROR_INVALID_ARGS;
+		PRINT_FAULT_HEADER;
+		printf("ERROR: callBCKernel invoked with INVALID ktable argument of %i\n", ktable);
+		PRINT_FAULT_FOOTER;
+		break;
+
+	}
+
+	if(problem == SUCCESSFUL) {
+	    return CHECK_CUDA_ERROR("callBCKernel call");
+	} else {
+		return problem;
+	}
+
+}
+
+/* CUDA kernel which reads through the preprocessed list of specials in statics[] and writes to
+ * phi.
+ * 'statics' is an array of size [Nx3] in which
+ *   [N,0] contains the phi address to write,
+ *   [N,1] contains the value to fade to and
+ *   [N,2] contains the rate at which to fade.
+ * The x length of the array is given by blkOffset; We are to use [0, nSpecials-1], and the initial
+ * x offset has been taken care of by the invoking host function.
+ */
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset)
 {
 	int myAddr = threadIdx.x + blockDim.x * (blockIdx.x + gridDim.x*blockIdx.y);
@@ -867,6 +877,10 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 
 }
 
+/* This is where we finally meet the metal - these are the actual kernels that R/W the boundaries
+ * to assert various boundary extrapolation functions.
+ */
+
 
 /* X DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS FOR MIRROR BCS */
 /* Assume a block size of [3 A B] with grid dimensions [M N 1] s.t. AM >= ny, BN >= nz*/
@@ -884,43 +898,53 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
  * i.e. symmetry is about the 4th cell from the boundary */
 // X direction kernels just use 3 threads in order to acheive slightly less terrible
 // memory access patterns
+
+// The X directions we can use blockSize.x to tell us the halo depth
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[2-threadIdx.x] = phi[4+threadIdx.x];
+	int depth = blockDim.x;
+	phi[depth-1-threadIdx.x] = phi[depth+1+threadIdx.x];
 }
 
 __global__ void cukern_xminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[2-threadIdx.x] = -phi[4+threadIdx.x];
+	int depth = blockDim.x;
+	phi[depth-1-threadIdx.x] = -phi[depth+1+threadIdx.x];
 }
 
 __global__ void cukern_xplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[nx-3+threadIdx.x] = phi[nx-5-threadIdx.x];
+	int depth = blockDim.x;
+	phi[nx-depth+threadIdx.x] = phi[nx-depth-1-threadIdx.x];
 }
 
 __global__ void cukern_xplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[nx-3+threadIdx.x] = -phi[nx-5-threadIdx.x];
+	int depth = blockDim.x;
+	phi[nx-depth+threadIdx.x] = -phi[nx-depth-1-threadIdx.x];
 }
 
 /* These are called when a BC is set to 'const' or 'linear' */
+
+// Extrapolate a constant boundary on the -x side of a cartesian block
 __global__ void cukern_extrapolateFlatConstBdyXMinus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[threadIdx.x] = phi[3];
+	int depth = blockDim.x;
+	phi[threadIdx.x] = phi[depth];
 }
 
+// oh dear... not implemented...
 __constant__ int radExtrapCoeffs[5];
 #define RAD_EX_X0 
 #define RAD_EX_Y0
 #define RAD_EX_Z0
 
-
+// Extrapolate a constant boundary on the -r side of a cylindrical block
 __global__ void cukern_extrapolateRadialConstBdyXMinus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
@@ -928,22 +952,26 @@ __global__ void cukern_extrapolateRadialConstBdyXMinus(double *phi, int nx, int 
 	// 	
 }
 
+// Extrapolate a constant boundary on the +r side of a cartesian block
 __global__ void cukern_extrapolateFlatConstBdyXPlus(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
-	phi[nx-3+threadIdx.x] = phi[nx-4];
+	int depth = blockDim.x;
+	phi[nx-depth+threadIdx.x] = phi[nx-depth-1];
 }
 
 // NOTE:
 // These conditions are GENERALLY UNSTABLE and result in catastrophic backflow
 // 
+// fixme: Oh dear this is catastrophically broken in its use of shmem. I am stupid
 __global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, int nz)
 {
-	__shared__ double f[3];
+	__shared__ double f[4];
 	XSASKERN_PREAMBLE
-	f[threadIdx.x] = phi[threadIdx.x+3];
+	int depth = blockDim.x;
+	f[threadIdx.x] = phi[threadIdx.x+depth];
 	__syncthreads();
-	phi[threadIdx.x] = phi[3] + (3-threadIdx.x)*(f[0]-f[1]);
+	phi[threadIdx.x] = phi[depth] + (depth-threadIdx.x)*(f[0]-f[1]);
 
 	// Correct procedure:
 	// Compute the local gradient at the boundary,
@@ -969,11 +997,13 @@ __global__ void cukern_extrapolateLinearBdyXMinus(double *phi, int nx, int ny, i
 	// That product of matrices, in the 1D case, for the comoving frame, is the one above
 }
 
+
 __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, int nz)
 {
-	__shared__ double f[3];
+	__shared__ double f[4];
 	XSASKERN_PREAMBLE
-	phi += nx - 5;
+	int depth = blockDim.x;
+	phi += nx - depth - 1;
 	f[threadIdx.x] = phi[threadIdx.x];
 	__syncthreads();
 	phi[threadIdx.x+2] = f[1] + (threadIdx.x+1)*(f[1]-f[0]);
@@ -990,42 +1020,44 @@ __global__ void cukern_extrapolateLinearBdyXPlus(double *phi, int nx, int ny, in
 		phi += xidx + stridez*zidx; \
 		int q;
 
-__global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz)
+
+__global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < 3; q++) { phi[nx*q] = phi[nx*(6-q)]; }
+
+	for(q = 0; q < depth; q++) { phi[nx*q] = phi[nx*(2*depth-q)]; }
 }
 
-__global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < 3; q++) { phi[nx*q] = -phi[nx*(6-q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*q] = -phi[nx*(2*depth-q)]; }
 }
 
-__global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < 3; q++) { phi[nx*(ny-1-q)] = phi[nx*(ny-7+q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = phi[nx*(ny-1-2*depth+q)]; }
 }
 
-__global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < 3; q++) { phi[nx*(ny-1-q)] = -phi[nx*(ny-7+q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = -phi[nx*(ny-1-depth+q)]; }
 }
 
-__global__ void cukern_extrapolateFlatConstBdyYMinus(double *phi, int nx, int ny, int nz)
+__global__ void cukern_extrapolateFlatConstBdyYMinus(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	double f = phi[3*nx];
-	for(q = 0; q < 3; q++) { phi[q*nx] = f; }
+	double f = phi[depth*nx];
+	for(q = 0; q < depth; q++) { phi[q*nx] = f; }
 }
 
-__global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny, int nz)
+__global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	double f = phi[(ny-4)*nx];
-	for(q = 0; q < 3; q++) { phi[(ny-3+q)*nx] = f; }
+	double f = phi[(ny-depth)*nx];
+	for(q = 0; q < depth; q++) { phi[(ny-depth+q)*nx] = f; }
 }
 
 /* Z DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */
@@ -1037,54 +1069,54 @@ __global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny,
 		phi += xidx + nx*yidx; \
 		int stride = nx*ny;
 
-__global__ void cukern_zminusSymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_zminusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	ZSASKERN_PREAMBLE
 
 	int q;
-	for(q = 0; q < 3; q++) // nvcc will unroll it
-		phi[q*stride] = phi[(6-q)*stride];
+	for(q = 0; q < depth; q++) // nvcc will unroll it
+		phi[q*stride] = phi[(2*depth-q)*stride];
 }
 
-__global__ void cukern_zminusAntisymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_zminusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	ZSASKERN_PREAMBLE
 	int q;
-	for(q = 0; q < 3; q++) 
-		phi[q*stride] = -phi[(6-q)*stride];
+	for(q = 0; q < depth; q++)
+		phi[q*stride] = -phi[(2*depth-q)*stride];
 }
 
-__global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	ZSASKERN_PREAMBLE
 	int q;
-	for(q = 0; q < 3; q++)
-		phi[stride*(nz-1-q)] = phi[stride*(nz-7+q)];
+	for(q = 0; q < depth; q++)
+		phi[stride*(nz-1-q)] = phi[stride*(nz-1-2*depth+q)];
 }
 
-__global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz)
+__global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	ZSASKERN_PREAMBLE
 	int q;
-	for(q = 0; q < 3; q++)
-		phi[stride*(nz-1-q)] = -phi[stride*(nz-7+q)];
+	for(q = 0; q < depth; q++)
+		phi[stride*(nz-1-q)] = -phi[stride*(nz-1-2*depth+q)];
 
 }
 
-__global__ void cukern_extrapolateFlatConstBdyZMinus(double *phi, int nx, int ny, int nz)
+__global__ void cukern_extrapolateFlatConstBdyZMinus(double *phi, int nx, int ny, int nz, int depth)
 {
 	ZSASKERN_PREAMBLE
 	int q;
-	for(q = 0; q < 3; q++)
-		phi[stride*q] = phi[stride*4];
+	for(q = 0; q < depth; q++)
+		phi[stride*q] = phi[stride*depth];
 }
 
-__global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny, int nz)
+__global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny, int nz, int depth)
 {
 
 	ZSASKERN_PREAMBLE
 	int q;
-	for(q = 0; q < 3; q++)
-		phi[stride*(nz-1-q)] = phi[stride*(nz-4)];
+	for(q = 0; q < depth; q++)
+		phi[stride*(nz-1-q)] = phi[stride*(nz-depth)];
 
 }

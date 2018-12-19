@@ -166,9 +166,9 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 
 	phi = theta;
 	for(i = 0; i < nArrays; i++) {
-		int haloDepth = phi->haloSize;
+		//int haloDepth = phi->haloSize;
 		ptrHalo = hostbuffer + arraysOffset[i];
-		double *ptmp = ptrHalo;
+		//double *ptmp = ptrHalo;
 
 		mpi_exchangeHalos(topo, xchgDir, (void*)ptrHalo,
 				(void*)(ptrHalo + blockSize[i]),\
