@@ -47,7 +47,11 @@ classdef ShearingBoxInitializer < Initializer
         Sigma0; % Gas surface mass density at r=r0
         densityExponent; % Sigma0(r) = Sigma0 * (r/r0)^q : canonically -1 (steady state accretion)
         densityCutoffFraction;
+
         dustFraction; % scales initial rho_dust = dustFraction x rho_gas
+
+        dustPerturb; % set an initial magnitude delta v for the dust if > 0
+        gasPerturb; % set an initial magnitude delta v for the gas if > 0
         
         cs0; % Isothermal soundspeed kb T0 / mu evaluated at r0
         temperatureExponent; % T(r) = T(r0) (r/r0)^n: canonically -.5 (purely starlight heating)
@@ -107,6 +111,9 @@ classdef ShearingBoxInitializer < Initializer
             self.Sigma0 = 1000; % 100g/cm^2 = 1000kg/m^2
             self.densityExponent = -1.5;
             self.dustFraction = .01;
+
+            self.dustPerturb = 0;
+            self.gasPerturb  = 0;
 
             self.temperatureExponent = -0.5;
             self.cs0 = 1137; % isothermal soundspeed of 75% H_2 25% 4He at 273.15K
@@ -263,6 +270,12 @@ classdef ShearingBoxInitializer < Initializer
             vel     = geo.zerosXYZ(geo.VECTOR);
             vel(2,:,:,:) = sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
 
+            if self.gasPerturb > 0
+                vel(1,:,:,:) = squish(vel(1,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                vel(2,:,:,:) = squish(vel(2,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                vel(3,:,:,:) = squish(vel(3,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+            end
+
             % Setup internal energy density to yield correct P for an adiabatic ideal gas
             Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
 
@@ -272,10 +285,6 @@ classdef ShearingBoxInitializer < Initializer
                 vel = vel / v0;
                 Eint = Eint / P0;
                 nfact = rho_0 / P0;
-
-                %self.fluidDetails(1).sigma = self.fluidDetails(1).sigma *r_c^-2;
-                %self.fluidDetails(1).mass  = self.fluidDetails(1).mass / m0;
-                %self.fluidDetails(1).kBolt = self.fluidDetails(1).kBolt / u0;
             else
                 nfact = 1;
             end
@@ -283,19 +292,21 @@ classdef ShearingBoxInitializer < Initializer
             fluids(1) = self.rhoVelEintToFluid(mass, vel, Eint);
 
             if self.dustFraction > 0
-                %uniformly disperse dust mass through the gas
+                %uniformly disperse dust mass as a fixed fraction of the gas mass
                 mass = mass * self.dustFraction;
                 self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
                 self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
 
-                %self.fluidDetails(2).sigma = self.fluidDetails(2).sigma *r_c^-2;
-                %self.fluidDetails(2).mass    = self.fluidDetails(2).mass / m0;
-                
-                self.fluidDetails(2).sigma = self.fluidDetails(2).sigma * 10000;
-                self.fluidDetails(2).mass = self.fluidDetails(2).mass * 1e6;
-                
-                %self.fluidDetails(2).kBolt = self.fluidDetails(2).kBolt / u0;
+                dscale = 30;
+                SaveManager.logPrint('WARNING: Dust dynamics being setup with hack. Dynamics are those of %.3fmm iron spheres.\n', dscale / 100);    
+                self.fluidDetails(2).sigma = self.fluidDetails(2).sigma * dscale^2;
+                self.fluidDetails(2).mass = self.fluidDetails(2).mass * dscale^3;
 
+                % Assert randomly generated perturbation velocity to dust where gas rho > value
+                if self.dustPerturb > 0
+                    SaveManager.logPrint('WARNING: run.dustPerturb is set, but independent gas/dust velocity perturbations are not supported: Set .gasPerturb instead.\n');
+                end
+                
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
             
