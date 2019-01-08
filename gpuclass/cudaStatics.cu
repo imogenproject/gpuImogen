@@ -11,6 +11,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 #include "cublas.h"
+#include "nvToolsExt.h"
 
 #include "cudaCommon.h"
 #include "cudaStatics.h"
@@ -94,6 +95,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
+
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
+
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
 	MGArray phi, statics;
@@ -212,6 +218,10 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		free(bs);
 		if(worked != SUCCESSFUL) break;
 	}
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 
 	return CHECK_IMOGEN_ERROR(worked);
 }

@@ -12,6 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 #include "cublas.h"
+#include "nvToolsExt.h"
 
 // My stuff
 #include "cudaCommon.h"
@@ -56,6 +57,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
  * xchgDir - array direction to synchronize */
 int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int xchgDir)
 {
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 	int returnCode = CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	if(returnCode != SUCCESSFUL) { return returnCode; }
 
@@ -165,6 +169,9 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	cudaHostUnregister((void *)hostbuffer);
 
 	phi = theta;
+	#ifdef USE_NVTX
+	nvtxRangePush("mpi_exchangeHalos");
+	#endif
 	for(i = 0; i < nArrays; i++) {
 		//int haloDepth = phi->haloSize;
 		ptrHalo = hostbuffer + arraysOffset[i];
@@ -177,6 +184,9 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		MPI_Barrier(MPI_COMM_WORLD);
 
 	}
+	#ifdef USE_NVTX
+	nvtxRangePop();
+	#endif
 
 	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
 	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
@@ -216,6 +226,10 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	cudaHostUnregister((void *)hostbuffer);
 
 	free((void **)hostbuffer);
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 
 	return returnCode;
 }

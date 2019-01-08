@@ -1,6 +1,7 @@
 
 #include "mex.h"
 
+#include "nvToolsExt.h"
 #include "cudaCommon.h"
 
 #include "cudaFluidStep.h"
@@ -37,6 +38,9 @@ int nowDir;
 
 FluidStepParams stepParameters = fsp;
 
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 // Just short-circuit for a one-D run, don't try to make the 2/3D loop reduce for it
 if(flag_1D) {
 	nowDir = 1;
@@ -99,6 +103,10 @@ if(order > 0) { /* If we are doing forward sweep */
 		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 }
 
 return CHECK_IMOGEN_ERROR(returnCode);

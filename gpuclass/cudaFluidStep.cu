@@ -11,6 +11,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 #include "cublas.h"
+#include "nvToolsExt.h"
 
 // MPI
 #include "mpi.h"
@@ -213,6 +214,10 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo)
 #endif
 {
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
+
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
 
 	int hydroOnly = params.onlyHydro;
@@ -567,6 +572,11 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 		returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: mhd TVD step");
 		if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode; */
 	}
+
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 
 	return SUCCESSFUL;
 
