@@ -102,6 +102,16 @@ function outdirectory = imogen(srcData, resumeinfo)
         backupData = dumpCheckpoint(run);
     end
 
+% Top level operator split optimization: If the algorithm is
+%    (A/2) B A B (A/2), 
+% then assuming we don't require output at the end of the step - the ending (A/2) of step N can be
+% merged with the beginning (A/2) of step N+1 (up to truncation of the propagator itself):
+%    [(A/2) B A B (A/2)] [(A/2) B A B (A/2)] [(A/2) B A B (A/2)]...
+%    [(A/2) B A B A]       [B A B A]           [B A B A]          ... [B A B (A/2)]
+
+% Cause initial halfstep of B
+bFactor = 0.5;
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag);
@@ -109,13 +119,21 @@ function outdirectory = imogen(srcData, resumeinfo)
             backupData = dumpCheckpoint(run);
         end
 
-        srcFunc(run, run.fluid, mag, 0.5);
+        % If we only took a halfstep of B last time, we need to take another halfstep now 
+	if bFactor == 0.5
+            srcFunc(run, run.fluid, mag, 0.5);
+	    bFactor = 1;
+        end
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
-        %flux(run, run.fluid, mag, 1);
         srcFunc(run, run.fluid, mag, 1.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
-        %flux(run, run.fluid, mag, -1);
-        srcFunc(run, run.fluid, mag, 0.5);
+	
+	% Check if we're saving this time: If so, half-step source terms to acheive full 2nd order accuracy
+	run.save.updateDataSaves();
+	if run.save.saveData
+	    bFactor = 0.5;
+	end
+        srcFunc(run, run.fluid, mag, bFactor);
 
         if run.VTOSettings(1)
             cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
@@ -124,6 +142,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         if run.checkpointInterval && checkPhysicality(run.fluid)
             restoreCheckpoint(run, backupData);
         end
+
 
         run.time.step();
         run.pollEventList(run.fluid, mag);
