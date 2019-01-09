@@ -115,7 +115,7 @@ classdef SaveManager < LinkedListNode
         saver.armed = 1;
         run.attachEvent(saver);
         
-    rez = obj.parent.geometry.globalDomainRez;
+        rez = obj.parent.geometry.globalDomainRez;
         %--- Analyze grid directions for auto-slices ---%
         [~, indexMax] = max(rez);
         [~, indexMin] = min(rez);
