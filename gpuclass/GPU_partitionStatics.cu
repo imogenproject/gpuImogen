@@ -315,7 +315,7 @@ for(i = 0; i < n; i++) {
 
 if((q[j] >= imax) || (q[j] < 0)) {
 printf("GPU_partitionStatics: OH CRAP!!! i=%i, j=%i, dir=%i, part=%i, new %i > %i\n", i, j-1, full->direct, full->part, (int)q[j], imax);
-printf("linear index = %i, f.idx = [%i %i %i], subperm=[%i %i %i], osperm=[%i %i %i]\n", f.linearIdx, f.idx.x, f.idx.y, f.idx.z, subperm.x, subperm.y, subperm.z, osperm.x, osperm.y, osperm.z);
+printf("linear index = %li, f.idx = [%i %i %i], subperm=[%i %i %i], osperm=[%i %i %i]\n", f.linearIdx, f.idx.x, f.idx.y, f.idx.z, subperm.x, subperm.y, subperm.z, osperm.x, osperm.y, osperm.z);
 }
 		j++;
 	}

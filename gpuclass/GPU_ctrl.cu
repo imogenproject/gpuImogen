@@ -59,7 +59,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int stat = mxGetString(prhs[0], &c[0],	slen+1);
 
 	if(strcmp(c, "help") == 0) {
-		printf("%=== GPU_ctrl commands ===%\n GPU_ctrl('help'): This message\n\
+		printf("\%=== GPU_ctrl commands ===\%\n GPU_ctrl('help'): This message\n\
  GPU_ctrl('info, [device #s]'): print device information (about specific devices)\n\
  GPU_ctrl('peers', [1/0]): Print matrix of cudaDeviceCanAccessPeer results, 1 or 0 to enable/disable it.\n\
  GPU_ctrl('reset'): If CUDA crashes, reset it so we can reinitialize without restarting Matlab.\n\
