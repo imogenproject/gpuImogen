@@ -25,6 +25,56 @@
    circularity[...
  */
 
+double *hostNormalBufferRoot;
+double *hostPinnedBufferRoot;
+int globalBufferLength;
+int amRegistered = 0;
+
+void exitFreeFunction(void)
+{
+
+if(hostNormalBufferRoot != NULL)
+	free(hostNormalBufferRoot);
+
+if(hostPinnedBufferRoot != NULL) {
+	cudaHostUnregister((void *)hostPinnedBufferRoot);
+	free(hostPinnedBufferRoot);
+}
+
+globalBufferLength = 0; 
+
+}
+
+
+void checkGlobalBufferLen(int newlen)
+{
+
+if(newlen > globalBufferLength) {
+	int returnCode;
+	printf("DEBUGGING: cudaHaloExchange growing buffer from %i to %i doubles\n", globalBufferLength, newlen);
+
+	// resize host memory
+	hostNormalBufferRoot = (double *)realloc((void *)hostNormalBufferRoot, newlen * sizeof(double));
+
+	// unregister
+	if(hostPinnedBufferRoot != NULL) {
+		cudaHostUnregister((void *)hostPinnedBufferRoot);
+		returnCode = CHECK_CUDA_ERROR("cudaHostUnregister");
+	        if(returnCode != SUCCESSFUL) return;
+		}
+
+	// resize
+	hostPinnedBufferRoot = (double *)realloc((void *)hostPinnedBufferRoot, newlen * sizeof(double));
+	// repin
+	cudaHostRegister ((void *)hostPinnedBufferRoot, newlen * sizeof(double), cudaHostRegisterMapped);
+	returnCode = CHECK_CUDA_ERROR("cudaHostUnregister");
+	if(returnCode != SUCCESSFUL) return;
+	
+	globalBufferLength = newlen;
+}
+
+}
+
 #ifdef STANDALONE_MEX_FUNCTION
 /* mexFunction call:
  * cudaHaloExchange(GPU array, direction, topology, exterior circularity) */
@@ -57,6 +107,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
  * xchgDir - array direction to synchronize */
 int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int xchgDir)
 {
+	if(amRegistered == 0) {
+		mexAtExit(&exitFreeFunction);
+		amRegistered = 1; 
+	}
+
 #ifdef USE_NVTX
 	nvtxRangePush(__FUNCTION__);
 #endif
@@ -119,15 +174,21 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		phi++;
 	}
 
-	// Allocate some normal memory, have cuda pin it and get a pointer to pass to the MGA halo reader.
-	double *hostbuffer = (double *)malloc(totalBlockAlloc * sizeof(double));
 
-	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
-	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
-	if(returnCode != SUCCESSFUL) return returnCode;
+	// make sure we have enough space
+	// NOTE: this can experience many allocations if totalBlockAlloc slowly increaes on subsequent calls
+	// NOTE: but that will not happen irl (i.e. it does not double to get bounded # of reallocs)
+	checkGlobalBufferLen(totalBlockAlloc);
+
+	// Allocate some normal memory, have cuda pin it and get a pointer to pass to the MGA halo reader.
+//	double *hostbuffer = (double *)malloc(totalBlockAlloc * sizeof(double));
+
+//	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
+//	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
+//	if(returnCode != SUCCESSFUL) return returnCode;
 
 	double *devbufptr;
-	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
+	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostPinnedBufferRoot, 0);
 	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
 	if(returnCode != SUCCESSFUL) return returnCode;
 
@@ -166,7 +227,10 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	// error of any kind
 	//
 	// God ****ing damn it took a long time to realize that that was what was going on
-	cudaHostUnregister((void *)hostbuffer);
+//	cudaHostUnregister((void *)hostbuffer);
+
+	// copy to the unpinned buffer
+	memmove((void *)hostNormalBufferRoot, (void *)hostPinnedBufferRoot, totalBlockAlloc * sizeof(double));
 
 	phi = theta;
 	#ifdef USE_NVTX
@@ -174,7 +238,7 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	#endif
 	for(i = 0; i < nArrays; i++) {
 		//int haloDepth = phi->haloSize;
-		ptrHalo = hostbuffer + arraysOffset[i];
+		ptrHalo = hostNormalBufferRoot + arraysOffset[i];
 		//double *ptmp = ptrHalo;
 
 		mpi_exchangeHalos(topo, xchgDir, (void*)ptrHalo,
@@ -188,13 +252,18 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	nvtxRangePop();
 	#endif
 
-	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
-	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
-	if(returnCode != SUCCESSFUL) return returnCode;
+	//cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
+//	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
+//	if(returnCode != SUCCESSFUL) return returnCode;
 
-	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
-	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
-	if(returnCode != SUCCESSFUL) return returnCode;
+	// fixme: these can move half as much in reality but it's shittily interleaved
+	// fixme: either way it can't possible ever be as slow as the cuda malloc/free/register functions, OMG...
+	memmove((void *)hostPinnedBufferRoot, (void *)hostNormalBufferRoot, totalBlockAlloc * sizeof(double));
+
+// this is already done & we never unregistered this block
+//	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
+//	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
+//	if(returnCode != SUCCESSFUL) return returnCode;
 
 	for(i = 0; i < nArrays; i++) {
 		int haloDepth = phi->haloSize;
@@ -223,9 +292,8 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 
 	CHECK_IMOGEN_ERROR(returnCode);
 
-	cudaHostUnregister((void *)hostbuffer);
-
-	free((void **)hostbuffer);
+//	cudaHostUnregister((void *)hostbuffer);
+//	free((void **)hostbuffer);
 
 #ifdef USE_NVTX
 	nvtxRangePop();

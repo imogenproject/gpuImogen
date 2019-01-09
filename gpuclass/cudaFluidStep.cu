@@ -65,9 +65,6 @@ if it were to be generalized.
 The hydro functions solve the same equations with B set to <0,0,0> which simplifies
 and considerably speeds up the process. */
 
-int releaseTemporaryMemory(double **m, MGArray *ref);
-int grabTemporaryMemory(double **m, MGArray *ref, int nCopies);
-
 template <unsigned int fluxDirection>
 __global__ void  __launch_bounds__(128, 6) cukern_DustRiemann_1storder(double *Qin, double *Qout, double lambda);
 
@@ -199,9 +196,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	stepParameters.stepDirection = stepdir;
 
 #ifdef DEBUGMODE
-	performFluidUpdate_1D(&fluid[0], stepParameters, &topology, plhs);
+	performFluidUpdate_1D(&fluid[0], stepParameters, &topology, NULL, plhs);
 #else
-	performFluidUpdate_1D(&fluid[0], stepParameters, &topology);
+	performFluidUpdate_1D(&fluid[0], stepParameters, &topology, NULL);
 #endif
 }
 
@@ -209,9 +206,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 // STANDALONE_MEX_FUNCTION
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo,  mxArray **dbOutput)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo, MGArray *tmpst, mxArray **dbOutput)
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo)
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology* topo, MGArray *tmpst)
 #endif
 {
 #ifdef USE_NVTX
@@ -219,6 +216,17 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif
 
 	CHECK_CUDA_ERROR("entering cudaFluidStep");
+
+	// If we don't get an array, we make our own
+	MGArray localTmpStorage;
+	// mark it as requiring allocation
+	// if localTmpStorage.nGPUs != -1, we also know to free it after
+	// whereas if we were passed storage, we do not
+	localTmpStorage.nGPUs = -1;
+
+	if(tmpst == NULL) {
+		tmpst = &localTmpStorage;
+	}
 
 	int hydroOnly = params.onlyHydro;
 
@@ -319,8 +327,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 			// Allocate memory for the half timestep's output
 			int numarrays = 6 ;
-			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
-			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			if(tmpst->nGPUs == -1) {
+				returnCode = MGA_allocSlab(fluid, tmpst, numarrays);
+				//returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
+				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+				int qc;
+				// Just copy the pointers so we don't have to rewrite any of this crap
+				for(qc = 0; qc < fluid->nGPUs; qc++) { wStepValues[qc] = tmpst->devicePtr[qc]; }
+			}
 
 			arraysize = makeDim3(&fluid[0].dim[0]);
 			blocksize = makeDim3(BLOCKLENP4, YBLOCKS, 1);
@@ -423,8 +437,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif // still have to avoid memory leak regardless of order we ran at
 			MGA_delete(cfreeze[0]);
 			MGA_delete(cfreeze[1]);
-			returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
-			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+
+			if(localTmpStorage.nGPUs != -1) {
+				returnCode = MGA_delete(&localTmpStorage);
+				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			}
+
+			//returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
+
 		} break;
 		case METHOD_HLL:
 		case METHOD_HLLC: {
@@ -449,8 +469,19 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif
 #endif
 
-			returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
-			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			if(tmpst->nGPUs == -1) {
+				returnCode = MGA_allocSlab(fluid, tmpst, 6);
+				//returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
+				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			}
+
+			// Just copy the pointers so we don't have to rewrite any of this crap
+			int qc;
+			for(qc = 0; qc < fluid->nGPUs; qc++) { wStepValues[qc] = tmpst->devicePtr[qc]; }
+
+
+			//returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
+			//if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			// Launch zee kernels
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -494,6 +525,7 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				// FIXME awful hack
 			}
 
+			//
 			MGArray fluidB[5];
 			int qwer;
 			for(i = 0; i < fluid->nGPUs; i++) {
@@ -502,7 +534,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 					fluidB[qwer].devicePtr[i] = wStepValues[i] + fluid->slabPitch[i]*qwer/sizeof(double);
 				}
 			}
+
 			returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
+			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
@@ -541,8 +575,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif
 			}
 
+			if(localTmpStorage.nGPUs != -1) {
+				// If we allocated this locally, free it now
+				returnCode = MGA_delete(&localTmpStorage);
+				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			}
+			// otherwise reuse it for future steps
+			// returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
 
-			returnCode = releaseTemporaryMemory(&wStepValues[0], fluid);
 			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 		} break;
 		}
@@ -579,34 +619,6 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif
 
 	return SUCCESSFUL;
-
-}
-
-int grabTemporaryMemory(double **m, MGArray *ref, int nCopies)
-{
-	int i, returnCode = SUCCESSFUL;
-	for(i = 0; i < ref->nGPUs; i++) {
-		cudaSetDevice(ref->deviceID[i]);
-		CHECK_CUDA_ERROR("cudaSetDevice()");
-		cudaMalloc((void **)&m[i], nCopies*ref->slabPitch[i]); // [rho px py pz E P]_.5dt
-		returnCode = CHECK_CUDA_ERROR("In cudaFluidStep: temporary storage malloc");
-		if(returnCode != SUCCESSFUL) { break; }
-	}
-	return returnCode;
-}
-
-int releaseTemporaryMemory(double **m, MGArray *ref)
-{
-	int i, returnCode = SUCCESSFUL;
-	for(i = 0; i < ref->nGPUs; i++) {
-		// Release the memory taken for this step
-		cudaSetDevice(ref->deviceID[i]);
-		CHECK_CUDA_ERROR("cudaSetDevice();");
-		cudaFree(m[i]);
-		returnCode = CHECK_CUDA_ERROR("cudaFree()");
-		if(returnCode != SUCCESSFUL) return returnCode;
-	}
-	return returnCode;
 
 }
 

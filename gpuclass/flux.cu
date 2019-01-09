@@ -46,13 +46,18 @@ if(flag_1D) {
 	nowDir = 1;
 	stepParameters.stepDirection = nowDir;
 
-	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
+	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, NULL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
+
+// Put pointers for GPU storage here so we can acquire it once for this whole step, reusing for all 3 fluid calls
+// and the array rotates.
+MGArray masterTempStorage;
+masterTempStorage.nGPUs = -1; // Use this as a "not allocated" marker.
 
 if(order > 0) { /* If we are doing forward sweep */
 	cudaStream_t *streams = NULL;
@@ -66,9 +71,10 @@ if(order > 0) { /* If we are doing forward sweep */
 		nowDir = fluxcall[n][sweep];
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
-			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, &masterTempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
+			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
@@ -77,6 +83,14 @@ if(order > 0) { /* If we are doing forward sweep */
 		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
+
+	// Dump the storage we used for all 3 flux calls
+	if(masterTempStorage.nGPUs != -1) {
+		returnCode = MGA_delete(&masterTempStorage);
+		masterTempStorage.nGPUs = -1;
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+	}
+
 
 } else { /* If we are doing backwards sweep */
 	cudaStream_t *streams = NULL;
@@ -92,7 +106,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
-			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, NULL);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -101,6 +115,13 @@ if(order > 0) { /* If we are doing forward sweep */
 		}
 
 		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
+		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+	}
+
+	// Dump the storage we used for all 3 flux calls
+	if(masterTempStorage.nGPUs != -1) {
+		returnCode = MGA_delete(&masterTempStorage);
+		masterTempStorage.nGPUs = -1;
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 

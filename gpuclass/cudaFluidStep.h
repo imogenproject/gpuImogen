@@ -47,9 +47,9 @@ typedef struct __FluidStepParams {
 
 
 #ifdef DEBUGMODE
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, mxArray **dbOutput);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, MGArray *tmpst, mxArray **dbOutput);
 #else
-int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo);
+int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopology * topo, MGArray *tmpst);
 #endif
 
 int grabTemporaryMemory(double **m, MGArray *ref, int nCopies);
