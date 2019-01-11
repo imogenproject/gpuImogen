@@ -4,8 +4,12 @@ function writeSimInitializer(run, IC)
 if run.save.FSAVE
     parallels = ParallelGlobals();
 
-    IC.mass = []; IC.ener   = [];
-    IC.mom = [];  IC.magnet = [];
+    IC.fluids = [];
+    
+    IC.magX = [];
+    IC.magY = [];
+    IC.magZ = [];
+    
     IC.amResuming = 1;
     IC.originalPathStruct = run.paths.serialize();
 
