@@ -76,7 +76,7 @@ classdef KelvinHelmholtzInitializer < Initializer
             statics             = [];
             potentialField      = [];
             selfGravity         = [];
-            geo                 = GlobalIndexSemantics();
+            geo                 = obj.geomgr;
 
             geo.makeBoxSize([1 1 1]);
 
