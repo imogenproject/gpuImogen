@@ -7,18 +7,18 @@ function alpha = fourierSearch(peaks, drives, order, tol)
 biglist =(-order(1):order(1))';
 
 % Generate the gigantic tensor product
-if numel(drives) > 1;
+if numel(drives) > 1
    for q =  2:numel(drives)
       biglist = opw(biglist, (-order:order)); 
    end
 end
 
-F = [];
+F = zeros([size(biglist,1) 1]);
 for q = 1:size(biglist,1)
     F(q) = drives*biglist(q,:)';
 end
 
-[q idx] = unique(abs(F));
+[~, idx] = unique(abs(F));
 
 F = abs(F(idx)');
 biglist = biglist(idx,:);
@@ -28,7 +28,7 @@ disp(drives);
 
 unexplained = ones(size(peaks));
 
-for N = 1:numel(peaks);
+for N = 1:numel(peaks)
     matches = (abs(peaks(N) - F) <= tol);
    if any(matches)
       idx = find(matches);
@@ -50,8 +50,8 @@ q = size(things, 1);
 
 yay = zeros([q*numel(new) (size(things,2)+1)]);
 
-for n = 1:size(things,2);
-   [u v] =  ndgrid(things(:,n), new);
+for n = 1:size(things,2)
+   [u, v] =  ndgrid(things(:,n), new);
    yay(:,n) = u(:);
    if n == 1; yay(:,end) = v(:); end
 end

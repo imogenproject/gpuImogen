@@ -1,4 +1,4 @@
-function [iout Pout] = medianFilterPeakFind(Q, w, f, log, BC, autoplot)
+function [iout, Pout] = medianFilterPeakFind(Q, w, f, log, BC, autoplot)
 % P = medianFilterPeakFind(Q, w, f, log, BC, autplot) searches for Q(n)  which
 % are at least f times greater than mean(Q((N-w):(N+w))) and returns the
 % indices of these points. BC will set boundary conditions (0 = circular,
@@ -23,7 +23,7 @@ Qb = Qb / (2*w + 1);
 if BC % if not circular: chop edge values
     m = zeros([w+1, 2*w+1]);
 
-    for N = 1:(w+1);
+    for N = 1:(w+1)
        m(N,1:(w+N))=1/(w+N+1);
     end
     
@@ -31,7 +31,7 @@ if BC % if not circular: chop edge values
     
     m = zeros([w+1, 2*w+1]);
 
-    for N = 1:(w+1);
+    for N = 1:(w+1)
        m(N,(end-w+N):end)=1/(w+N+1);
 
     end

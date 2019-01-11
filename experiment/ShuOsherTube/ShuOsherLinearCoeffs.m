@@ -5,7 +5,7 @@ function out = ShuOsherLinearCoeffs(gamma, Mach, ampEnt_in, Kin)
 % (static preshock fluid, rightgoing shock) at the given time t.
 
 % This solver normalizes to rhopre = Ppre = 1
-c1  = sqrt(gamma);
+%c1  = sqrt(gamma);
 % First step: Solve the jump equations from preshock to postshock at 0th order
 equil = HDJumpSolver(Mach, 0, gamma);
 
@@ -17,7 +17,7 @@ rho1 = equil.rho(1);
 P1   = equil.Pgas(1);
 
 v2   = equil.v(1,2);
-rho2 = equil.rho(2);
+%rho2 = equil.rho(2);
 P2   = equil.Pgas(2);
 
 % We started with incoming kx wavevector so find the omega from preshock entropy wave dispersion reln
