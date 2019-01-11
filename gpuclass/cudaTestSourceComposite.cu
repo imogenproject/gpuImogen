@@ -9,6 +9,7 @@
 
 // CUDA
 #include "cuda.h"
+#include "nvToolsExt.h"
 
 #include "cudaCommon.h"
 #include "cudaSourceScalarPotential.h"
@@ -17,7 +18,7 @@
 #define SRCBLOCKX 16
 #define SRCBLOCKY 16
 
-int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int temporalOrder);
+int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int temporalOrder, MGArray *storageBuffer);
 
 __global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
 
@@ -117,19 +118,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int numFluids = mxGetNumberOfElements(prhs[0]);
 	int fluidct;
 
+	// Allocate one buffer to be used if we have multiple fluids
+	MGArray tempSlab;
+	tempSlab.nGPUs = -1; // nonallocated marker
+
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 
-		status = sourcefunction_Composite(&fluid[0], &gravPot, &xyvec, geom, rhonog, rhofg, dt, spaceOrder, timeOrder);
+		status = sourcefunction_Composite(&fluid[0], &gravPot, &xyvec, geom, rhonog, rhofg, dt, spaceOrder, timeOrder, &tempSlab);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
 	}
+
+	MGA_delete(&tempSlab);
 
 }
 
 
-int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int timeOrder)
+int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int timeOrder, MGArray *storageBuffer)
 {
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 	dim3 gridsize, blocksize;
 	int3 arraysize;
 
@@ -159,10 +169,20 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	int isRZ = (fluid->dim[2] > 1) & (fluid->dim[1] == 1);
 
 	MGArray gradslab;
-	MGArray *gs = &gradslab;
+	gradslab.nGPUs = -1;
+	int usingLocalStorage = 0;
+	// if we get no buffer then allocate local storage
+	if(storageBuffer == NULL) {
+		usingLocalStorage = 1;
+		storageBuffer = &gradslab;
+	}
 
-	worked = MGA_allocSlab(phi, gs, 3);
-	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+	if(storageBuffer->nGPUs == -1) { // need to allocate it
+		worked = MGA_allocSlab(phi, storageBuffer, 3);
+		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+	}
+	MGArray *gs = storageBuffer;
+
 	worked = computeCentralGradient(phi, gs, geom, spaceOrder, dt);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
@@ -290,14 +310,24 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
     int j; // This will halt at the stage failed upon if CUDA barfed above
+    #ifdef USE_NVTX
+    	nvtxMark("Freeing devXYset");
+    #endif
     for(j = 0; j < i; j++) {
     	cudaFree((void *)devXYset[j]);
     }
-    MGA_delete(gs);
+
+	if(usingLocalStorage) {
+		MGA_delete(gs);
+	}
 
     // Don't bother checking cudaFree if we already have an error caused above, it was just trying to clean up the barf
     if(worked == SUCCESSFUL)
     	worked = CHECK_CUDA_ERROR("cudaFree");
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 
     return CHECK_IMOGEN_ERROR(worked);
 

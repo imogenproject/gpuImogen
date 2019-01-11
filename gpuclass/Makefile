@@ -88,7 +88,7 @@ rotate_standalone: cudaArrayRotateB.cu
 	mex $(MEX_OPTS) -c cudaArrayRotateB.cpp
 
 cudaArrayRotateB: rotate_standalone cudaCommon.o
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o $(OUTPUTCMD) cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaArrayRotateB.o cudaCommon.o $(OUTPUTCMD) cudaArrayRotateB $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 	rm cudaArrayRotateB.o
 	
 # Parallel halo exchanges
@@ -355,7 +355,7 @@ cudaSourceVTO: cudaCommon.o cudaSourceVTO.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
 
 cudaTestSourceComposite: cudaCommon.o cudaTestSourceComposite.o cudaGradientKernels.o
-	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -cxx $@.o cudaGradientKernels.o cudaCommon.o $(OUTPUTCMD) $@
+	mex $(MEX_OPTS)  $(PAR_LDIR) $(PAR_LIBS) $(MEX_LDIR) $(MEX_LIBS)  $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt -cxx $@.o cudaGradientKernels.o cudaCommon.o $(OUTPUTCMD) $@
 
 cudaGradientKernels.o: cudaGradientKernels.cu cudaGradientKernels.h
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaGradientKernels.cu -o cudaGradientKernels.cpp

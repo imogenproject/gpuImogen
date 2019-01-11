@@ -756,8 +756,9 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams *geo, doub
 	statusCode = prepareForExpMethod(gas, dust, gs, *geo, 2, fluidGamma - 1);
 	if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
 
-	int fuckoff = dbgfcn_CheckArrayVals(gs, 5, 1);
-		if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
+/* These often fail wrongly in parallel because of invalid halo entries */
+/*	int dbcheckval = dbgfcn_CheckArrayVals(gs, 5, 1);
+		if(CHECK_IMOGEN_ERROR(dbcheckval) != SUCCESSFUL) return dbcheckval; */
 
 	if(dbprint) { dbgPrint(gas, dust, gs, 7, 6); }
 
@@ -783,15 +784,17 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams *geo, doub
 
 	cudaDeviceSynchronize();
 
-	fuckoff = dbgfcn_CheckFluidVals(gas, 1);
-	if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
-	fuckoff = dbgfcn_CheckFluidVals(dust, 1);
-	if(CHECK_IMOGEN_ERROR(fuckoff) != SUCCESSFUL) return fuckoff;
+/* These often fail in parallel due to boundary conditions or halo cells
+	dbcheckval = dbgfcn_CheckFluidVals(gas, 1);
+	if(CHECK_IMOGEN_ERROR(dbcheckval) != SUCCESSFUL) return dbcheckval;
+	dbcheckval = dbgfcn_CheckFluidVals(dust, 1);
+	if(CHECK_IMOGEN_ERROR(dbcheckval) != SUCCESSFUL) return dbcheckval; */
 
-// Make extra sure node's internal boundaries are consistent
+// See to it that internal gpu-gpu boundaries are consistent
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(gas  + 1, 4);
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_exchangeLocalHalos(dust + 1, 4);
 
+// Dump the temporary memory
 if(CHECK_IMOGEN_ERROR(statusCode) == SUCCESSFUL) statusCode = MGA_delete(gs);
 
 return statusCode;

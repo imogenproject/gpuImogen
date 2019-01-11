@@ -10,6 +10,7 @@
 
 // CUDA
 #include "cuda.h"
+#include "nvToolsExt.h"
 
 // Local
 #include "cudaCommon.h"
@@ -22,10 +23,14 @@ __global__ void cukern_ArrayExchangeYZ(double *src,  double *dst, int nx, int ny
 __global__ void cukern_ArrayRotateRight(double *src, double *dst, int nx, int ny, int nz);
 __global__ void cukern_ArrayRotateLeft(double *src,  double *dst, int nx, int ny, int nz);
 
+int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs, MGArray *tempStorage);
 int actuallyNeedToReorder(int *dims, int code);
 int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode);
 
+int checkSufficientFlipStorage(MGArray *phi, MGArray *tmp);
+
 __global__ void cukern_memmove(double *s, double *d, long n);
+
 
 #define BDIM 16
 
@@ -73,7 +78,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 }
 #endif
 
-int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs);
 
 /* flipArrayIndices alters the memory layout of the input arrays according to the exchange code.
  * If new arrays are created, consumes additional memory equal to sum of input arrays. If changes
@@ -93,8 +97,9 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
  * 	- other than (2, 3, 4, 5, 6): Return ERROR_INVALID_ARGS
  * 	- If nz=1, codes 3/4 are identity and 5/6 reduce to transposition.
  */
-int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode, cudaStream_t *streamPtrs)
+int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode, cudaStream_t *streamPtrs, MGArray *tempStorage)
 {
+
 	int returnCode = SUCCESSFUL;
 
 	MGArray trans;
@@ -113,8 +118,12 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	}
 
 	if((reallocatePerArray == 0) && (newArrays == NULL) && (streamPtrs != NULL)) {
-		return flipArrayIndices_multisame(phi, nArrays, exchangeCode, streamPtrs);
+		return flipArrayIndices_multisame(phi, nArrays, exchangeCode, streamPtrs, tempStorage);
 	}
+
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 
 	MGArray *psi = NULL;
 	if(newArrays != NULL) {
@@ -274,14 +283,20 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	}
 
 	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 	return returnCode;
 }
 
 /* This routine is optimized to perform out-of-place exchange on multiple identical arrays
  * at once by taking advantage of concurrent copy + execute
  */
-int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs)
+int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs, MGArray *tempStorage)
 {
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 	int returnCode = SUCCESSFUL;
 
 	MGArray trans;
@@ -291,11 +306,34 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
 
 	int j;
 
+	int usingLocalTemp = 0;
+	MGArray localTempStorage;
+
+	usingLocalTemp = checkSufficientFlipStorage(phi, tempStorage) ? 0 : 1;
+
+	// FIXME need to check that tempStorage has sufficient array size available as well!!!!
+	// FIXME this is definitely the case when it's being called from flux.cu but not so otherwise.
+	if(usingLocalTemp) {
+		// allocate it
+		returnCode = MGA_allocSlab(phi, &localTempStorage, 2);
+		tempStorage = &localTempStorage;
+		usingLocalTemp = 1;
+	}
+
+	MGArray tempB;
 	MGArray *nuCloneA;
 	MGArray *nuCloneB;
 
-	returnCode = MGA_allocArrays(&nuCloneA, 1, phi);
-	returnCode = MGA_allocArrays(&nuCloneB, 1, phi);
+	if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+
+	// advance to 2nd slab of local temp 
+	tempB = *tempStorage;
+	for(i = 0; i < tempStorage->nGPUs; i++) {
+		tempB.devicePtr[i] = tempStorage->devicePtr[i] + (tempStorage->slabPitch[i] / 8);
+	}
+
+	nuCloneA = tempStorage;
+	nuCloneB = &tempB;
 
 	int tempBlock = 1;
 	MGArray *tmparr;
@@ -433,11 +471,15 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
 
 	// Clean up allocated arrays
 	if(returnCode == SUCCESSFUL) {
-		MGA_delete(nuCloneA);
-		MGA_delete(nuCloneB);
+		if(usingLocalTemp) {
+			MGA_delete(&localTempStorage);
+		}
 	}
 
 	if(returnCode == SUCCESSFUL) returnCode = CHECK_IMOGEN_ERROR(CHECK_CUDA_ERROR("Departing cudaArrayRotateB"));
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 	return returnCode;
 }
 
@@ -546,6 +588,30 @@ int alterArrayMetadata(MGArray *src, MGArray *dst, int exchangeCode)
 	}
 
 	return SUCCESSFUL;
+}
+
+/* Examines *tmp and determines if it can hold two copies of *phi (sufficient for index flip multisame)
+ * or not */
+int checkSufficientFlipStorage(MGArray *phi, MGArray *tmp)
+{
+
+if(tmp == NULL) return 0; 
+//printf("in checkSufficientFlipStorage: tmp != NULL\n");
+if(phi->nGPUs != tmp->nGPUs) return 0; // that much is obvious
+//printf("in checkSufficientFlipStorage: nGPUs matches\n");
+int i;
+long needNumel;
+long haveNumel;
+for(i = 0; i < phi->nGPUs; i++) {
+	needNumel = 2*phi->partNumel[i];
+	haveNumel = (tmp->slabPitch[i] * tmp->numSlabs) / 8;
+//	printf("in checkSufficientFlipStorage: partition %i: need %li elements have %li\n", i, needNumel, haveNumel);
+	if(haveNumel < needNumel) return 0;
+}
+
+//printf("in checkSufficientFlipStorage: we do! Yay, no big mallocs!\n");
+return 1;
+
 }
 
 __global__ void cukern_memmove(double *s, double *d, long n)

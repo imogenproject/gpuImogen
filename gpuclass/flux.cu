@@ -38,9 +38,6 @@ int nowDir;
 
 FluidStepParams stepParameters = fsp;
 
-#ifdef USE_NVTX
-	nvtxRangePush(__FUNCTION__);
-#endif
 // Just short-circuit for a one-D run, don't try to make the 2/3D loop reduce for it
 if(flag_1D) {
 	nowDir = 1;
@@ -53,6 +50,10 @@ if(flag_1D) {
 	returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
+
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 
 // Put pointers for GPU storage here so we can acquire it once for this whole step, reusing for all 3 fluid calls
 // and the array rotates.
@@ -80,7 +81,7 @@ if(order > 0) { /* If we are doing forward sweep */
 		}
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, &masterTempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
@@ -106,7 +107,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
-			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, NULL);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, &masterTempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -114,7 +115,7 @@ if(order > 0) { /* If we are doing forward sweep */
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, &masterTempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
@@ -125,10 +126,11 @@ if(order > 0) { /* If we are doing forward sweep */
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
+}
+
 #ifdef USE_NVTX
 	nvtxRangePop();
 #endif
-}
 
 return CHECK_IMOGEN_ERROR(returnCode);
 

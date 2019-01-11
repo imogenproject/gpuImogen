@@ -70,6 +70,10 @@ if(newlen > globalBufferLength) {
 	returnCode = CHECK_CUDA_ERROR("cudaHostUnregister");
 	if(returnCode != SUCCESSFUL) return;
 	
+#ifdef USE_NVTX
+	nvtxMark("cudaHaloExchange buffer expansion triggered");
+#endif
+
 	globalBufferLength = newlen;
 }
 
@@ -112,9 +116,6 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		amRegistered = 1; 
 	}
 
-#ifdef USE_NVTX
-	nvtxRangePush(__FUNCTION__);
-#endif
 	int returnCode = CHECK_CUDA_ERROR("entering exchange_MPI_Halos");
 	if(returnCode != SUCCESSFUL) { return returnCode; }
 
@@ -123,6 +124,9 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	// Avoid wasting time...
 	if(xchgDir+1 > topo->ndim) return SUCCESSFUL;
 	if(topo->nproc[xchgDir] == 1) return SUCCESSFUL;
+#ifdef USE_NVTX
+	nvtxRangePush(__FUNCTION__);
+#endif
 
 	int memDir;
 

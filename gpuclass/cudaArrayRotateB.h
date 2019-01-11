@@ -1,7 +1,7 @@
 #ifndef CUDA_ARRAY_ROTATE_B_H
 
-int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode, cudaStream_t *streamPtrs = NULL);
-//int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode);
+int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode, cudaStream_t *streamPtrs = NULL, MGArray *tempStorage = NULL);
+//int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchangeCode)
 
 __global__ void cukern_ArrayTranspose2D(double *src, double *dst, int nx, int ny);
 __global__ void cukern_ArrayExchangeXY(double *src,  double *dst, int nx, int ny, int nz);
