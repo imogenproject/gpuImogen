@@ -1,3 +1,4 @@
+*nvvp 
 *o
 *mexa64
 Make.config
@@ -13,3 +14,5 @@ mpi/.project
 .project
 .settings
 Debug
+run/fakeHostfile
+
