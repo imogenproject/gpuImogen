@@ -103,7 +103,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			break;
 		}
 		fsp.minimumRho = rhoMin;
-		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect);
+
+		MGArray tempStorage;
+		tempStorage.nGPUs = -1; // not allocated
+
+		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
+
+		// This was allocated & re-used many times in performFluidUpdate_3D
+		MGA_delete(&tempStorage);
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}

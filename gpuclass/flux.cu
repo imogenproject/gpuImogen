@@ -12,7 +12,7 @@
 #include "flux.h"
 
 //int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod, int geomType, double Rinner)
-int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order)
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order, MGArray *tempStorage)
 {
 int sweep, flag_1D = 0;
 
@@ -57,22 +57,31 @@ if(flag_1D) {
 
 // Put pointers for GPU storage here so we can acquire it once for this whole step, reusing for all 3 fluid calls
 // and the array rotates.
-MGArray masterTempStorage;
-masterTempStorage.nGPUs = -1; // Use this as a "not allocated" marker.
+MGArray localTempStorage;
+localTempStorage.nGPUs = -1; // Use this as a "not allocated" marker.
+int usingLocalTemp = 0;
+if(tempStorage == NULL) {
+	usingLocalTemp = 1;
+	tempStorage = &localTempStorage;
+}
+
 
 if(order > 0) { /* If we are doing forward sweep */
 	cudaStream_t *streams = NULL;
 	int nstreams;
 	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
 
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams) : SUCCESSFUL);
+	// If we already have a buffer it's large, use it. Otherwise we actually /lose/ beause
+	// performFluidUpdate below will have to actually free and alloc
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams,
+		usingLocalTemp ? NULL : tempStorage) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
 		nowDir = fluxcall[n][sweep];
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
-			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, &masterTempStorage);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -81,24 +90,17 @@ if(order > 0) { /* If we are doing forward sweep */
 		}
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, &masterTempStorage) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
-
-	// Dump the storage we used for all 3 flux calls
-	if(masterTempStorage.nGPUs != -1) {
-		returnCode = MGA_delete(&masterTempStorage);
-		masterTempStorage.nGPUs = -1;
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-	}
-
 
 } else { /* If we are doing backwards sweep */
 	cudaStream_t *streams = NULL;
 	int nstreams;
 	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
 
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams) : SUCCESSFUL);
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams,
+		usingLocalTemp ? NULL : tempStorage) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
@@ -107,7 +109,7 @@ if(order > 0) { /* If we are doing forward sweep */
 
 		if(fluid->dim[0] > 3) {
 			stepParameters.stepDirection = nowDir;
-			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, &masterTempStorage);
+			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
@@ -115,18 +117,19 @@ if(order > 0) { /* If we are doing forward sweep */
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, &masterTempStorage) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
-	// Dump the storage we used for all 3 flux calls
-	if(masterTempStorage.nGPUs != -1) {
-		returnCode = MGA_delete(&masterTempStorage);
-		masterTempStorage.nGPUs = -1;
-		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-	}
 
 }
+	
+if(usingLocalTemp) {
+	returnCode = MGA_delete(&localTempStorage);
+	localTempStorage.nGPUs = -1;
+	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+}
+
 
 #ifdef USE_NVTX
 	nvtxRangePop();

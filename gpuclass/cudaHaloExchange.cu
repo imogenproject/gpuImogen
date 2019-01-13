@@ -51,8 +51,6 @@ void checkGlobalBufferLen(int newlen)
 
 if(newlen > globalBufferLength) {
 	int returnCode;
-	printf("DEBUGGING: cudaHaloExchange growing buffer from %i to %i doubles\n", globalBufferLength, newlen);
-
 	// resize host memory
 	hostNormalBufferRoot = (double *)realloc((void *)hostNormalBufferRoot, newlen * sizeof(double));
 
