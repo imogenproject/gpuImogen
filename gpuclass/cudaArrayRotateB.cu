@@ -315,6 +315,9 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
 	// FIXME this is definitely the case when it's being called from flux.cu but not so otherwise.
 	if(usingLocalTemp) {
 		// allocate it
+		#ifdef USE_NVTX
+		nvtxMark("cudaArrayRotateB.cu:319 large alloc 2 arrays");
+		#endif
 		returnCode = MGA_allocSlab(phi, &localTempStorage, 2);
 		tempStorage = &localTempStorage;
 		usingLocalTemp = 1;
@@ -472,6 +475,9 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
 	// Clean up allocated arrays
 	if(returnCode == SUCCESSFUL) {
 		if(usingLocalTemp) {
+			#ifdef USE_NVTX
+			nvtxMark("cudaArrayRotateB.cu:476 large free");
+			#endif
 			MGA_delete(&localTempStorage);
 		}
 	}

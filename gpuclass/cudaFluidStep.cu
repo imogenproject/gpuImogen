@@ -328,6 +328,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			// Allocate memory for the half timestep's output
 			int numarrays = 6 ;
 			if(tmpst->nGPUs == -1) {
+				#ifdef USE_NVTX
+				nvtxMark("cudaFluidStep.cu:332 large malloc 6 arrays");
+				#endif
 				returnCode = MGA_allocSlab(fluid, tmpst, numarrays);
 				//returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
 				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
@@ -470,7 +473,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 #endif
 
 			if(tmpst->nGPUs == -1) {
-				returnCode = MGA_allocSlab(fluid, tmpst, 6);
+				nvtxMark("cudaFluidStep.cu:475 large malloc 6 arrays");
+				returnCode = MGA_allocSlab(fluid, tmpst, numarrays);
 				//returnCode = grabTemporaryMemory(&wStepValues[0], fluid, numarrays);
 				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 			}
@@ -577,6 +581,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 
 			if(localTmpStorage.nGPUs != -1) {
 				// If we allocated this locally, free it now
+				#ifdef USE_NVTX
+				nvtxMark("cudaFluidStep.cu:583 large free\n");
+				#endif
 				returnCode = MGA_delete(&localTmpStorage);
 				if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 			}

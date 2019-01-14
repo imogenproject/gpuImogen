@@ -178,6 +178,9 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
 	}
 
 	if(storageBuffer->nGPUs == -1) { // need to allocate it
+		#ifdef USE_NVTX
+		nvtxMark("cudaTestSourceComposite.cu:182 large malloc 3 slabs");
+		#endif
 		worked = MGA_allocSlab(phi, storageBuffer, 3);
 		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 	}
@@ -318,6 +321,9 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
     }
 
 	if(usingLocalStorage) {
+		#ifdef USE_NVTX
+		nvtxMark("cudaTestSourceComposite.cu:323 large free");
+		#endif
 		MGA_delete(gs);
 	}
 

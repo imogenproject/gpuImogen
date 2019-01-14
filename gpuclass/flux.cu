@@ -125,6 +125,9 @@ if(order > 0) { /* If we are doing forward sweep */
 }
 	
 if(usingLocalTemp) {
+	#ifdef USE_NVTX
+	nvtxMark("flux.cu:131 large free");
+	#endif
 	returnCode = MGA_delete(&localTempStorage);
 	localTempStorage.nGPUs = -1;
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);

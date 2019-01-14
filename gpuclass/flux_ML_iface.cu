@@ -14,8 +14,10 @@
 #endif
 #include "mex.h"
 
-#include "cuda.h"
 #include "mpi.h"
+
+#include "cuda.h"
+#include "nvToolsExt.h"
 
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
@@ -110,6 +112,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
 
 		// This was allocated & re-used many times in performFluidUpdate_3D
+		#ifdef USE_NVTX
+		nvtxMark("Large free flux_ML_iface.cu:116");
+		#endif
 		MGA_delete(&tempStorage);
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
