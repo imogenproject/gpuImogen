@@ -80,8 +80,11 @@ if runComplete == 1; aboot.final = 1; else; aboot.final = 0; end
 aboot.padlen = padLen;
 dex.('misc') = aboot;
 %dex = setfield(dex, 'misc',aboot);
-
-if mpi_amirank0(); save('savefileIndex.mat','dex'); end
+try
+    if mpi_amirank0(); save('savefileIndex.mat','dex'); end
+catch nompi
+    save('savefileIndex.mat','dex');
+end
 
 cd(d0);
 
