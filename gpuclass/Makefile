@@ -24,7 +24,7 @@ MEX_LIBS  = -lcudart -lcublas
 
 PAR_INCL = -I../mpi -I$(MPI_DIR)/include
 PAR_LDIR = -L$(MPI_DIR)/lib
-PAR_LIBS = -lmpi -lmpi_cxx
+PAR_LIBS = -lmpi
 
 OUTPUTCMD = -output
 
@@ -370,8 +370,7 @@ cudaSource2FluidDrag.o: cudaSource2FluidDrag.cu
 	mex $(MEX_OPTS) $(MEX_INCL) $(PAR_INCL) -c cudaSource2FluidDrag.cpp
 
 cudaSource2FluidDrag: cudaCommon.o cudaSource2FluidDrag.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
-
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 
 clean:
 	rm -f *mexa64 *cpp *o
