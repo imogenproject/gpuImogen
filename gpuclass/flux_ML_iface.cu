@@ -79,6 +79,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	int status;
 
+	MGArray tempStorage;
+	tempStorage.nGPUs = -1; // not allocated
+
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
@@ -106,19 +109,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		}
 		fsp.minimumRho = rhoMin;
 
-		MGArray tempStorage;
-		tempStorage.nGPUs = -1; // not allocated
 
 		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
 
-		// This was allocated & re-used many times in performFluidUpdate_3D
-		#ifdef USE_NVTX
-		nvtxMark("Large free flux_ML_iface.cu:116");
-		#endif
-		MGA_delete(&tempStorage);
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
+
+	// This was allocated & re-used many times in performFluidUpdate_3D
+	if((tempStorage.nGPUs != -1) && (status == SUCCESSFUL)) {
+		#ifdef USE_NVTX
+		nvtxMark("Large free flux_ML_iface.cu:116");
+		#endif
+		status = MGA_delete(&tempStorage);
+	}
+
 	if(status != SUCCESSFUL) {
 		DROP_MEX_ERROR("Fluid update code returned unsuccessfully!");
 	}

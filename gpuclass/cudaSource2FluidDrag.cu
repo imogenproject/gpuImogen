@@ -124,7 +124,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	if ((nrhs!=3) || (nlhs != 0)) mexErrMsgTxt("Wrong number of arguments: need cudaSource2FluidDrag(FluidManager[2], geometry, [dt, solverMethod])\n");
 
-	if(CHECK_CUDA_ERROR("entering cudaSource2FluidDrag") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSource2FLuidDrag."); }
+	if(CHECK_CUDA_ERROR("entering cudaSource2FluidDrag") != SUCCESSFUL) { DROP_MEX_ERROR("Failed upon entry to cudaSource2FluidDrag."); }
 
 	MGArray fluidA[5];
 	int status = MGA_accessFluidCanister(prhs[0], 0, &fluidA[0]);

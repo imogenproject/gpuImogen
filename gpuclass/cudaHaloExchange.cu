@@ -182,13 +182,6 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	// NOTE: but that will not happen irl (i.e. it does not double to get bounded # of reallocs)
 	checkGlobalBufferLen(totalBlockAlloc);
 
-	// Allocate some normal memory, have cuda pin it and get a pointer to pass to the MGA halo reader.
-//	double *hostbuffer = (double *)malloc(totalBlockAlloc * sizeof(double));
-
-//	cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
-//	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
-//	if(returnCode != SUCCESSFUL) return returnCode;
-
 	double *devbufptr;
 	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostPinnedBufferRoot, 0);
 	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
@@ -229,7 +222,6 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	// error of any kind
 	//
 	// God ****ing damn it took a long time to realize that that was what was going on
-//	cudaHostUnregister((void *)hostbuffer);
 
 	// copy to the unpinned buffer
 	memmove((void *)hostNormalBufferRoot, (void *)hostPinnedBufferRoot, totalBlockAlloc * sizeof(double));
@@ -254,18 +246,9 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 	nvtxRangePop();
 	#endif
 
-	//cudaHostRegister ((void *)hostbuffer, totalBlockAlloc * sizeof(double), cudaHostRegisterMapped);
-//	returnCode = CHECK_CUDA_ERROR("cudaHostRegister");
-//	if(returnCode != SUCCESSFUL) return returnCode;
-
 	// fixme: these can move half as much in reality but it's shittily interleaved
 	// fixme: either way it can't possible ever be as slow as the cuda malloc/free/register functions, OMG...
 	memmove((void *)hostPinnedBufferRoot, (void *)hostNormalBufferRoot, totalBlockAlloc * sizeof(double));
-
-// this is already done & we never unregistered this block
-//	cudaHostGetDevicePointer ((void **)&devbufptr, (void *)hostbuffer, 0);
-//	returnCode = CHECK_CUDA_ERROR("cudaHostGetDevicePointer");
-//	if(returnCode != SUCCESSFUL) return returnCode;
 
 	for(i = 0; i < nArrays; i++) {
 		int haloDepth = phi->haloSize;
@@ -293,9 +276,6 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
         }
 
 	CHECK_IMOGEN_ERROR(returnCode);
-
-//	cudaHostUnregister((void *)hostbuffer);
-//	free((void **)hostbuffer);
 
 #ifdef USE_NVTX
 	nvtxRangePop();
