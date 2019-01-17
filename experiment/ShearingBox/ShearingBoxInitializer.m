@@ -218,10 +218,12 @@ classdef ShearingBoxInitializer < Initializer
                     SaveManager.logPrint('Using cylindrical geometry; Angular slice set to %fdeg\n', 360/self.azimuthalMode);
 %                    geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
             end
-            
+
             % Fetch and normalize coordinates
             [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
             rsph   = sqrt(radpts.^2+zpts.^2);
+clear phipts; % this is never used
+clear zpts; % never used again
 
             self.gravity.constant = 6.673e-11; % physical value
             GM = self.gravity.constant * self.Mstar;
@@ -247,7 +249,7 @@ classdef ShearingBoxInitializer < Initializer
             alpha = 1 + self.dustFraction; % inertial/gravitational density enhancement factor
 
             % scale height as a function of cylindrical radius
-            scaleHeight = cs_0 *radpts.^(1.5+.5*nt) / sqrt(GM);
+%            scaleHeight = cs_0 *radpts.^(1.5+.5*nt) / sqrt(GM);
             
             % calculate density at midplane
             q      = (-nt - 3 + 2*np)/2;
@@ -258,7 +260,7 @@ classdef ShearingBoxInitializer < Initializer
             %deltaphi = -phi_0*(1./sqrt(radpts.^2 + zpts.^2) - 1./radpts);
             deltaphi = -phi_0*(1./rsph - 1./radpts);
             mass = rho_mp .* exp(deltaphi .* radpts.^(-nt) / cs_0^2);
-
+clear rho_mp; % never used again
             % Still more or less fudging the thermodynamics for now
             % note that throughout here, kb/mu is flagrantly absorbed onto temp/pressure
             self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen'); 
@@ -275,6 +277,7 @@ classdef ShearingBoxInitializer < Initializer
                 vel(2,:,:,:) = squish(vel(2,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
                 vel(3,:,:,:) = squish(vel(3,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
             end
+
 
             % Setup internal energy density to yield correct P for an adiabatic ideal gas
             Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
@@ -309,7 +312,6 @@ classdef ShearingBoxInitializer < Initializer
                 
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
-            
             else
                 self.numFluids = 1;
             end
@@ -344,12 +346,10 @@ classdef ShearingBoxInitializer < Initializer
             potentialField = PotentialFieldInitializer();
 
             if self.normalizeValues
-                sphericalR = sqrt(radpts.^2 + zpts.^2);
-                potentialField.field = -1./sphericalR;
+                potentialField.field = -1./rsph;
                 potentialField.constant = 1;
             else
-                sphericalR = r_c*sqrt(radpts.^2 + zpts.^2);
-                potentialField.field = -GM ./ sphericalR;
+                potentialField.field = -GM ./ rsph;
                 potentialField.constant = 1;
             end
 

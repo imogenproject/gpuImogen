@@ -210,7 +210,11 @@ classdef SavefilePortal < handle
         end
         
         function S = getInitialConditions(self)
-            r = mpi_myrank();
+            if self.pParallelMode == 0
+                r = 0;
+            else
+                r = mpi_myrank();
+            end
             f = sprintf('/SimInitializer_rank%i.mat', int32(r));
             u = load([self.savefileDirectory f], 'IC');
             S = u.IC;
