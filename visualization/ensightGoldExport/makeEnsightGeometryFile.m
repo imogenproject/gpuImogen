@@ -1,4 +1,4 @@
-function makeEnsightGeometryFile(frameref, filename)
+function makeEnsightGeometryFile(SP, frameref, filename)
 % This describes what the geometry file must output
 % This must be followed TO THE LETTER and that INCLUDES SPACES
 % See page 10 of Ensight Gold format PDF
@@ -40,6 +40,15 @@ else
     isUniform  = 0;
 end
 
+d = SP.returnInitializer();
+
+if d.ini.geometry.pGeometryType == 2
+    isUniform = 0;
+    isCylindrical = 1;
+else
+    isCylindrical = 0;
+end
+
 %fwrite(GEOM, single(extents), 'float');
 
 % part - exactly 80 chars
@@ -66,6 +75,33 @@ if isUniform % Easy-peasy
 
     orig_pos = [0 0 0 frameref.dGrid{1} frameref.dGrid{2} frameref.dGrid{3}];
     fwrite(GEOM, orig_pos, 'float');
+elseif isCylindrical % must use curvilinear coordinates!!
+disp('DEBUG WARNING: trying to emit cylindrical coordinates to ensight! hold on!');
+    % description line - exactly 80 chars
+    % uniform block - exactly 80 c
+    charstr = char(32*ones([160 1]));
+    charstr(1:17) = 'simulation domain';
+    charstr(81:97) = 'block curvilinear';
+    fwrite(GEOM, charstr, 'char*1');
+
+    % Write number of i j and k steps. 3 ints.
+    domsize = size(frameref.mass);
+    if numel(domsize) == 2; domsize(3) = 1; end
+    fwrite(GEOM, domsize, 'int');
+
+    % This turd-tastic hack recreates the original geometry manager, for one node, containing the global geometry info
+    g = GeometryManager(d.ini.geometry.globalDomainRez); % fake global geometry manager
+    g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+
+    % fetch positions of all coordinates
+    [rmat, thmat, zmat] = g.ndgridSetIJK('pos');
+    xmat = rmat .* cos(thmat);
+    ymat = rmat .* sin(thmat);
+    clear rmat thmat;
+
+    fwrite(GEOM, xmat, 'float');
+    fwrite(GEOM, ymat, 'float');
+    fwrite(GEOM, zmat, 'float');
 else
     % description line - exactly 80 chars
     % uniform block - exactly 80 c

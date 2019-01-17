@@ -177,7 +177,7 @@ classdef SavefilePortal < handle
 
             self.pushdir(self.savefileDirectory);
             rankToLoad = 0;
-            met = util_LoadFrameMetadata(self.typeToLoad, rankToLoad, b(f));
+            met = util_LoadFrameSegment(self.typeToLoad, rankToLoad, b(f), 'metaonly');
         end
 
         function arewe = atLastFrame(self)

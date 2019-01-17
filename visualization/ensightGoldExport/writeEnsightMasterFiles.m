@@ -11,7 +11,8 @@ fprintf(CASE, 'FORMAT\ntype: ensight gold\n');
 fprintf(CASE, '\nGEOMETRY\n');
 fprintf(CASE, 'model: 1 %s.geom\n', basename);
 fprintf('writing geometry file\n');
-makeEnsightGeometryFile(frame, basename);
+% it needs the savefile portal to access the initializer & build a geometry manager in case of cylindrical coordinates
+makeEnsightGeometryFile(SP, frame, basename);
 
 % prepare variables
 fprintf(CASE, '\nVARIABLE\n');
@@ -51,7 +52,7 @@ fprintf('Emitting CASE file...\n');
 nwritten = fprintf(CASE, 'time values: ');
 for q = 1:numel(range)
     fprintf('Writing time meta for %i\n', int32(q));
-    m = SP.getMetadata(range(q))
+    m = SP.getMetadata(range(q));
     tau = sum(m.time.history);
 
     nwritten = nwritten + fprintf(CASE,'%5.5g ', tau/timeNormalization);
