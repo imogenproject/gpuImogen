@@ -257,22 +257,24 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 	MPI_Request requests[4];
 	MPI_Status  howDidItGo[4];
 
-	MPI_Comm topo_comm = MPI_Comm_f2c(topo->dimcomm[dim]);
+//	MPI_Comm topo_comm = MPI_Comm_f2c(topo->dimcomm[dim]);
+	MPI_Comm topo_comm = MPI_Comm_f2c(topo->comm);
+// FIXME this dumpster fire should use the dimensional communicator? does it even matter?
 
 	int rank;
 	MPI_Comm_rank(topo_comm, &rank);
 
 
-#ifdef DEBUG_OUTPUT
-	fprintf(stderr, "[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d) data=(%p %p %p %p)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim], send_lbuf, send_rbuf, recv_lbuf, recv_rbuf);
-#endif
+//	printf("[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim]);
 
 	/** Post recvs of data _into_ this processor's halo regions.
 	 *
 	 * It is a good idea to do this first so that there
 	 * is a known storage location for incoming messages.
 	 */
+//printf("[%d]: Posting MPI_Irecv(ptr, %i, MPI_DOUBLE, %i, 13, %i);\n", rank, numel, topo->neighbor_left[dim], topo_comm);
 	MPI_Irecv(recvLeft,  numel, dt, topo->neighbor_left [dim], 13, topo_comm, &requests[0]);
+//printf("[%d]: Posting MPI_Irecv(ptr, %i, MPI_DOUBLE, %i, 14, %i);\n", rank, numel, topo->neighbor_right[dim], topo_comm);
 	MPI_Irecv(recvRight, numel, dt, topo->neighbor_right[dim], 14, topo_comm, &requests[1]);
 
 	/** Start sending data _from_ this processor's interior regions.
