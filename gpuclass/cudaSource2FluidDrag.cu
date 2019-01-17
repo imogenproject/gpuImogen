@@ -8,7 +8,7 @@
 
 // CUDA
 #include "cuda.h"
-
+#include "nvToolsExt.h"
 
 __constant__ int devFluidParams[4];
 #define FLUID_NX devFluidParams[0]
@@ -737,6 +737,10 @@ int solveDragLogTrapezoid(MGArray *gas, MGArray *dust, GeometryParams *geo, doub
 
 	MGArray tmpMem;
 	MGArray *gs = &tmpMem;
+
+#ifdef USE_NVTX
+	nvtxMark("Large alloc (6 arrays)")
+#endif
 
 	statusCode = MGA_allocSlab(gas, gs, 6);
 	if(CHECK_IMOGEN_ERROR(statusCode) != SUCCESSFUL) return statusCode;
