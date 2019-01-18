@@ -14,7 +14,7 @@ for n = 1:numel(varset)
 	makeEnsightScalarFile(sprintf('%s.%s.%04i', basename, varset{n}, frameNo), q, varset{n});
     end
 
-    if twofluid && (strcmpi(varset{n}, '2fluid_dv') == 0)
+    if twofluid && (strcmpi(varset{n}, '2fluid_dv') == 1)
         q = util_DerivedQty(frame, varset{n}, 1);
         if isa(q, 'struct') % var was a vector
             makeEnsightVectorFile(sprintf('%s.%s.%04i', basename, varset{n}, frameNo), q.X, q.Y, q.Z, varset{n});
