@@ -1,4 +1,4 @@
-function makeEnsightGeometryFile(SP, frameref, filename)
+function makeEnsightGeometryFile(SP, frameref, filename, reverseIndexOrder)
 % This describes what the geometry file must output
 % This must be followed TO THE LETTER and that INCLUDES SPACES
 % See page 10 of Ensight Gold format PDF
@@ -71,12 +71,16 @@ if isUniform % Easy-peasy
     % Write number of i j and k steps. 3 ints.
     domsize = size(frameref.mass);
     if numel(domsize) == 2; domsize(3) = 1; end
-    fwrite(GEOM, domsize, 'int');
-
+    
     orig_pos = [0 0 0 frameref.dGrid{1} frameref.dGrid{2} frameref.dGrid{3}];
-    fwrite(GEOM, orig_pos, 'float');
+    if reverseIndexOrder
+        fwrite(GEOM, domsize([3 2 1]), 'int');
+        fwrite(GEOM, orig_pos([3 2 1 6 5 4]), 'float');
+    else
+        fwrite(GEOM, domsize, 'int');
+        fwrite(GEOM, orig_pos, 'float');
+    end
 elseif isCylindrical % must use curvilinear coordinates!!
-disp('DEBUG WARNING: trying to emit cylindrical coordinates to ensight! hold on!');
     % description line - exactly 80 chars
     % uniform block - exactly 80 c
     charstr = char(32*ones([160 1]));
@@ -87,21 +91,33 @@ disp('DEBUG WARNING: trying to emit cylindrical coordinates to ensight! hold on!
     % Write number of i j and k steps. 3 ints.
     domsize = size(frameref.mass);
     if numel(domsize) == 2; domsize(3) = 1; end
-    fwrite(GEOM, domsize, 'int');
+    if reverseIndexOrder
+        fwrite(GEOM, domsize([3 2 1]), 'int');
+    else
+        fwrite(GEOM, domsize, 'int');
+    end
 
     % This turd-tastic hack recreates the original geometry manager, for one node, containing the global geometry info
     g = GeometryManager(d.ini.geometry.globalDomainRez); % fake global geometry manager
-    g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
-
+    switch d.ini.geometry.pGeometryType
+    case ENUM.GEOMETRY_SQUARE
+        g.geometrySquare(d.ini.geometry.affine, d.ini.geometry.d3h);
+    case ENUM.GEOMETRY_CYLINDRICAL
+        g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+    end
+    
     % fetch positions of all coordinates
-    [rmat, thmat, zmat] = g.ndgridSetIJK('pos');
-    xmat = rmat .* cos(thmat);
-    ymat = rmat .* sin(thmat);
-    clear rmat thmat;
+    [xmat, ymat, zmat] = g.ndgridSetIJK('pos', 'square');
 
-    fwrite(GEOM, xmat, 'float');
-    fwrite(GEOM, ymat, 'float');
-    fwrite(GEOM, zmat, 'float');
+    if reverseIndexOrder
+        fwrite(GEOM, permute(xmat, [3 2 1]), 'float');
+        fwrite(GEOM, permute(ymat, [3 2 1]), 'float');
+        fwrite(GEOM, permute(zmat, [3 2 1]), 'float');
+    else
+        fwrite(GEOM, xmat, 'float');
+        fwrite(GEOM, ymat, 'float');
+        fwrite(GEOM, zmat, 'float');
+    end
 else
     % description line - exactly 80 chars
     % uniform block - exactly 80 c
@@ -113,7 +129,11 @@ else
     % Write number of i j and k steps. 3 ints.
     domsize = size(frameref.mass);
     if numel(domsize) == 2; domsize(3) = 1; end
-    fwrite(GEOM, domsize, 'int');
+    if reverseIndexOrder
+        fwrite(GEOM, domsize([3 2 1]), 'int');
+    else
+        fwrite(GEOM, domsize, 'int');
+    end
 
     ivec = cumsum(squish(frameref.dGrid{1}(:,1,1))) - frameref.dGrid{1}(1,1,1);
     jvec = cumsum(squish(frameref.dGrid{2}(1,:,1))) - frameref.dGrid{2}(1,1,1);
@@ -129,9 +149,15 @@ else
         kvec = (1:size(frameref.mass, 3))*frameref.dGrid{3}(1);
     end
 
-    fwrite(GEOM, ivec, 'float');
-    fwrite(GEOM, jvec, 'float');
-    fwrite(GEOM, kvec, 'float');
+    if reverseIndexOrder
+        fwrite(GEOM, kvec, 'float');
+        fwrite(GEOM, jvec, 'float');
+        fwrite(GEOM, ivec, 'float');
+    else
+        fwrite(GEOM, ivec, 'float');
+        fwrite(GEOM, jvec, 'float');
+        fwrite(GEOM, kvec, 'float');
+    end
 
 end
 

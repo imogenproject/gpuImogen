@@ -1,4 +1,4 @@
-function writeEnsightMasterFiles(basename, range, SP, varset, timeNormalization)
+function writeEnsightMasterFiles(basename, range, SP, varset, timeNormalization, reverseIndexOrder)
 
 frame = SP.jumpToLastFrame();
 
@@ -12,7 +12,7 @@ fprintf(CASE, '\nGEOMETRY\n');
 fprintf(CASE, 'model: 1 %s.geom\n', basename);
 fprintf('writing geometry file\n');
 % it needs the savefile portal to access the initializer & build a geometry manager in case of cylindrical coordinates
-makeEnsightGeometryFile(SP, frame, basename);
+makeEnsightGeometryFile(SP, frame, basename, reverseIndexOrder);
 
 % prepare variables
 fprintf(CASE, '\nVARIABLE\n');

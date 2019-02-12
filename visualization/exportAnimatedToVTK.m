@@ -1,5 +1,6 @@
-function exportAnimatedToVTK(outBasename, inType, range, varset, timeNormalization)
-% exportAnimatedToEnsight(outBasename, inBasename, range, varset, timeNormalization)
+function exportAnimatedToVTK(SP, outBasename, range, varset, timeNormalization, reverseIndexOrder)
+% exportAnimatedToEnsight(SP, outBasename, inBasename, range, varset, timeNormalization)
+%>> SP: SavefilePortal to access data from
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
 %>> range:       Set of savefiles to export (e.g. 0:50:1000)
@@ -8,55 +9,35 @@ function exportAnimatedToVTK(outBasename, inType, range, varset, timeNormalizati
 	
 addpath('~/vtkwriter');
 
-%--- Interactively fill in missing arguments ---%
-if nargin < 5
-    fprintf('Not enough input arguments to run automatically. Input them now:\n');
-    outBasename = input('Base filename for exported files (e.g. "torus1"): ', 's');
-    inType      = input('Frame type to read (e.g. "3D_XYZ", no trailing _):','s');
-    range       = input('Range of frames to export; _START = 0 (e.g. 0:50:1000 to do every 50th frame from start to 1000): ');
-    varset      = eval(input('Cell array of variable names: ','s'));
-    if isempty(varset) || ~isa(varset,'cell'); disp('Not valid; Defaulting to mass, velocity, pressure'); varset={'mass','velocity','pressure'}; end
-    timeNormalization = input('Characteristic time to normalize by (e.g. alfven crossing time or characteristic rotation period. If in doubt enter 1): ');
-end
-
-SP = SavefilePortal('./', inType);
-
-if range == -1
-    fprintf('Defaulting to all frames: %i total\n', int32(SP.numFrames()));
-    range = 1:SP.numFrames();
+if reverseIndexOrder
+    warning('WARNING: reverseIndexOrder requested but exportAnimatedToVTK does not support this. All output will retain normal XYZ X-linear-stride order.');
 end
 
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
-
-%--- Initialization ---%
-fprintf('Beginning export of %i files\n', numel(range));
-%exportedFrameNumber = 0;
-
 equilframe = [];
-
-% Runs in parallel if MPI has been started
-if mpi_isinitialized() == 0
-  mpi_init();
-end
 
 minf = mpi_basicinfo();
 nworkers = minf(1); myworker = minf(2);
-
 ntotal = numel(range); % number of frames to write
 nstep = nworkers;
-
-if nworkers > 1
-    fprintf('Work distributed among %i workers.\n', nworkers);
-end
 
 tic;
 
 stepnums = zeros([ntotal 1]);
 
+%fixme FIXME Fixme - problem, this is being acquired in various places as needed. Yuck. standardize
+%that process so we get it in one location. 
+
 % GET GEOMETRY DATA HERE
 d = SP.getInitialConditions();
 g = GeometryManager(d.ini.geometry.globalDomainRez);
-g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+switch d.ini.geometry.pGeometryType
+    case ENUM.GEOMETRY_SQUARE
+        g.geometrySquare(d.ini.geometry.affine, d.ini.geometry.d3h);
+    case ENUM.GEOMETRY_CYLINDRICAL
+        g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+end
+% We require all cell positions in cartesian coordinates
 [xp, yp, zp] = g.ndgridSetIJK('pos','square'); %#ok<ASGLU>
 
 % WRITE GEOMETRY STRING:
@@ -64,11 +45,11 @@ g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2
 outcmdstr = sprintf('vtkwrite(''%s%%04i.vtk'', ''structured_grid'', xp, yp, zp', outBasename);
 
 ITER = myworker+1;
-dataframe = SP.setFrame(ITER); 
+dataframe = SP.setFrame(range(ITER)); 
 
 framedat = {};
 for vn = 1:numel(varset)
-        framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0);
+    framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0);
 end
 
 % Loop over output varset:
@@ -86,7 +67,7 @@ outcmdstr = sprintf('%s, ''binary'');', outcmdstr);
 
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
-    if ITER ~= (myworker+1); dataframe = SP.setFrame(ITER); end
+    if ITER ~= (myworker+1); dataframe = SP.setFrame(range(ITER)); end
 
 % FIXME this fails in parallel horribly...
     stepnums(ITER) = sum(dataframe.time.history) / timeNormalization;

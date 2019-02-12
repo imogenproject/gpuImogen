@@ -1,4 +1,4 @@
-function makeEnsightScalarFile(filebase, M, vardesc)
+function makeEnsightScalarFile(filebase, M, vardesc, reverseIndexOrder)
 
 SCAL = fopen(filebase, 'w');
 
@@ -17,7 +17,11 @@ charstr(1:5) = 'block';
 fwrite(SCAL, charstr, 'char*1');
 
 % write all scalars in array M
-fwrite(SCAL, reshape(single(M), [numel(M) 1]), 'float');
+if reverseIndexOrder
+    fwrite(SCAL, reshape(single(permute(M, [3 2 1])), [numel(M) 1]), 'float');
+else
+    fwrite(SCAL, reshape(single(M), [numel(M) 1]), 'float');
+end
 
 fclose(SCAL);
 end
