@@ -11,7 +11,6 @@ if nargin < 4; meta = 'everything'; end
 
 if act < 0; error('No .mat or .nc with basename %s, rank %i, frame #%i found in pwd=''%s''\n', basename, rank, frameno, pwd()); end
 
-
 % Load the next frame into workspace
 try
     if act == ENUM.FORMAT_NC; dataframe = util_NCD2Frame(fname, meta); end

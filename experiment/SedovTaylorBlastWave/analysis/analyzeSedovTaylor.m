@@ -46,7 +46,7 @@ radii = (0:nRadial)/nRadial;
 
 spatialDimension = 1 + 1*(rez(2) > 2) + 1*(rez(3) > 1);
 
-for N = 1:S.numFrames()
+for N = 1:S.numFrames
     [rho, vradial, P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);

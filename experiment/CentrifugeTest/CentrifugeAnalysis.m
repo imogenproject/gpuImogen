@@ -9,16 +9,16 @@ S.setParallelMode(runParallel);
 
 equil = S.nextFrame(); % Load 1st 
 
-tval =  zeros([1 S.numFrames()]);
-l1val = zeros([1 S.numFrames()]);
-l2val = zeros([1 S.numFrames()]);
+tval =  zeros([1 S.numFrames]);
+l1val = zeros([1 S.numFrames]);
+l2val = zeros([1 S.numFrames]);
 
 initset = S.returnInitializer();
 
 geo = GeometryManager(initset.ini.geometry.globalDomainRez);
 
 
-for N = 2:S.numFrames()
+for N = 2:S.numFrames
     f = S.nextFrame();
 
     tval(N-1) = sum(f.time.history);

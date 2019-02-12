@@ -58,14 +58,31 @@ if metaonly; netcdf.close(ncid); return; end
 % The main event: Deserialize the data arrays.
 v = netcdf.inqVarID(ncid, 'mass');
 frame.mass = netcdf.getVar(ncid, v);
-v = netcdf.inqVarID(ncid, 'momX');
-frame.momX = netcdf.getVar(ncid, v);
-v = netcdf.inqVarID(ncid, 'momY');
-frame.momY = netcdf.getVar(ncid, v);
-v = netcdf.inqVarID(ncid, 'momZ');
-frame.momZ = netcdf.getVar(ncid, v);
-v = netcdf.inqVarID(ncid, 'ener');
-frame.ener = netcdf.getVar(ncid, v);
+try
+    vf = netcdf.inqVarId(nvid, 'momX');
+catch
+    vf = -1234;
+end
+
+if vf ~= -1234
+    v = netcdf.inqVarID(ncid, 'momX');
+    frame.momX = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'momY');
+    frame.momY = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'momZ');
+    frame.momZ = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'ener');
+    frame.ener = netcdf.getVar(ncid, v);
+else
+    v = netcdf.inqVarID(ncid, 'velX');
+    frame.velX = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'velY');
+    frame.velY = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'velZ');
+    frame.velZ = netcdf.getVar(ncid, v);
+    v = netcdf.inqVarID(ncid, 'eint');
+    frame.eint = netcdf.getVar(ncid, v);
+end
 
 % netcdf-matlab is... not very smart.
 try
@@ -77,14 +94,25 @@ end
 if v ~= -1234
     v = netcdf.inqVarID(ncid, 'mass2');
     frame.mass2 = netcdf.getVar(ncid, v);
-    v = netcdf.inqVarID(ncid, 'momX2');
-    frame.momX2 = netcdf.getVar(ncid, v);
-    v = netcdf.inqVarID(ncid, 'momY2');
-    frame.momY2 = netcdf.getVar(ncid, v);
-    v = netcdf.inqVarID(ncid, 'momZ2');
-    frame.momZ2 = netcdf.getVar(ncid, v);
-    v = netcdf.inqVarID(ncid, 'ener2');
-    frame.ener2 = netcdf.getVar(ncid, v);
+    if vf ~= -1234
+        v = netcdf.inqVarID(ncid, 'momX2');
+        frame.momX2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'momY2');
+        frame.momY2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'momZ2');
+        frame.momZ2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'ener2');
+        frame.ener2 = netcdf.getVar(ncid, v);
+    else
+        v = netcdf.inqVarID(ncid, 'velX2');
+        frame.velX2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'velY2');
+        frame.velY2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'velZ2');
+        frame.velZ2 = netcdf.getVar(ncid, v);
+        v = netcdf.inqVarID(ncid, 'eint2');
+        frame.eint2 = netcdf.getVar(ncid, v);
+    end
 end
 
 try

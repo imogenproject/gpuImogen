@@ -36,7 +36,7 @@ machParallel = IC.ini.backgroundMach' * Khat;
 %machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
 % Output vars...[]
-qq = zeros([S.numFrames() 1]);
+qq = zeros([S.numFrames 1]);
 rhoerr_L1 = qq; rhoerr_L2 = qq;
 %velerr_L1 = qq; velerr_L2 = qq;
 frameT = qq;
@@ -46,7 +46,7 @@ frameT = qq;
 tCritical = 2/((IC.ini.gamma + 1)*c0*Kmag*IC.ini.amplitude);
 
 % Iterating over all frames in sequence,
-for N = 1:S.numFrames()
+for N = 1:S.numFrames
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    

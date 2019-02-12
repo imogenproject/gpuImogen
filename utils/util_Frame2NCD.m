@@ -66,19 +66,34 @@ dimvar  = netcdf.defVar(ncid, 'dim', 'char', simdim); % good grief
 
 % Define main data variables
 mass = netcdf.defVar(ncid, 'mass', 'double', [nx ny nz]);
-momX = netcdf.defVar(ncid, 'momX', 'double', [nx ny nz]);
-momY = netcdf.defVar(ncid, 'momY', 'double', [nx ny nz]);
-momZ = netcdf.defVar(ncid, 'momZ', 'double', [nx ny nz]);
-ener = netcdf.defVar(ncid, 'ener', 'double', [nx ny nz]);
+if isfield(frame, 'momX') % saving conservative vars
+    momX = netcdf.defVar(ncid, 'momX', 'double', [nx ny nz]);
+    momY = netcdf.defVar(ncid, 'momY', 'double', [nx ny nz]);
+    momZ = netcdf.defVar(ncid, 'momZ', 'double', [nx ny nz]);
+    ener = netcdf.defVar(ncid, 'ener', 'double', [nx ny nz]);
+else
+    momX = netcdf.defVar(ncid, 'velX', 'double', [nx ny nz]);
+    momY = netcdf.defVar(ncid, 'velY', 'double', [nx ny nz]);
+    momZ = netcdf.defVar(ncid, 'velZ', 'double', [nx ny nz]);
+    ener = netcdf.defVar(ncid, 'eint', 'double', [nx ny nz]);
+end
 
 % HACK FIXME - the burning turd around resultsHandler.m:75 is here present.
-% HACK - I don't have time to setup proper arbitrary-fluid-count handling, hacked to 2.
+% HACK FIXME - rather than setup arbitrary-fluid-count handling I just hacked it for 2
 if isfield(frame, 'mass2')
     mass2 = netcdf.defVar(ncid, 'mass2', 'double', [nx ny nz]);
-    momX2 = netcdf.defVar(ncid, 'momX2', 'double', [nx ny nz]);
-    momY2 = netcdf.defVar(ncid, 'momY2', 'double', [nx ny nz]);
-    momZ2 = netcdf.defVar(ncid, 'momZ2', 'double', [nx ny nz]);
-    ener2 = netcdf.defVar(ncid, 'ener2', 'double', [nx ny nz]);
+    if isfield(frame, 'momX2')
+        momX2 = netcdf.defVar(ncid, 'momX2', 'double', [nx ny nz]);
+        momY2 = netcdf.defVar(ncid, 'momY2', 'double', [nx ny nz]);
+        momZ2 = netcdf.defVar(ncid, 'momZ2', 'double', [nx ny nz]);
+        ener2 = netcdf.defVar(ncid, 'ener2', 'double', [nx ny nz]);
+    else
+        momX2 = netcdf.defVar(ncid, 'velX2', 'double', [nx ny nz]);
+        momY2 = netcdf.defVar(ncid, 'velY2', 'double', [nx ny nz]);
+        momZ2 = netcdf.defVar(ncid, 'velZ2', 'double', [nx ny nz]);
+        ener2 = netcdf.defVar(ncid, 'eint2', 'double', [nx ny nz]);
+    end
+    
 end
 
 magstatus = netcdf.defVar(ncid, 'magstatus', 'double', scaldim);
@@ -113,20 +128,34 @@ netcdf.putVar(ncid, versionvar, frame.ver);
 netcdf.putVar(ncid, dgrid_x, frame.dGrid{1});
 netcdf.putVar(ncid, dgrid_y, frame.dGrid{2});
 netcdf.putVar(ncid, dgrid_z, frame.dGrid{3});
-netcdf.putVar(ncid, dimvar, frame.dim); %
+netcdf.putVar(ncid, dimvar, frame.dim);
 
 netcdf.putVar(ncid, mass, frame.mass);
-netcdf.putVar(ncid, momX, frame.momX);
-netcdf.putVar(ncid, momY, frame.momY);
-netcdf.putVar(ncid, momZ, frame.momZ);
-netcdf.putVar(ncid, ener, frame.ener);
+if isfield(frame, 'momX')
+    netcdf.putVar(ncid, momX, frame.momX);
+    netcdf.putVar(ncid, momY, frame.momY);
+    netcdf.putVar(ncid, momZ, frame.momZ);
+    netcdf.putVar(ncid, ener, frame.ener);
+else
+    netcdf.putVar(ncid, momX, frame.velX);
+    netcdf.putVar(ncid, momY, frame.velY);
+    netcdf.putVar(ncid, momZ, frame.velZ);
+    netcdf.putVar(ncid, ener, frame.eint);
+end
 
 if isfield(frame, 'mass2')
     netcdf.putVar(ncid, mass2, frame.mass2);
-    netcdf.putVar(ncid, momX2, frame.momX2);
-    netcdf.putVar(ncid, momY2, frame.momY2);
-    netcdf.putVar(ncid, momZ2, frame.momZ2);
-    netcdf.putVar(ncid, ener2, frame.ener2);
+    if isfield(frame, 'momX2')
+        netcdf.putVar(ncid, momX2, frame.momX2);
+        netcdf.putVar(ncid, momY2, frame.momY2);
+        netcdf.putVar(ncid, momZ2, frame.momZ2);
+        netcdf.putVar(ncid, ener2, frame.ener2);
+    else
+        netcdf.putVar(ncid, momX2, frame.velX2);
+        netcdf.putVar(ncid, momY2, frame.velY2);
+        netcdf.putVar(ncid, momZ2, frame.velZ2);
+        netcdf.putVar(ncid, ener2, frame.eint2);
+    end
 end
 
 if isempty(frame.magX) || numel(frame.magX) ~= numel(frame.mass)

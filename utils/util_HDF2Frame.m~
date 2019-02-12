@@ -40,42 +40,25 @@ frame.dGrid{3} = h5read(hname, '/dgridz');
 
 if metaonly; return; end
 
-varmode = 1;
 
 frame.mass = h5read(hname, '/fluid1/mass');
 try
     frame.momX = h5read(hname, '/fluid1/momX');
 catch ohboy
-    varmode = 2;
-    frame.velX = h5read(hname, '/fluid1/velX');
+    
 end
-
-if varmode == 1
-    frame.momY = h5read(hname, '/fluid1/momY');
-    frame.momZ = h5read(hname, '/fluid1/momZ');
-    frame.ener = h5read(hname, '/fluid1/ener');
-else
-    frame.velY = h5read(hname, '/fluid1/velY');
-    frame.velZ = h5read(hname, '/fluid1/velZ');
-    frame.eint = h5read(hname, '/fluid1/eint');
-end
+frame.momY = h5read(hname, '/fluid1/momY');
+frame.momZ = h5read(hname, '/fluid1/momZ');
+frame.ener = h5read(hname, '/fluid1/ener');
 
 q = h5info(hname, '/');
 
 if ish5group(q, '/fluid2')
-    if varmode == 1
-        frame.mass2 = h5read(hname, '/fluid2/mass');
-        frame.momX2 = h5read(hname, '/fluid2/momX');
-        frame.momY2 = h5read(hname, '/fluid2/momY');
-        frame.momZ2 = h5read(hname, '/fluid2/momZ');
-        frame.ener2 = h5read(hname, '/fluid2/ener');
-    else
-        frame.mass2 = h5read(hname, '/fluid2/mass');
-        frame.velX2 = h5read(hname, '/fluid2/velX');
-        frame.velY2 = h5read(hname, '/fluid2/velY');
-        frame.velZ2 = h5read(hname, '/fluid2/velZ');
-        frame.eint2 = h5read(hname, '/fluid2/eint');
-    end
+    frame.mass2 = h5read(hname, '/fluid2/mass');
+    frame.momX2 = h5read(hname, '/fluid2/momX');
+    frame.momY2 = h5read(hname, '/fluid2/momY');
+    frame.momZ2 = h5read(hname, '/fluid2/momZ');
+    frame.ener2 = h5read(hname, '/fluid2/ener');
 end
 
 frame.magX = h5read(hname, '/mag/X');

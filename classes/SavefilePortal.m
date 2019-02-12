@@ -7,9 +7,9 @@ classdef SavefilePortal < handle
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = public) %                           P U B L I C  [P]
+        numFrames;
+        currentType;
     end %PUBLIC
-    
-    
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
@@ -35,14 +35,17 @@ classdef SavefilePortal < handle
             % SavefilePortal(directory) provides a unified way to access
             % all Imogen save data
             if nargin == 0; wd = pwd(); end
+            
+            self.numFrames = 0;
 
-            self.changeDirectory(wd);
-            self.rescanDirectory();
             if nargin > 1
                 self.setFrametype(ttl);
             else
                 self.typeToLoad = 7;
             end
+            
+            self.changeDirectory(wd);
+            self.rescanDirectory();
             
             self.setParallelMode(0);
         end
@@ -64,10 +67,9 @@ classdef SavefilePortal < handle
             % Working Directory; Resets the portal (all frames -> first).
             % Does not corrupt caller's PWD.
             self.savefileDirectory = nwd;
-            self.pushdir(nwd);
             
+            self.pushdir(nwd);
             self.currentFrame = [0 0 0 0 0 0 0];
-
             self.popdir();
         end
 
@@ -82,13 +84,13 @@ classdef SavefilePortal < handle
                     fprintf('Got id of %i, valid values are 1 (X), 2 (Y), 3 (Z), 4 (XY), 5 (XZ), 6 (YZ), 7 (XYZ)\n', int32(problem));
                 end
             else
-                if strcmp(id,'X'); id = 1; end
-                if strcmp(id,'Y'); id = 2; end
-                if strcmp(id,'Z'); id = 3; end
-                if strcmp(id,'XY');id = 4; end
-                if strcmp(id,'XZ');id = 5; end
-                if strcmp(id,'YZ');id = 6; end
-                if strcmp(id,'XYZ');id = 7; end
+                if strcmp(id,'X');   id = 1; end
+                if strcmp(id,'Y');   id = 2; end
+                if strcmp(id,'Z');   id = 3; end
+                if strcmp(id,'XY');  id = 4; end
+                if strcmp(id,'XZ');  id = 5; end
+                if strcmp(id,'YZ');  id = 6; end
+                if strcmp(id,'XYZ'); id = 7; end
                 if isa(id,'double') == false
                     disp('Received the following for ID:\n');
                     disp(id)
@@ -98,7 +100,9 @@ classdef SavefilePortal < handle
             end
 
             self.typeToLoad = id;
+            self.updatePublicState();
         end
+        
         function accessX(self); self.setFrametype(1); end
         function accessY(self); self.setFrametype(2); end
         function accessZ(self); self.setFrametype(3); end
@@ -115,38 +119,54 @@ classdef SavefilePortal < handle
         end
 
         % Next/previous/start/last to make raw setFrame() friendlier
-        function [F, glitch] = nextFrame(self)
+        function [F, glitch] = nextFrame(self, setrank)
             % F = nextFrame() returns the next Imogen saveframe of the
             % currently selected type
             n = self.currentFrame(self.typeToLoad) + 1;
-            [F, glitch] = self.setFrame(n);
+            if nargin == 2
+                [F, glitch] = self.setFrame(n);
+            else
+                [F, glitch] = self.setFrame(n, setrank);
+            end
         end
 
-        function F = previousFrame(self)
+        function [F, glitch] = previousFrame(self, setrank)
             % F = previousFrame() returns the previous Imogen saveframe of
             % the current type
             n = self.currentFrame(self.typeToLoad)-1;
-            [F, glitch] = self.setFrame(n);
+            if nargin == 2
+                [F, glitch] = self.setFrame(n);
+            else
+                [F, glitch] = self.setFrame(n, setrank);
+            end
         end
         
-        function [F, glitch] = jumpToFirstFrame(self)
+        function [F, glitch] = jumpToFirstFrame(self, setrank)
             % Resets the current frame to the first
+            if nargin == 2
                 [F, glitch] = self.setFrame(1);
+            else
+                [F, glitch] = self.setFrame(1, setrank);
+            end
         end
         
-        function [F, glitch] = jumpToLastFrame(self)
+        function [F, glitch] = jumpToLastFrame(self, setrank)
            % Hop to the last frame available
-           n = self.numFrames();
-           [F, glitch] = self.setFrame(n);
+           n = self.numFrames;
+           if nargin == 2
+                [F, glitch] = self.setFrame(n);
+            else
+                [F, glitch] = self.setFrame(n, setrank);
+            end
         end
         
-        function [F, glitch] = setFrame(self, f)
+        function [F, glitch] = setFrame(self, f, fixedrank)
             % F = setFrame(n) jumps to the indicated frame of the current
             % type; Automatically clamps to [1 ... #frames]
             glitch = 0; % assume no problem...
             if f < 1; f = 1; glitch = -1; end
-            if f >= self.numFrames()
-                f = self.numFrames();
+            if f >= self.numFrames
+                f = self.numFrames;
                 glitch = 1;
             end
             
@@ -154,21 +174,32 @@ classdef SavefilePortal < handle
             self.currentFrame(self.typeToLoad) = f;
             
             self.pushdir(self.savefileDirectory);
+            r = -1;
+            
             if self.pParallelMode
                 r = mpi_myrank();
+            elseif nargin == 3
+                r = fixedrank;
+            end
+            
+            if r >= 0
                 F = util_LoadFrameSegment(self.typeToLoad, r, b(f));
             else
                 F = util_LoadWholeFrame(self.typeToLoad, b(f));
-
             end
+            
             self.popdir();
         end
             
-        function met = getMetadata(self, f)
+        function met = getMetadata(self, f, rankToLoad)
             glitch = 0; % assume no problem...
+            
+            if nargin < 3; rankToLoad = 0; end
+            if nargin < 2; f = self.currentFrame(self.typeToLoad); end
+            
             if f < 1; f = 1; glitch = -1; end
-            if f >= self.numFrames()
-                f = self.numFrames();
+            if f >= self.numFrames
+                f = self.numFrames;
                 glitch = 1;
             end
 
@@ -176,14 +207,25 @@ classdef SavefilePortal < handle
             self.currentFrame(self.typeToLoad) = f;
 
             self.pushdir(self.savefileDirectory);
-            rankToLoad = 0;
             met = util_LoadFrameSegment(self.typeToLoad, rankToLoad, b(f), 'metaonly');
+            self.popdir();
+        end
+        
+        function fname = getSegmentFilename(self, frameno, rankno)
+            if nargin < 3; rankno = 0; end
+            if nargin < 2; frameno = self.currentFrame(self.typeToLoad); end
+            
+            b = self.savefileList.(self.strnames{self.typeToLoad});
+            
+            self.pushdir(self.savefileDirectory);
+           [act, fname] = util_FindSegmentFile(self.typeToLoad, rankno, b(frameno)); 
+            self.popdir();
         end
 
         function arewe = atLastFrame(self)
             % true if the portal is currently aimed at the last frame of the
             % current type, otherwise false
-            arewe = (self.currentFrame(self.typeToLoad) == self.numFrames());
+            arewe = (self.currentFrame(self.typeToLoad) == self.numFrames);
         end
 
         function n = tellFrame(self)
@@ -192,16 +234,13 @@ classdef SavefilePortal < handle
             n = self.currentFrame(self.typeToLoad);
         end
 
-        function n = numFrames(self)
-        % n = numFrames() returns how many frames of the current type are
-        % accessible in the current directory. Set the type using the
-        % access* functions, or directly with .setFrametype(1...7)
-            n = numel(self.savefileList.(self.strnames{self.typeToLoad}));
-        end
 
         function rescanDirectory(self)
             self.pushdir(self.savefileDirectory);
             self.savefileList = enumerateSavefiles();
+            
+            self.updatePublicState();
+            
             self.popdir();
         end
         
@@ -224,6 +263,16 @@ classdef SavefilePortal < handle
     
     %===================================================================================================
     methods (Access = protected) %                                      P R O T E C T E D    [M]
+        function updatePublicState(self)
+            % n = numFrames returns how many frames of the current type are
+            % accessible in the current directory. Set the type using the
+            % access* functions, or directly with .setFrametype(1...7)
+            if ~isempty(self.savefileList)
+                self.numFrames = numel(self.savefileList.(self.strnames{self.typeToLoad}));
+            end
+            self.currentType = self.strnames{self.typeToLoad};
+        end
+
         function pushdir(self, D)
             self.directoryStack{end+1} = pwd();
             cd(D);

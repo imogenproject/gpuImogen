@@ -1,9 +1,10 @@
 function util_Frame2HDF(hname, frame)
 % function util_Frame2HDF(hname, frame)
-% saves the Imogen data frame 'frame' to the file named by 'hname' as a HDF5 file
+% saves the Imogen data frame 'frame' to the file named by 'hname' as an HDF5 file
 
 % prevent 0 elements glitch
 if numel(frame.time.history) == 0; frame.time.history = 0; end
+
 % Save the 'time' struct
 h5create(hname, '/timehist', size(frame.time.history), 'Datatype','double');
 
@@ -11,13 +12,21 @@ h5create(hname, '/dgridx', size(frame.dGrid{1}), 'Datatype', 'double');
 h5create(hname, '/dgridy', size(frame.dGrid{2}), 'Datatype', 'double');
 h5create(hname, '/dgridz', size(frame.dGrid{3}), 'Datatype', 'double');
 
-fluvars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
+if isfield(frame, 'momX')
+    fluvars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
+else
+    fluvars = {'mass', 'velX', 'velY', 'velZ', 'eint'};
+end
 for i = 1:5
     h5create(hname, ['/fluid1/' fluvars{i}], size(frame.(fluvars{i})), 'Datatype', 'double');
 end
 
 if isfield(frame, 'mass2')
-    flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+    if isfield(frame, 'momX2')
+        flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+    else
+        flu2vars = {'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
+    end
     for i = 1:5
         h5create(hname, ['/fluid2/' fluvars{i}], size(frame.(flu2vars{i})), 'Datatype', 'double');
     end
@@ -63,11 +72,9 @@ for i = 1:5
 end
 
 if isfield(frame, 'mass2')
-     flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
     for i = 1:5
         h5write(hname, ['/fluid2/' fluvars{i}], frame.(flu2vars{i}));
     end
-
 end
 
 h5write(hname, '/mag/X', frame.magX);

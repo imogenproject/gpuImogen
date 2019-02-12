@@ -37,13 +37,13 @@ KdotX = xv*Kvec(1) + yv*Kvec(2) + zv*Kvec(3);
 %machPerp     = IC.ini.backgroundMach' - Khat' * machParallel;
 
 % Output vars...
-rhoerr_L1 = zeros([1 S.numFrames()]);
-rhoerr_L2 = zeros([1 S.numFrames()]);
+rhoerr_L1 = zeros([1 S.numFrames]);
+rhoerr_L2 = zeros([1 S.numFrames]);
 %velerr_L1 = []; velerr_L2 = [];
-frameT = zeros([1 S.numFrames()]);
+frameT = zeros([1 S.numFrames]);
 
 % Iterating over all frames in sequence,
-for N = 1:S.numFrames()
+for N = 1:S.numFrames
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
