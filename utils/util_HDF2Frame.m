@@ -38,7 +38,30 @@ frame.dGrid{1} = h5read(hname, '/dgridx');
 frame.dGrid{2} = h5read(hname, '/dgridy');
 frame.dGrid{3} = h5read(hname, '/dgridz');
 
-if metaonly; return; end
+if metaonly
+    % Sooooooooo...
+    % it -appears- that Matlab's high level H5 wrapper does not include any sort of 
+    % ncInqVar or other inquisitive functionality, so we try to just read var(0,0,0).
+    % what kind of crazy would expect _that_ sort of functionality in a high level library
+    % though...
+    try
+        vf = 1;
+        vomit = h5read(hname, '/fluid1/momX', [1 1 1], [1 1 1]);
+    catch
+        vf = -1234;
+    end
+    if vf ~= -1234; frame.varFmt = 'conservative'; else; frame.varFmt = 'primitive'; end
+    
+    try
+        vomit = h5read(hname, '/fluid2/mass', [1 1 1], [1 1 1]);
+        vf = 1;
+    catch
+        vf = -1234;
+    end
+    if vf ~= -1234; frame.twoFluids = 1; else; frame.twoFluids = 0; end
+    
+    return;
+end
 
 varmode = 1;
 

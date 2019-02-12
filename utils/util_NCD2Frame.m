@@ -53,13 +53,31 @@ frame.dGrid{3} = netcdf.getVar(ncid, v);
 v = netcdf.inqVarID(ncid, 'dim');
 frame.dim = netcdf.getVar(ncid, v);
 
-if metaonly; netcdf.close(ncid); return; end
+if metaonly
+    % Injects potentially needful information which otherwise requires the vars to be present
+    try
+        vf = netcdf.inqVarId(ncid, 'momX');
+    catch
+        vf = -1234;
+    end
+    if vf ~= -1234; frame.varFmt = 'conservative'; else; frame.varFmt = 'primitive'; end
+    
+    try
+        vf = netcdf.inqVarID(ncid, 'mass2');
+    catch
+        vf = -1234;
+    end
+    if vf ~= -1234; frame.twoFluids = 1; else; frame.twoFluids = 0; end
+    
+    netcdf.close(ncid);
+    return;
+end
 
 % The main event: Deserialize the data arrays.
 v = netcdf.inqVarID(ncid, 'mass');
 frame.mass = netcdf.getVar(ncid, v);
 try
-    vf = netcdf.inqVarId(nvid, 'momX');
+    vf = netcdf.inqVarId(ncid, 'momX');
 catch
     vf = -1234;
 end

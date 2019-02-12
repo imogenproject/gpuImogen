@@ -11,6 +11,12 @@ if reverseIndexOrder
     warning('WARNING: reverseIndexOrder requested but exportAnimatedToXDMF does not support this. All output will retain original XYZ X-linear-stride order.');
 end
 
+autodetectVars = 0;
+if strcmp(varset{1}, 'detect')
+   disp('NOTICE: exportAnimatedToXDMF will detect all variables in first frame and export all.');
+   autodetectVars = 1;
+end
+
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 equilframe = [];
 
@@ -35,9 +41,6 @@ switch d.ini.geometry.pGeometryType
     case ENUM.GEOMETRY_CYLINDRICAL
         g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
 end
-
-% fixme shittastic hack
-vtype = 'primitive';
 
 outgeo = [outBasename '_geometry.h5'];
 disp('Emitting .h5 format geometry file...');
@@ -73,11 +76,31 @@ fprintf(outx, '        <Geometry name="thegeo" GeometryType="XYZ">\n');
 % [q(0,0,0) q(1,0,0) ... q(nx-1,0,0) q(0,1,0) ... q(nx-1, ny-1, 0) q(0,0,1), ... q(nx-1, ny-1, nz-1) ]
 fprintf(outx, '          <DataItem Dimensions="%li 3" NumberType="Float" Precision="4" Format="HDF">%s:/geometry_mesh</DataItem>\n', int64(prod(rez)), outgeo);
 fprintf(outx, '        </Geometry>\n');
+
+
 % First frame is 'special' because of the above, so do it by itself then close </grid>:
-SP.setFrame(range(1));
+SP.setMetamode(1); % do not load data, only metadata: extremely fast
+
+datameta = SP.setFrame(range(1));
 frname = SP.getSegmentFilename();
-datameta = SP.getMetadata();
-writeFrameAtts(outx, frname, datameta, rez, vtype);
+
+if autodetectVars
+    if datameta.twoFluids
+        if strcmp(datameta.varFmt, 'primitive')
+            varset = {'mass','velX','velY','velZ','eint', 'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
+        else
+            varset = {'mass','momX','momY','momZ','ener', 'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+        end
+    else
+        if strcmp(datameta.varFmt, 'primitive')
+            varset = {'mass','velX','velY','velZ','eint'};
+        else
+            varset = {'mass','momX','momY','momZ','ener'};
+        end
+    end
+end
+
+writeFrameAtts(outx, frname, datameta, rez, varset, timeNormalization);
 fprintf(outx, '      </Grid>\n');
 
 % Loop over all frames in the range, emitting a new <grid>...</grid> for each:
@@ -91,7 +114,7 @@ for N = 2:numel(range)
     fprintf(outx, '        <Topology Reference="/Xdmf/Domain/Grid/Grid/Topology[@name=''thetopo'']" />\n');
     fprintf(outx, '        <Geometry Reference="/Xdmf/Domain/Grid/Grid/Geometry[@name=''thegeo'']" />\n');
     
-    writeFrameAtts(outx, frname, datameta, rez, vtype);
+    writeFrameAtts(outx, frname, datameta, rez, varset, timeNormalization);
     %fprintf(outx, '        <Time Value="%f" />\n', tau);
     %fprintf(outx, '        <Attribute Name="mass" Active="1" AttributeType="Scalar" Center="Node">\n');
     %fprintf(outx, '          <DataItem Dimensions="%i %i %i" NumberType="Float" Precision="4" Format="HDF">%s:/fluid1/mass</DataItem>\n', rez(3), rez(2), rez(1), frname);
@@ -108,19 +131,12 @@ fclose(outx);
 
 end
 
-function writeFrameAtts(outx, frfile, frmeta, rez, vtype)
+function writeFrameAtts(outx, frfile, frmeta, rez, varnames, timefactor)
 
 tau = sum(frmeta.time.history);
-fprintf(outx, '        <Time Value="%f" />\n', tau);
-% FIXME need to put loop over variables in here
+fprintf(outx, '        <Time Value="%f" />\n', tau / timefactor);
 
-if strcmp(vtype, 'conservative')
-    varnames = {'mass','momX','momY','momZ','ener'};    
-else
-    varnames = {'mass','velX','velY','velZ','eint'};
-end
-
-for p = 1:4
+for p = 1:numel(varnames)
     fprintf(outx, '        <Attribute Name="%s" Active="1" AttributeType="Scalar" Center="Node">\n', varnames{p});
     fprintf(outx, '          <DataItem Dimensions="%i %i %i" NumberType="Float" Precision="4" Format="HDF">%s:/fluid1/%s</DataItem>\n', rez(3), rez(2), rez(1), frfile, varnames{p});
     fprintf(outx, '        </Attribute>\n');

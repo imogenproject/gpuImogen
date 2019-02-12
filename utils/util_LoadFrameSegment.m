@@ -18,6 +18,10 @@ try
         tempname = load(fname);
         nom_de_plume = fieldnames(tempname);
         dataframe = tempname.(nom_de_plume{1});
+        if meta
+        if isfield(dataframe, 'momX'); dataframe.varFormat = 'conservative'; else; dataframe.varFormat = 'primitive'; end
+        if isfield(dataframe, 'mass2'); dataframe.twoFluids = 1; else; dataframe.twoFluids = 0; end
+        end
     end
     if act == ENUM.FORMAT_HDF; dataframe = util_HDF2Frame(fname, meta); end
 catch ERR

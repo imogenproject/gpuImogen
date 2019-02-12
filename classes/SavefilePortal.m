@@ -23,6 +23,7 @@ classdef SavefilePortal < handle
         directoryStack;
 
         pParallelMode;
+        pMetamode;
     end %PROTECTED
     
     %===================================================================================================
@@ -48,6 +49,7 @@ classdef SavefilePortal < handle
             self.rescanDirectory();
             
             self.setParallelMode(0);
+            self.setMetamode(0);
         end
 
         function setParallelMode(self, enable)
@@ -62,6 +64,10 @@ classdef SavefilePortal < handle
             end
         end
 
+        function setMetamode(self, m)
+            if m; self.pMetamode = 'metaonly'; else; self.pMetamode = ''; end 
+        end
+        
         function changeDirectory(self, nwd)
             % changeDirectory(nwd) makes the portal operate on the New
             % Working Directory; Resets the portal (all frames -> first).
@@ -173,21 +179,20 @@ classdef SavefilePortal < handle
             b = self.savefileList.(self.strnames{self.typeToLoad});
             self.currentFrame(self.typeToLoad) = f;
             
-            self.pushdir(self.savefileDirectory);
             r = -1;
-            
             if self.pParallelMode
                 r = mpi_myrank();
             elseif nargin == 3
                 r = fixedrank;
             end
             
-            if r >= 0
-                F = util_LoadFrameSegment(self.typeToLoad, r, b(f));
+            self.pushdir(self.savefileDirectory);
+            if (r >= 0) || (strcmp(self.pMetamode, 'metaonly'))
+                if r < 0; r = 0; end
+                F = util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode);
             else
                 F = util_LoadWholeFrame(self.typeToLoad, b(f));
             end
-            
             self.popdir();
         end
             
@@ -197,18 +202,15 @@ classdef SavefilePortal < handle
             if nargin < 3; rankToLoad = 0; end
             if nargin < 2; f = self.currentFrame(self.typeToLoad); end
             
+            m = self.pMetamode; self.pMetamode = 'metaonly';
+            met = self.setFrame(f, rankToLoad);
+            self.pMetamode = m;
+            
             if f < 1; f = 1; glitch = -1; end
             if f >= self.numFrames
                 f = self.numFrames;
                 glitch = 1;
             end
-
-            b = self.savefileList.(self.strnames{self.typeToLoad});
-            self.currentFrame(self.typeToLoad) = f;
-
-            self.pushdir(self.savefileDirectory);
-            met = util_LoadFrameSegment(self.typeToLoad, rankToLoad, b(f), 'metaonly');
-            self.popdir();
         end
         
         function fname = getSegmentFilename(self, frameno, rankno)
