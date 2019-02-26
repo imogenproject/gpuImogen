@@ -1,4 +1,4 @@
-function topology = parallel_topology(context, numDimensions)
+function topology = parallel_topology(context, numDimensions, isfake)
 % FIXME This needs to take a grid resolution to do its job right...
 % FIXME Currently it simply attempts to make the most logically cubical
 % grid, which is profoundly WRONG for simulation grids which are not
@@ -53,7 +53,11 @@ myright(3) = tupleToRank([mycoord(1) mycoord(2) myright(3)], nProc);
 
 % Build a big friendly structure & return it after MPI builds the directional communicators
 topoA = struct('ndim', numDimensions, 'comm', context.comm, 'coord', mycoord, 'neighbor_left', myleft, 'neighbor_right', myright, 'nproc', nProc, 'dimcomm', [-1 -1 -1]);
-topology = mpi_createDimcomm(topoA);
+if nargin < 3 % if we're not faking it
+    topology = mpi_createDimcomm(topoA);
+else
+    topology = topoA;
+end
 
 end
 

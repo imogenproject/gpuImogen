@@ -20,6 +20,8 @@ classdef TimeManager < handle
         timePercent; % Percent complete based on simulation time.                    double
         iterPercent; % Percent complete based on iterations of maximum.              double
         wallPercent; % Percent complete based on wall time.                          double
+        
+        lastOutputPercent; % Last [time iter wall] %age we printed status info at    double 3x1
         running;     % Specifies if the simulation should continue running.          logical
         dtAverage;   % The accumulated mean timestep                                 double
 
@@ -33,6 +35,11 @@ classdef TimeManager < handle
     properties (SetAccess = public, GetAccess = private) %                        P R I V A T E [P]
         parent;      % Parent manager                                                ImogenManager
     end %PRIVATE
+    
+    properties (SetAccess = private, GetAccess = private)
+        pItersDigits; 
+        pLogString;
+    end
     
     %==============================================================================================
     methods %                                                                    G E T / S E T  [M]
@@ -55,8 +62,11 @@ classdef TimeManager < handle
         % Creates a new TimeManager instance.
         function obj = TimeManager()
             obj.startTime   = clock;
-            obj.time        = 0;
+            obj.startSecs   = 0; % totally invalid input but prevents a crash
             obj.dTime       = 0;
+            
+            obj.time        = 0;
+            obj.wallTime    = 0;
             obj.iteration   = 0;
             obj.ITERMAX     = 1000;
             obj.TIMEMAX     = 5000;
@@ -65,7 +75,9 @@ classdef TimeManager < handle
             obj.iterPercent = 0;
             obj.timePercent = 0;
             obj.wallPercent = 0;
+            obj.lastOutputPercent = [-100 -100 -100];
             obj.dtAverage   = 0;
+            obj.pLogString  = '';
             
             obj.stepsPerChkpt=25;
             obj.stepsSinceIncident = inf;
@@ -152,9 +164,12 @@ classdef TimeManager < handle
             if obj.iteration < 5
                 switch obj.iteration
                     
-                    case 1        %Activate clock timer for the first loop
+                    case 0        %Activate clock timer for the first loop
                         obj.startSecs = tic;
-                        
+                        obj.pItersDigits = ceil(log10(obj.ITERMAX)); %
+                        obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %i iter/s | by %s at%s ]]\n';
+                        obj.pLogString(6) = sprintf('%i',obj.pItersDigits);
+                        obj.pLogString(11) = sprintf('%i',obj.pItersDigits);
                     case 4        %Stop clock timer and use the elapsed time to predict total run time
                         tPerStep = toc(obj.startSecs)/3;
                         save.logPrint('\tFirst three timesteps averaged %0.4g secs ea.\n', tPerStep);
@@ -184,7 +199,10 @@ classdef TimeManager < handle
             
             %--- Update UI for critical loops ---%
             %           Displays information to the UI for critical points during the run.
-            if (save.updateUI)
+            movement = [obj.timePercent, obj.iterPercent, obj.wallPercent] - obj.lastOutputPercent;
+            doUpdate = any(movement > 10);
+            
+            if (doUpdate)
                 [compPer, index] = max([obj.timePercent, obj.iterPercent, obj.wallPercent]);
                 switch index
                     case 1
@@ -199,8 +217,12 @@ classdef TimeManager < handle
                 
                 %--- Prepare and display the UI update string ---%
                 cTime   = now;
-                curTime = strcat(datestr(cTime , 'HH:MM:SS PM'),' on', datestr(cTime, ' mm-dd-yy'));
-                save.logPrint('[[ %0.3g%% | %s |  %s | avg %i iter/s ]]\n', compPer, infoStr, curTime, obj.iteration/toc(obj.startSecs));
+                curTime = strcat(datestr(cTime , 'HH:MM:SS PM'),' on ', datestr(cTime, ' mm-dd-yy'));
+               
+                save.logPrint(obj.pLogString, obj.iteration, obj.ITERMAX, obj.time, obj.TIMEMAX, obj.iteration/toc(obj.startSecs), info{1}, curTime);
+                %save.logPrint('[[ %0.3g%% | %s |  %s | avg %i iter/s ]]\n', compPer, infoStr, curTime, obj.iteration/toc(obj.startSecs));
+                
+                obj.lastOutputPercent = [obj.timePercent, obj.iterPercent, obj.wallPercent];
             end
             
             obj.parent.abortCheck();
@@ -218,11 +240,32 @@ classdef TimeManager < handle
         function step(obj)
             obj.iteration   = obj.iteration + 1;
             obj.time        = obj.time + 2*obj.dTime;
+            obj.wallTime    = etime(clock(), obj.startTime)/3600;
+            
             obj.timePercent = 100*obj.time/obj.TIMEMAX;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
+            obj.wallPercent = 100*obj.wallTime/obj.WALLMAX;
             
             obj.updateUI();
             obj.appendHistory();
+        end
+        
+        function fakeStep(obj)
+            % Updates the vars that determine if we will save after this step
+            % Needed because we need to 'peek' at this result before stepping,
+            % in order to determine whether to take a halfstep on the source operators in order
+            % to have 2nd order time accuracy when saving
+            obj.iteration   = obj.iteration + 1;
+            obj.time        = obj.time + 2*obj.dTime;
+            obj.timePercent = 100*obj.time/obj.TIMEMAX;
+            obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
+        end
+        function fakeBackstep(obj)
+            % Reverses the result of a fakeStep
+            obj.iteration   = obj.iteration - 1;
+            obj.time        = obj.time - 2*obj.dTime;
+            obj.timePercent = 100*obj.time/obj.TIMEMAX;
+            obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
         end
         
         %__________________________________________________________________________________ toStruct

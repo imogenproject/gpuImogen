@@ -17,6 +17,8 @@ if strcmp(varset{1}, 'detect')
    autodetectVars = 1;
 end
 
+
+
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 equilframe = [];
 
@@ -29,23 +31,41 @@ tic;
 
 stepnums = zeros([ntotal 1]);
 
-%fixme FIXME Fixme - problem, this is being acquired in various places as needed. Yuck. standardize
-%that process so we get it in one location. 
+% part A - use ranks?
 
-% Acquire geometry data in order to emit geometry file
-d = SP.getInitialConditions();
-g = GeometryManager(d.ini.geometry.globalDomainRez);
-switch d.ini.geometry.pGeometryType
-    case ENUM.GEOMETRY_SQUARE
-        g.geometrySquare(d.ini.geometry.affine, d.ini.geometry.d3h);
-    case ENUM.GEOMETRY_CYLINDRICAL
-        g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+pg = ParallelGlobals();
+
+fakeranks = 1;
+c = pg.context; c.size = fakeranks;
+
+for N = 1:fakeranks
+    c.rank = N-1;
+    pg.setNewContext(c);
+    
+    pg.setNewTopology(3, 'fakeAsHell');
+    
+
+    %fixme FIXME Fixme - problem, this is being acquired in various places as needed. Yuck. standardize
+    %that process so we get it in one location.
+    
+    % Acquire geometry data in order to emit geometry file
+    d = SP.getInitialConditions();
+    g = GeometryManager(d.ini.geometry.globalDomainRez);
+    switch d.ini.geometry.pGeometryType
+        case ENUM.GEOMETRY_SQUARE
+            g.geometrySquare(d.ini.geometry.affine, d.ini.geometry.d3h);
+        case ENUM.GEOMETRY_CYLINDRICAL
+            g.geometryCylindrical(d.ini.geometry.affine(1), round(2*pi/(d.ini.geometry.d3h(2)*d.ini.geometry.globalDomainRez(2))), d.ini.geometry.d3h(1), d.ini.geometry.affine(2), d.ini.geometry.d3h(3));
+    end
+    
+    outgeo = [outBasename '_geometry%i.h5'];
+    outgeo = sprintf(outgeo, N)
+    disp('Emitting .h5 format geometry file...');
+    writeXdmfGeometryFile(outgeo, g);
+    disp('Success.');
+
 end
 
-outgeo = [outBasename '_geometry.h5'];
-disp('Emitting .h5 format geometry file...');
-writeXdmfGeometryFile(outgeo, g);
-disp('Success.');
 
 outx = fopen([outBasename '_meta.xdmf'],'w');
 

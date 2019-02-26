@@ -9,7 +9,6 @@ classdef SaveManager < LinkedListNode
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public, Transient = true) %         P U B L I C  [P]
         %--- Results related logical states ---%
-        updateUI; % Specifies if the UI should be updated.                               logical
         saveData % Specifies whether or not to save.                                     logical
         save1DData % Specifies whether or not to save 1D slices.                         logical
         save2DData % Specifies whether or not to save 2D slices.                         logical
@@ -73,7 +72,6 @@ classdef SaveManager < LinkedListNode
     end
             
     end
-    
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
@@ -194,7 +192,6 @@ classdef SaveManager < LinkedListNode
 % first.
     function updateDataSaves(obj)
         time = obj.parent.time;
-        time.updateWallTime();
         
         [~, index] = max([time.iterPercent, time.timePercent, time.wallPercent]);
         switch index
@@ -206,10 +203,34 @@ classdef SaveManager < LinkedListNode
                 obj.updateWallDataSaves(time);
         end
         
-                    obj.updateOverrides(time.iteration);
-                    obj.scheduleSave();
+        obj.updateOverrides(time.iteration);
+        obj.scheduleSave();
     end
-                    
+    
+    function willsave = peekAtSave(obj)
+        time = obj.parent.time;
+        time.updateWallTime(); % may as well...
+        
+        time.fakeStep();
+        [~, index] = max([time.iterPercent, time.timePercent, time.wallPercent]);
+        switch index
+            case 1
+                willsave = max(round(time.ITERMAX*([obj.PERSLICE/100])), 1);
+                willsave = min(willsave, max(floor(time.ITERMAX/4),1)); % At least 4 saves if MAXITER >= 4.
+                willsave = mod(time.iteration, willsave);               % Critical loop test.
+            case 2
+                currentFraction = time.time / time.TIMEMAX - obj.previousUpdateTimes;
+                % yes/no on whether we've passed the fraction to trigger a save for this slice
+                willsave = 100*currentFraction >= [obj.PERSLICE 10];
+            case 3
+                willsave = (time.wallPercent - 100*obj.previousUpdateWallTimes/time.WALLMAX) ...
+                    >= [obj.PERSLICE 10];
+        end
+        time.fakeBackstep();
+        
+        willsave = any(willsave);
+    end
+    
 %__________________________________________________________________________________ updateOverrides
     function updateOverrides(obj,iteration)
         special = (obj.done || obj.firstSave);
@@ -279,7 +300,6 @@ methods (Access = private) %                                               P R I
         obj.save2DData      = wallUpdates(2);
         obj.save3DData      = wallUpdates(3);
         obj.saveCustomData        = wallUpdates(4);
-        obj.updateUI        = wallUpdates(5);
         
         for i=1:length(wallUpdates)
             if wallUpdates(i)
@@ -303,7 +323,6 @@ methods (Access = private) %                                               P R I
         obj.save2DData      = timeUpdates(2);
         obj.save3DData      = timeUpdates(3);
         obj.saveCustomData  = timeUpdates(4);
-        obj.updateUI        = timeUpdates(5);
         
         for i=1:length(timeUpdates)
             if timeUpdates(i)
@@ -327,7 +346,6 @@ methods (Access = private) %                                               P R I
         obj.save2DData                = ~logical(modVal(2));
         obj.save3DData                = ~logical(modVal(3));
         obj.saveCustomData        = ~logical(modVal(4));
-        obj.updateUI                = ~logical(modVal(5));
         
         for i=1:length(modVal)
             if ~logical(modVal(i))

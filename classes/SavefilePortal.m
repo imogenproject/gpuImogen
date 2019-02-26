@@ -9,6 +9,8 @@ classdef SavefilePortal < handle
     properties (SetAccess = protected, GetAccess = public) %                           P U B L I C  [P]
         numFrames;
         currentType;
+        
+
     end %PUBLIC
     
     %===================================================================================================
@@ -20,6 +22,9 @@ classdef SavefilePortal < handle
         savefileList;
         strnames={'X','Y','Z','XY','XZ','YZ','XYZ'};
 
+        % the default, code-generated prefixes used to name the 7 save output types
+        standardNamePrefixes = {'1D_X', '1D_Y', '1D_Z', '2D_XY', '2D_XZ', '2D_YZ', '3D_XYZ'};
+        
         directoryStack;
 
         pParallelMode;
@@ -129,7 +134,7 @@ classdef SavefilePortal < handle
             % F = nextFrame() returns the next Imogen saveframe of the
             % currently selected type
             n = self.currentFrame(self.typeToLoad) + 1;
-            if nargin == 2
+            if nargin < 2
                 [F, glitch] = self.setFrame(n);
             else
                 [F, glitch] = self.setFrame(n, setrank);
@@ -140,7 +145,7 @@ classdef SavefilePortal < handle
             % F = previousFrame() returns the previous Imogen saveframe of
             % the current type
             n = self.currentFrame(self.typeToLoad)-1;
-            if nargin == 2
+            if nargin < 2
                 [F, glitch] = self.setFrame(n);
             else
                 [F, glitch] = self.setFrame(n, setrank);
@@ -149,7 +154,7 @@ classdef SavefilePortal < handle
         
         function [F, glitch] = jumpToFirstFrame(self, setrank)
             % Resets the current frame to the first
-            if nargin == 2
+            if nargin < 2
                 [F, glitch] = self.setFrame(1);
             else
                 [F, glitch] = self.setFrame(1, setrank);
@@ -159,7 +164,7 @@ classdef SavefilePortal < handle
         function [F, glitch] = jumpToLastFrame(self, setrank)
            % Hop to the last frame available
            n = self.numFrames;
-           if nargin == 2
+           if nargin < 2
                 [F, glitch] = self.setFrame(n);
             else
                 [F, glitch] = self.setFrame(n, setrank);
@@ -261,6 +266,10 @@ classdef SavefilePortal < handle
             S = u.IC;
         end
 
+        function n = getFilenamePrefix(self)
+            n = self.standardNamePrefixes{self.typeToLoad};
+        end
+        
     end%PUBLIC
     
     %===================================================================================================

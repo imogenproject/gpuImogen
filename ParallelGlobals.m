@@ -31,9 +31,18 @@ classdef ParallelGlobals < handle
             instance = obj;
         end
 
-        function setNewTopology(self, topodim)
+        function setNewContext(self, cont)
+            self.context = cont;
+        end
+        
+        function setNewTopology(self, topodim, isfake)
             self.topology = mpi_deleteDimcomm(self.topology); % wipe out MPI communicators
-            self.topology = parallel_topology(self.context, topodim);
+            
+            if nargin == 3
+                self.topology = parallel_topology(self.context, topodim, 'fake');
+            else
+                self.topology = parallel_topology(self.context, topodim);
+            end
         end
    end
 end
