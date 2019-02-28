@@ -1,4 +1,4 @@
-function test_mpi(rez)
+function test_mpi_matlab(rez)
 
 if nargin < 1
     rez = [32 32 32];
@@ -13,117 +13,76 @@ MYID = context.rank;
 
 geometry = GeometryManager(rez);
 
-x = ones([5 1])*MYID;
-xout = mpi_allgather(x);
+if MYID == 0; fprintf('TESTING SEND/RECV ------------\n'); end
 
-if MYID == 0; fprintf('FIXME: didnt actually test mpi_allgather...\n'); end
+for vartype=1:9
+    rng(0);
+    typestr = MPI_Syms.typename(vartype);
+        
+    succeed = 0;
+    if context.rank == 0
+        v = maketype(rand([1024 1]), vartype);
+
+        for Q = 1:(context.size-1); mpi_send(v, Q); end
+    else
+        v = mpi_recv(vartype, 0);
+        vtrue = maketype(rand([1024 1]), vartype);
+
+        if v ~= vtrue; succeed = 1; end            
+    end
+    fail = mpi_any(succeed);
+    if (MYID==0);
+        if fail; fprintf('    Tested MPI_Send/MPI_Recv of %s; Result: FAILURE!\n', typestr); else; fprintf('    Tested MPI_Send/MPI_Recv of %s; Result: Success.\n', typestr); end
+    end
+
+end
 
 mpi_barrier();
+
 if MYID == 0; fprintf('TESTING REDUCTION FUNCTIONS ------------\n'); end
-rng(MYID); res = 400;
+rng(MYID); res = 6;
 alpha = rand(res);
 beta  = single(alpha);
 gamma = int32(round(alpha));
 
-% TEST PARALLEL all() (aka MPI_BAND)
-A = mpi_all(round(alpha));
-B = mpi_all(round(beta));
-C = mpi_all(gamma);
+testerfunc = @(y, a, b, c) any(y(:) - a(:)) | any(y(:) - b(:)) | any(int32(y(:)) - c(:));
 
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    trueans = round(trueans);
-    for n = 2:context.size
-        rng(n-1); tst = rand(res);
-        trueans = trueans .* round(tst);
-    end
-    trueans = (trueans ~= 0);
-    fail = any(trueans(:) - A(:)) | any(trueans(:) - B(:)) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_LAND. Result: FAILURE!\n'); else fprintf('Tested MPI_LAND; Result: Success.\n'); end
-end
+funcpairs = cell([7 3]);
+funcpairs(1,:) = { @(x) mpi_all(round(x)), @(u, v) round(u) .* round(v), 'MPI_LAND'};
+funcpairs(2,:) = { @(x) mpi_any(round(x)), @(u, v) round(u) + round(v), 'MPI_LOR'};
+funcpairs(3,:) = { @ mpi_max, @(u, v) max(u, v), 'MPI_MAX'};
+funcpairs(4,:) = { @ mpi_min, @(u, v) min(u, v), 'MPI_MIN'};
+funcpairs(5,:) = { @(x) mpi_allgather(x(:)), @(u, v) [u(:); v(:)], 'MPI_ALLGATHER'};
+funcpairs(6,:) = { @ mpi_prod, @(u, v) u .* v, 'MPI_PROD'};
+funcpairs(7,:) = { @ mpi_sum, @(u, v) u + v, 'MPI_SUM'};
 
-% TEST PARALLEL any() (aka MPI_BOR)
-A = mpi_any(round(alpha));
-B = mpi_any(round(beta));
-C = mpi_any(gamma);
 
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    trueans = round(trueans);
-    for n = 2:context.size
-        rng(n-1); tst = rand(res);
-        trueans = trueans + round(tst);
-    end
-    trueans = (trueans ~= 0);
-    fail = any(trueans(:) - A(:)) | any(trueans(:) - B(:)) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_LOR. Result: FAILURE!\n'); else; fprintf('Tested MPI_LOR; Result: Success.\n'); end
-end
+for theta = 1:7;
+    A = funcpairs{theta,1}(alpha);
+    B = funcpairs{theta,1}(beta);
+    C = funcpairs{theta,1}(gamma);
 
-% TEST MAX(x)
-A = mpi_max(alpha);
-B = mpi_max(beta);
-C = mpi_max(gamma);
-
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    for n = 2:context.size
-        rng(n-1); 
-        trueans = max(trueans, rand(res));
+    if MYID == 0
+        rng(0);
+        trueans = rand(res);
+        for n = 2:context.size
+            rng(n-1);
+            trueans = funcpairs{theta,2}(trueans , rand(res));
+        end
+        
+        if theta < 3;
+            trueans = (trueans ~= 0);
+            fail = testerfunc(trueans, A, B, C);
+        else
+            if theta < 6
+                fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6) | any(int32(trueans(:)) - C(:));
+            else
+                fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6);
+            end
+        end
+        if fail; fprintf('    Tested %14s; Result: FAILURE!\n', funcpairs{theta, 3}); else fprintf('    Tested %14s; Result: Success.\n', funcpairs{theta, 3}); end
     end
 
-    fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_MAX. Result: FAILURE!\n'); else; fprintf('Tested MPI_MAX; Result: Success.\n'); end
-end
-
-% TEST MIN(x)
-A = mpi_min(alpha);
-B = mpi_min(beta);
-C = mpi_min(gamma);
-
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    for n = 2:context.size
-        rng(n-1);
-        trueans = min(trueans, rand(res));
-    end
-    fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6) | any(int32(trueans(:)) - C(:));
-    if fail; fprintf('Tested MPI_MIN. Result: FAILURE!\n'); else; fprintf('Tested MPI_MIN; Result: Success.\n'); end
-end
-
-% TEST MPI_PROD
-A = mpi_prod(alpha);
-B = mpi_prod(beta);
-C = mpi_prod(gamma);
-
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    for n = 2:context.size
-        rng(n-1);
-        trueans = trueans .* rand(res);
-    end
-    fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6);
-    if fail; fprintf('Tested MPI_PROD. Result: FAILURE!\n'); else; fprintf('Tested MPI_PROD; Result: Success.\n'); end
-end
-
-% TEST MPI_SUM
-A = mpi_sum(alpha);
-B = mpi_sum(beta);
-C = mpi_sum(gamma);
-
-if MYID == 0
-    rng(0);
-    trueans = rand(res);
-    for n = 2:context.size
-        rng(n-1);
-        trueans = trueans + rand(res);
-    end
-    fail = any(trueans(:) - A(:)) | any(abs(trueans(:) - B(:)) > 1e-6);
-    if fail; fprintf('Tested MPI_SUM. Result: FAILURE!\n'); else; fprintf('Tested MPI_SUM; Result: Success.\n'); end
 end
 
 mpi_barrier();
@@ -138,3 +97,20 @@ end
 
 end
 
+function y = maketype(x, t)
+% Assuming 'x' was generated by rand(...), converts it into a full-range variable of type MPI_Syms.*
+% i.e. floats stay float, uint32 is round(x*4 billion), int16 is 32767*(x-.5), etc
+
+switch(t) 
+    case MPI_Syms.ML_MPIDOUBLE; y = x;
+    case MPI_Syms.ML_MPISINGLE; y = single(x);
+    case MPI_Syms.ML_MPIUINT16; y = uint16(round(65535 * x));
+    case MPI_Syms.ML_MPIINT16;  y = int16(round(32767*(x-.5)));
+    case MPI_Syms.ML_MPIUINT32; y = uint32(round(4294967295*x));
+    case MPI_Syms.ML_MPIINT32;  y = int32(round(2147483647*(x-.5)));
+    case MPI_Syms.ML_MPIUINT64; y = uint64(round(4294967295*x));
+    case MPI_Syms.ML_MPIINT64;  y = int64(round(2147483647*(x-.5)));
+    case MPI_Syms.ML_MPICHAR;   y = char(65 + round(64*x));
+end
+
+end

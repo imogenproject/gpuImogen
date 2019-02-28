@@ -6,7 +6,7 @@ include ../Make.config
 NVCC_OPTS = -arch=$(CUDA_ARCH) -O1 -g
 NVCC_INCL = -I$(MATLAB_DIR)/extern/include
 
-MEX_OPTS = -DUNIX -g -R2018a
+MEX_OPTS = -DUNIX -g -R2018a -DDEBUG_OUTPUT
 MEX_INCL = -I$(MATLAB_DIR)/extern/include
 MEX_LIBS = 
 MEX_LDIR = -L$(MATLAB_DIR)/runtime/glnxa64
@@ -16,8 +16,20 @@ PAR_LDIR = -L$(MPI_DIR)/lib
 PAR_LIBS = -lmpi -lmpi_cxx
 
 ###############################################################################
-all: debugSpin mpi_amirank0 mpi_abort mpi_all mpi_allgather mpi_any mpi_barrier mpi_basicinfo mpi_dimreduce mpi_errortest mpi_finalize mpi_init mpi_isinitialized mpi_myrank mpi_min mpi_max mpi_sum mpi_prod mpi_scatter mpi_createDimcomm mpi_deleteDimcomm generateTestExchanges
-	echo "Finished!"
+all: mpi_informative mpi_therest teststuff
+
+teststuff: mpi_send mpi_recv
+
+mpi_send mpi_recv:
+	 mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) $@.cpp -output $@
+
+
+
+mpi_therest: debugSpin mpi_abort mpi_all mpi_allgather mpi_any mpi_barrier mpi_dimreduce mpi_min mpi_max mpi_sum mpi_prod mpi_scatter mpi_createDimcomm mpi_deleteDimcomm generateTestExchanges
+	echo "Built remaining mpi functions"
+
+mpi_informative: mpi_amirank0 mpi_basicinfo mpi_errortest mpi_init mpi_isinitialized mpi_finalize mpi_myrank
+	echo "Done building informative functions"
 
 standalone: mpi_standalone_helloworld.c
 	gcc -I$(CUDA_DIR)/include -L$(CUDA_DIR)/lib64 mpi_standalone_helloworld.c -o mpi_hello -lmpi -lcudart

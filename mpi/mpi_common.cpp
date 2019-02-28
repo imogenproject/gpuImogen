@@ -264,45 +264,41 @@ int mpi_exchangeHalos(ParallelTopology *topo, int dim, void *sendLeft,
 	int rank;
 	MPI_Comm_rank(topo_comm, &rank);
 
+int debugcrap = 0;
+#ifdef DEBUG_OUTPUT
+debugcrap = 1;
+#endif
 
-//	printf("[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim]);
+	if(debugcrap) printf("[%d]: dim_contig: dim=%d coord=%d neighbor=(%d %d)\n", rank, dim, topo->coord[dim], topo->neighbor_left[dim], topo->neighbor_right[dim]);
 
 	/** Post recvs of data _into_ this processor's halo regions.
 	 *
 	 * It is a good idea to do this first so that there
 	 * is a known storage location for incoming messages.
 	 */
-//printf("[%d]: Posting MPI_Irecv(ptr, %i, MPI_DOUBLE, %i, 13, %i);\n", rank, numel, topo->neighbor_left[dim], topo_comm);
-	MPI_Irecv(recvLeft,  numel, dt, topo->neighbor_left [dim], 13, topo_comm, &requests[0]);
-//printf("[%d]: Posting MPI_Irecv(ptr, %i, MPI_DOUBLE, %i, 14, %i);\n", rank, numel, topo->neighbor_right[dim], topo_comm);
-	MPI_Irecv(recvRight, numel, dt, topo->neighbor_right[dim], 14, topo_comm, &requests[1]);
 
-	/** Start sending data _from_ this processor's interior regions.
-	 *
-	 * This can be done with blocking sends as we
-	 * don't really have anything else to do anyway.
-	 */
-	MPI_Isend(sendLeft,  numel, dt, topo->neighbor_left [dim], 14, topo_comm, &requests[2]);
-	MPI_Isend(sendRight, numel, dt, topo->neighbor_right[dim], 13, topo_comm, &requests[3]);
+int status = MPI_Sendrecv(sendRight, numel, dt, topo->neighbor_right[dim], 13, recvLeft, numel, dt, topo->neighbor_left[dim], 13, topo_comm, &howDidItGo[0]);
+int statusB = MPI_Sendrecv(sendLeft, numel, dt, topo->neighbor_left[dim], 14, recvRight, numel, dt, topo->neighbor_right[dim], 14, topo_comm, &howDidItGo[1]);
 
-	// Wait until all transceiving is complete
-	int ohdear = MPI_Waitall(4, &requests[0], &howDidItGo[0]);
+MPI_Barrier(MPI_COMM_WORLD);
 
-	if(ohdear != MPI_SUCCESS) {
-		printf("RANK %i: Oh dear, return was not success!");
-		switch(ohdear) { 
-			case MPI_ERR_REQUEST: printf("MPI_ERR_REQUEST\n"); break;
-			case MPI_ERR_ARG: printf("MPI_ERR_ARG\n"); break;
-			case MPI_ERR_IN_STATUS: printf("MPI_ERR_IN_STATUS\n"); break;
-			}
+if((status != MPI_SUCCESS) || (statusB != MPI_SUCCESS)) {
+	printf("RANK %i: Oh dear, return was unsuccessful!");
+	switch(ohdear) { 
+		case MPI_ERR_REQUEST: printf("MPI_ERR_REQUEST\n"); return ERROR_INVALID_ARGS; break;
+		case MPI_ERR_ARG: printf("MPI_ERR_ARG\n"); return ERROR_INVALID_ARGS; break;
+		case MPI_ERR_IN_STATUS:
+			printf("MPI_ERR_IN_STATUS\n");
+       			printf("RANK %i: status 0 (rx left): ", rank); printAboutMPIStatus(&howDidItGo[0]);
+       			printf("RANK %i: status 1 (rx rite): ", rank); printAboutMPIStatus(&howDidItGo[0]);
+			return ERROR_CRASH;
+			break;
 		}
-#ifdef DEBUG_OUTPUT
-	printf("RANK %i: Emitting excessive debug info just because.\n");
-        printf("RANK %i: status 0 (rx left):  ", rank); printAboutMPIStatus(&howDidItGo[0]);
-        printf("RANK %i: status 1 (rx right): ", rank); printAboutMPIStatus(&howDidItGo[1]);
-        printf("RANK %i: status 2 (tx left):  ", rank); printAboutMPIStatus(&howDidItGo[2]);
-        printf("RANK %i: status 3 (tx right): ", rank); printAboutMPIStatus(&howDidItGo[3]);
-#endif
+	} else {
+		return SUCCESSFUL;
+	}
+
+
 
 }
 
