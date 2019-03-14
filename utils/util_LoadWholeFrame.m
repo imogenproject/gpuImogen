@@ -77,34 +77,29 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
                   frame.parallel.myOffset(3)+(1:frmsize(3))};
               
         if isfield(frame, 'momX') % conservative vars
-            dovars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
-            dovars2= {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+            if isfield(frame, 'mass2');
+                dovars= {'mass', 'momX', 'momY', 'momZ', 'ener', 'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+            else
+                dovars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
+            end
         else
-            dovars = {'mass', 'velX', 'velY', 'velZ', 'eint'};
-            dovars2= {'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
+            if isfield(frame, 'mass2')
+                dovars = {'mass', 'velX', 'velY', 'velZ', 'eint', 'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
+            else
+                dovars = {'mass', 'velX', 'velY', 'velZ', 'eint'};
+            end
         end
         
-        for q = 1:5
+        for q = 1:numel(dovars)
             bigFrame.(dovars{q})(frmset{1}, frmset{2}, frmset{3}) = trimHalo(frame.(dovars{q}), frame);
         end
 
-        %bigFrame.mass(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.mass, frame);
-        %bigFrame.momX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momX, frame);
-        %bigFrame.momY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momY, frame);
-        %bigFrame.momZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.momZ, frame);
-        %bigFrame.ener(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.ener, frame);
         if numel(frame.magX) > 1
             bigFrame.magX(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magX, frame);
             bigFrame.magY(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magY, frame);
             bigFrame.magZ(frmset{1},frmset{2},frmset{3}) = trimHalo(frame.magZ, frame);
         end
         
-        if isfield(frame,'mass2') % also load secondary plane
-            for q = 1:5
-                bigFrame.(dovars{q})(frmset{1}, frmset{2}, frmset{3}) = trimHalo(frame.(dovars{q}), frame);
-            end
-        end
-
         if u == numel(ranks); break; end
         u=u+1;
         frame = util_LoadFrameSegment(basename, ranks(u), framenum);
