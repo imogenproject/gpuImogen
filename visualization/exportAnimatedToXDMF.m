@@ -75,7 +75,7 @@ outx = fopen([outBasename '_meta.xdmf'],'w');
 % The prelude...
 fprintf(outx, '<?xml version="1.0" ?>\n');
 fprintf(outx, '<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n');
-fprintf(outx, '<Xdmf xmlns:xi="http://www.w3.org/2003/XInclude" Version="2.2">\n');
+fprintf(outx, '<Xdmf xmlns:xi="http://www.w3.org/2003/XInclude" Version="2.0">\n');
 % We have one domain (the simulation)
 fprintf(outx, '  <Domain>\n');
 % We have one "outer" grid which is the time ordered collection
@@ -157,8 +157,13 @@ tau = sum(frmeta.time.history);
 fprintf(outx, '        <Time Value="%f" />\n', tau / timefactor);
 
 for p = 1:numel(varnames)
+    v = varnames{p};
+    fluid = 'fluid1';
+
+    if v(end) == '2'; fluid = 'fluid2'; v=v(1:(end-1)); end
+
     fprintf(outx, '        <Attribute Name="%s" Active="1" AttributeType="Scalar" Center="Node">\n', varnames{p});
-    fprintf(outx, '          <DataItem Dimensions="%i %i %i" NumberType="Float" Precision="4" Format="HDF">%s:/fluid1/%s</DataItem>\n', rez(3), rez(2), rez(1), frfile, varnames{p});
+    fprintf(outx, '          <DataItem Dimensions="%i %i %i" NumberType="Float" Precision="4" Format="HDF">%s:/%s/%s</DataItem>\n', rez(3), rez(2), rez(1), frfile, fluid, v);
     fprintf(outx, '        </Attribute>\n');
 end
 

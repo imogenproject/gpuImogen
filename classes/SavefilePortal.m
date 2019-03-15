@@ -9,8 +9,7 @@ classdef SavefilePortal < handle
     properties (SetAccess = protected, GetAccess = public) %                           P U B L I C  [P]
         numFrames;
         currentType;
-        
-
+        varFormat;
     end %PUBLIC
     
     %===================================================================================================
@@ -55,6 +54,7 @@ classdef SavefilePortal < handle
             
             self.setParallelMode(0);
             self.setMetamode(0);
+            self.setVarFormat('default');
         end
 
         function setParallelMode(self, enable)
@@ -73,6 +73,23 @@ classdef SavefilePortal < handle
             if m; self.pMetamode = 'metaonly'; else; self.pMetamode = ''; end 
         end
         
+        function setVarFormat(self, f)
+            if strcmp(f, 'default')
+                self.varFormat = 'default';
+                return;
+            end
+            if strcmp(f, 'conservative')
+                self.varFormat = 'conservative';
+                return;
+            end
+            if strcmp(f, 'primitive')
+                self.varFormat = 'primitive';
+                return;
+            end
+            
+            fprintf('WARNING: SavefilePortal.setVarFormat(''%s'') is not valid: no change from %s\n', f, self.varFormat);
+        end
+
         function changeDirectory(self, nwd)
             % changeDirectory(nwd) makes the portal operate on the New
             % Working Directory; Resets the portal (all frames -> first).
@@ -184,6 +201,7 @@ classdef SavefilePortal < handle
             b = self.savefileList.(self.strnames{self.typeToLoad});
             self.currentFrame(self.typeToLoad) = f;
             
+            % Figure out what, if any, rank in particular we want to load
             r = -1;
             if self.pParallelMode
                 r = mpi_myrank();
@@ -191,6 +209,8 @@ classdef SavefilePortal < handle
                 r = fixedrank;
             end
             
+            % Figure out if we only want meta, a particular rank file, or
+            % the whole enchilada
             self.pushdir(self.savefileDirectory);
             if (r >= 0) || (strcmp(self.pMetamode, 'metaonly'))
                 if r < 0; r = 0; end
@@ -198,12 +218,17 @@ classdef SavefilePortal < handle
             else
                 F = util_LoadWholeFrame(self.typeToLoad, b(f));
             end
+            
+            % Determine whether to force a particular representation
+            if strcmp(self.pMetamode, 'metaonly') == 0
+                if strcmp(self.varFormat, 'conservative'); F = self.cvtToConservative(F); end
+                if strcmp(self.varFormat, 'primitive'); F = self.cvtToPrimitive(F); end
+            end
+            
             self.popdir();
         end
             
         function met = getMetadata(self, f, rankToLoad)
-            glitch = 0; % assume no problem...
-            
             if nargin < 3; rankToLoad = 0; end
             if nargin < 2; f = self.currentFrame(self.typeToLoad); end
             
@@ -297,6 +322,87 @@ classdef SavefilePortal < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
+
+        function y = cvtToPrimitive(x)
+            y = x;
+            if isfield(y, 'velX'); return; end % nothing to be done
+            
+            minv = 1./x.mass;
+
+            psq = x.momX.*x.momX;
+            y.velX = x.momX.*minv;
+            y = rmfield(y, 'momX');
+
+            psq = psq + x.momY.*x.momY;
+            y.velY = x.momY.*minv;
+            y = rmfield(y, 'momY');
+
+            psq = psq + x.momZ.*x.momZ;
+            y.velZ = x.momZ.*minv;
+            y = rmfield(y, 'momZ');
+
+            y.eint = x.ener - .5*psq.*minv;
+            y = rmfield(y, 'ener');
+
+            if isfield(x, 'mass2')
+                minv = 1./x.mass2;
+
+                psq = x.momX2.*x.momX2;
+                y.velX2 = x.momX2.*minv;
+                y = rmfield(y, 'momX2');
+
+                psq = psq + x.momY2.*x.momY2;
+                y.velY2 = x.momY2.*minv;
+                y = rmfield(y, 'momY2');
+
+                psq = psq + x.momZ2.*x.momZ;
+                y.velZ2 = x.momZ2.*minv;
+                y = rmfield(y, 'momZ2');
+
+                y.eint2 = x.ener2 - .5*psq.*minv;
+                y = rmfield(y, 'ener2');
+            end
+
+        end
+        
+
+        function y = cvtToConservative(x)
+            y = x;
+            if isfield(y, 'momX'); return; end % nothing to be done
+
+            vsq = y.velX.*y.velX;
+            y.momX = y.velX.*y.mass;
+            y = rmfield(y, 'velX');
+
+            vsq = vsq + y.velY.*y.velY;
+            y.momY = y.velY.*y.mass;
+            y = rmfield(y, 'velY');
+
+            vsq = vsq + y.velZ.*y.velZ;
+            y.momZ = y.velZ.*y.mass;
+            y = rmfield(y, 'velZ');
+
+            y.ener = y.eint + .5*x.mass.*vsq;
+            y = rmfield(y, 'eint');
+
+            if isfield(x, 'mass2')
+                vsq = x.velX2.*x.mvelX2;
+                y.momX2 = x.velX2.*x.mass2;
+                y = rmfield(y, 'velX2');
+
+                vsq = vsq + x.velY2.*x.velY2;
+                y.momY2 = x.velY2.*x.mass2;
+                y = rmfield(y, 'velY2');
+
+                vsq = vsq + x.velZ2.*x.velZ;
+                y.momZ2 = x.velZ2.*x.mass2;
+                y = rmfield(y, 'velZ2');
+
+                y.ener2 = x.eint2 + .5*vsq.*x.mass2;
+                y = rmfield(y, 'eint2');
+            end
+        end
+
     end%PROTECTED
     
 end%CLASS
