@@ -29,55 +29,10 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
     end
 
     bigFrame.myOffset = [0 0 0];
-
-    bigFrame.mass = zeros(globalRes, precise);
-    bigFrame.momX = zeros(globalRes, precise);
-    bigFrame.momY = zeros(globalRes, precise);
-    bigFrame.momZ = zeros(globalRes, precise);
-    bigFrame.ener = zeros(globalRes, precise);
-    if numel(frame.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
-        bigFrame.magX = zeros(globalRes, precise);
-        bigFrame.magY = zeros(globalRes, precise);
-        bigFrame.magZ = zeros(globalRes, precise);
-    else
-        bigFrame.magX = 0;
-        bigFrame.magY = 0;
-        bigFrame.magZ = 0;
-    end
-    if isfield(frame,'mass2')
-        bigFrame.mass2 = zeros(globalRes, precise);
-        bigFrame.momX2 = zeros(globalRes, precise);
-        bigFrame.momY2 = zeros(globalRes, precise);
-        bigFrame.momZ2 = zeros(globalRes, precise);
-        bigFrame.ener2 = zeros(globalRes, precise);
-    end
-
-    ranks = frame.parallel.geometry;
-    fieldset = {'mass','momX','momY','momZ','ener'};
-    bset     = {'magX','magY','magZ'};
-
-    u = 1;
-
-    while u <= numel(ranks)
-        fs = size(frame.mass);
-        if beCarefulWithRZ
-            for N = 1:5; frame.(fieldset{N}) = reshape(frame.(fieldset{N}),[fs(1) 1 fs(2)]); end
-            if numel(frame.magX) > 1
-                for N = 1:3; frame.(bset{N}) = reshape(frame.(bset{N}),[fs(1) 1 fs(2)]); end
-            end
-        end
-
-        fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
-        rs = size(ranks); if numel(rs) == 2; rs(3) = 1; end
-        frmsize = fs - frame.parallel.haloAmt*double((bitand(frame.parallel.haloBits, int64([1 4 16])) ~= 0) + (bitand(frame.parallel.haloBits, int64([2 8 32])) ~= 0));
-        if numel(frmsize) == 2; frmsize(3) = 1; end
-
-        frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...
-                  frame.parallel.myOffset(2)+(1:frmsize(2)), ...
-                  frame.parallel.myOffset(3)+(1:frmsize(3))};
-              
-        if isfield(frame, 'momX') % conservative vars
-            if isfield(frame, 'mass2');
+    
+    % Queue off fields in 'frame' to pick names of vars in bigframe
+    if isfield(frame, 'momX') % conservative vars
+            if isfield(frame, 'mass2')
                 dovars= {'mass', 'momX', 'momY', 'momZ', 'ener', 'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
             else
                 dovars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
@@ -88,8 +43,48 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
             else
                 dovars = {'mass', 'velX', 'velY', 'velZ', 'eint'};
             end
+    end
+    
+    % Allocate storage
+    for q = 1:numel(dovars)
+        bigFrame.(dovars{q}) = zeros(globalRes, precise);
+    end
+
+    % Waste time on this for some reason
+    if numel(frame.magX) > 1 % Having it as zero means we have a scalar if something expects B to be there
+        bigFrame.magX = zeros(globalRes, precise);
+        bigFrame.magY = zeros(globalRes, precise);
+        bigFrame.magZ = zeros(globalRes, precise);
+    else
+        bigFrame.magX = 0;
+        bigFrame.magY = 0;
+        bigFrame.magZ = 0;
+    end
+
+    ranks = frame.parallel.geometry;
+    bset     = {'magX','magY','magZ'};
+
+    u = 1;
+
+    while u <= numel(ranks)
+        fs = size(frame.mass);
+        if beCarefulWithRZ
+            for N = 1:numel(dovars)
+                frame.(dovars{N}) = reshape(frame.(dovars{N}),[fs(1) 1 fs(2)]);
+            end
+            if numel(frame.magX) > 1
+                for N = 1:3; frame.(bset{N}) = reshape(frame.(bset{N}),[fs(1) 1 fs(2)]); end
+            end
         end
-        
+
+        fs = size(frame.mass); if numel(fs) == 2; fs(3) = 1;  end
+        frmsize = fs - frame.parallel.haloAmt*double((bitand(frame.parallel.haloBits, int64([1 4 16])) ~= 0) + (bitand(frame.parallel.haloBits, int64([2 8 32])) ~= 0));
+        if numel(frmsize) == 2; frmsize(3) = 1; end
+
+        frmset = {frame.parallel.myOffset(1)+(1:frmsize(1)), ...
+                  frame.parallel.myOffset(2)+(1:frmsize(2)), ...
+                  frame.parallel.myOffset(3)+(1:frmsize(3))};
+
         for q = 1:numel(dovars)
             bigFrame.(dovars{q})(frmset{1}, frmset{2}, frmset{3}) = trimHalo(frame.(dovars{q}), frame);
         end
