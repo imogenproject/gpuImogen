@@ -266,11 +266,7 @@ clear rho_mp; % never used again
             self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen'); 
             self.fluidDetails(1).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
 
-            % Calculate the orbital velocity that solves radial force balance
-            % Rotation has a small degree of vertical shear
-            % Solution to v^2 / x = GM x^2/r^3 + (dP/dx)/rho
             vel     = geo.zerosXYZ(geo.VECTOR);
-            vel(2,:,:,:) = sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
 
             if self.gasPerturb > 0
                 vel(1,:,:,:) = squish(vel(1,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
@@ -278,6 +274,19 @@ clear rho_mp; % never used again
                 vel(3,:,:,:) = squish(vel(3,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
             end
 
+	    rez = geo.globalDomainRez;
+	    [clipx, clipy, clipz] = geo.toLocalIndices([1:4 (rez(1)-3):rez(1)], [1:4 (rez(2)-3):rez(2)], [1:4 (rez(3)-3):rez(3)]);
+	    % no v perturbation at x-/x+ limits
+	    vel(:,clipx,:,:) = 0;
+	    % no v perturbation at z-/z+ limits
+	    if rez(3) > 1
+		vel(:,:,:,clipz) = 0;
+	    end
+
+            % Calculate the orbital velocity that solves radial force balance
+            % Rotation has a small degree of vertical shear
+            % Solution to v^2 / x = GM x^2/r^3 + (dP/dx)/rho
+            vel(2,:,:,:) = squish(vel(2,:,:,:)) + sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
 
             % Setup internal energy density to yield correct P for an adiabatic ideal gas
             Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
