@@ -70,10 +70,12 @@ classdef Edges < handle
                 switch bcModes{n, i}
                     % Static BC: hold the three cells adjacent to that edge fixed to original value forever
                     case ENUM.BCMODE_STATIC
+                        % This dumpster fire should somehow access the gpuimogen/.fluidMethod hidden file to
+                        % access the actual halo size
                         if (n == 1)
-                            uslice = (1:3)+S.geometry.pLocalDomainOffset(i);
+                            uslice = (1:4)+S.geometry.pLocalDomainOffset(i);
                         else
-                            uslice = (-2:0) + size(array,i) + S.geometry.pLocalDomainOffset(i);
+                            uslice = (-3:0) + size(array,i) + S.geometry.pLocalDomainOffset(i);
                         end
 
                         if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end
