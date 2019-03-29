@@ -158,10 +158,9 @@ slicePanel = uipanel(fig,'title','Slicing control','units','pixels','position',[
 	    if xn >= 2
                 inistr = num2str(RTP.indSubs(4-yn, xn-1));
 	    else
-		inistr = '#';
+		inistr = num2str(RTP.cut(4-yn));
 	    end
             area = uicontrol(slicePanel,'Style','edit','String',inistr,'value',val,'tag',tag,'position',[(eos + charW + bs + (xn-1)*(4*charW+bs)), (bsh*(yn-1)+eos), 4*charW, bh],'callback',@RTP.gcbSetCuts);
-            if xn == 1; area.String = num2str(RTP.cut(yn)); end
         end
     end
 

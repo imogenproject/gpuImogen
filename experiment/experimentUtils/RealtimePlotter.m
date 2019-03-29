@@ -751,7 +751,7 @@ classdef RealtimePlotter <  LinkedListNode
             end
             
             if src.Value == 0; src.Value = 1; else
-                for n = 1:6 % mark all other buttons off (mutex)
+                for n = 1:6 % mark all other buttons off 
                     if whodunit(n) == 0; element = findobj('Tag',tagnames{n}); element.Value = 0; end
                 end
             end
@@ -932,15 +932,19 @@ classdef RealtimePlotter <  LinkedListNode
 	    x = findobj('tag','axeslabelsbutton');
 	    x.String = self.pAxisTypeLabels{pp.axmode+1};
 
+            % Fluid # text box
+	    x = findobj('tag','fluidnumbertxt');
+	    x.String = sprintf('Fluid: %i', int32(pp.fluidnum));
+
 	    % image/surf/plot selection
-        x = findobj('tag','plottypebutton');
-        M = mod(pp.plottype, 2)+1;
-        if pp.slice < 4 % 1d output
-            x.String = 'plot';
-        else
-            labels = {'imagesc','surf'};
-            x.String = labels{M};
-        end
+            x = findobj('tag','plottypebutton');
+            M = mod(pp.plottype, 2)+1;
+            if pp.slice < 4 % 1d output
+                x.String = 'plot';
+            else
+                labels = {'imagesc','surf'};
+                x.String = labels{M};
+            end
 
 	    % colorbar
 	    x = findobj('tag','colorbarbutton');
