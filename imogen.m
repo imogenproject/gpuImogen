@@ -111,40 +111,39 @@ function outdirectory = imogen(srcData, resumeinfo)
 
 % Cause initial halfstep of B
 bFactor = 0.5;
+run.time.updateUI();
 
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
-        run.time.update(run.fluid, mag);
+        run.time.update(run.fluid, mag); % chooses dt
         if run.chkpointThisIter()
             backupData = dumpCheckpoint(run);
         end
-
-        % If we only took a halfstep of B last time, we need to take another halfstep now 
-	if bFactor == 0.5
+        
+        % If we only took a halfstep of B last time, we need to take another halfstep now
+        if bFactor == 0.5
             srcFunc(run, run.fluid, mag, 0.5);
-	    bFactor = 1;
+            bFactor = 1;
         end
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
         srcFunc(run, run.fluid, mag, 1.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
-	
-	% Check if we're saving this time: If so, half-step source terms to acheive full 2nd order accuracy
-	run.save.updateDataSaves();
-	if run.save.saveData
-	    bFactor = 0.5;
-	end
+        
+        % Check if we're saving this time: If so, half-step source terms to acheive full 2nd order accuracy
+        if run.save.peekAtSave()
+            bFactor = 0.5;
+        end
         srcFunc(run, run.fluid, mag, bFactor);
-
+        
         if run.VTOSettings(1)
             cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
         end
-
+        
         if run.checkpointInterval && checkPhysicality(run.fluid)
             restoreCheckpoint(run, backupData);
         end
-
-
-        run.time.step();
+        
+        run.time.step(); % updates t -> t+2dt
         run.pollEventList(run.fluid, mag);
     end
     %%%=== END MAIN LOOP ========================================================================%%%
