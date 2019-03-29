@@ -67,15 +67,15 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 
 int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int memdir);
 template <int direct>
-__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection);
+__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth);
 template <int direct>
-__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection);
+__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth);
 template <int direct>
-__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection);
+__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth);
 
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
-__constant__ __device__ double restFrmSpeed[6];
+__constant__ __device__ double restFrmSpeed[8];
 
 #ifdef STANDALONE_MEX_FUNCTION
 
@@ -86,7 +86,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	GeometryParams geom = accessMatlabGeometryClass(prhs[2]);
 
-	int worked = setBoundaryConditions(NULL, prhs[0], &geom, (int)*mxGetPr(prhs[3]));
+	int worked = setArrayBoundaryConditions(NULL, prhs[0], &geom, (int)*mxGetPr(prhs[3]));
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		DROP_MEX_ERROR("setBoundaryCondition called from standalone has crashed: Crashing interpreter.");
 	}
@@ -95,15 +95,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
-
 #ifdef USE_NVTX
 	nvtxRangePush(__FUNCTION__);
 #endif
 
-	CHECK_CUDA_ERROR("entering setBoundaryConditions");
+	CHECK_CUDA_ERROR("entering setFluidBoundary");
 
-	MGArray phi, statics;
+	MGArray phi;
 	int worked;
+
+	// On rereading this seems dumb but there was DEFINITELY a good reason involving
+	// c++-level updates magically failing to manifest in ML
 	if(fluid == NULL) {
 		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
 		BAIL_ON_FAIL(worked)
@@ -111,12 +113,15 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		worked = (fluid->matlabClassHandle == matlabhandle) ? SUCCESSFUL : ERROR_CRASH;
 		if(worked != SUCCESSFUL) {
 			PRINT_FAULT_HEADER;
-			printf("setBoundaryConditions permits both the MGArray and its Matlab handle to be passed because the MGA may have been internally modified without the handle having been, but the MGArray must name that Matlab handle as its originator.\n");
+			printf("setBoundaryConditions was passed both an MGarray x and a matlabClassHandle h, but x->class handle != h.\nIt permits both to be passed because the MGA may have been internally modified without the handle\nhaving been, but the MGArray must name that Matlab handle as its originator.\n");
 			PRINT_FAULT_FOOTER;
 			BAIL_ON_FAIL(worked);
 		}
 		phi = fluid[0];
 	}
+
+	worked = setArrayStaticCells(&phi, matlabhandle);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { return worked; }
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
@@ -125,62 +130,11 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		return ERROR_INVALID_ARGS;
 	}
 
-	// fixme: we can't do this in this function yet. Oh boy
-	/* The statics describe "solid" structures which we force the grid to have */
-	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
-	if(gpuStatics == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
-	BAIL_ON_FAIL(worked)
-
-	int *perm = &phi.currentPermutation[0];
-	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
-
-	/* The offset array describes the index offsets for the data in the gpuStatics array */
-	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
-	if(offsets == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	double *offsetCount = mxGetPr(offsets);
-	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
-	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];
-
-	/* Parameter describes what block size to launch with... */
-	int blockdim = 32;
-
-	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
-	if(griddim.x > 1024) {
-		griddim.x = 1024;
-		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
-	}
-
-	/* Every call results in applying specials */
-	int i;
-	for(i = 0; i < phi.nGPUs; i++) {
- 		staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
-		staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
-
-		if(staticsNumel > 0) {
-			cudaSetDevice(phi.deviceID[i]);
-			CHECK_CUDA_ERROR("setDevice");
-
-			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
-
-			cudaDeviceSynchronize(); // fixme debug!
-			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
-			if(worked != SUCCESSFUL) return worked;
-		}
-	}
-
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
 	if(bcModes == NULL) {
 		PRINT_SIMPLE_FAULT("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
 		return ERROR_INVALID_ARGS;
 	}
-
 
 	if((direction < 1) || (direction > 3)) {
 		PRINT_FAULT_HEADER;
@@ -207,16 +161,24 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
 
 		if(strcmp(bs,"outflow") == 0) {
+			int i;
+			// make sure we go through and set statics
+			for(i = 0; i < 5; i++) {
+				worked = setArrayStaticCells(fluid+i, fluid[i].matlabClassHandle);
+				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+			}
+			// Then set the outflow
 			worked = setOutflowCondition(&phi, geo, d, direction);
 		} else {
 			int i;
+			// iterate through the 5 fluid arrays. setA.B.C. sets statics for the array it's passed automatically.
 			for(i = 0; i < 5; i++) {
-				worked = setBoundaryConditions(fluid+i, fluid[i].matlabClassHandle, geo, direction);
-				if(worked != SUCCESSFUL) break;
+				worked = setArrayBoundaryConditions(fluid+i, fluid[i].matlabClassHandle, geo, direction);
+				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 		}
 		free(bs);
-		if(worked != SUCCESSFUL) break;
+		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 	}
 
 #ifdef USE_NVTX
@@ -226,11 +188,11 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	return CHECK_IMOGEN_ERROR(worked);
 }
 
-int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryParams *geo, int direction)
+int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
-	MGArray phi, statics;
+	MGArray phi;
 	int worked;
 	if(array == NULL) {
 		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
@@ -246,6 +208,9 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 		phi = array[0];
 	}
 
+	worked = setArrayStaticCells(&phi, matlabhandle);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
 	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
 	if(boundaryData == NULL) {
@@ -253,57 +218,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 		return ERROR_INVALID_ARGS;
 	}
 
-	/* The statics describe "solid" structures which we force the grid to have */
-	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
-	if(gpuStatics == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
-	BAIL_ON_FAIL(worked)
-
-	int *perm = &phi.currentPermutation[0];
-	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
-
-	/* The offset array describes the index offsets for the data in the gpuStatics array */
-	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
-	if(offsets == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	double *offsetCount = mxGetPr(offsets);
-	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
-	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];
-
-	/* Parameter describes what block size to launch with... */
-	int blockdim = 32;
-
-	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
-	if(griddim.x > 1024) {
-		griddim.x = 1024;
-		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
-	}
-
-	int i;
-	for(i = 0; i < phi.nGPUs; i++) {
- 		staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
-		staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
-
-		if(staticsNumel > 0) {
-			cudaSetDevice(phi.deviceID[i]);
-			CHECK_CUDA_ERROR("setDevice");
-
-			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi.devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
-
-			cudaDeviceSynchronize(); // fixme debug!
-			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, &phi, 0, "cuda statics application");
-			if(worked != SUCCESSFUL) return worked;
-		}
-	}
-
 	int vectorComponent = phi.vectorComponent;
-
-	/* BEGIN DETERMINATION OF ANALYTIC BOUNDARY CONDITIONS */
 	int numDirections = 1;
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
@@ -312,6 +227,8 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 		return ERROR_INVALID_ARGS;
 	}
 
+	int *perm = &phi.currentPermutation[0];
+
 	int j;
 	for(j = 0; j < numDirections; j++) {
 		if(direction == 0) continue; /* Skips edge BCs if desired. */
@@ -319,7 +236,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 
 		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
        { 'type minus x', 'type minus y', 'type minus z';
-	 'type plus  x', 'type plus y',  'type plus z'};
+	     'type plus  x', 'type plus y',  'type plus z'};
        Yes, strings in a cell array. */
 		/* Okay, that's not kinda, it's straight-up stupid. */
 
@@ -357,6 +274,7 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 					worked = setOutflowCondition(&phi, geo, d, direction);
 				}
 			}
+
 			// whatever we just did, check...
 			if(worked != SUCCESSFUL) break;
 
@@ -365,6 +283,70 @@ int setBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryP
 	}
 
 	return SUCCESSFUL;
+}
+
+int setArrayStaticCells(MGArray *phi, const mxArray *matlabhandle)
+{
+	int worked;
+	MGArray statics;
+
+	/* Grabs the whole boundaryData struct from the ImogenArray class */
+	mxArray *boundaryData = mxGetProperty(matlabhandle, phi->mlClassHandleIndex, "boundaryData");
+	if(boundaryData == NULL) {
+		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
+		return ERROR_INVALID_ARGS;
+	}
+
+	// fixme: we can't do this in this function yet. Oh boy
+	/* The statics describe "solid" structures which we force the grid to have */
+	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
+	if(gpuStatics == NULL) {
+		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
+	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
+	BAIL_ON_FAIL(worked)
+
+	int *perm = &phi->currentPermutation[0];
+	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
+
+	/* The offset array describes the index offsets for the data in the gpuStatics array */
+	mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
+	if(offsets == NULL) {
+		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
+		return ERROR_INVALID_ARGS;
+	}
+	double *offsetCount = mxGetPr(offsets);
+	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
+	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];
+
+	/* Parameter describes what block size to launch with... */
+	int blockdim = 32;
+
+	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
+	if(griddim.x > 1024) {
+		griddim.x = 1024;
+		griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
+	}
+
+	/* Every call results in applying specials */
+	int i;
+	for(i = 0; i < phi->nGPUs; i++) {
+		staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
+		staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
+
+		if(staticsNumel > 0) {
+			cudaSetDevice(phi->deviceID[i]);
+			CHECK_CUDA_ERROR("setDevice");
+
+			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi->devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
+
+//			cudaDeviceSynchronize(); // NOTE for debugging only!
+			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, 0, "cuda statics application in setArrayStaticCells");
+			if(worked != SUCCESSFUL) return worked;
+		}
+	}
+return SUCCESSFUL;
 }
 
 int doBCForPart(MGArray *fluid, int part, int direct, int rightside)
@@ -377,7 +359,7 @@ int doBCForPart(MGArray *fluid, int part, int direct, int rightside)
 }
 
 /* Sets boundary condition as follows:
- * boundary = (v_normal > 0) ? constant : mirror
+ * fluid boundary = (v . outwardNormal > 0) ? constant : mirror
  * This must be passed ONLY the density array (FIXME: awful testing hack)
  */
 int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int direction)
@@ -390,28 +372,31 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 
 	int memdir = MGA_dir2memdir(&fluid->currentPermutation[0], direction);
 
-	double rfVelocity[6];
+	int h = fluid->haloSize;
+	double rfVelocity[2*h];
 	// When setting the radial face for outflow and the frame is rotating,
 	// the inertial rest frame zero (imposed if inward flow is attempted)
 	// is not zero in the rotating frame:
 
-	for(i = 0; i < 3; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*geom->frameOmega; }
-	for(i = 3; i < 6; i++) { rfVelocity[i] = -(geom->Rinner + (fluid->dim[0]-6+i)*geom->h[0])*geom->frameOmega;  }
+	for(i = 0; i < h; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*geom->frameOmega; }
+	for(i = 0; i < h; i++) { rfVelocity[h+i] = -(geom->Rinner + (fluid->dim[0]-h+i)*geom->h[0])*geom->frameOmega;  }
 
 	for(i = 0; i < fluid->nGPUs; i++) {
 		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
 		if(doBCForPart(fluid, i, PARTITION_X, rightside)) {
 			cudaSetDevice(fluid->deviceID[i]);
-			cudaMemcpyToSymbol((const void *)restFrmSpeed, &rfVelocity[0], 6*sizeof(double), 0, cudaMemcpyHostToDevice);
+			cudaMemcpyToSymbol((const void *)restFrmSpeed, &rfVelocity[0], 2*h*sizeof(double), 0, cudaMemcpyHostToDevice);
 		}
 	}
+
+	int depth = fluid->haloSize;
 
 	status = CHECK_CUDA_ERROR("__constant__ uploads for outflow condition");
 	if(status != SUCCESSFUL) return status;
 
 	switch(memdir) {
 	case 1: // x
-		blockdim.x = 3; blockdim.y = blockdim.z = 16;
+		blockdim.x = depth; blockdim.y = blockdim.z = 16;
 
 		for(i = 0; i < fluid->nGPUs; i++) {
 			if(doBCForPart(fluid, i, PARTITION_X, rightside) == 0) continue;
@@ -423,11 +408,11 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 			griddim.y = ROUNDUPTO(sub[5], 16)/16;
 
 			if(rightside) {
-				double *base = fluid->devicePtr[i] + sub[3] - 4;
-				cukern_SetOutflowX<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				double *base = fluid->devicePtr[i] + sub[3] - 1 - depth;
+				cukern_SetOutflowX<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			} else {
-				double *base = fluid->devicePtr[i] + 3;
-				cukern_SetOutflowX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				double *base = fluid->devicePtr[i] + depth;
+				cukern_SetOutflowX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			}
 		}
 		break;
@@ -443,10 +428,10 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 			griddim.z = 1;
 
 			if(rightside) {
-				double *base = fluid->devicePtr[i] + (sub[4]-7)*sub[3];
-				cukern_SetOutflowY<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				double *base = fluid->devicePtr[i] + (sub[4]-1-2*depth)*sub[3];
+				cukern_SetOutflowY<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			} else {
-				cukern_SetOutflowY<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				cukern_SetOutflowY<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			}
 		}
 		break;
@@ -462,10 +447,10 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 			griddim.z = 1;
 
 			if(rightside) {
-				double *base = fluid->devicePtr[i] + sub[3]*sub[4]*(sub[5]-7);
-				cukern_SetOutflowZ<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				double *base = fluid->devicePtr[i] + sub[3]*sub[4]*(sub[5]-1 - 2*depth);
+				cukern_SetOutflowZ<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			} else {
-				cukern_SetOutflowZ<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction);
+				cukern_SetOutflowZ<-1><<<griddim, blockdim>>>(fluid->devicePtr[i], sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			}
 		}
 		break;
@@ -475,12 +460,12 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 	return status;
 }
 
-// given original value
 __device__ double outflowBC_radial_vel(double p0, int normdir, int i)
 {
 	return 0.0;
 }
 
+// may return nonzero because inertial rest frame zero velocity is nonzero in rotating frame
 __device__ double outflowBC_phi_vel(double v0, int normdir, int i)
 {
 	if(normdir == 1) { return restFrmSpeed[i]; } else { return v0; }
@@ -491,11 +476,11 @@ __device__ double outflowBC_zee_vel(double v0, int normdir, int i)
 	return 0.0;
 }
 
-// Assume we are passed &rho(3,0,0) if direct == 0
-// assume we are passed &rho(nx-4,0,0) if direct == 1
-// Launch an 3xAxB block with an NxM grid such that AN >= ny and BM >= nz
+// Assume we are passed &rho(depth,0,0) if direct == 0
+// assume we are passed &rho(nx-1-depth,0,0) if direct == 1
+// Launch an depthxAxB block with an NxM grid such that AN >= ny and BM >= nz
 template <int direct>
-__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection) // FIXME slabNumel should be int64 type
+__global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth)
 {
 	int tix = threadIdx.x;
 
@@ -515,52 +500,51 @@ __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int sla
 	if(a*direct > 0) {
 		// boundary normal momentum positive: extrapolate as constant
 		if(direct == 1) { // +x: base = &rho[nx-4, 0 0]
-			tix++;
+			tix++; // 0123 to 1234
 			a = base[0]; base[tix] = a; base += slabNumel;
 			a = base[0]; base[tix] = a; base += slabNumel;
 			a = base[0]; base[tix] = a; base += slabNumel;
 			a = base[0]; base[tix] = a; base += slabNumel;
 			a = base[0]; base[tix] = a; base += slabNumel;
 		} else { // -x: base = &rho[3,0,0]
-			base = base - 3; // move back to zer0
-			a = base[3]; base[tix] = a; base += slabNumel;
-			a = base[3]; base[tix] = a; base += slabNumel;
-			a = base[3]; base[tix] = a; base += slabNumel;
-			a = base[3]; base[tix] = a; base += slabNumel;
-			a = base[3]; base[tix] = a; base += slabNumel;
+			base = base - blockDim.x; // move back to zero
+			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
+			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
+			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
+			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
+			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
 		}
 	} else {
 		// boundary normal momentum negative: null normal velocity, otherwise mirror
 		// phi velocity
 		if(direct == 1) { // +x
-			//base = base - 3;
 			rho = a = base[0]; base[1+tix] = a; base += slabNumel; // rho
 			E =       base[0]; base += slabNumel; // E
 
-			a = base[0]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, 3+tix); base[1+tix] = p2;
+			a = base[0]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, depth+tix); base[1+tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[0]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, 3+tix); base[1+tix] = p2;
+			a = base[0]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, depth+tix); base[1+tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[0]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, 3+tix); base[1+tix] = p2;
+			a = base[0]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, depth+tix); base[1+tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho;
 			base[1+tix-3*slabNumel] = E;
 		} else { // -x
-			base=base-3;
+			base=base-depth;
 
-			rho = a = base[3]; base[tix] = a; base += slabNumel; // rho
-			E =       base[3]; base += slabNumel; // E
+			rho = a = base[depth]; base[tix] = a; base += slabNumel; // rho
+			E =       base[depth]; base += slabNumel; // E
 
-			a = base[3]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tix); base[tix] = p2;
+			a = base[depth]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tix); base[tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[0]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tix); base[tix] = p2;
+			a = base[depth]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tix); base[tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[0]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tix); base[tix] = p2;
+			a = base[depth]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tix); base[tix] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho;
 			base[tix-3*slabNumel] = E;
 		}
 
 		// The potential for evacuating flows created by this mode of operation can result in crappy behavior
-		// We need to re-enforce
+		// We need to re-enforce. maybe?
 #ifdef ENFORCE_FLUIDMIN
 
 #endif
@@ -571,9 +555,9 @@ __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int sla
 
 // Use 32x3 threads and dim3(roundup(nx/32), nz, 1) blocks
 // if(direct == -1) {minus coordinate edge} assume base is &rho[0]
-// if(direct == 1)  {plus coordinate edge}  assume base is &rho[0,ny-7,0]
+// if(direct == 1)  {plus coordinate edge}  assume base is &rho[0,ny-1-2*depth (base of altered region),0]
 template <int direct>
-__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
+__global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 	int z = blockIdx.y;
@@ -586,45 +570,45 @@ __global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int sla
 
 	double a, rho, E, p1, p2;
 
-	a = base[(1+normalDirection)*slabNumel];
+	a = base[(1+normalDirection)*slabNumel+4*depth*nx];
 
 	if(a*direct > 0) {
 		// normal mom is positive: extrapolate constant
 		if(direct == 1) { // +y edge
-			a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel;
 		} else { // -y edge
-			a = base[3*nx]; base[(tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(tiy)*nx] = a; base += slabNumel;
-			a = base[3*nx]; base[(tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(tiy)*nx] = a; base += slabNumel;
+			a = base[depth*nx]; base[(tiy)*nx] = a; base += slabNumel;
 		}
 	} else {
-		// normal mom negative: set norm momentum to null
+		// normal mom negative: set norm momentum to rest frame zero, otherwise constant
 		if(direct == 1) { // +y edge
-			rho = a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel; // rho
-			E =       base[3*nx]; base += slabNumel; // E
+			rho = a = base[depth*nx]; base[(depth+1+tiy)*nx] = a; base += slabNumel; // rho
+			E =       base[depth*nx]; base += slabNumel; // E
 
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, 3+tiy); base[(4+tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, depth+tiy); base[(depth+1+tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, 3+tiy); base[(4+tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, depth+tiy); base[(depth+1+tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, 3+tiy); base[(4+tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, depth+tiy); base[(depth+1+tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho;
-			base[(4+tiy)*nx-3*slabNumel] = E;
+			base[(depth+1+tiy)*nx - 3*slabNumel] = E;
 		} else { // -y edge
-			rho = a = base[3*nx]; base[(4+tiy)*nx] = a; base += slabNumel; // rho
-			E =       base[3*nx]; base += slabNumel; // E
+			rho = a = base[depth*nx]; base[(4+tiy)*nx] = a; base += slabNumel; // rho
+			E =       base[depth*nx]; base += slabNumel; // E
 
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-			a = base[3*nx]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
+			a = base[depth*nx]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tiy); base[(tiy)*nx] = p2;
 			E += .5*(p2-p1)*(p2+p1)/rho;
 			base[(tiy)*nx-3*slabNumel] = E;
 		}
@@ -635,9 +619,9 @@ __global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int sla
 // XY threads & block span the XY space, 3 Z threads 
 // one plane of threads
 // if(direct == -1) base should be &rho[0,0,0]
-// if(direct == 1) base should be &rho[0,0,nz-7]
+// if(direct == 1) base should be &rho[0,0,nz-1 - 2*depth]
 template<int direct>
-__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection)
+__global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth)
 {
 int x = threadIdx.x + blockDim.x*blockIdx.x;
 int y = threadIdx.y + blockDim.y*blockIdx.y;
@@ -653,38 +637,89 @@ int i;
 double rho, E, p1, p2;
 
 if(a*direct > 0) {
-	// positive normal momentum: constant
+	// positive normal momentum: constant extrap
 	if(direct == 1) { // +z edge
-		for(i = 0; i < 5; i++) { a = base[3*delta]; base[(4+tiz)*delta] = a; base += slabNumel; }
+		for(i = 0; i < 5; i++) { a = base[depth*delta]; base[(depth+1+tiz)*delta] = a; base += slabNumel; }
 	} else { // -z edge
-		for(i = 0; i < 5; i++) { a = base[3*delta]; base[tiz*delta] = a; base += slabNumel; }
+		for(i = 0; i < 5; i++) { a = base[depth*delta]; base[tiz*delta] = a; base += slabNumel; }
 	}
 } else {
 	// negative normal momentum: set normal mom to null
 	if(direct == 1) { // +z edge
-		rho = a = base[3*delta]; base[(3+tiz)*delta] = a; base += slabNumel;
-		E = base[3*delta]; base += slabNumel;
+		rho = a = base[depth*delta]; base[(depth+1+tiz)*delta] = a; base += slabNumel;
+		E = base[depth*delta]; base += slabNumel;
 
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, 3+tiz); base[(4+tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, 3+tiz); base[(depth+1+tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, 3+tiz); base[(4+tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, 3+tiz); base[(depth+1+tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, 3+tiz); base[(4+tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, 3+tiz); base[(depth+1+tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho;
-		base[(4+tiz)*delta-3*slabNumel] = E;
+		base[(depth+1+tiz)*delta - 3*slabNumel] = E;
 	} else { // -z edge : defective at present
-		rho = a = base[3*delta]; base[(tiz)*delta] = a; base += slabNumel;
-		E = base[3*delta]; base += slabNumel;
+		rho = a = base[depth*delta]; base[(tiz)*delta] = a; base += slabNumel;
+		E = base[depth*delta]; base += slabNumel;
 
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_radial_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_phi_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho; base += slabNumel;
-		a = base[3*delta]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
+		a = base[depth*delta]; p1 = a; p2 = rho*outflowBC_zee_vel(a/rho, normalDirection, tiz); base[(tiz)*delta] = p2;
 		E += .5*(p2-p1)*(p2+p1)/rho;
 		base[tiz*delta - 3*slabNumel] = E;
 	}
 }
+
+}
+
+// XY threads & block span the XY space, 3 Z threads
+// one plane of threads
+// if(direct == -1) base should be &rho[0,0,0]
+// if(direct == 1) base should be &rho[0,ny-1-2*depth, 0]
+template <int direct>
+__global__ void cukern_SetDoubleMachY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth)
+{
+	int x = threadIdx.x + blockDim.x*blockIdx.x;
+	int z = blockIdx.y;
+	int tiy = threadIdx.y;
+
+	if((x >= nx) || (z >= nz)) return;
+
+	// Y-Z translate
+	base += x + nx*(ny*z);
+
+	double a, rho, E, p1, p2;
+
+	a = base[(1+normalDirection)*slabNumel];
+
+	if(direct > 0) {
+		// top edge: set a condition of uniform M=10 inflow at 30* inclination
+		base[(4+tiy)*nx] = 1; base += slabNumel;
+		base[(4+tiy)*nx] = 8.660254038; base += slabNumel;
+		base[(4+tiy)*nx] = -5; base += slabNumel;
+		base[(4+tiy)*nx] = 0; base += slabNumel;
+		base[(4+tiy)*nx] = 51.78571429;
+	} else {
+		// bottom edge: wedge is at 1/6 of way from -x edge to +x edge
+		// x < 1/6 = static M=10 flow
+		// x >= 1/6 = mirror
+		if(6*x < nx) {
+			// flowthrough
+			base[tiy*nx] = 1; base += slabNumel;
+			base[tiy*nx] = 8.660254038; base += slabNumel;
+			base[tiy*nx] = -5; base += slabNumel;
+			base[tiy*nx] = 0; base += slabNumel;
+			base[tiy*nx] = 51.78571429;
+		} else {
+			// mirror (slip wall)
+			base[tiy*nx] = base[(2*depth-tiy)*nx]; // rho
+			base[tiy*nx] = base[(2*depth-tiy)*nx]; // px
+			base[tiy*nx] = -base[(2*depth-tiy)*nx]; // py
+			base[tiy*nx] = base[(2*depth-tiy)*nx]; // pz
+			base[tiy*nx] = base[(2*depth-tiy)*nx]; // E
+
+		}
+	}
 
 }
 
@@ -769,7 +804,7 @@ int setBoundarySAS(MGArray *phi, int side, int direction, int sas)
    direction -> 1 = X	      2 = Y               3 = Z*
    sas       -> 0 = symmetrize      1 => antisymmetrize
 	     -> 2 = extrap constant 3-> extrap linear
-
+ * ktable index is computed as (0=symm, 1=antisymm) + 8*(0 = minus, 1 = plus side) + 16*(0=X, 1=Y, 2=Z)
  * As passed, assuming ImogenArray's indexPermute has been handled for us.
  * This function is just a thin veil around a switch(){}ed cukern_ invocation for setBoundarySAS.
  */
@@ -1068,6 +1103,11 @@ __global__ void cukern_extrapolateFlatConstBdyYPlus(double *phi, int nx, int ny,
 	YSASKERN_PREAMBLE
 	double f = phi[(ny-depth)*nx];
 	for(q = 0; q < depth; q++) { phi[(ny-depth+q)*nx] = f; }
+}
+
+__global__ void cukern_yminusDoubleMach(double *phi, int nx, int ny, int nz, int depth)
+{
+
 }
 
 /* Z DIRECTION SYMMETRIC/ANTISYMMETRIC BC KERNELS */

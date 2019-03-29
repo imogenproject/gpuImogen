@@ -284,7 +284,7 @@ MPI_Barrier(MPI_COMM_WORLD);
 
 if((status != MPI_SUCCESS) || (statusB != MPI_SUCCESS)) {
 	printf("RANK %i: Oh dear, return was unsuccessful!");
-	switch(ohdear) { 
+	switch(status) { 
 		case MPI_ERR_REQUEST: printf("MPI_ERR_REQUEST\n"); return ERROR_INVALID_ARGS; break;
 		case MPI_ERR_ARG: printf("MPI_ERR_ARG\n"); return ERROR_INVALID_ARGS; break;
 		case MPI_ERR_IN_STATUS:

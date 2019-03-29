@@ -3,6 +3,9 @@
 #include "mex.h"
 #include "mpi.h"
 
+// covers various error #defines 
+#include "../gpuclass/imogenChecks.h"
+
 bool mpidatatypeIsInteger(MPI_Datatype t);
 
 #define TOPOLOGY_MAXDIMS 3

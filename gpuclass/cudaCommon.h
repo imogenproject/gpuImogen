@@ -276,6 +276,8 @@ int dbgfcn_CheckArrayVals(MGArray *x, int maxslab, int crashit);
 int dbgfcn_CheckArrayVals(MGArray *x, int crashit);
 int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit);
 
+#include "imogenChecks.h"
+
 #define PRINT_FAULT_HEADER printf("========== FAULT IN COMPILED CODE: function %s (%s:%i)\n", __func__, __FILE__, __LINE__)
 #define PRINT_FAULT_FOOTER printf("========== COMPILED CODE STACK TRACE SHOULD FOLLOW: ============================\n")
 
@@ -289,17 +291,6 @@ int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit);
 
 void dropMexError(const char *excuse, const char *infile, int atline);
 #define DROP_MEX_ERROR(dangit) dropMexError(dangit, __FILE__, __LINE__)
-
-#define SUCCESSFUL 0
-#define ERROR_INVALID_ARGS -100
-#define ERROR_CRASH -101
-#define ERROR_NULL_POINTER -102
-#define ERROR_GET_GPUTAG_FAILED -103
-#define ERROR_DESERIALIZE_GPUTAG_FAILED -104
-#define ERROR_NOIMPLEMENT -105
-#define ERROR_NOMEM -106
-
-#define ERROR_CUDA_BLEW_UP -1000
 
 #define PAR_WARN(x) if(x.nGPUs > 1) { printf("In %s:\n", __FILE__); mexWarnMsgTxt("WARNING: This function is shimmed but multi-GPU operation WILL NOT WORK"); }
 
