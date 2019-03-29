@@ -33,8 +33,6 @@ classdef GeometryManager < handle
         globalDomainRez;   % The input global domain size, with no halo added [e.g. 500 500]
         localDomainRez;          % The size of the local domain + any added halo [256 500
         
-        
-        
         % The local parts of the x/y/z index counting vectors
         % Matlab format (from 1)
         localIcoords; localJcoords; localKcoords;
@@ -313,8 +311,12 @@ classdef GeometryManager < handle
         end
         
         function [u, v, w] = toLocalIndices(obj, x, y, z)
-            % [u v w] = geo.toLocalIndices(x, y, z) converts a global set of coordinates to 
-            % local coordinates, and keeps only those in the local domain
+            % [u, v, w] = geo.toLocalIndices(x, y, z) converts a global set of coordinates to 
+            %     local coordinates, and keeps only those in the local domain
+	    %     If no elements are, the corresponding set is []
+	    %     This mode acts independently on x, y, and z, i.e. does not form any outer products
+	    % [u, v, w] = geo.toLocalIndices( [x(:) y(:) z(:)] ) converts the tuples to local indices
+	    %     and again keeps only those which lie inside this node's domain.
             u = []; v = []; w = [];
             if (nargin == 2) && (size(x,2) == 3)
                 z = x(:,3) - obj.pLocalDomainOffset(3);
