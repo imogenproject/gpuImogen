@@ -4,7 +4,7 @@ function exportAnimatedToEnsight(SP, outBasename, range, varset, timeNormalizati
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
 %>> range:       Set of savefiles to export (e.g. 0:50:1000)
-%>> varset:      {'names','of','variables'} to save (see util_DerivedQty for list)
+%>> varset:      {'names','of','variables'} to save
 %>> timeNormalization: Allows Imogen timestep-time to be converted into characteristic time units
 	
 %--- Interactively fill in missing arguments ---%

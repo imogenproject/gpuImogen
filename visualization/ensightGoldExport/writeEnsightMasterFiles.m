@@ -20,10 +20,10 @@ fprintf(CASE, '\nVARIABLE\n');
 % fixme: There should be a way to interrogate derived quantity tensor types w/o computing them fully...
 
 for n = 1:numel(varset)
-    % util_DerivedQty returns a [.X .Y .Z] structure for vectors
-    vector = isa(util_DerivedQty(frame, varset{n},0), 'struct');
+    % vector quantities are structures with fields S.[X, Y, Z]
+    isVector = isa(frame.(varset{n}), 'struct');
 
-    if vector
+    if isVector
         fprintf(CASE, 'vector per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});
     else
         fprintf(CASE, 'scalar per node: 1 %s %s.%s.****\n', varset{n}, basename, varset{n});
@@ -48,7 +48,7 @@ fprintf(CASE, 'time set:              1 time_data\n');
 fprintf(CASE, 'number of steps:       %i\n', numel(range));
 fprintf(CASE, 'filename start number: 0\n');
 fprintf(CASE, 'filename increment:    1\n');
-fprintf('Emitting CASE file...\n');
+fprintf('Emitting CASE file time values...\n');
 nwritten = fprintf(CASE, 'time values: ');
 for q = 1:numel(range)
     fprintf('Writing time meta for %i\n', int32(q));

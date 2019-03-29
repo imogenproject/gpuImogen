@@ -62,7 +62,7 @@ for N = 1:S.numFrames
         deltav = deltav + ((f.momZ ./ f.mass) - truevz).^2;
     end
     deltav = sqrt(deltav);
-    deltaP = trueP - util_DerivedQty(f, 'gaspressure');
+    deltaP = trueP - f.pressure;
     
     deltarho = f.mass - truerho;
 

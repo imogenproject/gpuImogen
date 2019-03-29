@@ -4,7 +4,7 @@ function exportAnimatedToVTK(SP, outBasename, range, varset, timeNormalization, 
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
 %>> range:       Set of savefiles to export (e.g. 0:50:1000)
-%>> varset:      {'names','of','variables'} to save (see util_DerivedQty for list)
+%>> varset:      {'names','of','variables'} to save (see dataframe fields)
 %>> timeNormalization: Allows Imogen timestep-time to be converted into characteristic time units
 	
 addpath('~/vtkwriter');
@@ -42,23 +42,24 @@ end
 
 % WRITE GEOMETRY STRING:
 % vtkwrite(filename, 'structured_grid', geomX, geomY, geomZ
-outcmdstr = sprintf('vtkwrite(''%s%%04i.vtk'', ''structured_grid'', xp, yp, zp', outBasename);
+outcmdstr = sprintf('vtkwrite(''%s%%04i.vts'', ''structured_grid'', xp, yp, zp', outBasename);
 
 ITER = myworker+1;
 dataframe = SP.setFrame(range(ITER)); 
 
-framedat = {};
-for vn = 1:numel(varset)
-    framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0);
-end
+%framedat = {};
+%for vn = 1:numel(varset)
+%    framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0);
+%end
 
 % Loop over output varset:
 % append to the vtkwrite string
 for vn = 1:numel(varset)
-    if isfield(framedat{vn}, 'X') % if isVector...
-        outcmdstr = sprintf('%s, ''vectors'', ''%s'', framedat{%i}.X, framedat{%i}.Y, framedat{%i}.Z', outcmdstr, varset{vn}, vn, vn, vn);
+    if isstruct(dataframe.(varset{vn}))
+        %outcmdstr = sprintf('%s, ''vectors'', ''%s'', framedat{%i}.X, framedat{%i}.Y, framedat{%i}.Z', outcmdstr, varset{vn}, vn, vn, vn);
+        outcmdstr = sprintf('%s, ''vectors'', ''%s'', dataframe.(''%s'').X, dataframe.(''%s'').Y, dataframe.(''%s'').Z', outcmdstr, varset{vn}, varset{vn}, varset{vn}, varset{vn});
     else
-        outcmdstr = sprintf('%s, ''scalars'', ''%s'', framedat{%i}', outcmdstr, varset{vn}, vn);
+        outcmdstr = sprintf('%s, ''scalars'', ''%s'', dataframe.(''%s'')', outcmdstr, varset{vn}, varset{vn});
     end
 end
 outcmdstr = sprintf('%s, ''binary'');', outcmdstr);
@@ -67,6 +68,7 @@ outcmdstr = sprintf('%s, ''binary'');', outcmdstr);
 
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
+    % get new data frame
     if ITER ~= (myworker+1); dataframe = SP.setFrame(range(ITER)); end
 
 % FIXME this fails in parallel horribly...
@@ -75,11 +77,11 @@ for ITER = (myworker+1):nstep:ntotal
     finalstr = sprintf(outcmdstr, ITER);
     % for elements of varset,
     % fetch using util_DerivedQty into a cell array
-    if ITER ~= (myworker +1)
-        for vn = 1:numel(varset)
-            framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0); %#ok<AGROW>
-        end
-    end
+%    if ITER ~= (myworker +1)
+%        for vn = 1:numel(varset)
+%            framedat{vn} = util_DerivedQty(dataframe, varset{vn}, 0); %#ok<AGROW>
+%        end
+%    end
     
     eval(finalstr);
     

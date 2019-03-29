@@ -214,9 +214,9 @@ classdef SavefilePortal < handle
             self.pushdir(self.savefileDirectory);
             if (r >= 0) || (strcmp(self.pMetamode, 'metaonly'))
                 if r < 0; r = 0; end
-                F = util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode);
+                F = DataFrame(util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode));
             else
-                F = util_LoadWholeFrame(self.typeToLoad, b(f));
+                F = DataFrame(util_LoadWholeFrame(self.typeToLoad, b(f)));
             end
             
             % Determine whether to force a particular representation
@@ -229,6 +229,7 @@ classdef SavefilePortal < handle
         end
             
         function met = getMetadata(self, f, rankToLoad)
+            
             if nargin < 3; rankToLoad = 0; end
             if nargin < 2; f = self.currentFrame(self.typeToLoad); end
             

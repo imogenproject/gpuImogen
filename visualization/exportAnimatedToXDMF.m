@@ -4,7 +4,7 @@ function exportAnimatedToXDMF(SP, outBasename, range, varset, timeNormalization,
 %>> outBasename: Base filename for output Ensight files, e.g. 'mysimulation'
 %>> inBasename:  Input filename for Imogen .mat savefiles, e.g. '2D_XY'
 %>> range:       Set of savefiles to export (e.g. 0:50:1000)
-%>> varset:      {'names','of','variables'} to save (see util_DerivedQty for list)
+%>> varset:      {'names','of','variables'} to save (see DataFrame class for var names)
 %>> timeNormalization: Allows Imogen timestep-time to be converted into characteristic time units
 
 if reverseIndexOrder
@@ -16,8 +16,6 @@ if strcmp(varset{1}, 'detect')
    disp('NOTICE: exportAnimatedToXDMF will detect all variables in first frame and export all.');
    autodetectVars = 1;
 end
-
-
 
 pertonly = 0;%input('Export perturbed quantities (1) or full (0)? ');
 equilframe = [];
@@ -41,10 +39,8 @@ c = pg.context; c.size = fakeranks;
 for N = 1:fakeranks
     c.rank = N-1;
     pg.setNewContext(c);
-    
     pg.setNewTopology(3, 'fakeAsHell');
     
-
     %fixme FIXME Fixme - problem, this is being acquired in various places as needed. Yuck. standardize
     %that process so we get it in one location.
     
@@ -108,14 +104,18 @@ if autodetectVars
     if datameta.twoFluids
         if strcmp(datameta.varFmt, 'primitive')
             varset = {'mass','velX','velY','velZ','eint', 'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
+            fprintf('Autodetect output: 2 fluid primitive variables.\n');
         else
             varset = {'mass','momX','momY','momZ','ener', 'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
+            fprintf('Autodetect output: 2 fluid conservative variables.\n');
         end
     else
         if strcmp(datameta.varFmt, 'primitive')
             varset = {'mass','velX','velY','velZ','eint'};
+            fprintf('Autodetect output: 1 fluid primitive variables.\n');
         else
             varset = {'mass','momX','momY','momZ','ener'};
+            fprintf('Autodetect output: 1 fluid conservative variables.\n');
         end
     end
 end
