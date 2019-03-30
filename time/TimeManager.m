@@ -167,7 +167,7 @@ classdef TimeManager < handle
                     case 0        %Activate clock timer for the first loop
                         obj.startSecs = tic;
                         obj.pItersDigits = ceil(log10(obj.ITERMAX)); %
-                        obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %i iter/s | by %s at%s ]]\n';
+                        obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %.3g iter/s | by %s at %s ]]\n';
                         obj.pLogString(6) = sprintf('%i',obj.pItersDigits);
                         obj.pLogString(11) = sprintf('%i',obj.pItersDigits);
                     case 4        %Stop clock timer and use the elapsed time to predict total run time
