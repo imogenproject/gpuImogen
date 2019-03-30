@@ -25,14 +25,14 @@ run.geometry.deserialize(ini.geometry);
 run.setNumFluids(ini.numFluids);
 if ini.numFluids > 1
     m = ini.multifluidDragMethod;
-    if (m < 0) || (m > 4)
+    if (m < 0) || (m > 5)
         warning(['initializer had invalid multifluid method ' num2str(m) '. Defaulting to explicit midpoint.']);
         m = 0;
     end
 
     run.multifluidDragMethod = m;
     if mpi_amirank0()
-        fmnames = {'explicit midpt', 'classic rk4', 'ETD-RK1', 'ETD-RK2 (not impl)', 'logtrap'};
+        fmnames = {'explicit midpt', 'classic rk4', 'ETD-RK1', 'ETD-RK2 (not impl)', 'LogTrap2', 'LogTrap3'};
         disp(['    Multifluid mode is active: multifluid drag method is ' fmnames{m+1}]);
     end
 end

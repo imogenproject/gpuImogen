@@ -42,7 +42,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
             self.stepsPerPoint = -25;
         end
 
-        function initialize(self, IC, run, fluids, mag)
+        function initialize(self, IC, run, fluids, mag) %#ok<INUSL,INUSD>
             % assumes we are handing a true DustyBox and the structures are spatially uniform
             % FIXME this is a pretty dumb way to pick the point to analyze...
             self.rhoG = fluids(1).mass.array(6,1,1);
@@ -103,7 +103,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
             a = -Fone * .5 * dv^2 * (self.thermoDust.sigma/4) * (self.rhoG + self.rhoD) / self.thermoDust.mass;
         end
 
-        function analyzeDrag(self, evt, run, fluids, mag)
+        function analyzeDrag(self, evt, run, fluids, mag) %#ok<INUSD>
             
             tFinal = sum(run.time.history);
             
@@ -127,7 +127,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
             evt.armed = 1; 
         end
 
-        function finalize(self, run, fluids, mag)
+        function finalize(self, run, fluids, mag) %#ok<INUSD>
             result = struct('time',self.analysis(:,1),'dvExact', self.analysis(:,2), 'dvImogen', self.analysis(:,3), 'error', self.analysis(:,4)); %#ok<NASGU>
             save([run.paths.save '/drag_analysis.mat'], 'result');
         end
@@ -150,7 +150,8 @@ classdef DustyBoxAnalyzer < LinkedListNode
     methods (Static = true) %                                                 S T A T I C    [M]
 
         function c = computeCdrag(Rey, Kn)
-            c = (24/Rey + 4*Rey^(-1/3) + .44*Rey/(12000+Rey)) / (1 + 1*Kn*(1.142+.558*exp(-.999/Kn)));
+            %c = (24/Rey + 4*Rey^(-1/3) + .44*Rey/(12000+Rey)) / (1 + 1*Kn*(1.142+.558*exp(-.999/Kn)));
+            c = (24 / Rey + 3.6*Rey^-.319 + .4072*Rey/(8710+Rey)) / (1 + Kn*(1.142 + 1*0.558*exp(-0.999/Kn)));
         end
         
     end%PROTECTED

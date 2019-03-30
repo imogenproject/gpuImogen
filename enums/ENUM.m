@@ -76,7 +76,8 @@ classdef ENUM
         MULTIFLUID_RK4 = 1;
         MULTIFLUID_ETDRK1 = 2;
         MULTIFLUID_ETDRK2 = 3;
-        MULTIFLUID_LOGTRAP = 4;
+        MULTIFLUID_LOGTRAP2 = 4;
+	MULTIFLUID_LOGTRAP3 = 5;
     end
 
 end

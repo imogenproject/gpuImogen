@@ -1,10 +1,10 @@
 % Run sonic advection test at 3 different resolutions,
-% Check accuracy & scaling
+% Check accuracy & scalingre
 format long
 
 TestResults.name = 'Imogen Master Test Suite';
 
-TestResultFilename = '~/fulltestasdf';
+TestResultFilename = '~/mastertest_1d_serial';
 
 realtimePictures = 0;
 
@@ -21,7 +21,7 @@ doSonicAdvectStaticBG   = 0;
 doSonicAdvectMovingBG   = 0;
 doEntropyAdvectStaticBG = 0;
 doEntropyAdvectMovingBG = 0;
-doDustyWaveStaticBG     = 1;
+doDustyWaveStaticBG     = 0;
 doDustyWaveMovingBG     = 0;
 % 2D
 doSonicAdvectAngleXY    = 0;
@@ -31,7 +31,7 @@ doSodTubeTests        = 0;
 doEinfeldtTests       = 0;
 doDoubleBlastTests    = 0;
 doNohTubeTests        = 0;
-doDustyBoxes          = 0;
+doDustyBoxes          = 1;
 
 % 2D tests
 doCentrifugeTests     = 0;
@@ -41,30 +41,33 @@ doSedov2DTests        = 0;
 doSedov3DTests        = 0;
 
 % Apply the "do ALL the things" overrides to the individual run/dontrun variables above
+% without cluttering this file up
 maskSuiteTestsOn
 
 % As regards the choices of arbitrary inputs like Machs...
 % If it works for $RANDOM_NUMBER_WITH_NO_PARTICULAR_SIGNIFICANCE
 % It's probably right
 
-baseResolution = 32;
+baseResolution = 16;
 
 SaveManager.logPrint('NOTICE: Base resolution is currently set to %i.\nNOTICE: If the number of MPI ranks or GPUs will divide this to below 6, things will Break.\n', baseResolution);
 
-% Picks how far we take the scaling tests
-advectionDoublings  = 3;
-doubleblastDoublings= 2;
-dustyBoxDoublings   = 7;
-einfeldtDoublings   = 4;
-nohDoublings        = 7;
-sodDoublings        = 7;
+% Picks how far we take the scaling tests in 1D
+ftn = 5;
+advectionDoublings  = ftn;
+doubleblastDoublings= ftn;
+dustyBoxDoublings   = ftn;
+einfeldtDoublings   = ftn;
+nohDoublings        = ftn;
+sodDoublings        = ftn;
 
-advection2DDoublings= 6;
-centrifugeDoublings = 6;
-sedov2D_scales      = [1 2 4 8 16 24];
+% Choose number of refinements in 2D
+advection2DDoublings= 3;
+centrifugeDoublings = 3;
+sedov2D_scales      = [1 2 4];
 
-sedov3D_scales      = 1;
-
+% And in 3D
+sedov3D_scales      = [1 2];
 
 fm = FlipMethod();
   fm.iniMethod = ENUM.CFD_HLL;
@@ -108,7 +111,7 @@ end
 if doSonicAdvectAngleXY
     SaveManager.logPrint('Testing sound advection''s prefactor in 2D\n');
     try
-        x = tsCrossAdvect('sonic', [256 256 1], [1 0 0], [0 0 0], [0 0 0], realtimePictures, fm);
+        x = tsCrossAdvect('sonic', [256 256 1], [2 2 0], [0 0 0], [0 0 0], realtimePictures, fm);
     catch ME
         prettyprintException(ME, 0, '2D Advection test simulation barfed.\n');
         x = 'FAILED';
@@ -237,34 +240,60 @@ end
 
 if doDustyBoxes
    SaveManager.logPrint('Performing temporal refinement test on spatially uniform dusty boxes.\n');
+   x1 = 'FAILED'; x2 = 'FAILED'; x3 = 'FAILED';
    try
-       x = tsDustybox(baseResolution, 5/3, .01, dustyBoxDoublings, realtimePictures, fm);
+       x1 = tsDustybox(baseResolution, 5/3, .01, ENUM.MULTIFLUID_ETDRK1, dustyBoxDoublings, realtimePictures, fm);
+       x2 = tsDustybox(baseResolution, 5/3, .01, ENUM.MULTIFLUID_LOGTRAP2, dustyBoxDoublings, realtimePictures, fm);
+       x3 = tsDustybox(baseResolution, 5/3, .01, ENUM.MULTIFLUID_LOGTRAP3, dustyBoxDoublings, realtimePictures, fm);
    catch ME
         prettyprintException(ME, 0, 'Dusty box test (Mach .01) has failed.');
-        x = 'FAILED';
         exceptionList{end+1} = ME;
    end
-   TestResult.dustybox.slow = x;
-   if mpi_amirank0(); disp('Results for M=.01 dusty box test:'); disp(x); end
+   TestResult.dustybox.slow_etd = x1;
+   TestResult.dustybox.slow_lt2 = x2;
+   TestResult.dustybox.slow_lt3 = x3;
+   if mpi_amirank0()
+       disp('Results for M=.01 dusty box test using ETDRK1:'); disp(x1);
+       disp('Results for M=.01 dusty box test using LogTrap2:'); disp(x2);
+       disp('Results for M=.01 dusty box test using LogTrap3:'); disp(x3);
+   end
+
+   x1 = 'FAILED'; x2 = 'FAILED'; x3 = 'FAILED';
    try
-       x = tsDustybox(baseResolution, 5/3, .25, dustyBoxDoublings, realtimePictures, fm);
+       x1 = tsDustybox(baseResolution, 5/3, .20, ENUM.MULTIFLUID_ETDRK1, dustyBoxDoublings, realtimePictures, fm);
+       x2 = tsDustybox(baseResolution, 5/3, .20, ENUM.MULTIFLUID_LOGTRAP2, dustyBoxDoublings, realtimePictures, fm);
+       x3 = tsDustybox(baseResolution, 5/3, .20, ENUM.MULTIFLUID_LOGTRAP3, dustyBoxDoublings, realtimePictures, fm);
    catch ME
-        prettyprintException(ME, 0, 'Dusty box test (Mach 0.25) has failed.');
-        x = 'FAILED';
+        prettyprintException(ME, 0, 'Dusty box test (Mach 0.20) has failed.');
         exceptionList{end+1} = ME;
    end
-   TestResult.dustybox.mid = x;
-   if mpi_amirank0(); disp('Results for M=.25 dusty box test:'); disp(x); end
+   TestResult.dustybox.mid_etd = x1;
+   TestResult.dustybox.mid_lt2 = x2;
+   TestResult.dustybox.mid_lt3 = x3;
+   if mpi_amirank0()
+       disp('Results for M=.01 dusty box test using ETDRK1:'); disp(x1);
+       disp('Results for M=.01 dusty box test using LogTrap2:'); disp(x2);
+       disp('Results for M=.01 dusty box test using LogTrap3:'); disp(x3);
+   end
+
+   x1 = 'FAILED'; x2 = 'FAILED'; x3 = 'FAILED';
    try
-       x = tsDustybox(baseResolution, 5/3, 2.0, dustyBoxDoublings, realtimePictures, fm);
+       x1 = tsDustybox(baseResolution, 5/3, 2.0, ENUM.MULTIFLUID_ETDRK1, dustyBoxDoublings, realtimePictures, fm);
+       x2 = tsDustybox(baseResolution, 5/3, 2.0, ENUM.MULTIFLUID_LOGTRAP2, dustyBoxDoublings, realtimePictures, fm);
+       x3 = tsDustybox(baseResolution, 5/3, 2.0, ENUM.MULTIFLUID_LOGTRAP3, dustyBoxDoublings, realtimePictures, fm);
    catch ME
         prettyprintException(ME, 0, 'Dusty box test (Mach 2) has failed.');
-        x = 'FAILED';
         exceptionList{end+1} = ME;
    end
-   TestResult.dustybox.supersonic = x;
-   if mpi_amirank0(); disp('Results for M=2.0 dusty box test:'); disp(x); end
-   
+   TestResult.dustybox.supersonic_etd = x1;
+   TestResult.dustybox.supersonic_lt2 = x2;
+   TestResult.dustybox.supersonic_lt3 = x3;
+   if mpi_amirank0()
+       disp('Results for M=.01 dusty box test using ETDRK1:'); disp(x1);
+       disp('Results for M=.01 dusty box test using LogTrap2:'); disp(x2);
+       disp('Results for M=.01 dusty box test using LogTrap3:'); disp(x3);
+   end
+
 end
 
 %--- Test propagation across a three-dimensional grid ---%
@@ -325,13 +354,12 @@ if mpi_amirank0()
 
     disp('Full test suite is finished running.');
     t = etime(endSimulationsTime, startSimulationsTime);
-    disp(['Total runtime of all simulations measured by rank 0 was' num2str(t) ' sec.']);
-    disp(['Simulation output is stored in file ' TestResultFilename])
+    disp(['Total runtime of all simulations measured by rank 0 was ' num2str(t) ' sec.']);
+    disp(['Simulation output is stored in file ' TestResultFilename '.mat'])
     if numel(exceptionList) > 0
         disp(['A total of ' num2str(numel(exceptionList)) ' errors were encountered']);
         for k = 1:numel(exceptionList)
-            disp('====================');
-            disp(['Error number ' num2str(k) ':']);
+            disp(['====================  Error number ' num2str(k) ':']);
             prettyprintException(exceptionList{k});
         end
     else

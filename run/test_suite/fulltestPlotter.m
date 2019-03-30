@@ -145,17 +145,20 @@ end
 
 function plotDustybox(q)
 
-shiftA = 1e6;%floor(log2(abs(q.mid.L2(1)/q.slow.L2(1))));
+shiftA = 1e0;%floor(log2(abs(q.mid.L2(1)/q.slow.L2(1))));
 shiftB = 0;%ceil(log2(abs(q.mid.L2(1)/q.supersonic.L2(1))));
 
 plot(log2(q.slow_etd.N), (abs(q.slow_etd.L2)),'b-x');
 hold on;
-plot(log2(q.slow_lt.N), shiftA * (abs(q.slow_lt.L2)),'b-o');
+plot(log2(q.slow_lt2.N), shiftA * (abs(q.slow_lt2.L2)),'b-o');
+plot(log2(q.slow_lt3.N), shiftA * (abs(q.slow_lt3.L2)),'b-+');
 
 plot(log2(q.mid_etd.N), (abs(q.mid_etd.L2)),'g-x');
-plot(log2(q.mid_lt.N), shiftA *  (abs(q.mid_lt.L2)),'g-o');
+plot(log2(q.mid_lt2.N), shiftA *  (abs(q.mid_lt2.L2)),'g-o');
+plot(log2(q.mid_lt3.N), shiftA *  (abs(q.mid_lt3.L2)),'g-+');
 plot(log2(q.supersonic_etd.N),  (abs(q.supersonic_etd.L2)),'r-x');
-plot(log2(q.supersonic_lt.N), shiftA * (abs(q.supersonic_lt.L2)),'r-o');
+plot(log2(q.supersonic_lt2.N), shiftA * (abs(q.supersonic_lt2.L2)),'r-o');
+plot(log2(q.supersonic_lt3.N), shiftA * (abs(q.supersonic_lt3.L2)),'r-+');
 %z = ones(size(q.mid.N));
 
 %plot(log2(q.mid.N), -16.61*z,'k-');
@@ -166,6 +169,7 @@ f = gca(); f.YScale = 'log';
 xlabel('log_2(# pts)');
 ylabel('Relative velocity error');
 
+annotation(gcf(), 'textbox', 'String', ['blue: M=.01, grn: M=.25, R: M=2' char(10) 'X: ETD, O: LogTrap2, +: LT3'], 'FitBoxToText', 'on');
 %legend('M_{ini} = .01', 'M_{ini} = .25', 'M_{ini} = 2.0',);
 
 end
