@@ -121,7 +121,7 @@ classdef Initializer < handle
             obj.fluidDetails = fluidDetailModel();
             obj.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
 
-            obj.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP;
+            obj.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP2;
             obj.compositeSourceOrders = [2 4];
 
             fields = SaveManager.SLICEFIELDS;
