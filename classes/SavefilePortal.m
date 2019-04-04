@@ -208,21 +208,21 @@ classdef SavefilePortal < handle
             elseif nargin == 3
                 r = fixedrank;
             end
+
+            if strcmp(self.pMetamode, 'metaonly'); mo = 1; else; mo = 0; end
             
             % Figure out if we only want meta, a particular rank file, or
             % the whole enchilada
             self.pushdir(self.savefileDirectory);
-            if (r >= 0) || (strcmp(self.pMetamode, 'metaonly'))
+            if (r >= 0) || mo
                 if r < 0; r = 0; end
-                F = DataFrame(util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode));
+		if mo
+                    F = util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode);
+		else
+                    F = DataFrame(util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode));
+		end
             else
                 F = DataFrame(util_LoadWholeFrame(self.typeToLoad, b(f)));
-            end
-            
-            % Determine whether to force a particular representation
-            if strcmp(self.pMetamode, 'metaonly') == 0
-                if strcmp(self.varFormat, 'conservative'); F = self.cvtToConservative(F); end
-                if strcmp(self.varFormat, 'primitive'); F = self.cvtToPrimitive(F); end
             end
             
             self.popdir();

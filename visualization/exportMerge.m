@@ -32,6 +32,8 @@ for q = 1:SP.numFrames
     fprintf('Writing frame %d/%d\n', q, SP.numFrames);
     nom = sprintf(fformat, F.time.iteration);
     util_Frame2HDF(nom, F);
+    
+    clear F; % make sure we never have a 2nd copy of F floating around when we hit the net load!
 end
 
 end

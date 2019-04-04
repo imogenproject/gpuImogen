@@ -52,13 +52,15 @@ if nworkers > 1
     fprintf('Work distributed among %i workers.\n', nworkers);
 end
 
-if 0
+towhat = input('1 to send to Ensight, 2 to VTK, 3 to XDMF: ');
+
+if towhat==1
     exportAnimatedToEnsight(SP, outBasename, range, varset, timeNormalization, reverseIndexOrder);
 end
-if 0
+if towhat==2
     exportAnimatedToVTK(SP, outBasename, range, varset, timeNormalization, reverseIndexOrder);
 end
-if 1
+if towhat==3
     exportAnimatedToXDMF(SP, outBasename, range, varset, timeNormalization, reverseIndexOrder);
 end
     
