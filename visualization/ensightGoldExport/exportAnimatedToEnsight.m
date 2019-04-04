@@ -25,7 +25,7 @@ tic;
 
 stepnums = zeros([ntotal 1]);
 
-SP.setMetamode(1);
+SP.setMetamode(0);
 %--- Loop over all frames ---%
 for ITER = (myworker+1):nstep:ntotal
     dataframe = SP.setFrame(ITER); 
@@ -33,9 +33,9 @@ for ITER = (myworker+1):nstep:ntotal
 % FIXME this fails in parallel horribly...
     stepnums(ITER) = sum(dataframe.time.history);
 
-%    writeEnsightDatafiles(outBasename, ITER-1, dataframe, varset, reverseIndexOrder);
+    writeEnsightDatafiles(outBasename, ITER-1, dataframe, varset, reverseIndexOrder);
     if ITER == ntotal
-SP.setMetamode(0);
+        SP.setMetamode(0);
         writeEnsightMasterFiles(outBasename, range, SP, varset, timeNormalization, reverseIndexOrder);
     end
     fprintf('%i ',myworker);

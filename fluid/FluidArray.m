@@ -23,15 +23,21 @@ classdef FluidArray < ImogenArray
 %___________________________________________________________________________________________________ FluidArray
 % Creates a new FluidArray object.
 % obj = FluidArray(component, id, array, run, statics)
-        function obj = FluidArray(component, id, array, manager, statics)
+        function obj = FluidArray(component, id, array, manager, statics, fakeIt)
         
             obj = obj@ImogenArray(component, id, manager, statics);
             if isempty(id); return; end
 
+            if nargin == 6; if strcmp(fakeIt, 'fake')
+                obj.storeOnCPU();
+            end; end
+
             obj.initializeDependentArrays(component, id, manager, statics);
 
             if numel(array) > 0; obj.initialArray(squish(array)); end
-            obj.pArray.updateVectorComponent(component);
+            if obj.pStoredOnGPU
+                obj.pArray.updateVectorComponent(component);
+            end
 
             if strcmpi(id, ENUM.MASS)
                 obj.threshold   = manager.MASS_THRESHOLD;

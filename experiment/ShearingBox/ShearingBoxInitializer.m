@@ -269,28 +269,31 @@ clear rho_mp; % never used again
             vel     = geo.zerosXYZ(geo.VECTOR);
 
             if self.gasPerturb > 0
-                vel(1,:,:,:) = squish(vel(1,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
-                vel(2,:,:,:) = squish(vel(2,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
-                vel(3,:,:,:) = squish(vel(3,:,:,:)) + self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                vel(1,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                vel(2,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                vel(3,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
             end
 
-	    rez = geo.globalDomainRez;
-	    [clipx, clipy, clipz] = geo.toLocalIndices([1:4 (rez(1)-3):rez(1)], [1:4 (rez(2)-3):rez(2)], [1:4 (rez(3)-3):rez(3)]);
-	    % no v perturbation at x-/x+ limits
-	    vel(:,clipx,:,:) = 0;
-	    % no v perturbation at z-/z+ limits
-	    if rez(3) > 1
-		vel(:,:,:,clipz) = 0;
-	    end
+            rez = geo.globalDomainRez;
+            [clipx, clipy, clipz] = geo.toLocalIndices([1:4 (rez(1)-3):rez(1)], [1:4 (rez(2)-3):rez(2)], [1:4 (rez(3)-3):rez(3)]);
+            % no v perturbation at x-/x+ limits
+            vel(:,clipx,:,:) = 0;
+            % no v perturbation at z-/z+ limits
+            if rez(3) > 1
+                vel(:,:,:,clipz) = 0;
+            end
 
             % Calculate the orbital velocity that solves radial force balance
             % Rotation has a small degree of vertical shear
             % Solution to v^2 / x = GM x^2/r^3 + (dP/dx)/rho
-            vel(2,:,:,:) = squish(vel(2,:,:,:)) + sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
+            vel(2,:,:,:) = squish(vel(2,:,:,:),'onlyleading') + sqrt( alpha*cs_0^2*(q+nt)*radpts.^(nt) - phi_0*( (nt+1)./radpts - nt./rsph) ); 
 
             % Setup internal energy density to yield correct P for an adiabatic ideal gas
             Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
 
+            % no further references to radial points array 
+            clear radpts;
+            
             % Rescale if we choose to
             if self.normalizeValues
                 mass = mass / rho_0;
@@ -322,6 +325,9 @@ clear rho_mp; % never used again
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
             else
+                clear mass;
+                clear vel;
+                clear Eint;
                 self.numFluids = 1;
             end
             
@@ -342,7 +348,7 @@ clear rho_mp; % never used again
             % run for 100 years (@ this orbital radius)
             self.timeMax = 100*2*pi/self.frameParameters.omega;
 
-            mag     = geo.zerosXYZ(geo.VECTOR);
+            mag     = [0;0;0]; %geo.zerosXYZ(geo.VECTOR);
                           
             statics = [];%StaticsInitializer(self.grid);
 

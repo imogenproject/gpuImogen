@@ -17,10 +17,9 @@ end
 % Check if this resembles an Imogen savefile directory at all
 % If these don't exist, emit warning
 basicfiles = numel(dir('ini_settings.mat'));
-basicfiles = basicfiles + numel(dir('runfile.m'));
 basicfiles = basicfiles + numel(dir('SimInitializer_rank0.mat'));
-if basicfiles ~= 3
-    disp('Not seeing ini_settings.mat, runfile.m or SimInitializer_rank0.mat. This can''t be a valid Imogen run directory.');
+if basicfiles ~= 2
+    disp('Not seeing @ least 1 of ini_settings.mat or SimInitializer_rank0.mat. This can''t be a valid Imogen run directory.');
     dex = [];
     return;
 end

@@ -29,10 +29,12 @@ classdef ImogenArray < handle
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         pArray;         % Storage of the 3D array data.                             double(Nx,Ny,Nz)
+	pArrayCopy;
         pShiftEnabled;  % Specifies if shifting is active for each dimension.       logical(3)
         pManager;  % Access to the FluidManager associated with this state vector FluidManager
         
         pBCUninitialized; % Specifies if obj has been initialized.                    bool
+        pStoredOnGPU;
     end %PROPERTIES
     
     %===================================================================================================
@@ -64,6 +66,13 @@ classdef ImogenArray < handle
         %function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
         
         function initialArray(obj, array)
+
+	    % This isn't a real run: We just want to get to a data save
+	    if obj.pStoredOnGPU == false;
+		obj.pArray = array;
+		return;
+	    end
+
             obj.pArray.array = array;
             if obj.pBCUninitialized
                 % Make certain everyone is on board & shares the same view before setting up BCs
@@ -96,18 +105,26 @@ classdef ImogenArray < handle
         end
         
         function set.array(obj,value)
-            obj.pArray.array = value;
-            for d = 1:3 % Do not try to force BCs in a nonfluxable direction
-               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
-            end
+	    if obj.pstoredOnGPU
+                obj.pArray.array = value;
+                for d = 1:3 % Do not try to force BCs in a nonfluxable direction
+                   if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+                end
+	    else
+	        obj.pArray = value;
+	    end
         end
         
         function array_NewBC(obj, value)
-            obj.pArray.array = value;
-            obj.setupBoundaries();
-            for d = 1:3 % Do not try to force BCs in a nonfluxable direction
-               if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
-            end
+	    if obj.pStoredOnGPU
+                obj.pArray.array = value;
+                obj.setupBoundaries();
+                for d = 1:3 % Do not try to force BCs in a nonfluxable direction
+                   if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
+                end
+	    else
+	        obj.pArray = value;
+	    end
         end
         
         %___________________________________________________________________________________________________ GS: gridSize
@@ -150,6 +167,7 @@ classdef ImogenArray < handle
             if (nargin == 0 || isempty(id)); return; end
             if ~isa(id,'cell');    id = {id}; end
             obj.pArray = GPU_Type();
+	    obj.pArrayCopy = [];
             obj.pShiftEnabled   = true(1,3);
             obj.component       = component;
             obj.id              = id;
@@ -159,14 +177,41 @@ classdef ImogenArray < handle
 
             obj.boundaryData.rawStatics = statics; % Store this for when we have an array
             % to precompute stuff with.
-            obj.boundaryData.compIndex = []; % Used to mark whether we're using statics
-            obj.pBCUninitialized = true;
+            obj.boundaryData.compIndex  = []; % Used to mark whether we're using statics
+            obj.pBCUninitialized        = true;
+            obj.pStoredOnGPU            = true;
         end
         
+        function storeOnGPU(self)
+	    if self.pStoredOnGPU == true; return; end % nothing to do
+            self.pStoredOnGPU = true;
+
+	    if isempty(self.pArrayCopy)
+	        disp('WARNING: No copy of slab holder handle available. Data is transferred to GPU but WILL NOT WORK WITH IMOGEN GPU ROUTINES ANY MORE.');
+		self.pArrayCopy = GPU_Type();
+	    end
+
+	    self.pArrayCopy.array = self.pArray;
+	    self.pArray = self.pArrayCopy;
+        end
+
+        function storeOnCPU(self)
+	    if self.pStoredOnGPU == false; return; end % nothing to do
+            self.pStoredOnGPU = false;
+
+	    self.pArrayCopy = self.pArray; % avoid losing our handle to the slab
+	    self.pArray = self.pArrayCopy.array;
+        end
+
+
         %___________________________________________________________________________________________________ cleanup
         % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
         function cleanup(obj)
-            obj.pArray.clearArray();
+	    if obj.pStoredOnGPU
+                obj.pArray.clearArray();
+	    else
+	        obj.pArray = [];
+	    end
         end
         
         function delete(obj)
