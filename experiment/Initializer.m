@@ -238,7 +238,8 @@ classdef Initializer < handle
                 statics = StaticsInitializer();
                 potentialField = PotentialFieldInitializer();
                 selfGravity = SelfGravityInitializer();
-                fluids = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener);
+		% FIXME: This will not work without recovering the fluid details structure!!! ... somehow.
+                fluids = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener,'details',[]);
 
                 ini  = load([path filesep 'ini_settings.mat']);
                 obj.populateValues(ini.ini);

@@ -77,6 +77,9 @@ classdef KelvinHelmholtzInitializer < Initializer
             potentialField      = [];
             selfGravity         = [];
             geo                 = obj.geomgr;
+            
+            gdr = geo.globalDomainRez;
+            if gdr(3) == 1; obj.bcMode.z = 'circ'; end
 
             geo.makeBoxSize([1 1 1]);
 
