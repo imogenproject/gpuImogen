@@ -57,7 +57,7 @@ classdef FluidManager < handle
       
         function setBoundaries(self, direction, what)
             if nargin < 3; what = [1 1 1 1 1 ]; else
-                if numel(what) ~= 5; error('shit!'); end
+                if numel(what) ~= 5; error('not clear what to set!'); end
             end
 
             if what(1); self.mass.applyBoundaryConditions(direction); end

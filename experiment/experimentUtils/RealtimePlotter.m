@@ -248,6 +248,7 @@ classdef RealtimePlotter <  LinkedListNode
                         case 4; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 98 + 3*params.vv_type);
                         case 5; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 99 + 3*params.vv_type);
                         case 6; vv = self.fetchPlotQty(fluids(params.fluidnum), params.slice, 100 + 3*params.vv_type);
+                        otherwise; vv = [];
                     end
                 else
                     vv = [];
@@ -341,7 +342,7 @@ classdef RealtimePlotter <  LinkedListNode
         function [Q, Qoverlay] = fetchPlotQty(self, fluid, sliceID, what)
             u = []; v = []; w = [];
             Qoverlay = [];
-            
+
             switch sliceID
                 case 1; u = self.pSubsX; v = self.cut(2); w = self.cut(3); % x
                 case 2; u = self.cut(1); v = self.pSubsY; w = self.cut(3); % y
@@ -353,7 +354,8 @@ classdef RealtimePlotter <  LinkedListNode
 
             if (sliceID < 4) && (~isempty(self.overplot)) % one dimensional
                 t = fluid.parent.time.time;
-                Qoverlay = self.overplot(self.pCoords{1}(u), self.pCoords{2}(v), self.pCoords{3}(w), t, fluid, what);
+                %Qoverlay = self.overplot(self.pCoords{1}(u), self.pCoords{2}(v), self.pCoords{3}(w), t, fluid, what);
+                Qoverlay = self.overplot(self.pCoords{1}, self.pCoords{2}, self.pCoords{3}, t, fluid, what);
             end
             
             % NOTE NOTE NOTE the values for 'what' are linked to the ordering of the list entries in the GUI quantity-selection
@@ -383,7 +385,7 @@ classdef RealtimePlotter <  LinkedListNode
                 Q = { fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 104 % 
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
-                Q = {QQ{1}(u,v,w), QQ{2}(u,v,w)};
+                Q = {QQ{2}(u,v,w), QQ{1}(u,v,w)};
             case 105
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{3}(u,v,w)};
