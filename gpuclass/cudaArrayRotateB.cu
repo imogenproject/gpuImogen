@@ -31,7 +31,6 @@ int checkSufficientFlipStorage(MGArray *phi, MGArray *tmp);
 
 __global__ void cukern_memmove(double *s, double *d, long n);
 
-
 #define BDIM 16
 
 #ifdef STANDALONE_MEX_FUNCTION
@@ -84,8 +83,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
  * are in place, consumes temporary memory equal to largest single input array.
  *
  * phi: MGArray pointer to nArrays input MGArrays
- * psi: MGArray *.
- *   IF NOT NULL: allocates nArrays arrays & returns completely new MGArrays
+ * newArrays: MGArray **.
+ *   IF NOT NULL: returns completely new MGArrays
+ *   	If newArrays[0] is not NULL, assumes it points to at least nArrays MGArrays.
+ *   	if newarrays[0] is NULL, malloc()s nArrays MGArrays
  *   IF NULL:     overwrites phi[*], reusing original data *ers
  * nArrays: Positive integer
  * exchangeCode:
@@ -127,7 +128,9 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 
 	MGArray *psi = NULL;
 	if(newArrays != NULL) {
-		newArrays[0] = (MGArray *)malloc(nArrays * sizeof(MGArray));
+		if(newArrays[0] == NULL) {
+			newArrays[0] = (MGArray *)malloc(nArrays * sizeof(MGArray));
+		}
 		psi = newArrays[0];
 		reallocatePerArray = 1; // definitely should do this if they're being returned!
 	}
@@ -289,9 +292,62 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 	return returnCode;
 }
 
-/* This routine is optimized to perform out-of-place exchange on multiple identical arrays
- * at once by taking advantage of concurrent copy + execute
+/* Given a reference array "of", reads the orientation of "in" and applies the appropriate permutation
+ * to make it match the orientation of "of" and the result is found in "out".
+ *
+ * If in==out, the result comes back in place; This requires a buffer.
+ * If this is the case and tempStorage is not NULL, tempStorage will be used as the staging area
+ * Otherwise, a buffer will be allocated/freed. tempStorage is permitted to be NULL.
  */
+int matchArrayOrientation(MGArray *of, MGArray *in, MGArray *out, MGArray *tempStorage)
+{
+	/*
+     * exchange codes for flipArrayIndices: F12 = 2, F13 = 3, F23 = 4, RL = 5, RR = 6;
+     *
+			1		2		3		4		5		6 (permtag values)
+   from\to  123     132     213     231     312     321
+	123     ID      F23     F12     RL      RR      F13
+	132     F23     ID      RR      F13     F12     RL
+	213     F12     RL      ID      F23     F13     RR
+	231     RR      F13     F23     ID      RL      F12
+	312     RL      F12     F13     RR      ID      F23
+	321     F13     RR      RL      F12     F23     ID
+	*/
+	int flagtable[36] = {
+0,     4,      2,     5,      6,     3,
+4,     0,      6,     3,      2,     5,
+2,     5,      0,     4,      3,     6,
+6,     3,      4,     0,      5,     2,
+5,     2,      3,     6,      0,     4,
+3,     6,      5,     2,      4,     0};
+
+	int toperm = of->permtag;
+	int fromperm = in->permtag;
+
+	int flag = flagtable[(toperm-1) + 6*(fromperm-1)];
+
+	int worked = SUCCESSFUL;
+	if(out == in) {
+		// in place flip
+		if(flag != 0) {
+			worked = flipArrayIndices(in, NULL, 1, flag, NULL, tempStorage);
+		} // identity in-place requires nothing
+	} else {
+		// out of place flip
+		if(flag != 0) {
+			worked = flipArrayIndices(in, &out, 1, flag, NULL, tempStorage);
+		} else {
+			// fixme: copy it!
+			worked = ERROR_NOIMPLEMENT;
+		}
+	}
+
+	return CHECK_IMOGEN_ERROR(worked);
+}
+
+/* This routine performs optimized out-of-place exchange on multiple identical arrays
+ * at once by taking advantage of concurrent copy + execute; Don't call it directly, flipArrayIndices
+ * will determine correctly if it can be called! */
 int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cudaStream_t *streamPtrs, MGArray *tempStorage)
 {
 #ifdef USE_NVTX
