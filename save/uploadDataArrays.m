@@ -37,7 +37,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 
     % Handle each fluid
     for F = 1:numel(FieldSource.fluids)
-        SaveManager.logPrint('Fluid %i: ', int32(F));
+        SaveManager.logPrint('    Fluid %i: ', int32(F));
         fluid(F) = FluidManager();
         % HACK HACK HACK this should be in some other init place
         fluid(F).MINMASS        = FieldSource.ini.minMass;
@@ -72,15 +72,6 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         fluid(F).attachFluid(DataHolder, mass, ener, mom);
         fluid(F).attachStreams(streams);
 
-        % Outflows will not have set right: They are driven by the mass BC alone
-        % but all other arrays are uploaded after mass.
-        outflows = strcmp(mass.bcModes,ENUM.BCMODE_OUTFLOW);
-        if any(outflows(:))
-            SaveManager.logPrint('Asserting outflow BC.');
-            mass.applyBoundaryConditions(1);
-            mass.applyBoundaryConditions(2);
-            mass.applyBoundaryConditions(3);
-        end
         SaveManager.logPrint('\n');
     end
 

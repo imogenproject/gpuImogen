@@ -24,12 +24,13 @@ classdef ImogenArray < handle
         edgeshifts;     % Handles to shifting functions for each grid direction.    handle(2,3)
         isZero;         % Specifies that the array is statically zero.              logical
         streamptr;      % .pArray.manager.cudaStreamsPtr
+        
     end %PROPERTIES
     
     %===================================================================================================
     properties (SetAccess = protected, GetAccess = protected) %                P R O T E C T E D [P]
         pArray;         % Storage of the 3D array data.                             double(Nx,Ny,Nz)
-	pArrayCopy;
+        pArrayCopy;
         pShiftEnabled;  % Specifies if shifting is active for each dimension.       logical(3)
         pManager;  % Access to the FluidManager associated with this state vector FluidManager
         
@@ -44,9 +45,8 @@ classdef ImogenArray < handle
         gputag;         % GPU tag of the array for passing to cuda
         idString;       % String form of the id cell array.                         str
         fades;          % The fade objects influencing the ImogenArray object.      cell{?}
+        gamma;
     end %DEPENDENT
-    
-    
     
     %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
@@ -65,13 +65,17 @@ classdef ImogenArray < handle
         end
         %function result = get.streamptr(obj); result = obj.pArray.manager.cudaStreamsPtr; end
         
+        function result = get.gamma(self)
+            result = self.pManager.gamma;
+        end
+        
         function initialArray(obj, array)
 
-	    % This isn't a real run: We just want to get to a data save
-	    if obj.pStoredOnGPU == false;
-		obj.pArray = array;
-		return;
-	    end
+            % This isn't a real run: We just want to get to a data save
+            if obj.pStoredOnGPU == false
+                obj.pArray = array;
+                return;
+            end
 
             obj.pArray.array = array;
             if obj.pBCUninitialized
@@ -92,39 +96,32 @@ classdef ImogenArray < handle
                 warning('Warning: obj.initialArray() called when array already initialized.');
             end
             
-            if ~isempty(obj.pManager.parent)
-                for d = 1:3
-                    if obj.gridSize(d) > 3
-                        obj.applyBoundaryConditions(d);
-                    end
-                end
-            else
-                %warning('Danger - ImogenArray created with no parent ImogenManager: This will crash if BCs are ever set.');
-                % this makes a bloody mess of the unit tester
-            end
+            % We used to automatically apply BCs here,
+            % but nontrivial BCs mean we have to wait until EVERYTHING is uploaded before all
+            % required data is guaranteed to be available.
         end
         
         function set.array(obj,value)
-	    if obj.pstoredOnGPU
+            if obj.pStoredOnGPU
                 obj.pArray.array = value;
                 for d = 1:3 % Do not try to force BCs in a nonfluxable direction
                    if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
                 end
-	    else
-	        obj.pArray = value;
-	    end
+            else
+                obj.pArray = value;
+            end
         end
         
         function array_NewBC(obj, value)
-	    if obj.pStoredOnGPU
+            if obj.pStoredOnGPU
                 obj.pArray.array = value;
                 obj.setupBoundaries();
                 for d = 1:3 % Do not try to force BCs in a nonfluxable direction
                    if obj.gridSize(d) > 3; obj.applyBoundaryConditions(d); end
                 end
-	    else
-	        obj.pArray = value;
-	    end
+            else
+                obj.pArray = value;
+            end
         end
         
         %___________________________________________________________________________________________________ GS: gridSize
@@ -167,7 +164,7 @@ classdef ImogenArray < handle
             if (nargin == 0 || isempty(id)); return; end
             if ~isa(id,'cell');    id = {id}; end
             obj.pArray = GPU_Type();
-	    obj.pArrayCopy = [];
+            obj.pArrayCopy = [];
             obj.pShiftEnabled   = true(1,3);
             obj.component       = component;
             obj.id              = id;
@@ -183,35 +180,35 @@ classdef ImogenArray < handle
         end
         
         function storeOnGPU(self)
-	    if self.pStoredOnGPU == true; return; end % nothing to do
+            if self.pStoredOnGPU == true; return; end % nothing to do
             self.pStoredOnGPU = true;
 
-	    if isempty(self.pArrayCopy)
-	        disp('WARNING: No copy of slab holder handle available. Data is transferred to GPU but WILL NOT WORK WITH IMOGEN GPU ROUTINES ANY MORE.');
-		self.pArrayCopy = GPU_Type();
-	    end
+            if isempty(self.pArrayCopy)
+                disp('WARNING: No copy of slab holder handle available. Data is transferred to GPU but WILL NOT WORK WITH IMOGEN GPU ROUTINES ANY MORE.');
+                self.pArrayCopy = GPU_Type();
+            end
 
-	    self.pArrayCopy.array = self.pArray;
-	    self.pArray = self.pArrayCopy;
+            self.pArrayCopy.array = self.pArray;
+            self.pArray = self.pArrayCopy;
         end
 
         function storeOnCPU(self)
-	    if self.pStoredOnGPU == false; return; end % nothing to do
+            if self.pStoredOnGPU == false; return; end % nothing to do
             self.pStoredOnGPU = false;
 
-	    self.pArrayCopy = self.pArray; % avoid losing our handle to the slab
-	    self.pArray = self.pArrayCopy.array;
+            self.pArrayCopy = self.pArray; % avoid losing our handle to the slab
+            self.pArray = self.pArrayCopy.array;
         end
 
 
         %___________________________________________________________________________________________________ cleanup
         % Cleans up the ImogenArray by emptying the data array, reducing memory requirements.
         function cleanup(obj)
-	    if obj.pStoredOnGPU
+            if obj.pStoredOnGPU
                 obj.pArray.clearArray();
-	    else
-	        obj.pArray = [];
-	    end
+            else
+                obj.pArray = [];
+            end
         end
         
         function delete(obj)

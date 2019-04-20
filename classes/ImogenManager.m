@@ -114,9 +114,9 @@ classdef ImogenManager < handle
 
             % Serve as roots for the event queuing system lists
             obj.peripheralListRoot = LinkedListNode();
-	    obj.peripheralListRoot.whatami = 'ImogenManager.peripheralListRoot';
+            obj.peripheralListRoot.whatami = 'ImogenManager.peripheralListRoot';
             obj.eventListRoot = LinkedListNode();
-	    obj.eventListRoot.whatami = 'ImogenManager.eventListRoot';
+            obj.eventListRoot.whatami = 'ImogenManager.eventListRoot';
             
             
             obj.bc          = BCManager();                  obj.bc.parent           = obj;
@@ -169,9 +169,9 @@ classdef ImogenManager < handle
 % FIXME: All these should take just 'f' as their fluid state arg
 % FIXME: All these should be peripherals subsumed under the above loop, not bespoke "special" things Imogen does.
             obj.image.initialize();
-                      for n = 1:numel(f)
-                          f(n).initialize(mag);
-                      end
+            for n = 1:numel(f)
+                f(n).initialize(mag);
+            end
             obj.radiation.initialize(obj, obj.fluid, obj.magnet);
             obj.selfGravity.initialize(IC.selfGravity, f(1).mass);
             obj.potentialField.initialize(IC.potentialField);
@@ -186,7 +186,7 @@ classdef ImogenManager < handle
             
             if obj.geometry.frameRotationOmega ~= 0
                 j = obj.geometry.frameRotationOmega;
-                obj.geometry.frameRotationOmega = 0;
+                obj.geometry.frameRotationOmega = 0; % alterFrameRotation reads/adjusts this, reset per fluid
                 source_alterFrameRotation(obj, f, j);
                 
                 % If the frame was boosted, we need to rebuild any statics in use
@@ -197,6 +197,13 @@ classdef ImogenManager < handle
                 %    f(n).mom(3).setupBoundaries();
                 %    f(n).ener.setupBoundaries();
                 %end
+            end
+            
+            % Now that everything is setup, invoke boundary condition setter for 1st time:
+            for n = 1:numel(obj.fluid)
+                obj.fluid(n).setBoundaries(1);
+                obj.fluid(n).setBoundaries(2);
+                obj.fluid(n).setBoundaries(3);
             end
             
         end
@@ -262,7 +269,7 @@ classdef ImogenManager < handle
         
         function yn = chkpointThisIter(obj)
             yn = obj.checkpointInterval & mod(obj.time.iteration, obj.checkpointInterval) == (obj.checkpointInterval-1);
-	end
+        end
 
 %________________________________________________________________________________________ appendInfo
 % Appends an info string and value to the info cell array.
