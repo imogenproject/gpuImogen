@@ -9,12 +9,12 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     if isstruct(srcData) == 0
         load(srcData); %#ok<LOAD>
-        SaveManager.logPrint('---------- Imogen starting from file');
+        SaveManager.logPrint('---------- Imogen initializing from file\n');
     else
         IC = srcData;
         clear srcData;
         evalin('caller','clear IC'); % Make ML release the memory used above
-        SaveManager.logPrint('---------- Imogen starting from passed IC structure');
+        SaveManager.logPrint('---------- Imogen initializing from passed IC structure\n');
     end
 
     ini     = IC.ini;
@@ -62,7 +62,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         [run.fluid, mag] = uploadDataArrays(FieldSource, run, statics);
     catch oops
         prettyprintException(oops, 0, ...
-            sprintf('\n    FATAL: Unsuccessful uploading data arrays!\n    Aborting run.\n    Additional execption will be printed by loader.\n'));
+            sprintf('\n    FATAL: Unsuccessful uploading data arrays!\n    Aborting run.\n    Additional exception will be printed by loader.\n'));
         collectiveFailure = 1;
     end
     mpi_errortest(collectiveFailure);
@@ -77,10 +77,9 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     clear('IC', 'ini', 'statics');    
     mpi_barrier();
-    run.save.logPrint('---------- Entering simulation loop\n');
 
     if ~RESTARTING
-        run.save.logPrint('New simulation: Doing initial save... ');
+        run.save.logPrint('    New simulation: Doing initial save... ');
         try
             resultsHandler([], run, run.fluid, mag);
         catch booboo
@@ -92,17 +91,18 @@ function outdirectory = imogen(srcData, resumeinfo)
 
         run.save.logPrint('Succeeded.\n');
     else
-        run.save.logPrint('Simulation resuming after iteration %i\n',run.time.iteration);
+        run.save.logPrint('    Simulation resuming after iteration %i\n',run.time.iteration);
     end
 
     run.time.recordWallclock();
 
     if run.checkpointInterval
-        run.save.logPrint(['Checkpointing enabled, interval ' num2str(run.checkpointInterval) ' steps.']);
+        run.save.logPrint(['    Checkpointing enabled, interval ' num2str(run.checkpointInterval) ' steps.\n']);
         backupData = dumpCheckpoint(run);
     end
 
-run.time.updateUI();
+    run.save.logPrint('---------- Entering simulation loop\n');
+    run.time.updateUI();
 
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
@@ -113,13 +113,14 @@ run.time.updateUI();
         
         srcFunc(run, run.fluid, mag, 0.5);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
+        %flux(run, run.fluid, mag, 1); if debug necessary
         srcFunc(run, run.fluid, mag, 1.0);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         srcFunc(run, run.fluid, mag, 0.5);
         
         if run.VTOSettings(1)
             % This isn't a physical operator anyway so don't cry about temporal accuracy
-            cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geoetry);
+            cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
         end
         
         if run.checkpointInterval && checkPhysicality(run.fluid)
