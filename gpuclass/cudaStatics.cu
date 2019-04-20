@@ -65,6 +65,8 @@ __global__ void cukern_extrapolateFlatConstBdyZPlus(double *phi, int nx, int ny,
 
 __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpecials, int blkOffset);
 
+int setFreeBalanceCondition(MGArray *fluid, GeometryParams *geom, int rightside, int direction, MGArray *gravpot, double fluidGamma);
+
 int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int memdir);
 template <int direct>
 __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth);
@@ -76,6 +78,7 @@ __global__ void cukern_SetOutflowZ(double *base, int nx, int ny, int nz, int sla
 int setBoundarySAS(MGArray *phi, int side, int direction, int sas);
 
 __constant__ __device__ double restFrmSpeed[8];
+__constant__ __device__ double thermoVariables[4];
 
 #ifdef STANDALONE_MEX_FUNCTION
 
@@ -93,6 +96,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 }
 #endif
 
+/* Takes a pointer to MGArray *fluid, which must refer to five MGArrays (rho, px, py, pz, etotal), the Matlab class handle for the density
+ * array in case props need to be accessed, the geometry parameters ifnormation *geo, and the direction to set in.
+ *
+ * direction is 123 for XYZ; This is the case regardless of memory orientation.
+ */
 int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
 #ifdef USE_NVTX
@@ -169,6 +177,27 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 			}
 			// Then set the outflow
 			worked = setOutflowCondition(&phi, geo, d, direction);
+		} else if(strcmp(bs, "freebalance") == 0) {
+			int i;
+			// make sure statics are set
+			for(i = 0; i < 5; i++) {
+				worked = setArrayStaticCells(fluid+i, fluid[i].matlabClassHandle);
+				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+			}
+
+			// Now we need to grab the gravitational potential array
+			MGArray gravpot;
+			mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
+			worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
+			if(worked != SUCCESSFUL) {
+				PRINT_SIMPLE_FAULT("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n")
+				return worked;
+			}
+
+			double fluidGamma = derefXdotAdotB_scalar(matlabhandle, "gamma", NULL);
+
+			// Then set the free balance condition
+			worked = setFreeBalanceCondition(&phi, geo, d, direction, &gravpot, fluidGamma);
 		} else {
 			int i;
 			// iterate through the 5 fluid arrays. setA.B.C. sets statics for the array it's passed automatically.
@@ -188,6 +217,9 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 	return CHECK_IMOGEN_ERROR(worked);
 }
 
+/* Accept a pointer to an MGArray, its matlab handle, geometry information, and the physical direction to set the
+ * boundary conditions on.
+ * */
 int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryParams *geo, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
@@ -272,6 +304,26 @@ int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, Geom
 			if(strcmp(bs, "outflow") == 0) {
 				if(phi.numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
 					worked = setOutflowCondition(&phi, geo, d, direction);
+				}
+			}
+
+			if(strcmp(bs, "freebalance") == 0) {
+				if(phi.numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+					// Now we need to grab the gravitational potential array
+					MGArray gravpot;
+					mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
+					if(q != NULL) {
+						worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
+						if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+							printf("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n");
+							return worked;
+						}
+
+						double fluidGamma = derefXdotAdotB_scalar(matlabhandle, "gamma", NULL);
+
+						// Then set the free balance condition
+						worked = setFreeBalanceCondition(&phi, geo, d, direction, &gravpot, fluidGamma);
+					}
 				}
 			}
 
@@ -378,8 +430,10 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 	// the inertial rest frame zero (imposed if inward flow is attempted)
 	// is not zero in the rotating frame:
 
-	for(i = 0; i < h; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*geom->frameOmega; }
-	for(i = 0; i < h; i++) { rfVelocity[h+i] = -(geom->Rinner + (fluid->dim[0]-h+i)*geom->h[0])*geom->frameOmega;  }
+	//for(i = 0; i < h; i++) { rfVelocity[i] = -(geom->Rinner + i*geom->h[0])*geom->frameOmega; }
+	for(i = 0; i < h; i++) { rfVelocity[i] = 1.05; }
+	//for(i = 0; i < h; i++) { rfVelocity[h+i] = -(geom->Rinner + (fluid->dim[0]-h+i)*geom->h[0])*geom->frameOmega;  }
+	for(i = 0; i < h; i++) { rfVelocity[h+i] = -1.198 - .0047*i;  }
 
 	for(i = 0; i < fluid->nGPUs; i++) {
 		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
@@ -396,7 +450,7 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 
 	switch(memdir) {
 	case 1: // x
-		blockdim.x = depth; blockdim.y = blockdim.z = 16;
+		blockdim.x = depth; blockdim.y = 8; blockdim.z = 16;
 
 		for(i = 0; i < fluid->nGPUs; i++) {
 			if(doBCForPart(fluid, i, PARTITION_X, rightside) == 0) continue;
@@ -404,26 +458,26 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 
-			griddim.x = ROUNDUPTO(sub[4], 16)/16;
-			griddim.y = ROUNDUPTO(sub[5], 16)/16;
+			griddim.x = ROUNDUPTO(sub[4], blockdim.y)/blockdim.y;
+			griddim.y = ROUNDUPTO(sub[5], blockdim.z)/blockdim.z;
 
 			if(rightside) {
 				double *base = fluid->devicePtr[i] + sub[3] - 1 - depth;
 				cukern_SetOutflowX<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			} else {
-				double *base = fluid->devicePtr[i] + depth;
+				double *base = fluid->devicePtr[i];
 				cukern_SetOutflowX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth);
 			}
 		}
 		break;
 	case 2: // y
-		blockdim.x = 32; blockdim.y = 3; blockdim.z = 1;
+		blockdim.x = 32; blockdim.y = depth; blockdim.z = 1;
 		for(i = 0; i < fluid->nGPUs; i++) {
 			if(doBCForPart(fluid, i, PARTITION_Y, rightside) == 0) continue;
 			cudaSetDevice(fluid->deviceID[i]);
 			calcPartitionExtent(fluid, i, &sub[0]);
 
-			griddim.x = ROUNDUPTO(sub[4], 32)/32;
+			griddim.x = ROUNDUPTO(sub[4], blockdim.x)/blockdim.x;
 			griddim.y = sub[5];
 			griddim.z = 1;
 
@@ -436,7 +490,7 @@ int setOutflowCondition(MGArray *fluid, GeometryParams *geom, int rightside, int
 		}
 		break;
 	case 3: // z
-		blockdim.x = 32; blockdim.y = 4; blockdim.z = 3;
+		blockdim.x = 32; blockdim.y = 4; blockdim.z = depth;
 		for(i = 0; i < fluid->nGPUs; i++) {
 			if(doBCForPart(fluid, i, PARTITION_Z, rightside) == 0) continue;
 
@@ -493,7 +547,13 @@ __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int sla
 
 	double a;
 
-	a = base[(1+normalDirection)*slabNumel];
+	if(direct > 0) {
+		// + edge: [0] is base
+		a = base[(1+normalDirection)*slabNumel];
+	} else {
+		// - edge: [0] is edge
+		a = base[(1+normalDirection)*slabNumel + depth];
+	}
 
 	double rho, E, p1, p2;
 
@@ -508,11 +568,11 @@ __global__ void cukern_SetOutflowX(double *base, int nx, int ny, int nz, int sla
 			a = base[0]; base[tix] = a; base += slabNumel;
 		} else { // -x: base = &rho[3,0,0]
 			base = base - blockDim.x; // move back to zero
-			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
-			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
-			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
-			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
-			a = base[blockDim.x]; base[tix] = a; base += slabNumel;
+			a = base[depth]; base[tix] = a; base += slabNumel;
+			a = base[depth]; base[tix] = a; base += slabNumel;
+			a = base[depth]; base[tix] = a; base += slabNumel;
+			a = base[depth]; base[tix] = a; base += slabNumel;
+			a = base[depth]; base[tix] = a; base += slabNumel;
 		}
 	} else {
 		// boundary normal momentum negative: null normal velocity, otherwise mirror
@@ -616,7 +676,7 @@ __global__ void cukern_SetOutflowY(double *base, int nx, int ny, int nz, int sla
 
 }
 
-// XY threads & block span the XY space, 3 Z threads 
+// XY threads & block span the XY space, 'depth' Z threads
 // one plane of threads
 // if(direct == -1) base should be &rho[0,0,0]
 // if(direct == 1) base should be &rho[0,0,nz-1 - 2*depth]
@@ -672,12 +732,252 @@ if(a*direct > 0) {
 
 }
 
-// XY threads & block span the XY space, 3 Z threads
-// one plane of threads
-// if(direct == -1) base should be &rho[0,0,0]
-// if(direct == 1) base should be &rho[0,ny-1-2*depth, 0]
 template <int direct>
-__global__ void cukern_SetDoubleMachY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth)
+__global__ void cukern_SetFreeBalanceX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame);
+template <int direct>
+__global__ void cukern_SetFreeBalanceY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame);
+template<int direct>
+__global__ void cukern_SetFreeBalanceZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame);
+
+__constant__ double radialQ[64];
+
+/* Sets boundary condition as follows:
+ * Under the presumption of gravitational balance at the boundary in question, solves the five fluid variables via
+ * v_transverse = free (extrapolate constant)
+ * v_normal = 0 (no flow)
+ * d(v_normal)/dt = 0 (no comoving acceleration) via dP/dnormal = rho d(phi_grav)/dnormal)
+ * Balance is computed by extrapolating an isothermal condition (a BC of T=constant and rho solved to give the pressure gradient)
+ * In the absence of gravity, this reduces to a slip wall
+ */
+int setFreeBalanceCondition(MGArray *fluid, GeometryParams *geom, int rightside, int direction, MGArray *gravpot, double fluidGamma)
+{
+	dim3 blockdim, griddim;
+	int i;
+	int sub[6];
+
+	int status;
+
+	int memdir = MGA_dir2memdir(&fluid->currentPermutation[0], direction);
+
+	int h = fluid->haloSize;
+
+	double thermo[4];
+	thermo[0] = fluidGamma;
+	thermo[1] = 1/(fluidGamma - 1); // this is the only one that's used...
+	thermo[2] = fluidGamma - 1;
+
+	double q, vFrameInner, vFrameOuter, x0;
+	double hostRadQ[6*h];
+
+	vFrameInner = geom->frameOmega * (geom->Rinner + (h)*geom->h[0]); // at reference cell
+	// compute the frame term for the inner cells
+	for(i = 0; i < h; i++) {
+		// q is a dimensionless radius ratio
+		q = (geom->Rinner + (i)*geom->h[0]) / (geom->Rinner + (h)*geom->h[0]);
+
+		// centripetal potential integral from cell h to cell i = v0^2 x0 + v0 x1 + x2
+		x0 = (q-1)/q; // on v0^2
+
+		hostRadQ[    i] = x0;
+		hostRadQ[h + i] = pow(q, -0.5);
+		hostRadQ[2*h+i] = q;
+	}
+
+	// compute the frame term for the outer cells
+	vFrameOuter = geom->frameOmega * (geom->Rinner + (fluid->dim[0] -1 - h)*geom->h[0]); // at reference cell
+	for(i = 0; i < h; i++) {
+		// a dimensionless radius ratio
+		q = (geom->Rinner + (fluid->dim[0] - h + i)*geom->h[0]) / (geom->Rinner + (fluid->dim[0] - 1 - h)*geom->h[0]);
+
+		// centripetal potential integral from cell h to cell i = v0^2 x0 + v0 x1 + x2
+		x0 = (q-1)/q; // on v0^2
+
+		hostRadQ[3*h + i] = x0;
+		hostRadQ[4*h + i] = pow(q, -0.5);
+		hostRadQ[5*h + i] = q;
+	}
+
+	for(i = 0; i < fluid->nGPUs; i++) {
+		// Prevent BC from being done to internal partition boundaries if we are partitioned in this direction
+		if(doBCForPart(fluid, i, PARTITION_X, rightside)) {
+			cudaSetDevice(fluid->deviceID[i]);
+			if(direction == 1) { cudaMemcpyToSymbol((const void *)radialQ, &hostRadQ[0], 6*h*sizeof(double), 0, cudaMemcpyHostToDevice); }
+			cudaMemcpyToSymbol((const void *)thermoVariables, &thermo[0], 4*sizeof(double), 0, cudaMemcpyHostToDevice);
+		}
+	}
+
+	int depth = fluid->haloSize;
+
+	status = CHECK_CUDA_ERROR("__constant__ uploads for freebalance condition");
+	if(status != SUCCESSFUL) return status;
+
+	MGArray gravpotOriented;
+	int createdNewGravpot = 0;
+
+	if(fluid->permtag != gravpot->permtag) {
+		MGArray *q = &gravpotOriented;
+
+		status = matchArrayOrientation(fluid, gravpot, q, (MGArray *)NULL);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
+		createdNewGravpot = 1;
+	} else {
+		gravpotOriented = *gravpot;
+	}
+
+	switch(memdir) {
+	case 1: // X
+		blockdim.x = depth; blockdim.y = blockdim.z = 16;
+
+		for(i = 0; i < fluid->nGPUs; i++) {
+			if(doBCForPart(fluid, i, PARTITION_X, rightside) == 0) continue;
+
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+
+			griddim.x = ROUNDUPTO(sub[4], 16)/16;
+			griddim.y = ROUNDUPTO(sub[5], 16)/16;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i] + sub[3] - 1 - depth;
+				double *beta = gravpotOriented.devicePtr[i] + sub[3] - 1 - depth;
+				cukern_SetFreeBalanceX<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameOuter);
+			} else {
+				double *base = fluid->devicePtr[i];
+				double *beta = gravpotOriented.devicePtr[i];
+				cukern_SetFreeBalanceX<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameInner);
+			}
+		}
+		break;
+	case 2: // Y
+		blockdim.x = 32; blockdim.y = depth; blockdim.z = 1;
+		for(i = 0; i < fluid->nGPUs; i++) {
+			if(doBCForPart(fluid, i, PARTITION_Y, rightside) == 0) continue;
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+
+			griddim.x = ROUNDUPTO(sub[4], 32)/32;
+			griddim.y = sub[5];
+			griddim.z = 1;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i]   + sub[3] * (sub[4]-1-depth);
+				double *beta = gravpotOriented.devicePtr[i] + sub[3] * (sub[4]-1-depth);
+				cukern_SetFreeBalanceY<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameOuter);
+			} else {
+				double *base = fluid->devicePtr[i];
+				double *beta = gravpotOriented.devicePtr[i];
+				cukern_SetFreeBalanceY<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameInner);
+			}
+		}
+		break;
+	case 3: // Z
+		blockdim.x = 32; blockdim.y = 8; blockdim.z = 1;
+		for(i = 0; i < fluid->nGPUs; i++) {
+			if(doBCForPart(fluid, i, PARTITION_Z, rightside) == 0) continue;
+
+			cudaSetDevice(fluid->deviceID[i]);
+			calcPartitionExtent(fluid, i, &sub[0]);
+			griddim.x = ROUNDUPTO(sub[3], blockdim.x)/blockdim.x;
+			griddim.y = ROUNDUPTO(sub[4], blockdim.y)/blockdim.y;
+			griddim.z = 1;
+
+			if(rightside) {
+				double *base = fluid->devicePtr[i] + sub[3]*sub[4]*(sub[5]-1 - depth);
+				double *beta = gravpotOriented.devicePtr[i] + sub[3]*sub[4]*(sub[5] - 1 - depth);
+				cukern_SetFreeBalanceZ<1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameOuter);
+			} else {
+				double *base = fluid->devicePtr[i];
+				double *beta = gravpotOriented.devicePtr[i];
+				cukern_SetFreeBalanceZ<-1><<<griddim, blockdim>>>(base, sub[3], sub[4], sub[5], (int32_t)fluid->slabPitch[i]/8, direction, depth, beta, vFrameInner);
+			}
+		}
+		break;
+	}
+
+	status = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, fluid, direction, "Setting freebalance BC on array");
+
+	if(createdNewGravpot) {
+		status = CHECK_IMOGEN_ERROR(MGA_delete(&gravpotOriented));
+	}
+
+	return status;
+}
+
+// We are passed &rho(0,0,0) if direct == -1
+// We are passed &rho(nx-1-depth,0,0) if direct == 1
+// Launch an depthxAxB block with an NxM grid such that AN >= ny and BM >= nz
+template <int direct>
+__global__ void cukern_SetFreeBalanceX(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame)
+{
+	int tix = threadIdx.x;
+
+	int y = threadIdx.y + blockDim.y*blockIdx.x;
+	int z = threadIdx.z + blockDim.z*blockIdx.y;
+	if((y >= ny) || (z >= nz)) return;
+
+	// Y-Z translate
+	base    += nx*(y+ny*z);
+	gravpot += nx*(y+ny*z);
+
+	double rho, E, vx, vy, vz, T, phi0, phi1, rho2;
+
+	if(direct > 0) { } else { base += depth; }
+	// + boundary
+	// mind all [depth] threads are hitting the same read points here
+	rho = base[0];
+	vx = base[2*slabNumel]/rho;
+	vy = base[3*slabNumel]/rho;
+	vz = base[4*slabNumel]/rho;
+	E = base[slabNumel] - .5*rho*(vx*vx+vy*vy+vz*vz);
+
+	if(direct > 0) { } else { base -= depth; }
+
+	T = E / rho; // actually eint / rho = (P / rho)  / (gamma-1)
+
+	if(direct > 0) { phi0 = gravpot[0]; } else { phi0 = gravpot[depth]; }
+	if(direct > 0) { phi1 = gravpot[tix+1]; } else { phi1 = gravpot[tix]; } // load phi at current altitude
+
+	if(normalDirection != 1) {
+		// Non-radial cases: just balance gravity potential against pressure at fixed temperature
+		// Isothermal force balance condition:
+		// rho dphi/dz = -dP/dz = -T drho/dz
+		// -dphi/T = drho / rho
+		// -(phi2 - phi1)/T = ln(rho2) - ln(rho1)
+		// rho2 = rho1 exp(-(phi2 - phi1)/T)
+		rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0)/T);
+	} else {
+		// Accounts for the centripetal potential, asserting kepler curve (omega ~ r^-1.5) extrapolated from first valid cell
+		double centripetalPotential;
+
+		if(direct > 0) {
+			vy += vFrame;
+			centripetalPotential = vy*vy*radialQ[tix+3*depth];
+			vy = vy * radialQ[tix + 4*depth] - vFrame * radialQ[tix + 5*depth];
+		} else {
+			vy += vFrame;
+			centripetalPotential = vy*vy*radialQ[tix+0*depth];
+			vy = vy * radialQ[tix + 1*depth] - vFrame * radialQ[tix + 2*depth];
+		}
+		rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0 - centripetalPotential)/T);
+	}
+
+	if(direct > 0) { base = base + tix + 1; } else { base = base + tix; }
+
+	base[0] = rho2; // density falls off with altitude
+	base[2*slabNumel] = rho2*vx; // "slip wall" condition in the transverse directions
+	base[3*slabNumel] = rho2*vy;
+	base[4*slabNumel] = rho2*vz;      // Assert no motion vertically
+	E = rho2*T + .5*rho2*(vx*vx+vy*vy+vz*vz);
+	base[slabNumel] = E;        // Assert a pressure condition vertically to maintain zero comoving derivative
+
+}
+
+// Use 32x3 threads and dim3(roundup(nx/32), nz, 1) blocks
+// if(direct == -1) {minus coordinate edge} base is &rho[0, 0, 0]
+// if(direct == 1)  {plus coordinate edge}  base is &rho[0,ny-1-depth ,0]
+template <int direct>
+__global__ void cukern_SetFreeBalanceY(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame)
 {
 	int x = threadIdx.x + blockDim.x*blockIdx.x;
 	int z = blockIdx.y;
@@ -685,43 +985,140 @@ __global__ void cukern_SetDoubleMachY(double *base, int nx, int ny, int nz, int 
 
 	if((x >= nx) || (z >= nz)) return;
 
-	// Y-Z translate
+	// X-Z translate
 	base += x + nx*(ny*z);
+	gravpot += x + nx*ny*z;
 
-	double a, rho, E, p1, p2;
+	double rho, E, vx, vy, vz, T, phi0, phi1, rho2;
 
-	a = base[(1+normalDirection)*slabNumel];
+	if(direct > 0) { } else { base = base + depth*nx; }
+	// + boundary
+	// mind all [depth] threads are hitting the same read points here
+	rho = base[0];
+	vx = base[2*slabNumel]/rho;
+	vy = base[3*slabNumel]/rho;
+	vz = base[4*slabNumel]/rho;
+	E = base[slabNumel] - .5*rho*(vx*vx+vy*vy+vz*vz);
+	if(direct > 0) { } else { base = base - depth*nx; }
 
-	if(direct > 0) {
-		// top edge: set a condition of uniform M=10 inflow at 30* inclination
-		base[(4+tiy)*nx] = 1; base += slabNumel;
-		base[(4+tiy)*nx] = 8.660254038; base += slabNumel;
-		base[(4+tiy)*nx] = -5; base += slabNumel;
-		base[(4+tiy)*nx] = 0; base += slabNumel;
-		base[(4+tiy)*nx] = 51.78571429;
+	T = E / rho;
+	if(direct > 0) { phi0 = gravpot[0]; } else { phi0 = gravpot[nx*depth]; }
+	if(direct > 0) { phi1 = gravpot[nx*(tiy+1)]; } else { phi1 = gravpot[nx*tiy]; }
+
+	if(normalDirection != 1) {
+		// Non-radial cases: just balance gravity potential against pressure at fixed temperature
+		// Isothermal force balance condition:
+		// rho dphi/dz = -dP/dz = -T drho/dz
+		// -dphi/T = drho / rho
+		// -(phi2 - phi1)/T = ln(rho2) - ln(rho1)
+		// rho2 = rho1 exp(-(phi2 - phi1)/T)
+		rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0)/T);
 	} else {
-		// bottom edge: wedge is at 1/6 of way from -x edge to +x edge
-		// x < 1/6 = static M=10 flow
-		// x >= 1/6 = mirror
-		if(6*x < nx) {
-			// flowthrough
-			base[tiy*nx] = 1; base += slabNumel;
-			base[tiy*nx] = 8.660254038; base += slabNumel;
-			base[tiy*nx] = -5; base += slabNumel;
-			base[tiy*nx] = 0; base += slabNumel;
-			base[tiy*nx] = 51.78571429;
-		} else {
-			// mirror (slip wall)
-			base[tiy*nx] = base[(2*depth-tiy)*nx]; // rho
-			base[tiy*nx] = base[(2*depth-tiy)*nx]; // px
-			base[tiy*nx] = -base[(2*depth-tiy)*nx]; // py
-			base[tiy*nx] = base[(2*depth-tiy)*nx]; // pz
-			base[tiy*nx] = base[(2*depth-tiy)*nx]; // E
+		// Accounts for the centripetal potential, asserting kepler curve (omega ~ r^-1.5) extrapolated from first valid cell
+		double centripetalPotential;
 
+		if(direct > 0) {
+			vy += vFrame;
+			centripetalPotential = vy*vy*radialQ[tiy+3*depth];
+			vy = vy * radialQ[tiy + 4*depth] - vFrame * radialQ[tiy + 5*depth];
+		} else {
+			vy += vFrame;
+			centripetalPotential = vy*vy*radialQ[tiy+0*depth];
+			vy = vy * radialQ[tiy + 1*depth] - vFrame * radialQ[tiy + 2*depth];
 		}
+		rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0 - centripetalPotential)/T);
 	}
 
+	// Isothermal vertical balance condition:
+	// rho dphi/dz = -dP/dz = -T drho/dz
+	// -dphi/T = drho / rho
+	// -(phi2 - phi1)/T = ln(rho2) - ln(rho1)
+	// rho2 = rho1 exp(-(phi2 - phi1)/T)
+
+	if(direct > 0) { base = base + nx*(tiy+1); } else { base = base + tiy*nx; }
+
+	base[0] = rho2; // density falls off with altitude
+	base[2*slabNumel] = rho2*vx; // "slip wall" condition in the transverse directions
+	base[3*slabNumel] = rho2*vy;
+	base[4*slabNumel] = rho2*vz;      // Assert no motion vertically
+	E = rho2*T + .5*rho2*(vx*vx+vy*vy+vz*vz);
+	base[slabNumel] = E;        // Assert a pressure condition vertically to maintain zero comoving derivative
+
 }
+
+// XY threads & block span the XY space, 1 Z thread
+// one plane of threads
+// if(direct == -1) base should be &rho[0,0,0]
+// if(direct == 1) base should be &rho[0,0,nz-1 - depth]
+template<int direct>
+__global__ void cukern_SetFreeBalanceZ(double *base, int nx, int ny, int nz, int slabNumel, int normalDirection, int depth, double *gravpot, double vFrame)
+{
+int x = threadIdx.x + blockDim.x*blockIdx.x;
+int y = threadIdx.y + blockDim.y*blockIdx.y;
+
+if((x >= nx) || (y >= ny)) return;
+
+base += x + nx*y;
+gravpot += x + nx*y;
+
+int delta = nx*ny;
+int i;
+double rho, E, vx, vy, vz, T, phi0, phi1, rho2, theta;
+
+if(direct > 0) { } else { base = base + depth*delta; }
+rho = base[0];
+vx = base[2*slabNumel] / rho;
+vy = base[3*slabNumel] / rho;
+vz = base[4*slabNumel] / rho;
+E = base[slabNumel] - .5*rho*(vx*vx+vy*vy+vz*vz);
+if(direct > 0) { } else { base = base - depth*delta; }
+
+T = E / rho;
+if(direct > 0) { phi0 = gravpot[0]; } else { phi0 = gravpot[depth*delta]; }
+
+if(direct > 0) { base += delta; } else {  }
+
+for(i = 0; i < depth; i++) {
+	// load phi at current cell
+	if(direct > 0) { phi1 = gravpot[(i+1)*delta]; } else { phi1 = gravpot[i*delta]; }
+
+	if(normalDirection != 1) {
+			// Non-radial cases: just balance gravity potential against pressure at fixed temperature
+			// Isothermal force balance condition:
+			// rho dphi/dz = -dP/dz = -T drho/dz
+			// -dphi/T = drho / rho
+			// -(phi2 - phi1)/T = ln(rho2) - ln(rho1)
+			// rho2 = rho1 exp(-(phi2 - phi1)/T)
+			rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0)/T);
+			theta = vy;
+		} else {
+			// Accounts for the centripetal potential, asserting kepler curve (omega ~ r^-1.5) extrapolated from first valid cell
+			double centripetalPotential;
+
+			if(direct > 0) {
+				theta = vy + vFrame; // return to inertial frame
+				centripetalPotential = theta*theta*radialQ[i+3*depth];
+				theta = theta * radialQ[i+4*depth] - vFrame * radialQ[i + 5*depth];
+			} else {
+				theta = vy + vFrame;
+				centripetalPotential = theta*theta*radialQ[i+0*depth];
+				theta = theta * radialQ[i+1*depth] - vFrame * radialQ[i + 2*depth];
+			}
+			rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0 - centripetalPotential)/T);
+		}
+
+	base[0] = rho2; // density falls off with altitude
+	base[2*slabNumel] = rho2*vx; // "slip wall" condition in the transverse directions
+	base[3*slabNumel] = rho2*theta;
+	base[4*slabNumel] = rho2*vz;      // Assert no motion vertically
+	E = rho2*T + .5*rho2*(vx*vx+theta*theta+vz*vz);
+	base[slabNumel] = E;        // Assert a pressure condition vertically to maintain zero comoving derivative
+
+	base += delta; // move up a plane
+}
+
+}
+
 
 int callBCKernel(dim3 griddim, dim3 blockdim, double *x, dim3 domainRez, int ktable, int bcDepth);
 

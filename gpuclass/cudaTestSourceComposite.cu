@@ -126,6 +126,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 
+		mxArray *q = derefXatNdotAdotB(prhs[0], fluidct, "MINMASS", NULL);
+		double rhomin = *mxGetPr(q);
+		double rhonog= rhomin * 4; // FIXME this is a test hack
+		double rhofg = rhomin * 4.1;
+
+
 		status = sourcefunction_Composite(&fluid[0], &gravPot, &xyvec, geom, rhonog, rhofg, dt, spaceOrder, timeOrder, &tempSlab);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
 	}

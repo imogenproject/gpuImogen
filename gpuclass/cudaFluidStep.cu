@@ -539,8 +539,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				}
 			}
 
-			returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
-			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
+			//returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
+			//if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			for(i = 0; i < fluid->nGPUs; i++) {
 				cudaSetDevice(fluid->deviceID[i]);
