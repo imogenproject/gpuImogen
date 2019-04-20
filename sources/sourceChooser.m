@@ -34,10 +34,10 @@ if numel(run.fluid) > 1;         use2F  = 1; else; use2F  = 0; end
 
 sourcerFunction = useCyl + 2*useRF + 4*usePhi + 8*use2F;
 
-if useCyl; SaveManager.logPrint('Cylindrical geometry in use.\n'); end
-if useRF;  SaveManager.logPrint('Rotating frame in use.\n'); end
-if usePhi; SaveManager.logPrint('Static potential field in use.\n'); end
-if use2F;  SaveManager.logPrint('Two-fluid drag in use.\n'); end
+if useCyl; SaveManager.logPrint('    Cylindrical geometry in use.\n'); end
+if useRF;  SaveManager.logPrint('    Rotating frame in use.\n'); end
+if usePhi; SaveManager.logPrint('    Static potential field in use.\n'); end
+if use2F;  SaveManager.logPrint('    Two-fluid drag in use.\n'); end
 
 switch sourcerFunction
     case 0; S  = @srcBlank;

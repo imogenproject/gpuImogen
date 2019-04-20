@@ -22,7 +22,7 @@ function initializeResultPaths(run, IC)
     %-----------------------------------------------------------------------------------------------
     % Determine directory names
     %--------------------------
-    SaveManager.logPrint('Creating directories...');
+    SaveManager.logPrint('    Creating directories... ');
             
         %--- RESULTS Directory ---%
         MErr = locDirMaker(run, run.paths.results,'Results folder Created');
@@ -43,6 +43,8 @@ function initializeResultPaths(run, IC)
             error('PathCreation:Save', ['Unable to create directory for run. '...
                                             'Aborting operation.']);
         end
+
+        SaveManager.logPrint('Run path: %s\n', run.paths.save);
 
         %--- IMAGE Directories ---%
         if ( ~isempty(run.image.ACTIVE) )
@@ -99,17 +101,17 @@ function initializeResultPaths(run, IC)
             end
         end
 
-    disp('Awaiting global visibility by all ranks:');
+    SaveManager.logPrint('    Waiting for global visibility of output path by all ranks:');
 
     end
 
     timeTaken = enforceConsistentView(run.paths.save, 600, 1);
-    SaveManager.logPrint('\nResults directory was globally visible in %.1f sec\n', timeTaken);
+    SaveManager.logPrint('    Results directory became globally visible in %.1f sec\n', timeTaken);
     
     switch run.save.format;
-	case ENUM.FORMAT_MAT; sp = 'Output format: .MAT files\n';
-	case ENUM.FORMAT_NC;  sp = 'Output format: .NC NetCDF files\n';
-	case ENUM.FORMAT_HDF; sp = 'Output format: .H5 HDF-5 files\n';
+	case ENUM.FORMAT_MAT; sp = '    Output format: .MAT files\n';
+	case ENUM.FORMAT_NC;  sp = '    Output format: .NC NetCDF files\n';
+	case ENUM.FORMAT_HDF; sp = '    Output format: .H5 HDF-5 files\n';
     end
     SaveManager.logPrint(sp);
   
@@ -130,13 +132,14 @@ function created = locDirMaker(run, folderPath, infoStr)
         try mkdir(folderPath);
         catch MErr, created = MErr; return; end
         
-        %--- Print creation results as feedback to the command line ---%
+        % no... let's not
+	%--- Print creation results as feedback to the command line ---%
         if strcmp(run.paths.results, folderPath)
             displayPath = folderPath;
         else
             displayPath = strrep(folderPath, run.paths.results, '[Results Path]');
         end
-        fprintf('%s: %s\n', infoStr, displayPath);
+        %fprintf('%s: %s\n', infoStr, displayPath);
         created = true;
     else
         created = false;

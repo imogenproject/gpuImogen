@@ -151,7 +151,7 @@ function createSparseMatrix(obj, grid, dgrid)
 
             if mpi_amirank0()
                 run = obj.parent;
-                run.save.logPrint(sprintf('Total of %i CompactObjects present on grid.\n', numel(obj.compactObjects)));
+                run.save.logPrint(sprintf('    Total of %i CompactObjects present on grid.\n', numel(obj.compactObjects)));
             end
         end
 

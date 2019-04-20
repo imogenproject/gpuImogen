@@ -150,19 +150,19 @@ classdef ShearingBoxInitializer < Initializer
             nz = geo.globalDomainRez(3);
 
             r_c    = self.normalizationRadius;
-            
-            %           self.bcMode.x = ENUM.BCMODE_CONSTANT;
+           
             if self.useZMirror == 1
                 if nz > 1
-                    self.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_OUTFLOW };
+                    self.bcMode.z    = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_FREEBALANCE };
                 else
-                    SaveManager.logPrint('NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n');
+                    SaveManager.logPrint('    NOTICE: .useZMirror was set, but nz = 1; Ignoring.\n');
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
             else
                 if nz > 1
-                    self.bcMode.z = ENUM.BCMODE_STATIC;
-                    %self.bcMode.z = ENUM.BCMODE_CONSTANT;
+                    %self.bcMode.z = ENUM.BCMODE_STATIC;
+                    %self.bcMode.z = ENUM.BCMODE_OUTFLOW;
+                    self.bcMode.z = ENUM.BCMODE_FREEBALANCE;
                 else
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
@@ -178,7 +178,7 @@ classdef ShearingBoxInitializer < Initializer
                         gotheight  = boxsize * geo.globalDomainRez(3) / geo.globalDomainRez(1);
                         
                         if needheight > gotheight
-                            warning('NOTE: dz = dx will not be tall enough to hold disk; Raising dz.');
+                            warning('    NOTE: dz = dx will not be tall enough to hold disk; Raising dz.');
                             boxsize(3) = needheight;
                         else
                             boxsize(3) = gotheight;
@@ -215,7 +215,7 @@ classdef ShearingBoxInitializer < Initializer
                     end
                     
                     geo.geometryCylindrical(self.innerRadius/r_c, self.azimuthalMode, dr/r_c, z0/r_c, dz/r_c);
-                    SaveManager.logPrint('Using cylindrical geometry; Angular slice set to %fdeg\n', 360/self.azimuthalMode);
+                    SaveManager.logPrint('    Using cylindrical geometry; Angular slice set to %fdeg\n', 360/self.azimuthalMode);
 %                    geo.geometryCylindrical(self.innerRadius, 1, dr, z0, dz)
             end
 
@@ -334,7 +334,6 @@ clear rho_mp; % never used again
             for n = 1:self.numFluids
                 self.fluidDetails(n) = rescaleFluidDetails(self.fluidDetails(n), m0, r_c, t0);
             end
-
 
             % Compute frame boost that minimizes the average advection speed & so maximizes timestep
             velInner = sqrt(GM / self.innerRadius);

@@ -28,7 +28,7 @@ classdef PotentialFieldManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]        
-%___________________________________________________________________________________________________ GravityManager
+%____________________________________________________________________________________ GravityManager
 % Creates a new GravityManager instance and intializes it with default settings.
         function self = PotentialFieldManager() 
             self.ACTIVE = false;
@@ -39,12 +39,18 @@ classdef PotentialFieldManager < handle
             if isempty(initialConds.field)
                 self.ACTIVE      = false;
                 self.currentCoefficient = 1;
-                self.field = 0;
+                self.field.array = 0;
             else
                 self.ACTIVE = true;
                 self.currentCoefficient = initialConds.constant;
                 self.field = GPU_Type(initialConds.field * self.currentCoefficient);
-                run.save.logPrint('Static potential field ACTIVE.\n');
+                run.save.logPrint('    Static potential field ACTIVE.\n');
+                
+                % If we are ever using a FreeBalance boundary condition, the gravpot will be
+                % required by the boundary solver
+                for q = 1:numel(run.fluid)
+                    run.fluid(q).mass.boundaryData.gravpot = self; 
+                end
             end
         end
 
@@ -57,7 +63,7 @@ classdef PotentialFieldManager < handle
     end%PROTECTED
         
 %===================================================================================================    
-    methods (Static = true) %                                                      S T A T I C    [M]
+    methods (Static = true) %                                                     S T A T I C    [M]
         
     end%STATIC
     
