@@ -419,7 +419,6 @@ int MGA_dir2memdir(int *perm, int dir)
  */
 int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg)
 {
-
 	int i;
 	int returnCode = SUCCESSFUL;
 	prhs += idxFrom;
@@ -427,6 +426,12 @@ int MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArra
 	int64_t *tag;
 
 	for(i = 0; i < (idxTo + 1 - idxFrom); i++) {
+		    if(prhs[i] == NULL) {
+		    	PRINT_FAULT_HEADER;
+		    	printf("Reading array #%i: prhs[i] was NULL (from=%i, to=%i)\n", i, idxFrom, idxTo);
+		    	PRINT_FAULT_FOOTER;
+		    	return ERROR_NULL_POINTER;
+		    }
 			returnCode = getGPUTypeTag(prhs[i], &tag);
 
 			if(returnCode == SUCCESSFUL)
