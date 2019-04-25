@@ -149,7 +149,8 @@ classdef BCManager < handle
                         case ENUM.BCMODE_TRANSPARENT, arrayObj.edgeshifts{n,i} = @transparent_shift;
                         case ENUM.BCMODE_WALL,        arrayObj.edgeshifts{n,i} = @wall_shift;
                         case ENUM.BCMODE_ZERO,        arrayObj.edgeshifts{n,i} = @zero_shift;
-                        case ENUM.BCMODE_OUTFLOW,     arrayObj.edgeshifts{n,i} = @constant_shit; % FIXME this is wrong
+                        case ENUM.BCMODE_OUTFLOW,     arrayObj.edgeshifts{n,i} = @constant_shift; % FIXME this is wrong
+                        case ENUM.BCMODE_FREEBALANCE, arrayObj.edgeshifts{n,i} = @constant_shift; % FIXME this is wrong
                         otherwise
                             error(['Imogen:UnknownType: Unknown BC mode ', arrayObj.bcModes{n,i}]);
             end; end; end
