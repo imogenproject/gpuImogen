@@ -84,10 +84,37 @@ if [ ${1} = "parallel" ]; then
     hostFile="fakeHostfile"
   fi
 
-  mpirun -np $numproc -bynode --hostfile $hostFile matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuno);" >> $redirectStr &
+  mpirun -np $numproc -bynode matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuno);" >> $redirectStr &
 
   exit 0
 fi
+
+if [ ${1} = "parprofile" ]; then
+  # ./imogen parallel runfile stream# GPUs nprocs hostfile
+  gpuno=${4}
+  if [ -z "$4" ]; then
+    gpuno=0
+    echo ">>> WARNING: Parallel run not given GPU sets. Defaulting to $gpuno"
+  fi
+
+  numproc=${5}
+  if [ -z "$numproc" ]; then
+    numproc=1
+    echo ">>> WARNING: Parallel run not given #processes (???). Defaulting to np=1"
+  fi
+
+  hostFile=${6}
+  if [ -z "$hostFile" ]; then
+    echo ">>> WARNING: Parallel run not given hostfile. Defaulting to 'localhost'"
+    echo "localhost" > fakeHostfile
+    hostFile="fakeHostfile"
+  fi
+
+  mpirun -np $numproc -bynode --hostfile $hostFile nvprof -o gpuimogen.%q{OMPI_COMM_WORLD_RANK}.nvvp matlab -nodisplay -nojvm -r "parImogenLoad('${RUNFILE}','${redirectStr}','${alias}', $gpuno);" >> $redirectStr &
+
+  exit 0
+fi
+
 
 if [ ${1} = "cluster" ]; then
 # ./imogen cluster runfile stream #nodes PPN [np] queue
