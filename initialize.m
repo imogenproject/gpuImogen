@@ -50,7 +50,7 @@ SaveManager.logPrint(['    If used, cudaSourceComposite will have space order ' 
 if ~isempty(ini.checkpointSteps)
     run.checkpointInterval = ini.checkpointSteps(1);
 else
-    SaveManager.logPrint('WARNING: No checkpoint interval given; Checkpointing disabled.\n');
+    SaveManager.logPrint('    Warning: No checkpoint interval given; Checkpointing disabled by default\n');
 end
 
 %% ===== GPU settings ===== %%
@@ -68,14 +68,14 @@ end
 %% ===== Radiation settings =====%%
 if ~isempty(ini.radiation)
     run.radiation.readSubInitializer(ini.radiation);
-    SaveManager.logPrint('Radiation subsystem enabled.');
+    SaveManager.logPrint('    Radiation subsystem enabled.');
 end
 
 %% .VTOSettings Vaccum Taffy Operator (background quiescence enforcement) settings
 if ~isempty(ini.VTOSettings)
     run.VTOSettings = [1 ini.VTOSettings];
     if mpi_amirank0()
-        disp(['Vacuum Taffy Operator enabled: ' mat2str(ini.VTOSettings)]);
+        disp(['    Vacuum Taffy Operator enabled: ' mat2str(ini.VTOSettings)]);
     end
 end
 
