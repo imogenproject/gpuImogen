@@ -29,7 +29,7 @@ massH2 = 2.016*amu;
 massHe = 4.031882*amu;
 massArgon = 39.948*amu;
 
-D = struct('gamma',1,'sigma',1,'sigmaTindex',0, 'mass',1.66e-27,'dynViscosity',10e-6,'viscTindex',0.5,'minMass',1,'kBolt',1.381e-23);
+D = struct('gamma',5/3,'sigma',1,'sigmaTindex',0, 'mass',1.66e-27,'dynViscosity',10e-6,'viscTindex',0.5,'minMass',1,'kBolt',1.381e-23);
 D.minMass = 0;
 
 if nargin == 0; D = fluidDetailModel('cold_molecular_hydrogen'); return; end

@@ -25,7 +25,7 @@ classdef Initializer < handle
         runCode;        % Code used to specify experiment type.             string
         alias;          % Unique identifier for the run.                    string
         save;           % Enable/disable saving data to files for a run.    logical
-        saveFormat;     % Either ENUM.FORMAT_MAT or ENUM.FORMAT_NC          integer
+        saveFormat;     % Either ENUM.FORMAT_MAT, ENUM.FORMAT_NC or ENUN.FORMAT_H5 integer
         slice;          % Indices for slices when saving data (1x3).        int
         specSaves;      % Arrays of special iterations used to save data.   struct
         thresholdMass;  % Minium mass acted on by gravitational forces      double
@@ -548,7 +548,7 @@ classdef Initializer < handle
                            'momX',squish(mom(1,:,:,:),'onlyleading'), ...
                            'momY',squish(mom(2,:,:,:),'onlyleading'), ...
                            'momZ',squish(mom(3,:,:,:),'onlyleading'), ...
-                           'ener',ener,'details',[]);
+                           'ener',ener,'details',[], 'bcData', []);
             end
             
             function f = rhoVelEintToFluid(mass, vel, Eint)

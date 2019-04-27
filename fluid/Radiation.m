@@ -30,8 +30,7 @@ classdef Radiation < handle
 %===================================================================================================
     methods %                                                                     G E T / S E T  [M]
         
-%___________________________________________________________________________________________________ Radiation
-% Creates a new Radiation instance.
+%_________________________________________________________________________________________ Radiation
         function obj = Radiation() 
             obj.strength = 1;
             obj.exponent = 0.5;
@@ -90,7 +89,7 @@ classdef Radiation < handle
                 obj.strength   = (ener.array - KE - Bsq) ./ unscaledRadiation.array;
                 obj.strength   = obj.initialMaximum * mpi_max(max(obj.strength(:)));
 
-                SaveManager.logPrint('Radiation strength: %f\n', obj.strength);
+                SaveManager.logPrint('    Radiation strength: %f\n', obj.strength);
             end
             
             if strcmp(obj.strengthMethod,'coollen')
@@ -106,7 +105,7 @@ classdef Radiation < handle
                 %rhopost = 4;
                 obj.strength = (.25*vpre/obj.coolLength) * 4^(obj.exponent-2) * ppost^(1-obj.exponent);
                 
-                SaveManager.logPrint('Radiation strength: %f\n', obj.strength);
+                SaveManager.logPrint('    Radiation strength: %f\n', obj.strength);
             end
 
             obj.pureHydro = run.pureHydro;

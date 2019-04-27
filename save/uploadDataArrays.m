@@ -12,7 +12,7 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     streams = [streams; GPU_ctrl('createStreams', gm.deviceList)];
 
     memtot = sum(iniGPUMem);
-    memneed = numel(FieldSource.fluids(1).mass) * 11 * 8 * numel(FieldSource.fluids);
+    memneed = numel(FieldSource.fluids(1).mass) * 8 * (5*(numel(FieldSource.fluids)+1)+1);
     mpi_barrier(); % Keep anybody from drinking up available memory before we check
 
     if memneed / memtot > .9
