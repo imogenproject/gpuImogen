@@ -30,6 +30,7 @@ classdef ENUM
         BCMODE_MIRROR       = 'mirror';     % Mirror BC (scalars, vector parallel = symmetry, vector perp = antisymmetry)
         BCMODE_STATIC       = 'bcstatic';   % Read values at t=0 and reset to this value at every step
         BCMODE_OUTFLOW      = 'outflow';
+        BCMODE_FREEBALANCE  = 'freebalance';% Solves isothermal gravity balance normally and slip BC transversly
 
         % These not so much
         BCMODE_FADE         = 'fade';       % Fade arrays out to ICs at edges.
