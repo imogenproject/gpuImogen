@@ -140,6 +140,59 @@ classdef SaveManager < LinkedListNode
         end
 
     end
+    
+    function parseIni(self, ini)
+        % Reads and sets all properties defined in the initializer struct that are relevant to the
+        % SaveManager object
+        
+        self.FSAVE = ini.save;
+        self.PERSLICE(1:4) = [ini.ppSave.dim1 ini.ppSave.dim2 ini.ppSave.dim3 ini.ppSave.cust];
+        
+        self.format = ini.saveFormat;
+        
+        self.SLICEINDEX = ini.slice; % ???
+        
+        slLabels = {'x','y','z','xy','xz','yz','xyz','cust'};
+        for i=1:8
+            if ~isfield(ini.activeSlices,slLabels{i}); self.ACTIVE(i) = false;
+            else; self.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i}));
+            end
+        end
+        
+        % ????
+        saveStr = '''slTime'',''slAbout'',''version'',''slGamma'',''sldGrid''';
+        
+        custom = ini.customSave;
+        if isstruct(custom)
+            if (isfield(custom,'mass')  && custom.mass),    saveStr = [saveStr ',''slMass''']; end
+            if (isfield(custom,'mom')   && custom.mom),     saveStr = [saveStr ',''slMom'''];  end
+            if (isfield(custom,'ener')  && custom.ener),    saveStr = [saveStr ',''slEner''']; end
+            if (isfield(custom,'mag')   && custom.mag),     saveStr = [saveStr ',''slMag'''];  end
+            self.customSaveStr = saveStr;
+        else
+            self.customSaveStr = '';
+        end
+        
+        if ~isempty(ini.specSaves) && isa(ini.specSaves,'double')
+            self.specialSaves3D = ini.specSaves;
+            self.parent.appendInfo('Special save points 3D', self.specialSaves3D);
+        else
+            if isfield(ini.specSaves,'dim1')
+                self.specialSaves1D = ini.specSaves.dim1;
+                self.parent.appendInfo('Special save points 1D', self.save.specialSaves1D);
+            end
+            
+            if isfield(ini.specSaves,'dim2')
+                self.specialSaves2D = ini.specSaves.dim2;
+                self.parent.appendInfo('Special save points 2D', self.save.specialSaves2D);
+            end
+            
+            if isfield(ini.specSaves,'dim3')
+                self.specialSaves3D = ini.specSaves.dim3;
+                self.parent.appendInfo('Special save points 3D', self.save.specialSaves3D);
+            end
+        end
+    end
 
 %_____________________________________________________________________________________ postliminary
     function finalize(obj, run, fluids, mag)

@@ -83,6 +83,30 @@ classdef TimeManager < handle
             obj.stepsSinceIncident = inf;
         end
         
+        function nProblems = parseIni(self, ini)
+            % Processes TimeManager-related settings in the initializer struct
+            
+            nProblems = [0 0];
+            
+            if isfield(ini, 'cfl')
+                self.CFL = ini.cfl;
+            else
+                warning(['Danger: No CFL prefactor was provided; Default value of ' mat2str(self.time.CFL) ' will be used.\n']); 
+                nProblems(2) = nProblems(2) + 1;
+            end
+            
+            if isfield(ini, 'iterMax')
+                self.ITERMAX = ini.iterMax;
+            end
+            if isfield(ini, 'timeMax')
+                self.TIMEMAX = ini.timeMax;
+            end
+            if isfield(ini, 'wallMax')
+                self.WALLMAX = ini.wallMax;
+            end
+            
+        end
+        
         function recordWallclock(obj)
             obj.firstWallclockValue = clock;
         end

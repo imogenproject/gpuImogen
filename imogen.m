@@ -27,7 +27,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       classes with the values. From these values the initializeResultsPaths function 
     %       establishes all of the save directories for the run, creating whatever directories are
     %       needed in the process.
-    run = initialize(ini);
+    run = ImogenManager(ini);
 
     if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
 

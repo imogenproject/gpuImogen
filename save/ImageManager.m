@@ -50,6 +50,45 @@ classdef ImageManager < handle
             for i=1:length(obj.IMGTYPES),     obj.(obj.IMGTYPES{i}) = false;    end
         end
         
+        function parseIni(self, ini)
+           
+            fields = self.IMGTYPES;
+            for i=1:length(fields)
+                if isfield(ini.image,fields{i})
+                    self.(fields{i}) = ini.image.(fields{i});
+                end
+                if isfield(ini.image,'logarithmic') && isfield(ini.image.logarithmic,fields{i})
+                    self.logarithmic.(fields{i}) = ini.image.logarithmic.(fields{i});
+                end
+            end
+            self.activate();
+            
+            if self.ACTIVE
+                
+                if isfield(ini.image,'interval')
+                    self.INTERVAL = max(1,ini.image.interval);
+                else
+                    self.INTERVAL = 1;
+                    self.parent.appendWarning('Image saving interval set to every step.');
+                end
+                
+                if isfield(ini.image,'colordepth');    colordepth = ini.image.colordepth;
+                else;                                  colordepth = 256;
+                end
+                
+                if isfield(ini.image,'colormap'); self.createColormap(ini.image.colormap, colordepth);
+                else;                                 self.createColormap('jet',colordepth);
+                end
+                
+                imageSaveState = 'Active'; % FIXME: Wh... why is this a string?
+            else; imageSaveState = 'Inactive';
+            end
+            self.parent.appendInfo('Image saving is', imageSaveState);
+            
+            if isfield(ini.image,'parallelUniformColors')
+                self.parallelUniformColors = ini.image.parallelUniformColors; end
+        end
+        
         %____________________________________________________________________________________ initialize
         % Preliminary actions setting up image saves for the run. Determines which image slices to save.
         function initialize(obj)
