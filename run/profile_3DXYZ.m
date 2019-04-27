@@ -1,13 +1,13 @@
 % Wave advection simulation
 
-grid = [256 256 128];
-%grid = [32 1 1];
+grid = [256 256 32];
+%grid = [32 64 72];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
 run.iterMax     = 4;
-run.info        = '2-fluid advection test';
-run.notes       = 'basic testbed for 2-fluid drag code';
+run.info        = '1-fluid advection test';
+run.notes       = 'Most basic linear correctness test';
 
 %run.image.interval = 100;
 %run.image.mass = true;
@@ -34,23 +34,13 @@ run.amplitude = .05;
 %                      .01                    roughly 140dB
 
 % number of transverse wave periods in Y and Z directions
-run.wavenumber = [16 0 0];
+run.wavenumber = [4 3 1];
 % 1st method of setting run duration: normalized by cycle time
 run.cycles = 50;
 
-run.addNewFluid(1);
-
 run.fluidDetails(1) = fluidDetailModel('cold_molecular_hydrogen');
-run.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
-run.fluidDetails(2).sigma = run.fluidDetails(2).sigma * 1e-1;
-run.fluidDetails(2).mass = run.fluidDetails(2).mass * 1e-4; % k = 17.549 * (1e-4 mu0) / mu
 
-run.writeFluid = 2;
-  run.amplitude = 0;
-  run.backgroundMach = 0;
-  run.setBackground(1, .001);
-
-run.alias= 'dustybox';
+run.alias= 'sontest';
 
 run.ppSave.dim3 = 100;
   

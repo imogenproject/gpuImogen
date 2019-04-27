@@ -8,7 +8,7 @@
 % Fits on my Quadro M1000M (1GB)...
 grid                =[320 200 120];
 run                 = KojimaDiskInitializer(grid);
-run.iterMax         = 5;
+run.iterMax         = 4;
 run.edgePadding     = 0.2;
 run.pointRadius     = 0.15;
 run.radiusRatio     = 0.65;
@@ -27,11 +27,13 @@ run.bgDensityCoeff = .0000001;
 run.activeSlices.xy  = false;
 %run.activeSlices.xz = true;
 run.activeSlices.xyz = true;
-run.ppSave.dim3 = 100;
+run.ppSave.dim3 = 25;
 
 run.bcMode.x        = { ENUM.BCMODE_OUTFLOW, ENUM.BCMODE_OUTFLOW };
 run.bcMode.y        = ENUM.BCMODE_CIRCULAR;
 run.bcMode.z        = ENUM.BCMODE_OUTFLOW; %ENUM.BCMODE_CONSTANT;
+
+run.compositeSourceOrders = [2 4];
 
 run.pureHydro = true;
 
