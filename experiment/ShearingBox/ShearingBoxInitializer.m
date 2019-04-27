@@ -55,7 +55,11 @@ classdef ShearingBoxInitializer < Initializer
         
         cs0; % Isothermal soundspeed kb T0 / mu evaluated at r0
         temperatureExponent; % T(r) = T(r0) (r/r0)^n: canonically -.5 (purely starlight heating)
-        
+
+        solarWindAngle; % Cells with atand(z/r) larger than this are replaced with solar wind outflow
+        solarWindRhoRef; % Density assigned to the solar wind outflow at r = r0
+        solarWindTref % temperature ssigned to the solar wind gas at r=r0
+        solarWindEscapeFactor; % fraction of solar escape velocity the wind has ar r=r0 (must > 1)
 
         useZMirror;
     end %PUBLIC
@@ -127,6 +131,11 @@ classdef ShearingBoxInitializer < Initializer
             
             self.useZMirror       = 0;
 
+            self.solarWindAngle = 45;
+            self.solarWindRhoRef = 1e-7;
+            self.solarWindTref = 270; % kelvin
+            self.solarWindEscapeFactor = 1.2;
+
             self.azimuthalMode = 1; % global
 
             self.operateOnInput(input, [64 64 1]);
@@ -160,9 +169,7 @@ classdef ShearingBoxInitializer < Initializer
                 end
             else
                 if nz > 1
-                    %self.bcMode.z = ENUM.BCMODE_STATIC;
-                    %self.bcMode.z = ENUM.BCMODE_OUTFLOW;
-                    self.bcMode.z = ENUM.BCMODE_FREEBALANCE;
+                
                 else
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
@@ -222,6 +229,9 @@ classdef ShearingBoxInitializer < Initializer
             % Fetch and normalize coordinates
             [radpts, phipts, zpts] = geo.ndgridSetIJK('pos','cyl');
             rsph   = sqrt(radpts.^2+zpts.^2);
+
+            tanAltitude = zpts ./ radpts;
+
 clear phipts; % this is never used
 clear zpts; % never used again
 
@@ -235,7 +245,7 @@ clear zpts; % never used again
             v0    = r_c*w0;         % Kepler orbital velocity @ r_c
             h0    = cs_0 / w0;      % scale height @ r_c
             phi_0 = -GM / r_c;      % stellar potential @ r_c
-            rho_0 = self.Sigma0 / (sqrt(2*pi)*h0); % characteristic density @ r_c
+            rho_0 = self.Sigma0 / (sqrt(2*pi)*h0); % characteristic density @ r_c @ z=0
             P0    = -rho_0 * phi_0; % pressure scale @ r_c
 
             % r0 = r_c              % LENGTH UNIT
@@ -260,7 +270,8 @@ clear zpts; % never used again
             %deltaphi = -phi_0*(1./sqrt(radpts.^2 + zpts.^2) - 1./radpts);
             deltaphi = -phi_0*(1./rsph - 1./radpts);
             mass = rho_mp .* exp(deltaphi .* radpts.^(-nt) / cs_0^2);
-clear rho_mp; % never used again
+
+            clear rho_mp; % never used again
             % Still more or less fudging the thermodynamics for now
             % note that throughout here, kb/mu is flagrantly absorbed onto temp/pressure
             self.fluidDetails(1) = fluidDetailModel('warm_molecular_hydrogen'); 
@@ -290,6 +301,74 @@ clear rho_mp; % never used again
 
             % Setup internal energy density to yield correct P for an adiabatic ideal gas
             Eint = cs_0^2 * mass .* radpts.^nt / (self.fluidDetails(1).gamma-1);
+
+%        solarWindAngle; % Cells with atand(z/r) larger than this are replaced with solar wind outflow
+%        solarWindRhoRef; % Density assigned to the solar wind outflow at r = r0, relative to midplane density at r0
+%        solarWindTref % temperature ssigned to the solar wind gas at r=r0
+%        solarWindEscapeFactor; % fraction of solar escape velocity the wind has ar r=r0 (must > 1)
+            windy = (abs(tanAltitude) > tand(self.solarWindAngle));
+
+            if any(windy(:))
+                SaveManager.logPrint(['Some cells have inclination above midplane over ' num2str(self.solarWindAngle) 'deg: replacing with solar wind\n']);
+
+                gam = self.fluidDetails(1).gamma;
+        
+                rInnermost = radpts(1,1,1) * r_c;
+                rOutermost = radpts(end,1,1) * r_c;
+
+                rRef = r_c;
+                rhoRef = rho_0 * self.solarWindRhoRef;
+                PRef = rhoRef * (self.fluidDetails(1).kBolt * self.solarWindTref / self.fluidDetails(1).mass);
+
+                solarEscapeVelocity = sqrt(2*GM / rRef);
+                vel0 = solarEscapeVelocity * self.solarWindEscapeFactor;
+
+                a0 = rhoRef*vel0*rRef^2;
+                k0 = PRef / rhoRef^gam;
+                b0 = k0 * a0^(gam-1);
+        
+                dvdr = @(r, v) (-GM / (r*r*v) + b0 * 2 * gam * r^(1-2*gam) * v^(-gam)) / (1 - b0*r^(2-2*gam) * v^(-1-gam));
+        
+                % three possible conditions: rinner < router < rref, rinner < rref < router, rref < rinner < router
+                if rRef > rOutermost
+                    % one integral backwards from rRef to rInnermost
+                    [rIntd, velIntd] = ode113(dvdr, [rRef rInnermost], vel0);
+                    rIntd = rIntd(end:-1:1); velIntd = velIntd(end:-1:1);
+
+                elseif rRef < rInnermost
+                    % one integral forward from rRef to rOutermost
+                    [rIntd, velIntd] = ode113(dvdr, [rRef rOutermost], vel0);
+
+                else
+                    % Two integrals away from rRef that we then have to glue together
+                    % forward first
+                    [rIntd, velIntd] = ode113(dvdr, [rRef rOutermost], vel0);
+
+                    [r2, v2] = ode113(dvdr, [rRef rInnermost], vel0);
+
+                    rIntd = [r2(end:-1:2); rIntd]; % chop one off of the 1st array because it's the start point of the second
+                    velIntd = [v2(end:-1:2); velIntd];
+
+                end
+
+                % get rho
+                mass(windy) = interp1(rIntd, a0 ./ (velIntd.*rIntd.^2), rsph(windy)*r_c);
+
+                % get v
+                vi = squish(vel(1,:,:,:), 'onlyleading');
+                vi(windy) = interp1(rIntd, velIntd, rsph(windy)*r_c);
+
+                vel(1,:,:,:) = vi ./ sqrt(tanAltitude.^2 + 1); % cos[arctan[x]]
+                vel(3,:,:,:) = vi .* tanAltitude;              % sin[arctan[x]] = x cos[arctan[x]]
+        
+                vi = squish(vel(2,:,:,:),'onlyleading');
+                vi(windy) = 0;
+                vel(2,:,:,:) = vi;        
+
+                % get pressure
+                Eint(windy) = PRef * (mass(windy) ./ rhoRef).^gam / (gam-1);
+
+            end
 
             % no further references to radial points array 
             clear radpts;
