@@ -3,10 +3,8 @@ function A = comovingAcceleration(fluid, gravPot, geometry)
 P = fluid.calcPressureOnCPU();
 rho = fluid.mass.array;
 
-gravon = (rho > 4*fluid.MINMASS);
-% Compute v_phi^2 / r
 if geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
-    [radius, angle, zee] = geometry.ndgridSetIJK('pos');
+    [radius, ~, ~] = geometry.ndgridSetIJK('pos');
     
     [P1, P2, P3] = gradient(P, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
     [G1, G2, G3] = gradient(gravPot, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
@@ -14,7 +12,7 @@ if geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     P2 = P2 ./ radius;
     G2 = G2 ./ radius;
     
-    A = { P1 ./ rho + G1.*gravon, P2 ./ rho + G2.*gravon, P3 ./ rho + G3.*gravon};
+    A = { P1 ./ rho + G1, P2 ./ rho + G2, P3 ./ rho + G3};
     
     vphi = fluid.mom(2).array ./ rho;
     if geometry.frameRotationOmega ~= 0

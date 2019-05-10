@@ -343,10 +343,10 @@ classdef RealtimePlotter <  LinkedListNode
             u = []; v = []; w = [];
             Qoverlay = [];
 
-            switch sliceID
+            switch sliceID % these are indices into node local arrays
                 case 1; u = self.pSubsX; v = self.cut(2); w = self.cut(3); % x
                 case 2; u = self.cut(1); v = self.pSubsY; w = self.cut(3); % y
-                case 3; u = self.cut(1); v = self.cut(2); w = self.pSubsZ; % z
+                case 3; u = self.cut(1); v = self.cut(2); w = self.pSubsZ; % z 
                 case 4; u = self.pSubsX; v = self.pSubsY; w = self.cut(3); % xy
                 case 5; u = self.pSubsX; v = self.cut(2); w = self.pSubsZ; % xz
                 case 6; u = self.cut(1); v = self.pSubsY; w = self.pSubsZ; % yz
@@ -377,23 +377,83 @@ classdef RealtimePlotter <  LinkedListNode
                 kmu = fluid.thermoDetails.mass/fluid.thermoDetails.kBolt;
                 Q = fluid.calcPressureOnCPU();
                 Q = kmu * Q(u,v,w)./fluid.mass.array(u,v,w);
+            case 11 % Stokes number
+                % Fetch both, we need both.
+                f1 = fluid.parent.fluid(1);
+                f2 = fluid.parent.fluid(2);
+                
+                P     = f1.calcPressureOnCPU();
+                T     = (f1.thermoDetails.mass / f1.thermoDetails.kBolt) * P(u,v,w) ./ f1.mass.array(u,v,w); % from P = (rho / mu) k_b T
+                
+                visc  = f1.thermoDetails.dynViscosity * (T / 298.15).^f1.thermoDetails.viscTindex;
+                
+                rhog  = f1.mass.array(u,v,w);
+                rhod  = f2.mass.array(u,v,w);
+                
+                magdv = (f2.mom(1).array(u,v,w) ./ rhod - f1.mom(1).array(u,v,w) ./ rhog ).^2;
+                magdv = magdv + (f2.mom(2).array(u,v,w) ./ rhod - f1.mom(2).array(u,v,w) ./ rhog ).^2;
+                magdv = magdv + (f2.mom(3).array(u,v,w) ./ rhod - f1.mom(3).array(u,v,w) ./ rhog ).^2;
+                magdv = sqrt(magdv);
+                
+                Rey   = rhog .* magdv * sqrt(f2.thermoDetails.sigma / pi) ./ visc;
+                
+                mfp   = (f1.thermoDetails.mass / f1.thermoDetails.sigma / sqrt(2)) * (T / 298.15).^f1.thermoDetails.sigmaTindex ./ rhog;
+                Kn    = 2 * sqrt(pi / f2.thermoDetails.sigma) * mfp;
+                
+                Cdrag = (24 ./ Rey + 3.6*Rey.^-.319 + .4072*Rey./(8710+Rey)) ./ (1 + Kn.*(1.142 + 1*0.558*exp(-0.999./Kn)));
+
+                Kdrag = .5 * (f2.thermoDetails.sigma/4) * Cdrag .* magdv .* (rhog + rhod) / f2.thermoDetails.mass;
+                
+                [radii, ~, ~] = ndgrid(self.pCoords{1}, v, w);
+                
+                % get angular rate, omega, of the gas in the lab frame
+                angvel = f1.mom(2).array(u,v,w) ./ (rhog .* radii) + f1.parent.geometry.frameRotationOmega;
+                
+                % St = Tdrag / Torbit = (1/Kdrag) / (2 pi / angvel)
+                %    = angvel / 2 pi kdrag 
+                Q = angvel ./ (2*pi*Kdrag);
+                
+                %case 12 % Re?
+                %case 13 % Kn?
+                %case 14
             case 101 % XY velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 102 % XZ velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 103 % YZ velocity
                 Q = { fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(3).array(u,v,w)./fluid.mass.array(u,v,w) };
-            case 104 % 
+            case 104 % XY comoving acceleration
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
-                Q = {QQ{2}(u,v,w), QQ{1}(u,v,w)};
-            case 105
+                Q = {QQ{1}(u,v,w), QQ{2}(u,v,w)};
+            case 105 % XZ comoving acceleration
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{1}(u,v,w), QQ{3}(u,v,w)};
-            case 106
+            case 106 % YZ comoving acceleration
                 QQ = comovingAcceleration(fluid, fluid.parent.potentialField.field.array, fluid.parent.geometry);
                 Q = {QQ{2}(u,v,w), QQ{3}(u,v,w)};
-            default;
-                error(['Fatal: received value of ' num2str(what) ' that is unhandled.']);
+            case 107 % XY differential velocity
+                f1 = fluid.parent.fluid(1);
+                f2 = fluid.parent.fluid(2);
+                rhog  = f1.mass.array(u,v,w);
+                rhod  = f2.mass.array(u,v,w);
+                
+                Q = { f2.mom(1).array(u,v,w) ./ rhod - f1.mom(1).array(u,v,w) ./ rhog, f2.mom(2).array(u,v,w) ./ rhod - f1.mom(2).array(u,v,w) ./ rhog };
+            case 108
+                f1 = fluid.parent.fluid(1);
+                f2 = fluid.parent.fluid(2);
+                rhog  = f1.mass.array(u,v,w);
+                rhod  = f2.mass.array(u,v,w);
+                
+                Q = { f2.mom(1).array(u,v,w) ./ rhod - f1.mom(1).array(u,v,w) ./ rhog, f2.mom(3).array(u,v,w) ./ rhod - f1.mom(3).array(u,v,w) ./ rhog };
+            case 109
+                f1 = fluid.parent.fluid(1);
+                f2 = fluid.parent.fluid(2);
+                rhog  = f1.mass.array(u,v,w);
+                rhod  = f2.mass.array(u,v,w);
+
+                Q = { f2.mom(2).array(u,v,w) ./ rhod - f1.mom(2).array(u,v,w) ./ rhog, f2.mom(3).array(u,v,w) ./ rhod - f1.mom(3).array(u,v,w) ./ rhog };
+            otherwise
+                    error(['Fatal: received value of ' num2str(what) ' that is unhandled.']);
             end
 
             Q = squish(Q); % flatten for return
@@ -842,11 +902,12 @@ classdef RealtimePlotter <  LinkedListNode
         end
 
         function gcbCycleVF_type(self, src, data)
-            nutype = mod(self.plotProps(self.pGUISelectedPlotnum).vv_type,2)+1;
+            nutype = mod(self.plotProps(self.pGUISelectedPlotnum).vv_type,3)+1;
             
             switch(nutype)
                 case 1; src.String = 'Velocity'; 
                 case 2; src.String = 'A_comoving';
+                case 3; src.String = 'Vdust-Vgas';
             end
             
             self.plotProps(self.pGUISelectedPlotnum).vv_type = nutype;

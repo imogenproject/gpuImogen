@@ -111,7 +111,7 @@ plotPanel = uipanel(fig,'Title','Plot control', 'units', 'pixels', 'position', [
     tWidth = 12+8*charW;
     tost = halfColWidth - eos - tWidth;
     listWidth = halfColWidth - tWidth - 3*eos;
-    lis = uicontrol(plotPanel, 'Style','listbox',     'String','rho|px|py|pz|vx|vy|vz|Etotal|Pressure|Temp','min',0,'max',1,'tag','qtylistbox','position', [eos eos listWidth listHeight], 'callback', @RTP.gcbChoosePlotQuantity);
+    lis = uicontrol(plotPanel, 'Style','listbox',     'String','rho|px|py|pz|vx|vy|vz|Etotal|Pressure|Temp|Stokes number','min',0,'max',1,'tag','qtylistbox','position', [eos eos listWidth listHeight], 'callback', @RTP.gcbChoosePlotQuantity);
 
 % These are arrayed right of the list and fluid # selector
     button = uicontrol(plotPanel, 'Style','togglebutton','String','equal axes','tag','eqaxesbutton','position',[tost (eos+6*bsh) tWidth bh], 'callback', @RTP.gcbToggleEqualAxes);
