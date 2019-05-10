@@ -57,6 +57,7 @@ if strcmp(name,'warm_molecular_hydrogen')
 end
 
 % Pure hydrogen from 1000-3000K
+% Hydrogen at temperatures above 3000K exhibits anomalous C_v due to dissociation
 if strcmp(name,'hot_molecular_hydrogen')
     D.gamma = 9/7;
     D.mass = massH2;

@@ -6,7 +6,7 @@ D = F;
 
 D.sigma = F.sigma / length^2;
 D.mass =  F.mass / mass;
-D.dynViscosity = F.dynViscosity * time / (mass * length);
+D.dynViscosity = F.dynViscosity * length * time / mass;
 D.minMass = F.minMass / mass;
 D.kBolt        = F.kBolt * time^2 / (mass * length^2);
 
