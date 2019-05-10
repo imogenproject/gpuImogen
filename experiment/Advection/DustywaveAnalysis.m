@@ -16,7 +16,7 @@ S.setParallelMode(runParallel);
 S.setFrametype(7); % Access 3D data frame by frame
 
 % Pick out the wavevector
-omega = IC.ini.omega; 
+omega = IC.ini.waveOmega; 
 Kvec = IC.ini.pWaveK;
 %Kmag = norm(Kvec);
 %Khat = Kvec / Kmag;
@@ -42,6 +42,8 @@ rhoerr_L2 = zeros([1 S.numFrames]);
 %velerr_L1 = []; velerr_L2 = [];
 frameT = zeros([1 S.numFrames]);
 
+amp = IC.ini.pAmplitude(1);
+
 % Iterating over all frames in sequence,
 for N = 1:S.numFrames
     F = S.nextFrame();
@@ -49,17 +51,12 @@ for N = 1:S.numFrames
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
     t = sum(F.time.history);
     
-    rhogt = IC.ini.pRho(1) + imag(amp*evec(1)*exp(1i*KdotX - 1i*omega*t));
+    rhogt = IC.ini.pDensity(1) + imag(amp*evec(1)*exp(1i*KdotX - 1i*omega*t));
     
     % The moment of truth: calculate the 1- and 2-norms
     delta = rhogt - F.mass;
     if runParallel; delta = geo.withoutHalo(delta); end
 
-    if sum(F.time.history) >= tCritical
-        disp(['At frame', num2str(S.tellFrame()), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
-        break;
-    end
-    
     frameT(N) = t;
 
     rhoerr_L1(N) =      mpi_sum(norm(delta(:),1)  ) / mpi_sum(numel(delta)) ;
