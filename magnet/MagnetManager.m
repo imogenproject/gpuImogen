@@ -28,7 +28,9 @@ classdef MagnetManager < handle
         end
 
         function attachBoundaryConditions(obj, element)
-            obj.parent.bc.attachBoundaryConditions(element);
+            % FIXME THIS WILL NOT WORK WITH MULTIPLE MAGNETIZED FLUIDS
+            obj.parent.bc.attachBoundaryConditions(element, 1);
+            
         end
 
         end%PUBLIC

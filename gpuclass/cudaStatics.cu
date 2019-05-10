@@ -15,7 +15,7 @@
 
 #include "cudaCommon.h"
 #include "cudaStatics.h"
-
+#include "cudaArrayRotateB.h"
 #include "fluidMethod.h" // to know if we need 3 or 4 bdy cells
 
 #define ENFORCE_FLUIDMIN
@@ -938,6 +938,12 @@ __global__ void cukern_SetFreeBalanceX(double *base, int nx, int ny, int nz, int
 	if(direct > 0) { phi0 = gravpot[0]; } else { phi0 = gravpot[depth]; }
 	if(direct > 0) { phi1 = gravpot[tix+1]; } else { phi1 = gravpot[tix]; } // load phi at current altitude
 
+	// If difference in potential is zero, this reduces to extrapolate-as-constant.
+	// FIXME HACK TESTING: this is used here to, based on density, discriminate between 
+	// disk ("dense") and solar wind ("tenuous") conditions
+
+	if(rho < 1e-7) { phi1 = phi0; vz = (vz*direct < 0) ? 0 : vz ;  }
+
 	if(normalDirection != 1) {
 		// Non-radial cases: just balance gravity potential against pressure at fixed temperature
 		// Isothermal force balance condition:
@@ -1004,6 +1010,8 @@ __global__ void cukern_SetFreeBalanceY(double *base, int nx, int ny, int nz, int
 	T = E / rho;
 	if(direct > 0) { phi0 = gravpot[0]; } else { phi0 = gravpot[nx*depth]; }
 	if(direct > 0) { phi1 = gravpot[nx*(tiy+1)]; } else { phi1 = gravpot[nx*tiy]; }
+
+	if(rho < 1e-7) { phi1 = phi0; vz = (vz*direct < 0) ? 0 : vz; }
 
 	if(normalDirection != 1) {
 		// Non-radial cases: just balance gravity potential against pressure at fixed temperature
@@ -1082,6 +1090,8 @@ for(i = 0; i < depth; i++) {
 	// load phi at current cell
 	if(direct > 0) { phi1 = gravpot[(i+1)*delta]; } else { phi1 = gravpot[i*delta]; }
 
+	if(rho < 1e-7) { phi1 = phi0; vz = (vz*direct < 0) ? 0 : vz ; }
+
 	if(normalDirection != 1) {
 			// Non-radial cases: just balance gravity potential against pressure at fixed temperature
 			// Isothermal force balance condition:
@@ -1092,7 +1102,10 @@ for(i = 0; i < depth; i++) {
 			rho2 = rho * exp(-thermoVariables[1]*(phi1-phi0)/T);
 			theta = vy;
 		} else {
-			// Accounts for the centripetal potential, asserting kepler curve (omega ~ r^-1.5) extrapolated from first valid cell
+			// Accounts for the centripetal potential, asserting Kepler curve (omega ~ r^-1.5) extrapolated from first valid cell
+			// Note, importantly, that this does not choose the correct Kepler prefactor (i.e. circular orbit),
+			// merely the exponent. This is simply because the balance equation gives only one constraint, and therefore
+			// two of rho, v and P must be defined & we choose v and T.
 			double centripetalPotential;
 
 			if(direct > 0) {

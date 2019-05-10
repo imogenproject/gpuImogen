@@ -32,15 +32,16 @@ classdef BCManager < handle
 % Reads the boundary conditions data object (either a structure or array) from the initialization
 % properties set in the BCManager object.
 %>< arrayObj    ImogenArray object on which to attach boundary conditions.          ImogenArray
-        function attachBoundaryConditions(obj, arrayObj)
+        function attachBoundaryConditions(obj, arrayObj, fluidIndex)
             %--- Same bcs for all case ---%
             %       If no explicit bounardies conditions were set for the arrayObj, the general
             %       boundary conditions are applied.
             if ~isfield(obj.modes, arrayObj.id{1})
-                obj.populateBCModes(arrayObj, obj.modes);
+                obj.populateBCModes(arrayObj, obj.modes{fluidIndex});
                 return
             end   
-               
+              
+            % FIXME Lordie, I don't think this case has existed in years and years
             %--- Handle FluxArray cases ---%
             %       Flux boundary conditions can be explicitily set separately from the primary 
             %       variable arrays. Hence they need to be handled accordingly, which requires two

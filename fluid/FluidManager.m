@@ -28,11 +28,13 @@ classdef FluidManager < handle
         mass, ener, mom; % Fluid state data                             ImogenArrays
         parent;               % Parent manager                                      ImogenManager
     end
+
+    properties (SetAccess = private, GetAccess = private)
+        myIndex;
+    end
  
 %===================================================================================================
     properties (SetAccess = public, GetAccess = private) %                        P R I V A T E  [P]
-        
-
         fluidName;            % String describing which fluid this is               String
     end %PRIVATE
     
@@ -43,16 +45,21 @@ classdef FluidManager < handle
     
 %===================================================================================================
     methods (Access = public) %                                                     P U B L I C  [M]
-%___________________________________________________________________________________________________ FluidManager
+%______________________________________________________________________________________ FluidManager
 % Creates a new FluidManager instance.
-        function self = FluidManager() 
+        function self = FluidManager(index)
             self.viscosity     = ArtificialViscosity();
             self.fluidName     = 'some_gas';
             % Set defaults
             self.checkCFL      = 1;
             self.isDust        = 0;
+
+            % Set sane defaults
             % These defaults apply to cold (under ~100K) molecular hydrogen
+            % WARNING these have no rescaling applied either
             self.processFluidDetails(fluidDetailModel('cold_molecular_hydrogen'));
+
+            if nargin > 0; self.myIndex = index; else; self.myIndex = 1; end
         end
       
         function setBoundaries(self, direction, what)
@@ -84,7 +91,7 @@ classdef FluidManager < handle
         
         function attachBoundaryConditions(self, element)
             if ~isempty(self.parent)
-                self.parent.bc.attachBoundaryConditions(element);
+                self.parent.bc.attachBoundaryConditions(element, self.myIndex);
             else
                 %warning('DANGER: No parent run associated with this FluidManager; Assuming I am being used for simpleminded debugging; Forging boundary conditions...');
                 for a = 1:2; for b = 1:3; element.bcModes{a,b} = ENUM.BCMODE_CIRCULAR; end; end
@@ -110,7 +117,7 @@ classdef FluidManager < handle
             self.ener.streamptr = streams;
         end
 
-        function processFluidDetails(self, details)
+        function processFluidDetails(self, details, defaultBcModes)
             % This is called in uploadDataArrays with the ini.fluid(:).details structure
             % It sets all per-fluid properties, including adiabatic index and radiation
             % properties
@@ -119,9 +126,9 @@ classdef FluidManager < handle
             if isfield(details,'isDust');   self.isDust     = details.isDust;   end
             if isfield(details,'checkCFL'); self.checkCFL   = details.checkCFL; end
 
-	    self.thermoDetails = details;
+            self.thermoDetails = details;
         end
-        
+
         function DEBUG_uploadData(self, rho, E, px, py, pz)
             % DEBUG_uploadData(rho, E, px, py, pz) permits forging a working FluidManager
             % instance for test purposes, including the unitTest()

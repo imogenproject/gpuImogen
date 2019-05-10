@@ -38,7 +38,8 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     % Handle each fluid
     for F = 1:numel(FieldSource.fluids)
         SaveManager.logPrint('    Fluid %i: ', int32(F));
-        fluid(F) = FluidManager();
+        fluid(F) = FluidManager(F);
+
         % HACK HACK HACK this should be in some other init place
         fluid(F).MINMASS        = FieldSource.ini.minMass;
         fluid(F).MASS_THRESHOLD = FieldSource.ini.thresholdMass;

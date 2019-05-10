@@ -228,16 +228,22 @@ classdef ImogenManager < handle
             end
 
             % Process the boundary conditions structure
-            if isa(ini.bcMode, 'struct')
-                self.bc.modes = ini.bcMode;
-                % FIXME: check for a complex-boundary-condition flag here!!!!
-            elseif isa(ini.bcMode, 'char')
-                modes.x = ini.bcMode; modes.y = ini.bcMode; modes.z = ini.bcMode;
-                self.bc.modes = modes;
+            % If a VERY dumb initializer just handed us a string, make the dumbest expansion
+            % we can, otherwise assume the initializer wasn't brain damaged
+            if isa(ini.bcMode, 'cell') == 0
+                modes = ini.bcMode;
+                % expand it into a struct first
+                if isa(ini.bcMode, 'char')
+                    modes.x = ini.bcMode; modes.y = ini.bcMode; modes.z = ini.bcMode;
+                end
+                
+                % Now apply the 'complex' (boundary cond per fluid) settings and make it a cell
+                % array
+                q = cell([ini.numFluids 1]);
+                for j = 1:ini.numFluids; q{j} = modes; end
+                self.bc.modes = q;
             else
-                warning(['BoundaryConditionError: Boundary condition field of type %s is not recognized.' ...
-                    ' bcMode recognizes string or structure input. Run aborted.'],class(ini.bcMode));
-                nProblems(1) = nProblems(1)+1;
+                self.bc.modes = ini.bcMode;
             end
             
             % Determine if the run is being profiled

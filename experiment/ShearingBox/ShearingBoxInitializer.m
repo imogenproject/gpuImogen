@@ -169,7 +169,7 @@ classdef ShearingBoxInitializer < Initializer
                 end
             else
                 if nz > 1
-                
+                    self.bcMode.z = ENUM.BCMODE_FREEBALANCE;
                 else
                     self.bcMode.z = ENUM.BCMODE_CIRCULAR;
                 end
@@ -216,6 +216,17 @@ classdef ShearingBoxInitializer < Initializer
                         % FIXME this needs to autodetect the number of ghost cells in use
                         % For vertical mirror, offset Z=0 by four cells to agree with mirror BC that has 4 ghost cells
                         if self.useZMirror; z0 = -4*dz; else; z0 = -round(nz/2)*dz; end
+
+                        if self.dustFraction > 0
+                            self.activateComplexBoundaryConditions(2);
+                            if self.useZMirror
+                                self.bcMode{2}.z = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT };
+                                self.bcMode{2}.x = ENUM.BCMODE_CONSTANT;
+                            else
+                                self.bcMode{2}.z = ENUM.BCMODE_STATIC;
+                                self.bcMode{2}.x = ENUM.BCMODE_STATIC; 
+                            end
+                        end
                     else
                         z0 = 0;
                         dz = 1;
@@ -403,6 +414,7 @@ clear zpts; % never used again
                 
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
+
             else
                 clear mass;
                 clear vel;
@@ -410,10 +422,12 @@ clear zpts; % never used again
                 self.numFluids = 1;
             end
             
-            for n = 1:self.numFluids
-                self.fluidDetails(n) = rescaleFluidDetails(self.fluidDetails(n), m0, r_c, t0);
+            if self.normalizeValues
+                for n = 1:self.numFluids
+                    self.fluidDetails(n) = rescaleFluidDetails(self.fluidDetails(n), m0, r_c, t0);
+                end
             end
-
+            
             % Compute frame boost that minimizes the average advection speed & so maximizes timestep
             velInner = sqrt(GM / self.innerRadius);
             velOuter = sqrt(GM / self.outerRadius);

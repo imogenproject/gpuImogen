@@ -238,7 +238,7 @@ classdef Initializer < handle
                 statics = StaticsInitializer();
                 potentialField = PotentialFieldInitializer();
                 selfGravity = SelfGravityInitializer();
-		% FIXME: This will not work without recovering the fluid details structure!!! ... somehow.
+                % FIXME: This will not work without recovering the fluid details structure!!! ... somehow.
                 fluids = struct('mass',mass,'momX',squish(mom(1,:,:,:)),'momY',squish(mom(2,:,:,:)),'momZ',squish(mom(3,:,:,:)),'ener',ener,'details',[]);
 
                 ini  = load([path filesep 'ini_settings.mat']);
@@ -261,6 +261,11 @@ classdef Initializer < handle
 %            if isempty(obj.slice)
                 obj.slice = ceil(obj.geomgr.globalDomainRez/2);
 %            end
+
+             % If not /actually/ using them, calling it at this point just stamps out copies of the
+             % bcMode structure into cells so we don't have to do any conditional junk downstream
+            obj.activateComplexBoundaryConditions(numel(fluids));
+
             iniSettings = obj.getRunSettings();
 
             % One more act: The geometric settings and partitioning are now fixed,
@@ -317,8 +322,10 @@ classdef Initializer < handle
              if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
              if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
              if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+
+             % Transfer the initial conds struct & pickle the geometry manager
              IC.ini = ini;
-             IC.ini.geometry = obj.geomgr.serialize(); %#ok<STRNU> % FIXME: this ought to perhaps happen elsewhere?
+             IC.ini.geometry = obj.geomgr.serialize();
 
              icfile = [tempname '.mat'];
              save(icfile, 'IC','-v7.3');
@@ -344,6 +351,17 @@ classdef Initializer < handle
              end
         end
         
+        function activateComplexBoundaryConditions(self, N)
+        % Multifluid BCs: It we are using multiple fluids but not using complex BCs,
+        % stamp out copies of the .bcMode structure into a {cell array}
+             if isa(self.bcMode, 'cell') == 0
+                q = cell([N 1]);
+                for j = 1:N; q{j} = self.bcMode; end
+                self.bcMode = q;
+             end
+            
+        end
+
 %___________________________________________________________________________________________________ getRunSettings
         function result = getRunSettings(obj)
             % This function dumps the initializer class' members into a big fat dynamic structure for
