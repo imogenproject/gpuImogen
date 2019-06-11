@@ -4,7 +4,7 @@ classdef FluidArray < ImogenArray
     
 %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                            P U B L I C [P]
-        threshold;      % Value below which the thresholdArrau reads zero.
+        threshold;      % Value below which the thresholdArray reads zero.
     end%PUBLIC
 
 %===================================================================================================

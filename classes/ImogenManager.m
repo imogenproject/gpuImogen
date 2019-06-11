@@ -199,7 +199,8 @@ classdef ImogenManager < handle
 
             if ~isempty(ini.checkpointSteps)
                 self.checkpointInterval = ini.checkpointSteps(1);
-            else
+            end
+	    if self.checkpointInterval > 0
                 self.save.logPrint(['    CHECKPOINTING ENABLED with interval of ' num2str(self.checkpointInterval) 'steps.\n']);
             end
             

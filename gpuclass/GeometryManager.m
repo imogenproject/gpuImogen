@@ -199,7 +199,7 @@ classdef GeometryManager < handle
         function makeBoxSize(obj, newsize)
             % geo.makeBoxSize([s])
             % If geometry is square, geo.makeBoxSize([a b c]) sets grid spacing to [a/nx, b/ny, c/nz].
-            % If given other than a 3-element vector, [a a a] is used with 'a' the first element.
+            % If given other than a 3-element vector, [nx ny nz]*s(1)/nx is used
             % If ny or nz = 1, the respective spacing is set to 1.
             %
             % If geometry is cylindrical,
@@ -315,8 +315,8 @@ classdef GeometryManager < handle
             %     local coordinates, and keeps only those in the local domain
 	    %     If no elements are, the corresponding set is []
 	    %     This mode acts independently on x, y, and z, i.e. does not form any outer products
-	    % [u, v, w] = geo.toLocalIndices( [x(:) y(:) z(:)] ) converts the tuples to local indices
-	    %     and again keeps only those which lie inside this node's domain.
+	    %     [u, ~, ~] = geo.toLocalIndices( [x(:) y(:) z(:)] ) converts the tuples to local indices
+	    %     and again keeps only those which lie inside this node's domain and returns them in u
             u = []; v = []; w = [];
             if (nargin == 2) && (size(x,2) == 3)
                 z = x(:,3) - obj.pLocalDomainOffset(3);

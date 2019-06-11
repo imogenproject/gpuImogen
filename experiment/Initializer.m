@@ -56,6 +56,8 @@ classdef Initializer < handle
         
         checkpointSteps;
         
+        unitValues; 
+        
         geomgr;         % GeometryManager class
     end %PUBLIC
 
@@ -123,6 +125,8 @@ classdef Initializer < handle
 
             obj.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP2;
             obj.compositeSourceOrders = [2 4];
+            
+            obj.unitValues = [1 1 1]; % Units we want for mass in kg, length in meters, time in seconds
 
             fields = SaveManager.SLICEFIELDS;
             for i=1:length(fields)
