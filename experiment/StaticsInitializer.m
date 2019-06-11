@@ -202,7 +202,9 @@ classdef StaticsInitializer < handle
         end
 
     %%%%% ============== Assistant for boundary conditions setup =============== %%%%%
-        function indices = indexSetForVolume(obj, xslice, yslice, zslice)
+        function indices = indexSetForCube(obj, xslice, yslice, zslice)
+            % Computes linear (in sane, zero indexed form that will be used by GPU routines)
+            % indices of the cube
             % >> xslice: vector of global x coordinates, in Matlab count-from-1
             % >> yslice: vector of global y coordinates
             % >> zslice: vector of global z coordinates
@@ -227,6 +229,27 @@ classdef StaticsInitializer < handle
             indices = [indices(:) u(:) v(:) w(:)];
         end
 
+        function indices = indexSetForLogical(obj, xbound, ybound, zbound, truth)
+            % >> xbound: two element [min max] specifying the range of 
+        end
+        
+        function indices = indexSetForFunction(obj, func, xbound, ybound, zbound)
+            xs = xbound(1):xbound(2);
+            ys = ybound(1):ybound(2);
+            zs = zbound(1):zbound(2);
+            
+            [u, v, w] = ndgrid(xs, ys, zs);
+            
+            truth = arrayfun(func, u, v, w);
+            
+            u = u(truth==1); v = v(truth==1); w = w(truth==1);
+            
+            [inds] = obj.geometry.toLocalIndices([u(:) v(:) w(:)]);
+            a=inds(:,1); b = inds(:,2); c = inds(:,3);
+            
+            indices = (a-1)+obj.geometry.localDomainRez(1)*( (b-1) + obj.geometry.localDomainRez(2)*(c-1));
+            indices = [indices(:) u(:) v(:) w(:)];
+        end
 
 
     end%PUBLIC

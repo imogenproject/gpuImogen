@@ -78,9 +78,9 @@ classdef Edges < handle
                             uslice = (-3:0) + size(array,i) + S.geometry.pLocalDomainOffset(i);
                         end
 
-                        if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end
-                        if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
-                        if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
+                        if (i == 1); indset = S.indexSetForCube(uslice,[],[]); end
+                        if (i == 2); indset = S.indexSetForCube([],uslice,[]); end
+                        if (i == 3); indset = S.indexSetForCube([],[],uslice); end
 
 %ne = size(indset, 1);
 %fprintf('Rank %i: boundary in %i dir, side %i has %i elements\n', mpi_myrank(), i, n, ne);
@@ -121,9 +121,9 @@ classdef Edges < handle
                             yinterp = .2*(1 - (uprime - 3)/(WIDTH-2)); yinterp((end-2):end) = 1;
                         end
 
-                        if (i == 1); indset = S.indexSetForVolume(uslice,[],[]); end
-                        if (i == 2); indset = S.indexSetForVolume([],uslice,[]); end
-                        if (i == 3); indset = S.indexSetForVolume([],[],uslice); end
+                        if (i == 1); indset = S.indexSetForCube(uslice,[],[]); end
+                        if (i == 2); indset = S.indexSetForCube([],uslice,[]); end
+                        if (i == 3); indset = S.indexSetForCube([],[],uslice); end
 
                         fadecoeff = interp1(uslice, yinterp, indset(:,i+1));
 

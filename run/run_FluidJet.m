@@ -1,14 +1,14 @@
 %  Run a fluid jet test.
 
 %--- Initialize test ---%
-grid = [1024 512 1];
+grid = 2*[128 64 64];
 run                 = JetInitializer(grid);
-run.iterMax         = 3000;
-run.injectorSize    = 15;
-run.offset          = [20 256 0];
+run.iterMax         = 5;
+run.injectorSize    = [12 4];
+run.injectorOffset          = [20 64 64];
 run.bcMode.x        = 'const';
 run.bcMode.y        = 'const';
-run.bcMode.z        = 'circ'; % just for some variety
+run.bcMode.z        = 'const'; % just for some variety
 run.direction       = JetInitializer.X;
 run.flip            = false;
 
@@ -23,7 +23,6 @@ run.activeSlices.xyz = false;
 run.ppSave.dim2 = 50;
 run.ppSave.dim3 = 50;
 
-run.injectorSize = 9;
 run.jetMass = 3;
 run.jetMach = 5;
 
@@ -32,12 +31,12 @@ run.pureHydro = 1;
 rp = RealtimePlotter();
   rp.plotmode = 4;
   rp.plotDifference = 0;
-  rp.insertPause = 0;
+  rp.insertPause = 1;
   rp.iterationsPerCall = 50;
   rp.firstCallIteration = 1;
   rp.forceRedraw=1;
   rp.spawnGUI = 1;
-run.peripherals{end+1} = rp;
+%run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
 fm.iniMethod = ENUM.CFD_HLLC;
