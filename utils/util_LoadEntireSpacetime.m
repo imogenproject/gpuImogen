@@ -9,7 +9,6 @@ function F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay)
 list = enumerateSavefiles();
 
 F = [];
-fourd = cell(5);
 
 if nargin == 0
     fields = {'mass','momX','momY','momZ','ener'};
@@ -27,8 +26,11 @@ if strcmp(prefix, '1D_Z'); frameset = list.Z; end
 
 N = numel(frameset);
 
+nfields = numel(fields);
+fourd = cell(nfields, 1);
+
 for x = 1:N
-    fi = util_LoadWholeFrame(prefix,list.misc.padlen,frameset(x));
+    fi = util_LoadWholeFrame(prefix,frameset(x));
 
     if x == 1 % Set all the default fields in F from the 1st frame
         F = fi;
@@ -42,29 +44,29 @@ for x = 1:N
             if damnTheTorpedoes == 0; return; end
         end
 
-        fourd{1} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
-        fourd{2} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
-        fourd{3} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
-        fourd{4} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
-        fourd{5} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
+        for a = 1:nfields
+            fourd{a} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
+        end
     end
    
-    for a = 1:5
+    for a = 1:nfields
         fourd{a}(:,:,:,x) = fi.(fields{a});
     end 
     
     % Final events 
     if x == N
         F.mass = fourd{1};
-        F.momX = fourd{2};
-        F.momY = fourd{3};
-        F.momZ = fourd{4};
-        F.ener = fourd{5};
+        %F.momX = fourd{2};
+        %F.momY = fourd{3};
+        %F.momZ = fourd{4};
+        %F.ener = fourd{5};
         F.time = fi.time; % Set time history by last frame
         tau = [0; cumsum(F.time.history)];
         F.tFrame = tau(frameset+1);
     end
-fprintf('.');
+    
+    fprintf('.');
+    if mod(x,100) == 0; fprintf('\n'); end
 
 end
 fprintf('\n');

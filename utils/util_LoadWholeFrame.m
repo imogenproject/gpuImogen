@@ -3,7 +3,7 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 % > basename : One of the strings '1D_X', '1D_Y', '1D_Z', '2D_XY', '2D_XZ',
 % '2D_XZ', or '3D_XYZ', or an integer from 1 to 7 referring to them in that
 % order
-    if (nargin < 3) || (precise == 1); precise = 'double'; else; precise = 'single'; end
+    if (nargin < 3) | (precise == 1); precise = 'double'; else; precise = 'single'; end
 
     if isa(basename,'double')
         strnames={'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
