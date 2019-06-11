@@ -11,8 +11,9 @@ typedef struct __FluidStepParams {
 	double dt;      // = dt / dx;
 	int onlyHydro;   // true if B == zero
 	double thermoGamma; // Gas adiabatic index
-
 	double minimumRho; // Smallest density, enforced for non-positivity-preserving methods
+	double Cisothermal; // isothermal soundspeed, if not equal to -1; C << 1 -> dust-like (pressureless)
+	
 	FluidMethods stepMethod;
 	int stepDirection;
 

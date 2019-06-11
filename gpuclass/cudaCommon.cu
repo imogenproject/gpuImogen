@@ -2530,6 +2530,7 @@ ThermoDetails accessMatlabThermoDetails(const mxArray *thermstruct)
 	thermo.sigmaTindex= derefXdotAdotB_scalar(thermstruct, "sigmaTindex", NULL);
 
 	thermo.kBolt = derefXdotAdotB_scalar(thermstruct, "kBolt", NULL);
+	thermo.Cisothermal = derefXdotAdotB_scalar(thermstruct, "Cisothermal", NULL);
 
 	return thermo;
 }

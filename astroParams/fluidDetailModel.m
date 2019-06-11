@@ -14,6 +14,7 @@ function D = fluidDetailModel(name)
 % D.mass: mass of a particle
 % D.dynViscosity: dynamic viscosity in SI units evaluated at 0C
 % D.viscTindex: viscosity scales as (T/273K)^viscTindex: >= 0.5
+% D.Cisothermal: Default magic value of -1 disables isothermal behavior, any other value activates it.
 %
 % NOTES:
 % Sigma is defined by the viscosity as follows:
@@ -29,7 +30,7 @@ massH2 = 2.016*amu;
 massHe = 4.031882*amu;
 massArgon = 39.948*amu;
 
-D = struct('gamma',5/3,'sigma',1,'sigmaTindex',0, 'mass',1.66e-27,'dynViscosity',10e-6,'viscTindex',0.5,'minMass',1,'kBolt',1.381e-23);
+D = struct('gamma',5/3,'sigma',1,'sigmaTindex',0, 'mass',1.66e-27,'dynViscosity',10e-6,'viscTindex',0.5,'minMass',1,'kBolt',1.381e-23,'Cisothermal',-1);
 D.minMass = 0;
 
 if nargin == 0; D = fluidDetailModel('cold_molecular_hydrogen'); return; end
@@ -137,14 +138,15 @@ if strcmp(name, 'helium')
     D.mass = 4.031882*amu;
     D.dynViscosity = 1.8743e-5;
     D.viscTindex = .6527;
-    D.sigma = 1.5040e-19
-    D.sigma = generateSigma(298.15, D.mass, D.dynViscosity)
+    D.sigma = 1.5040e-19;
+    D.sigma = generateSigma(298.15, D.mass, D.dynViscosity);
     D.sigmaTindex = .1527;
     return;
 end
 
 if strcmp(name,'10um_iron_balls')
     D.gamma = 1.01; D.sigma = pi*25e-12; D.mass = 3e-11;
+    D.Cisothermal = 0.1;
     return;
 end
 

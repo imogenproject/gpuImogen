@@ -50,6 +50,7 @@ typedef struct __GeometryParams {
 typedef struct __ThermoDetails {
 	double gamma; // (fixed) adiabatic index
 	double m; // particle mass
+	double Cisothermal; // if negative one, ignore.
 
 	double kBolt; // Boltzmann constant referred to our units of length/mass/time (T = Kelvin);
 

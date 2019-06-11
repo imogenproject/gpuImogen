@@ -9,5 +9,8 @@ D.mass =  F.mass / mass;
 D.dynViscosity = F.dynViscosity * length * time / mass;
 D.minMass = F.minMass / mass;
 D.kBolt        = F.kBolt * time^2 / (mass * length^2);
+if D.Cisothermal ~= -1
+    D.Cisothermal = D.Cisothermal * time / length;
+end
 
 end

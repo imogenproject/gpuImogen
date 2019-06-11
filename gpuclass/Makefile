@@ -2,7 +2,7 @@
 
 include ../Make.config
 
-DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY -DUSE_NVTX
+DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
 #-DALLOCFREE_DEBUG      - printf()s to console with every MGA_Alloc/AllocSlab/Free call
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
@@ -24,7 +24,7 @@ MEX_LIBS  = -lcudart -lcublas
 
 PAR_INCL = -I../mpi -I$(MPI_DIR)/include
 PAR_LDIR = -L$(MPI_DIR)/lib
-PAR_LIBS = -lmpi
+PAR_LIBS = -lmpi -lmpi_cxx
 
 OUTPUTCMD = -output
 
@@ -66,7 +66,7 @@ standalones: cudaArrayRotateB cudaHaloExchange cudaFluidStep cudaStatics cudaSou
 # build procedure from the rest
 # Remove all object code once done to prevent standalone/not-standalone cross contamination
 fluidstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o ../mpi/mpi_common.o
-	mex $(PAR_INCL) $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx ../mpi/nvtx_wrapper.o cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS) -lnvToolsExt
+	mex $(PAR_INCL) $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS) -lnvToolsExt
 
 flux.o: flux.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux.cu -o flux.cpp
@@ -113,8 +113,8 @@ fluid_standalone: cudaFluidStep.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaFluidStep.cu -o cudaFluidStep.cpp
 	mex $(MEX_OPTS) -c cudaFluidStep.cpp
 
-cudaFluidStep: fluid_standalone cudaStaticsFcn.o cudaCommon.o
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o cudaStaticsFcn.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
+cudaFluidStep: fluid_standalone cudaStaticsFcn.o cudaArrayRotateFcn.o cudaCommon.o
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaFluidStep.o cudaCommon.o cudaStaticsFcn.o cudaArrayRotateFcn.o ../mpi/mpi_common.o $(OUTPUTCMD) cudaFluidStep $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 	rm cudaFluidStep.o
 
 # Statics / boundary condition settings
@@ -126,8 +126,8 @@ statics_standalone: cudaStatics.cu
 	nvcc -DSTANDALONE_MEX_FUNCTION $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) $(PAR_INCL) -cuda cudaStatics.cu -o cudaStatics.cpp
 	mex $(MEX_OPTS) -c cudaStatics.cpp
 
-cudaStatics: statics_standalone cudaCommon.o
-	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaCommon.o $(OUTPUTCMD) cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
+cudaStatics: statics_standalone cudaArrayRotateFcn.o cudaCommon.o
+	mex $(MEX_OPTS) $(PAR_LDIR) $(PAR_LIBS) -cxx cudaStatics.o cudaArrayRotateFcn.o cudaCommon.o $(OUTPUTCMD) cudaStatics $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 	rm cudaStatics.o
 	
 # Standalone EOS solver

@@ -24,6 +24,8 @@
 #include "flux.h"
 
 // Only uncomment this if you plan to debug this file.
+// This will cause it to require output arguments to return data in,
+// and perturb code behavior by generating writes to the output debug arrays
 //#define DEBUGMODE
 
 FluidMethods mlmethodToEnum(int mlmethod);
@@ -52,6 +54,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		DROP_MEX_ERROR("Must rx 5 parameters in params vector: [dt, purehydro?, order, step #, step method]");
 	}
 
+	
 	double dt     = scalars[0]; /* Access lambda (dt / dx) */
 	int ishydro   = scalars[1]; /* determine if purely hydrodynamic */
 	int sweepDirect = (int)scalars[2]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
@@ -83,7 +86,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	tempStorage.nGPUs = -1; // not allocated
 
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
+		ThermoDetails therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
+
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
+
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 		double rhoMin;
 		mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
@@ -97,16 +103,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			break;
 		}
 
-		flprop = mxGetProperty(prhs[0], fluidct, "gamma");
-		if(flprop != NULL) {
-			fsp.thermoGamma = *mxGetPr(flprop);
-		} else {
-			PRINT_FAULT_HEADER;
-			printf("Unable to access fluid(%i).gamma!\n", fluidct);
-			PRINT_FAULT_FOOTER;
-			status = ERROR_NULL_POINTER;
-			break;
+		fsp.thermoGamma = therm.gamma;
+		fsp.Cisothermal = therm.Cisothermal;
+		if(therm.Cisothermal != -1) {
+			fsp.thermoGamma = 2;
+			// This makes the hydro pressure solver return internal energy when it multiplies eint by (gamma-1)
 		}
+
 		fsp.minimumRho = rhoMin;
 
 

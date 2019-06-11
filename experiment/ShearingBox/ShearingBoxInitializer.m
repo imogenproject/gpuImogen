@@ -62,6 +62,9 @@ classdef ShearingBoxInitializer < Initializer
         solarWindEscapeFactor; % fraction of solar escape velocity the wind has ar r=r0 (must > 1)
 
         useZMirror;
+        
+        hack_dscale;
+        hack_dustvrad;
     end %PUBLIC
 
 %===================================================================================================
@@ -137,6 +140,9 @@ classdef ShearingBoxInitializer < Initializer
             self.solarWindEscapeFactor = 1.2;
 
             self.azimuthalMode = 1; % global
+            
+            self.hack_dscale = 1.0;
+            self.hack_dustvrad = 0;
 
             self.operateOnInput(input, [64 64 1]);
         end
@@ -216,20 +222,20 @@ classdef ShearingBoxInitializer < Initializer
                         % FIXME this needs to autodetect the number of ghost cells in use
                         % For vertical mirror, offset Z=0 by four cells to agree with mirror BC that has 4 ghost cells
                         if self.useZMirror; z0 = -4*dz; else; z0 = -round(nz/2)*dz; end
-
-                        if self.dustFraction > 0
-                            self.activateComplexBoundaryConditions(2);
-                            if self.useZMirror
-                                self.bcMode{2}.z = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT };
-                                self.bcMode{2}.x = ENUM.BCMODE_CONSTANT;
-                            else
-                                self.bcMode{2}.z = ENUM.BCMODE_STATIC;
-                                self.bcMode{2}.x = ENUM.BCMODE_STATIC; 
-                            end
-                        end
                     else
                         z0 = 0;
                         dz = 1;
+                    end
+                    
+                    if self.dustFraction > 0
+                        self.activateComplexBoundaryConditions(2);
+                        if self.useZMirror % this implies nz > 1
+                            self.bcMode{2}.z = { ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT };
+                            self.bcMode{2}.x = ENUM.BCMODE_STATIC;
+                        else
+                            self.bcMode{2}.z = ENUM.BCMODE_STATIC;
+                            self.bcMode{2}.x = ENUM.BCMODE_CONSTANT;
+                        end
                     end
                     
                     geo.geometryCylindrical(self.innerRadius/r_c, self.azimuthalMode, dr/r_c, z0/r_c, dz/r_c);
@@ -262,6 +268,7 @@ clear zpts; % never used again
             % r0 = r_c              % LENGTH UNIT
             m0    = rho_0 * r_c^3;  % MASS UNIT
             t0    = r_c / v0;       % TIME UNIT
+            if self.normalizeValues; self.unitValues = [m0 r_c t0]; end
             %--- derived:
             u0    = m0 * v0^2;      % ENERGY UNIT
 
@@ -293,7 +300,9 @@ clear zpts; % never used again
             if self.gasPerturb > 0
                 vel(1,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
                 vel(2,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
-                vel(3,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                if nz > 1
+                    vel(3,:,:,:) = self.gasPerturb * cs_0 * (geo.randsXYZ(geo.SCALAR)-.5) .*  (mass > self.fluidDetails(1).minMass);
+                end
             end
 
             rez = geo.globalDomainRez;
@@ -401,9 +410,10 @@ clear zpts; % never used again
                 mass = mass * self.dustFraction;
                 self.fluidDetails(2) = fluidDetailModel('10um_iron_balls');
                 self.fluidDetails(2).minMass = mpi_max(max(mass(:))) * self.densityCutoffFraction;
+                %self.fluidDetails(2).Cisothermal = -1; % 
 
-                dscale = 30;
-                SaveManager.logPrint('WARNING: Dust dynamics being setup with hack. Dynamics are those of %.3fmm iron spheres.\n', dscale / 100);    
+                dscale = self.hack_dscale;
+                SaveManager.logPrint('ATTENTION: dust dynamics set using self.hack_dscale. Dynamics are those of %.3fmm iron spheres.\n', dscale / 100);    
                 self.fluidDetails(2).sigma = self.fluidDetails(2).sigma * dscale^2;
                 self.fluidDetails(2).mass = self.fluidDetails(2).mass * dscale^3;
 
@@ -413,6 +423,10 @@ clear zpts; % never used again
                 end
                 
                 Eint = nfact*mass * (.01*cs_0)^2 / ((self.fluidDetails(2).gamma - 1));
+                if self.hack_dustvrad ~= 0
+                    vel(1,:,:,:) = vel(1,:,:,:) + self.hack_dustvrad; 
+                    SaveManager.logPrint('WARNING: run.hack_dustvrad is set!\n');
+                end
                 fluids(2) = self.rhoVelEintToFluid(mass, vel, Eint);
 
             else
