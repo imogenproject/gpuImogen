@@ -6,8 +6,14 @@ rho = fluid.mass.array;
 if geometry.pGeometryType == ENUM.GEOMETRY_CYLINDRICAL
     [radius, ~, ~] = geometry.ndgridSetIJK('pos');
     
-    [P1, P2, P3] = gradient(P, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
-    [G1, G2, G3] = gradient(gravPot, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
+    if geometry.globalDomainRez(3) > 1
+        [P1, P2, P3] = gradient(P, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
+        [G1, G2, G3] = gradient(gravPot, geometry.d3h(1), geometry.d3h(2), geometry.d3h(3));
+    else
+        [P1, P2] = gradient(P, geometry.d3h(1), geometry.d3h(2));
+        [G1, G2] = gradient(gravPot, geometry.d3h(1), geometry.d3h(2));
+        P3 = 0; G3 = 0;
+    end
     
     P2 = P2 ./ radius;
     G2 = G2 ./ radius;
@@ -38,7 +44,7 @@ else
         P3 = 0; G3 = 0;
     end
     
-    A = { -P1 ./ rho - G1.*gravon, -P2 ./ rho + -G2.*gravon, -P3 ./ rho - G3.*gravon};
+    A = { -P1 ./ rho - G1, -P2 ./ rho + -G2, -P3 ./ rho - G3};
 end
  
 % FIXME: broken: This will fail for calculating theta direction gradient because h[2] == dtheta, need 1/r...

@@ -416,6 +416,35 @@ classdef RealtimePlotter <  LinkedListNode
                 %case 12 % Re?
                 %case 13 % Kn?
                 %case 14
+                case 12 % raw T_drag = 1/K_drag
+                % Fetch both, we need both.
+                f1 = fluid.parent.fluid(1);
+                f2 = fluid.parent.fluid(2);
+                
+                P     = f1.calcPressureOnCPU();
+                T     = (f1.thermoDetails.mass / f1.thermoDetails.kBolt) * P(u,v,w) ./ f1.mass.array(u,v,w); % from P = (rho / mu) k_b T
+                
+                visc  = f1.thermoDetails.dynViscosity * (T / 298.15).^f1.thermoDetails.viscTindex;
+                
+                rhog  = f1.mass.array(u,v,w);
+                rhod  = f2.mass.array(u,v,w);
+                
+                magdv = (f2.mom(1).array(u,v,w) ./ rhod - f1.mom(1).array(u,v,w) ./ rhog ).^2;
+                magdv = magdv + (f2.mom(2).array(u,v,w) ./ rhod - f1.mom(2).array(u,v,w) ./ rhog ).^2;
+                magdv = magdv + (f2.mom(3).array(u,v,w) ./ rhod - f1.mom(3).array(u,v,w) ./ rhog ).^2;
+                magdv = sqrt(magdv);
+                
+                Rey   = rhog .* magdv * sqrt(f2.thermoDetails.sigma / pi) ./ visc;
+                
+                mfp   = (f1.thermoDetails.mass / f1.thermoDetails.sigma / sqrt(2)) * (T / 298.15).^f1.thermoDetails.sigmaTindex ./ rhog;
+                Kn    = 2 * sqrt(pi / f2.thermoDetails.sigma) * mfp;
+                
+                Cdrag = (24 ./ Rey + 3.6*Rey.^-.319 + .4072*Rey./(8710+Rey)) ./ (1 + Kn.*(1.142 + 1*0.558*exp(-0.999./Kn)));
+
+                Kdrag = .5 * (f2.thermoDetails.sigma/4) * Cdrag .* magdv .* (rhog + rhod) / f2.thermoDetails.mass;
+                
+                Q = 1 ./ (Kdrag);
+                    
             case 101 % XY velocity
                 Q = { fluid.mom(1).array(u,v,w)./fluid.mass.array(u,v,w), fluid.mom(2).array(u,v,w)./fluid.mass.array(u,v,w) };
             case 102 % XZ velocity
@@ -965,6 +994,8 @@ classdef RealtimePlotter <  LinkedListNode
     %===================================================================================================
     methods (Access = protected) %                                      P R O T E C T E D    [M]
         function updateSubsets(self)
+            self.sanitizeSubsetRanges();
+            
             self.pSubsX = self.indSubs(1,1):self.indSubs(1,2):self.indSubs(1,3);
             self.pSubsY = self.indSubs(2,1):self.indSubs(2,2):self.indSubs(2,3);
             self.pSubsZ = self.indSubs(3,1):self.indSubs(3,2):self.indSubs(3,3);
@@ -977,6 +1008,15 @@ classdef RealtimePlotter <  LinkedListNode
                 self.pCoords{2} = self.pGeometryMgrHandle.localPhiPosition(self.pSubsY);
             end
             self.pCoords{3} = self.pGeometryMgrHandle.localZposition(self.pSubsZ);
+        end
+        
+        function sanitizeSubsetRanges(self)
+            self.cut = self.clampValue(self.cut, [1 1 1], self.pResolution, 1);
+            
+            
+            self.indSubs(:, 1) = self.clampValue(self.indSubs(:,1), [1;1;1], self.pResolution', 1);
+            self.indSubs(:, 2) = self.clampValue(self.indSubs(:,2), self.indSubs(:,2), self.indSubs(:,2), 1); % just make it integer
+            self.indSubs(:, 3) = self.clampValue(self.indSubs(:,3), [1;1;1], self.pResolution', 1);
         end
 
 	function refreshButtonStates(self)
@@ -1049,8 +1089,8 @@ classdef RealtimePlotter <  LinkedListNode
 
         function y = clampValue(x, minval, maxval, mkint)
             y = x;
-            if y < minval; y = minval; end
-            if y > maxval; y = maxval; end
+            y(y < minval) = minval(y < minval);
+            y(y > maxval) = maxval(y > maxval);
             if mkint; y = round(y); end
         end
 
