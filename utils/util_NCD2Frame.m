@@ -77,7 +77,7 @@ end
 v = netcdf.inqVarID(ncid, 'mass');
 frame.mass = netcdf.getVar(ncid, v);
 try
-    vf = netcdf.inqVarId(ncid, 'momX');
+    vf = netcdf.inqVarID(ncid, 'momX');
 catch
     vf = -1234;
 end
