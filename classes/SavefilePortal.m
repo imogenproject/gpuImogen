@@ -28,6 +28,8 @@ classdef SavefilePortal < handle
 
         pParallelMode;
         pMetamode;
+        
+        pReadonlyMode;
     end %PROTECTED
     
     %===================================================================================================
@@ -55,6 +57,8 @@ classdef SavefilePortal < handle
             self.setParallelMode(0);
             self.setMetamode(0);
             self.setVarFormat('default');
+            
+            self.pReadonlyMode = 1;
         end
 
         function setParallelMode(self, enable)
@@ -186,6 +190,10 @@ classdef SavefilePortal < handle
             else
                 [F, glitch] = self.setFrame(n, setrank);
             end
+        end
+        
+        function writeCurrentFrame(self, DF, rank)
+            % This function accepts an input DataFrame f, 
         end
         
         function [F, glitch] = setFrame(self, f, fixedrank)

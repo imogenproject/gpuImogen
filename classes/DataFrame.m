@@ -176,6 +176,36 @@ classdef DataFrame < handle
     %===================================================================================================
     methods (Access = public) %                                                 P U B L I C  [M]
         
+        function f = toSaveframe(self)
+           % DataFrame.toSaveframe() processes its internal state and emits the save frame structure it came from.
+           % this process is lossless.
+           
+           f = struct();
+           fields = {'time','iter','parallel','gamma','about','ver','dGrid'};
+           
+           for q = 1:numel(fields)
+               f.(fields{q}) = self.(fields{q});
+           end
+           
+           f.mass = self.mass;
+           f.momX = self.momX;
+           f.momY = self.momY;
+           f.momZ = self.momZ;
+           f.ener = self.ener;
+           
+           if self.pTwoFluids
+               f.mass2 = self.mass2;
+               f.momX2 = self.momX2;
+               f.momY2 = self.momY2;
+               f.momZ2 = self.momZ2;
+               f.ener2 = self.ener2;
+           end
+           
+           f.magX = 0;
+           f.magY = 0;
+           f.magZ = 0;
+        end
+        
     end%PUBLIC
     
     %===================================================================================================

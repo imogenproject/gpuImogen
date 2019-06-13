@@ -13,6 +13,8 @@ if run.save.FSAVE
     IC.amResuming = 1;
     IC.originalPathStruct = run.paths.serialize();
 
+    IC.potentialField.field = [];
+
     save(sprintf('%s/SimInitializer_rank%i.mat',run.paths.save,parallels.context.rank),'IC');
 end
 
