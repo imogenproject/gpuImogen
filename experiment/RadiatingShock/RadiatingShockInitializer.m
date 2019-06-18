@@ -82,7 +82,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.activeSlices.xyz = true;
             obj.ppSave.dim2      = 5;
             obj.ppSave.dim3      = 25;
-            obj.image.mass       = true;
+            obj.image.mass       = false;
             obj.image.interval   = 10;
 
             obj.perturbationType = RadiatingShockInitializer.RANDOM;
@@ -160,7 +160,7 @@ classdef RadiatingShockInitializer < Initializer
             flowEndpoint = radflow.calculateFlowTable(jump.v(1,2), L_c / 1000, 5*L_c);
             flowValues   = radflow.solutionTable();
             
-            fprintf('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
+            SaveManager.logPrint('Characteristic cooling length: %f\nCharacteristic cooling time:   %f\nDistance to singularity: %f\n', L_c, T_c, flowEndpoint);
             
             fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
             
@@ -196,12 +196,14 @@ classdef RadiatingShockInitializer < Initializer
             % Get interpolated values for the flow
             flowValues(:,1) = flowValues(:,1) + Xshock;
             xinterps = (vecX-.5)*geom.d3h(1);
-            minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps,'cubic');
-            %px is exactly constant
-            pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps,'cubic');
-            %bx is exactly constant
-            byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps,'cubic');
-            Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps,'cubic');
+
+            meth = 'spline';
+            minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps, meth);
+            %px is a preserved invariant
+            pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps, meth);
+            %bx is a preserved invariant
+            byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps, meth);
+            Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps, meth);
             
             for xp = find(postshock)
                 mass(xp,:,:) = minterp(xp);
