@@ -304,7 +304,8 @@ classdef Initializer < handle
 
             % Checks if MGA needs to add its own halo to the outside of the partitioned direction
             % (only if we have a circular BC, one processor in the MPI grid in that direction, and multiple GPUs in use)
-            bcmodes = BCManager.expandBCStruct(obj.bcMode);
+            % We sent it {1} because complex BCs have been flipped on now if they weren't on before
+            bcmodes = BCManager.expandBCStruct(obj.bcMode{1});
             bcIsCircular = strcmp(bcmodes{1,gm.partitionDir}, 'circ');
 
             if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
