@@ -1,12 +1,17 @@
-function frontX = trackFront2(mass, x)
+function frontX = trackFront2(mass, x, ycrit)
 % Given a saveframe from Imogen, Identifies the shock's position.
 
 % Take dRho/dx and find the indices of the max
-d = diff(mass, 1, 1);
-[dRho_dx, ind] = max(d, [], 1);
+d = diff(mass, 1, 1)./mass(1:(end-1),:,:);
 
-halfval = (mass(end,1,1) + mass(1,1,1))/2;
-halfval = 4.6/2;
+[dRho_dx, ind] = max(d, [], 1);
+dRho_dx = dRho_dx .* diag(mass(ind,:,:))';
+
+if nargin < 3
+    halfval = (mass(end,1,1) + mass(1,1,1))/2;
+else
+    halfval = ycrit;
+end
 
 % Get rho in the cell before the max derivative
 % Linearly extrapolate to where it's between equilibrium values
