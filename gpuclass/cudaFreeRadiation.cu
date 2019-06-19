@@ -13,6 +13,8 @@
 #include "cublas.h"
 #include "cudaCommon.h"
 
+#include "nvToolsExt.h"
+
 #include "cudaFreeRadiation.h"
 
 /* THIS FUNCTION
@@ -67,6 +69,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	if ((nrhs != 5) || (nlhs > 1))
 		mexErrMsgTxt("Wrong number of arguments. Expected forms: rate = cudaFreeRadiation(FluidManager, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]) or cudaFreeRadiation(FluidManager, bx, by, bz, [gamma theta beta*dt Tmin isPureHydro]\n");
 
+#ifdef USE_NVTX
+	nvtxRangePush("Entering cudaFreeRadiation from mex");
+#endif
+
 	CHECK_CUDA_ERROR("Entering cudaFreeRadiation");
 
 	double *inputParams = mxGetPr(prhs[4]);
@@ -115,6 +121,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	if(nlhs == 1) free(dest);
 
+	#ifdef SYNCMEX
+		MGA_sledgehammerSequentialize(&f[0]);
+	#endif
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 	return;
 }
 

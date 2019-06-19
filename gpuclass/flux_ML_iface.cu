@@ -43,6 +43,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray fluid[5];
 
+#ifdef USE_NVTX
+	nvtxRangePush("Entered compiled flux step");
+#endif
+
 	/* Access bx/by/bz cell-centered arrays if magnetic!!!! */
 	/* ... */
 
@@ -84,13 +88,29 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	MGArray tempStorage;
 	tempStorage.nGPUs = -1; // not allocated
+	int numarrays;
+#ifdef DEBUGMODE
+			numarrays = 6 + DBG_NUMARRAYS;
+#else
+#ifdef USE_RK3
+			numarrays = 11;
+#else
+			numarrays = 6;
+#endif
+#endif
 
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
 		ThermoDetails therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
 
 		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
-
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
+
+		if(tempStorage.nGPUs == -1) {
+			nvtxMark("flux_ML_iface.cu:107 large malloc 6 arrays");
+			status = MGA_allocSlab(fluid, &tempStorage, numarrays);
+			if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
+		}
+
 		double rhoMin;
 		mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
 		if(flprop != NULL) {
@@ -112,17 +132,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 		fsp.minimumRho = rhoMin;
 
-
 		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
 
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
 
+
+
 	// This was allocated & re-used many times in performFluidUpdate_3D
 	if((tempStorage.nGPUs != -1) && (status == SUCCESSFUL)) {
 		#ifdef USE_NVTX
-		nvtxMark("Large free flux_ML_iface.cu:116");
+		nvtxMark("Large free flux_ML_iface.cu:144");
 		#endif
 		status = MGA_delete(&tempStorage);
 	}
@@ -131,6 +152,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		DROP_MEX_ERROR("Fluid update code returned unsuccessfully!");
 	}
 
+	#ifdef SYNCMEX
+		MGA_sledgehammerSequentialize(&fluid[0]);
+	#endif
+
+#ifdef USE_NVTX
+		nvtxRangePop();
+#endif
 }
 
 FluidMethods mlmethodToEnum(int mlmethod)

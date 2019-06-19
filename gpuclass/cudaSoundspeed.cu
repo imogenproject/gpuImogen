@@ -12,6 +12,8 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
+#include "nvToolsExt.h"
+
 #include "cudaCommon.h"
 #include "cudaSoundspeed.h"
 
@@ -52,6 +54,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 	if( (nlhs != 1) || ( (nrhs != 9) && (nrhs != 6) ))
 		mexErrMsgTxt("calling form for cudaSoundspeed is c_s = cudaSoundspeed(mass, ener, momx, momy, momz, [bx, by, bz,] gamma);");
 
+#ifdef USE_NVTX
+        nvtxRangePush("Entering cudasoundspeed from mex");
+#endif
 	CHECK_CUDA_ERROR("entering cudaSoundspeed");
 
 	// Select the appropriate kernel to invoke
@@ -83,6 +88,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSoundspeed.cu@82 dumped!"); }
 		free(dest);
 	}
+
+	#ifdef SYNCMEX
+		MGA_sledgehammerSequentialize(&fluid[0]);
+	#endif
+
+#ifdef USE_NVTX
+        nvtxRangePop();
+#endif
 
 	return;
 }

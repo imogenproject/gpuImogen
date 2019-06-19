@@ -3,9 +3,12 @@
 include ../Make.config
 
 DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
-#-DALLOCFREE_DEBUG      - printf()s to console with every MGA_Alloc/AllocSlab/Free call
+#-DALLOCFREE_DEBUG      - printf()s to console with every MGA_Alloc/AllocSlab/Free call: A very poor man's Valgrind
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
+#-DSYNCMEX		- does a complete CUDA device synchronization at the end of MEX functions to
+#                         try and help the Matlab profiler be more useful
+#-DUSE_NVTX		- inserts a lot of useful nvtx range markers to assist with profiling/debugging
 
 NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -Wno-deprecated-gpu-targets -O2 -lineinfo
 #-Xptxas="-v"
@@ -277,7 +280,7 @@ cflTimestep.o: cflTimestep.cu
 	mex $(MEX_OPTS) $(MEX_INCL) -c cflTimestep.cpp
 
 cflTimestep: cflTimestep.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 
 
 cudaMHDKernels.o: cudaMHDKernels.cu
@@ -339,7 +342,7 @@ cudaFreeRadiation.o: cudaFreeRadiation.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFreeRadiation.cu -o cudaFreeRadiation.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFreeRadiation.cpp
 cudaFreeRadiation: cudaCommon.o cudaFreeRadiation.o
-	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS)
+	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 
 cudaAccretingStar.o: cudaAccretingStar.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaAccretingStar.cu -o cudaAccretingStar.cpp

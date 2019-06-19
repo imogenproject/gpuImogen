@@ -372,7 +372,7 @@ int flipArrayIndices_multisame(MGArray *phi, int nArrays, int exchangeCode, cuda
 	if(usingLocalTemp) {
 		// allocate it
 		#ifdef USE_NVTX
-		nvtxMark("cudaArrayRotateB.cu:319 large alloc 2 arrays");
+		nvtxMark("cudaArrayRotateB.cu:375 large alloc 2 arrays");
 		#endif
 		returnCode = MGA_allocSlab(phi, &localTempStorage, 2);
 		tempStorage = &localTempStorage;

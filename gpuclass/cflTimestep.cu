@@ -14,6 +14,8 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
+#include "nvToolsExt.h"
+
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
 
@@ -52,7 +54,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if((nlhs != 1) || (nrhs != 4))
 		mexErrMsgTxt("Call must be tau = cflTimestep(FluidManager, soundspeed gpu array, GeometryManager, cfd_method);");
 
-	CHECK_CUDA_ERROR("entering directionalMaxFinder");
+#ifdef USE_NVTX
+		nvtxRangePush("Entering cflTimestep from mex");
+#endif
+	CHECK_CUDA_ERROR("entering cflTimestep");
 
 	int i;
 	int sub[6];
@@ -172,6 +177,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // If we are using explicit midpoint, the timestep must be halved again to remain TVD
 #endif
     timeStep[0] = trueMin;
+
+    #ifdef SYNCMEX
+        MGA_sledgehammerSequentialize(&fluid[0]);
+    #endif
+#ifdef USE_NVTX
+        nvtxRangePop();
+#endif
 
 }
 
