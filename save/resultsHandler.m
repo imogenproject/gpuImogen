@@ -128,7 +128,7 @@ function resultsHandler(saveEvent, run, fluids, mag)
                     switch(run.save.format)
                         case ENUM.FORMAT_MAT; eval([sliceName '= sl;']); save(fileName, sliceName);
                         case ENUM.FORMAT_NC;  util_Frame2NCD([fileName '.nc'], sl);
-			            case ENUM.FORMAT_HDF; util_Frame2HDF([fileName '.h5'], sl);
+                        case ENUM.FORMAT_HDF; util_Frame2HDF([fileName '.h5'], sl);
                     end
                 catch MERR
                     fprintf('In resultsHandler:115, unable to save frame. Skipping\n');
