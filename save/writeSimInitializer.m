@@ -4,7 +4,13 @@ function writeSimInitializer(run, IC)
 if run.save.FSAVE
     parallels = ParallelGlobals();
 
-    IC.fluids = [];
+    for N = 1:numel(IC.fluids)
+        IC.fluids(N).mass = [];
+        IC.fluids(N).momX = [];
+        IC.fluids(N).momY = [];
+        IC.fluids(N).momZ = [];
+        IC.fluids(N).ener = [];
+    end
     
     IC.magX = [];
     IC.magY = [];

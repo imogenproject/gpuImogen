@@ -36,7 +36,8 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     hasNoCFL = 1;
 
     % Handle each fluid
-    for F = 1:numel(FieldSource.fluids)
+    %for F = 1:numel(FieldSource.fluids)
+    for F = 1
         SaveManager.logPrint('    Fluid %i: ', int32(F));
         fluid(F) = FluidManager(F);
 
@@ -68,6 +69,12 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
         end
 
         SaveManager.logPrint('Processing thermodynamic details; ');
+        % Garbage hack
+        if ~isfield(FluidData(F), 'details')
+	    run.Save.logPrint('    -->>> WARNING <<<-- This SimInitializer.mat dumped the original FluidData.details struct: replacing with warm_molecular_hydrogen!!!!\n');
+	    FluidData(F).details = fluidDetailModel('warm_molecular_hydrogen');
+        end
+
         fluid(F).processFluidDetails(FluidData.details);
         if fluid(F).checkCFL; hasNoCFL = 0; end
         fluid(F).attachFluid(DataHolder, mass, ener, mom);

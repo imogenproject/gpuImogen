@@ -62,7 +62,7 @@ classdef TimeManager < handle
         % Creates a new TimeManager instance.
         function obj = TimeManager()
             obj.startTime   = clock;
-            obj.startSecs   = 0; % totally invalid input but prevents a crash
+            obj.startSecs   = tic; % totally invalid input but prevents a crash
             obj.dTime       = 0;
             
             obj.time        = 0;
@@ -311,6 +311,8 @@ classdef TimeManager < handle
             %newlimit.itermax = 20;
             %newlimit.timemax = 100;
             %newlimit.frame = 8;
+            obj.parent.save.PERSLICE = obj.parent.save.PERSLICE * obj.ITERMAX / newlimit.itermax;
+            obj.parent.save.logPrint('    Resume notice: Automatically rescaling all save rates by %f.\n', newlimit.itermax/obj.ITERMAX);
             
             obj.time       = elapsed.time;
             obj.history    = elapsed.history;
@@ -322,6 +324,8 @@ classdef TimeManager < handle
             obj.timePercent = 100*obj.time/obj.TIMEMAX;
             obj.updateWallTime();
             obj.dtAverage  = mean(obj.history);
+            
+            
         end
         
     end%PUBLIC
