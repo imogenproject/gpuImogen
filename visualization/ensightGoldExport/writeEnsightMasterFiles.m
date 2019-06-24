@@ -50,16 +50,20 @@ fprintf(CASE, 'filename start number: 0\n');
 fprintf(CASE, 'filename increment:    1\n');
 fprintf('Emitting CASE file time values...\n');
 nwritten = fprintf(CASE, 'time values: ');
+
+fprintf('Writing time meta: ');
 for q = 1:numel(range)
-    fprintf('Writing time meta for %i\n', int32(q));
     m = SP.getMetadata(range(q));
     tau = sum(m.time.history);
 
     nwritten = nwritten + fprintf(CASE,'%5.5g ', tau/timeNormalization);
     if nwritten > 72; fprintf(CASE, '\n'); nwritten = 0; end
+    fprintf('%i ', int32(q));
 end
 fprintf(CASE, '\n');
 fclose(CASE);
+
+fprintf('\n');
 
 % Don't want this unless doing parallel data apparently.
 %fprintf(CASE, '\n\nFILE\n');
