@@ -327,6 +327,8 @@ int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, Geom
 				}
 			}
 
+			free(bs);
+
 			// whatever we just did, check...
 			if(worked != SUCCESSFUL) break;
 

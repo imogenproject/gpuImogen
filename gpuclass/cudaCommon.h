@@ -97,6 +97,7 @@ typedef struct {
 #define GPU_TAG_DIMPERMUTATION 8
 #define GPU_TAG_CIRCULARBITS 9
 #define GPU_TAG_VECTOR_COMPONENT 10
+#define GPU_TAG_MAXLEN (GPU_TAG_LENGTH + 2*MAX_GPUS_USED)
 
         // These mask the bits in the MGArray.circularBoundaryBits field
 #define MGA_BOUNDARY_XMINUS 1

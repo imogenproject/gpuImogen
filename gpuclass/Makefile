@@ -10,7 +10,7 @@ DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY
 #                         try and help the Matlab profiler be more useful
 #-DUSE_NVTX		- inserts a lot of useful nvtx range markers to assist with profiling/debugging
 
-NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -Wno-deprecated-gpu-targets -O2 -lineinfo
+NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -Wno-deprecated-gpu-targets -O2 -g -lineinfo
 #-Xptxas="-v"
 
 # Debuggable code
@@ -279,7 +279,7 @@ cflTimestep.o: cflTimestep.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cflTimestep.cu -o cflTimestep.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) -c cflTimestep.cpp
 
-cflTimestep: cflTimestep.o
+cflTimestep: cflTimestep.o cudaCommon.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) -lnvToolsExt
 
 

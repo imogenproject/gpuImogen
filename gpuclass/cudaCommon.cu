@@ -210,6 +210,8 @@ int getGPUTypeTag(const mxArray *gputype, int64_t **tagPointer)
 /* Behaves as getGPUTypeTag, but can fetch outside of index zero. */
 int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex)
 {
+	static int64_t locptr[GPU_TAG_MAXLEN];
+
 	if(tagPointer == NULL) {
 		PRINT_FAULT_HEADER;
 		printf("input tag pointer was null!\n");
@@ -229,7 +231,12 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 			PRINT_FAULT_FOOTER;
 			return ERROR_GET_GPUTAG_FAILED;
 		}
-		tagPointer[0] = (int64_t *)mxGetData(gputype);
+		int64_t *q = (int64_t *)mxGetData(gputype);
+		int ctr;
+		for(ctr = 0; ctr < mxGetNumberOfElements(gputype); ctr++) {
+			locptr[ctr] = q[ctr];
+		}
+		tagPointer[0] = &locptr[0];
 		return SUCCESSFUL;
 	}
 
@@ -258,7 +265,15 @@ int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarr
 		PRINT_FAULT_FOOTER;
 		return ERROR_GET_GPUTAG_FAILED;
 	}
-	tagPointer[0] = (int64_t *)mxGetData(tag);
+
+	int64_t *q = (int64_t *)mxGetData(tag);
+	int ctr;
+	for(ctr = 0; ctr < mxGetNumberOfElements(tag); ctr++) {
+		locptr[ctr] = q[ctr];
+	}
+	tagPointer[0] = &locptr[0];
+	mxDestroyArray(tag);
+	//tagPointer[0] = (int64_t *)mxGetData(tag);
 
 	return SUCCESSFUL;
 }
@@ -2573,12 +2588,13 @@ mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const
 	mxClassID t0 = mxGetClassID(in);
 
 	int snum = strlen("Failed to read field fieldA in X.A.B") + (fieldA != NULL ? strlen(fieldA) : 5) + (fieldB != NULL ? strlen(fieldB) : 5) + 10;
-	char *estring = (char *)calloc(snum, sizeof(char));
+	char *estring;
 
 	if(t0 == mxSTRUCT_CLASS) { // Get structure field from A
 		A = mxGetField(in, idx, fieldA);
 
 		if(A == NULL) {
+			estring = (char *)calloc(snum, sizeof(char));
 			sprintf(estring,"Failed to get X.%s", fieldA);
 			mexErrMsgTxt(estring);
 		}
@@ -2586,6 +2602,7 @@ mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const
 		A = mxGetProperty(in, idx, fieldA);
 
 		if(A == NULL) {
+			estring = (char *)calloc(snum, sizeof(char));
 			sprintf(estring,"Failed to get X.%s", fieldA);
 			mexErrMsgTxt(estring);
 		}
@@ -2599,8 +2616,11 @@ mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const
 			B = mxGetProperty(A, idx, fieldB);
 		}
 
-		sprintf(estring,"Failed to get X.%s.%s", fieldA, fieldB);
-		if(B == NULL) mexErrMsgTxt(estring);
+		if(B == NULL) {
+			estring = (char *)calloc(snum, sizeof(char));
+			sprintf(estring,"Failed to get X.%s.%s", fieldA, fieldB);
+			mexErrMsgTxt(estring);
+		}
 
 		return B;
 	} else {
