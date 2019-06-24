@@ -1,0 +1,19 @@
+function Y = fillICFromFrame(IC, frame)
+
+Y = IC;
+
+if isfield(frame, 'mass2') % two fluids
+    Y.fluids = struct('mass',frame.mass, ...
+                           'momX', frame.momX, 'momY', frame.momY, 'momZ', frame.momZ, ...
+                           'ener', frame.ener, 'details', [], 'bcData', []);
+                       
+    Y.fluids(2) = struct('mass',frame.mass2, ...
+                           'momX', frame.momX2, 'momY', frame.momY2, 'momZ', frame.momZ2, ...
+                           'ener', frame.ener2, 'details', [], 'bcData', []);
+else % one fluid
+    Y.fluids = struct('mass',frame.mass, ...
+                           'momX', frame.momX, 'momY', frame.momY, 'momZ', frame.momZ, ...
+                           'ener', frame.ener, 'details', [], 'bcData', []);
+end
+
+end
