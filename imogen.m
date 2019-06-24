@@ -8,8 +8,9 @@ function outdirectory = imogen(srcData, resumeinfo)
 %< outdirectory    Path to directory containing output data
 
     if isstruct(srcData) == 0
-        load(srcData); %#ok<LOAD>
-        SaveManager.logPrint('---------- Imogen initializing from file\n');
+        myIni = sprintf('%s/SimInitializer_rank%i.mat',srcData,mpi_myrank() );
+        load(myIni); %#ok<LOAD>
+        SaveManager.logPrint('---------- Imogen initializing from directory / restarting\n');
     else
         IC = srcData;
         clear srcData;
@@ -40,7 +41,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     mpi_barrier();
 
     if RESTARTING
-        run.save.logPrint('   Accessing restart data files\n');
+        run.save.logPrint('    Accessing restart data files\n');
         % If reloading from time-evolved point,
         % garner important values from saved files:
         % (1) save paths [above]
@@ -50,16 +51,14 @@ function outdirectory = imogen(srcData, resumeinfo)
         dframe = util_LoadFrameSegment('2D_XY', mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
-        run.image.frame = resumeinfo.imgframe;
-
-        cd(origpath); clear origpath;
-        FieldSource = dframe;
-    else
-        FieldSource = IC;
+        if isfield(resumeinfo, 'imgframe'); run.image.frame = resumeinfo.imgframe; end
+        
+        cd(origpath);
+        IC = fillICFromFrame(IC, dframe);
     end
 
     try
-        [run.fluid, mag] = uploadDataArrays(FieldSource, run, statics);
+        [run.fluid, mag] = uploadDataArrays(IC, run, statics);
     catch oops
         prettyprintException(oops, 0, ...
             sprintf('\n    FATAL: Unsuccessful uploading data arrays!\n    Aborting run.\n    Additional exception will be printed by loader.\n'));
@@ -104,6 +103,7 @@ function outdirectory = imogen(srcData, resumeinfo)
     run.save.logPrint('---------- Entering simulation loop\n');
     run.time.updateUI();
 
+    
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag); % chooses dt
@@ -129,6 +129,12 @@ function outdirectory = imogen(srcData, resumeinfo)
         
         run.time.step(); % updates t -> t+2dt
         run.pollEventList(run.fluid, mag);
+
+% lame hack
+	%if run.time.iteration >= 749900
+	%run.save.PERSLICE(3) = .025;
+	%end
+
     end
     %%%=== END MAIN LOOP ========================================================================%%%
 
