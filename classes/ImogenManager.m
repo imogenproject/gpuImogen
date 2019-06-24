@@ -218,7 +218,7 @@ classdef ImogenManager < handle
             % Process radiation settings, if any
             if ~isempty(ini.radiation)
                 self.radiation.readSubInitializer(ini.radiation);
-                SaveManager.logPrint('    Radiation enabled.');
+                SaveManager.logPrint('    Radiation enabled.\n');
             end
             
             % Process VTO (Vacuum Taffy Operator) settings (unphysically forces a quiescent

@@ -101,14 +101,14 @@ function initializeResultPaths(run, IC)
             end
         end
 
-    SaveManager.logPrint('    Waiting for global visibility of output path by all ranks:');
+    SaveManager.logPrint('    Waiting for global visibility of output path by all ranks: ');
 
     end
 
     timeTaken = enforceConsistentView(run.paths.save, 600, 1);
     SaveManager.logPrint('    Results directory became globally visible in %.1f sec\n', timeTaken);
     
-    switch run.save.format;
+    switch run.save.format
 	case ENUM.FORMAT_MAT; sp = '    Output format: .MAT files\n';
 	case ENUM.FORMAT_NC;  sp = '    Output format: .NC NetCDF files\n';
 	case ENUM.FORMAT_HDF; sp = '    Output format: .H5 HDF-5 files\n';
