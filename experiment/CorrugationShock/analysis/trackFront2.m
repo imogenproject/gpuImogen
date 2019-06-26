@@ -4,6 +4,10 @@ function frontX = trackFront2(mass, x, ycrit)
 % Take dRho/dx and find the indices of the max
 d = diff(mass, 1, 1)./mass(1:(end-1),:,:);
 
+yy = circshift(mass(1:(end-1),:,:),10);
+
+d = d .* (abs(yy-1) < .001);
+
 [dRho_dx, ind] = max(d, [], 1);
 dRho_dx = dRho_dx .* diag(mass(ind,:,:))';
 
