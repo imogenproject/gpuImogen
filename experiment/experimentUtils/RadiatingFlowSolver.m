@@ -172,7 +172,7 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
                 self.vxTerminal = self.thermalCutoffV(value);
             end
 
-            fprintf('Terminal velocity set by %s to %.10g.\n',type,self.vxTerminal);
+            SaveManager.logPrint('Terminal velocity set by %s to %.10g.\n',type,self.vxTerminal);
         end
 
 
