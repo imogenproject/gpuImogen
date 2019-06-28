@@ -206,6 +206,19 @@ classdef DataFrame < handle
            f.magZ = 0;
         end
         
+        function concatFrame(self, F)
+            fieldsA = {'pMass','pMomX','pMomY','pMomZ','pEner'};
+            fieldsB = {'mass','momX','momY','momZ','ener'};
+            
+            for q = 1:5
+                self.(fieldsA{q}) = cat(4, self.(fieldsB{q}), F.(fieldsB{q}));
+            end
+            if isfield(self.time, 'tFrame') && isfield(F.time, 'tFrame')
+                self.time.tFrame = [self.time.tFrame; F.time.tFrame]; 
+            end
+            
+        end
+        
     end%PUBLIC
     
     %===================================================================================================
