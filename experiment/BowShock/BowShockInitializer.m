@@ -28,6 +28,9 @@ classdef BowShockInitializer < Initializer
         ballLock;          % If true locks ball in place; If false, blast a clump of matter away
         % with a shockwave
         
+        radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
+        radTheta; 
+        
     end %PUBLIC
     
     %===================================================================================================
@@ -88,6 +91,9 @@ classdef BowShockInitializer < Initializer
             obj.pBallRho             = 1;
             obj.pBallVr              = 1;
             obj.pBallThermalPressure = .25;
+            
+            obj.radBeta = 1;
+            obj.radTheta = 0.0;
             
             obj.operateOnInput(input, [800, 256, 1]);
         end
@@ -242,6 +248,20 @@ classdef BowShockInitializer < Initializer
                     %if obj.mode.magnet == true; statics.associateStatics(ENUM.MAG,  ENUM.VECTOR(3), statics.CELLVAR, 1, 1); end;
                 end
                 
+            end
+            
+            if obj.radBeta > 0
+                rad = RadiationSubInitializer();
+                
+                rad.type                      = ENUM.RADIATION_OPTICALLY_THIN;
+                rad.exponent                  = obj.radTheta;
+                
+                rad.initialMaximum            = 1; % We do not use these, instead
+                rad.coolLength                = 1; % We let the cooling function define dx
+                rad.strengthMethod            = 'preset';
+                rad.setStrength               = obj.radBeta;
+                
+                obj.radiation = rad;
             end
             
             if (obj.magX == 0) && (obj.magY == 0); obj.pureHydro = 1; end
