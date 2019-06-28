@@ -19,6 +19,10 @@ int sweep, flag_1D = 0;
 // Choose our sweep number depending on whether we are 1- or 2-dimensional
 //if(fluid[0].dim[2] > 1) { // if nz > 1, three-dimensional
 	sweep = (stepNumber + 3*(order > 0)) % 6;
+
+if((fluid->dim[1] == 1) && (fluid->dim[2] == 1)) {
+	flag_1D = 1;
+}
 //} else {
 //	if(fluid[0].dim[1] > 3) { // if ny > 3, two dimensional
 //		sweep = (stepNumber + (order < 0)) % 2;
