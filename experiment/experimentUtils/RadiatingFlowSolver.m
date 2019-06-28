@@ -287,6 +287,17 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
         % Calculates the flow state (rho, vx, P) on an interval of width X using
         % an initial step of dx
         function dsingularity = calculateFlowTable(self, vx, h, Lmax)
+            if nargin < 4; Lmax = 999; end
+            if nargin < 3; h = self.coolingLength / 100; end
+            if nargin < 2; vx = self.vx0; end
+            
+             self.flowSolution = [0 vx];
+             
+             self.restartLMM(vx, h);
+@@ -304,7 +308,11 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
+                 % Adaptively monitor stepsize for problems:
+                 % Back up and decrease in event of error
+                 if ohCrap
             nRestarts = 0;
             self.flowSolution = [0 vx];
             
@@ -305,6 +316,11 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
                 % Back up and decrease in event of error
                 if ohCrap
                     self.flowSolution = self.flowSolution(1:(end-7),:);
+                    if size(self.flowSolution,1) >= 8
+                        self.flowSolution = self.flowSolution(1:(end-7),:);
+                    else
+                        self.flowSolution = self.flowSolution(1,:);
+                    end
 
                     h=h/8;
                     self.restartLMM(self.flowSolution(end,2), h);
