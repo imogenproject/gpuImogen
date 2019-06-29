@@ -18,15 +18,17 @@ run.cfl = .85;
 % It's irrelevant outside of changing output units because this parameter has a fixed relation 
 % to the cooling length and the simulation automatically re-scales dx based on the 
 % fractionPreshock and fractionCold parameters.
-run.radBeta = 0;
+run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical free-free Bremsstrahlung 
 run.radTheta = .5;
 
+run.radCoollen=.7;
+
 % Determine the part of the grid occupied by the obstacle
 run.ballXRadius = 1;
-run.ballCells = [1 1 1]*round(grid(1)/12) +.5;
+run.ballCells = [1 1 1]*round(grid(1)/8) +.5;
 run.ballCenter =  ceil([grid(1)*.7 grid(2)/2 grid(3)/2]);
 
 % Nope, nope nope, nope...
