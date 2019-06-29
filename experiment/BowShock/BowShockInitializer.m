@@ -159,8 +159,10 @@ classdef BowShockInitializer < Initializer
            
             geo = obj.geomgr;
 
-            geo.makeBoxSize(obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1) );
-            geo.makeBoxOriginCoord(ceil(geo.globalDomainRez/2));
+            Ltotal = obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1);
+            geo.makeBoxSize(Ltotal);
+            %geo.makeBoxOriginCoord(ceil(geo.globalDomainRez/2));
+            geo.makeBoxOriginCoord(ceil(obj.ballCenter));
 
             %--- Background Values ---%
             [mass, mom, mag, ener] = geo.basicFluidXYZ();
@@ -185,8 +187,8 @@ classdef BowShockInitializer < Initializer
             
             blast = HDJumpSolver(obj.pBlastMach, 0, obj.gamma);
             xedge = max(round(obj.ballCenter(1) - obj.ballCells(1)-20), 16);
-            postshockX = geo.toLocalIndices(1:xedge);
-            preshockX = geo.toLocalIndices((xedge+1):geo.globalDomainRez(1));
+            preshockX = geo.toLocalIndices(1:xedge);
+            postshockX = geo.toLocalIndices((xedge+1):geo.globalDomainRez(1));
             
             % Density distribution of background fluid
             mass(postshockX,:,:) = obj.pPreshockRho*blast.rho(2);
@@ -194,7 +196,8 @@ classdef BowShockInitializer < Initializer
             
             % Set the momentum of the incoming blast, if applicable
             if obj.pBlastMach > 1
-                momx(postshockX,:,:) = obj.pPreshockRho*blast.rho(2)*(blast.v(1,1) - blast.v(1,2));
+                momx(postshockX,:,:) = obj.pPreshockRho*blast.rho(2)*( blast.v(1,2));
+                momx(preshockX,:,:) = obj.pPreshockRho*blast.rho(1)*( blast.v(1,1));
             else
                 momx(:,:,:) = obj.pPreshockRho*blast.rho(1)*(blast.v(1,1));
             end
@@ -257,8 +260,8 @@ classdef BowShockInitializer < Initializer
                 rad.exponent                  = obj.radTheta;
                 
                 rad.initialMaximum            = 1; % We do not use these, instead
-                rad.coolLength                = 1; % We let the cooling function define dx
-                rad.strengthMethod            = 'preset';
+                rad.coolLength                = .3; % We let the cooling function define dx
+                rad.strengthMethod            = 'coollen';
                 rad.setStrength               = obj.radBeta;
                 
                 obj.radiation = rad;

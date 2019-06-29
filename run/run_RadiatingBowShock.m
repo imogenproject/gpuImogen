@@ -1,13 +1,13 @@
 
 %--- Initialize bow shock ---%
-grid = [512 512 1];
+grid = [128 256 256];
 run                 = BowShockInitializer(grid);
-run.iterMax         = 2000;
+run.iterMax         = 8000;
 %run.bcMode.z            = 'circ';
 
-run.bcMode.x = 'const';
-run.bcMode.y = 'circ';
-run.bcMode.z = 'circ';
+run.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_CONSTANT};
+run.bcMode.y = ENUM.BCMODE_CONSTANT;
+run.bcMode.z = ENUM.BCMODE_CONSTANT;
 
 run.cfl = .85;
 
@@ -18,16 +18,16 @@ run.cfl = .85;
 % It's irrelevant outside of changing output units because this parameter has a fixed relation 
 % to the cooling length and the simulation automatically re-scales dx based on the 
 % fractionPreshock and fractionCold parameters.
-run.radBeta = 1;
+run.radBeta = 0;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical free-free Bremsstrahlung 
-run.radTheta = -1;
+run.radTheta = .5;
 
 % Determine the part of the grid occupied by the obstacle
 run.ballXRadius = 1;
-run.ballCells = [1 1 1]*round(grid(1)/8) +.5;
-run.ballCenter =  ceil(grid/2);
+run.ballCells = [1 1 1]*round(grid(1)/12) +.5;
+run.ballCenter =  ceil([grid(1)*.7 grid(2)/2 grid(3)/2]);
 
 % Nope, nope nope, nope...
 run.mode.magnet = false;
@@ -38,11 +38,11 @@ run.magY = 0;
 run.preshockRho = 1;
 run.preshockP   = 1;
 % And the mach of the incoming blastwave
-run.blastMach   = 4;
+run.blastMach   = 6;
 
 % Set the parameters of the ball itself
-run.ballRho = 1;
-run.ballVr = 4;
+run.ballRho = 4;
+run.ballVr = 11;
 run.ballXRadius = 1;
 run.ballThermalPressure = 1;
 run.ballLock = true;
@@ -70,7 +70,19 @@ rp = RealtimePlotter();
   rp.firstCallIteration = 1;
   rp.iterationsPerCall = 20;
   rp.spawnGUI = 1;
+
+  rp.plotmode = 1;
+rp.cut = [64 128 128];
+rp.indSubs = [1 1 128;1 1 256;1 1 256];
+rp.movieProps(0, 0, 'RTP_');
+rp.vectorToPlotprops(1, [1  10   0   4   1   0   0   0   0   1  10   1   8   1   0   0   0]);
+
+  
 run.peripherals{end+1} = rp;
+
+fm = FlipMethod();
+fm.iniMethod = ENUM.CFD_HLL; 
+run.peripherals{end+1}=fm;
 
 run.info            = 'Bow shock test.';
 run.notes           = '';

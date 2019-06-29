@@ -95,8 +95,8 @@ classdef Radiation < handle
             if strcmp(obj.strengthMethod,'coollen')
                 if mpi_amirank0()
                      % preshock vx, taken from leftmost cell in the array
-                    vpre = mom(1).array(1,1,1) / mass.array(1,1,1);
-                    mpi_scatter(vpre, 0);
+                    vpre = run.fluid(1).mom(1).array(1,1,1) / run.fluid(1).mass.array(1,1,1);
+                    vpre = mpi_scatter(vpre, 0);
                 else
                     vpre = mpi_scatter([], 0);
                 end
