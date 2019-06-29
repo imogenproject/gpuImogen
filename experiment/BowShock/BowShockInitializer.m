@@ -30,6 +30,7 @@ classdef BowShockInitializer < Initializer
         
         radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
         radTheta; 
+        radCoollen;
         
     end %PUBLIC
     
@@ -80,6 +81,8 @@ classdef BowShockInitializer < Initializer
             obj.ballCenter       = round(input/2);
             obj.pBallXRadius      = 1;
             obj.ballLock         = 1;
+
+            obj.radCoollen = .3;
             
             obj.magX                = 0;
             obj.magY                = 0;
@@ -260,7 +263,7 @@ classdef BowShockInitializer < Initializer
                 rad.exponent                  = obj.radTheta;
                 
                 rad.initialMaximum            = 1; % We do not use these, instead
-                rad.coolLength                = .3; % We let the cooling function define dx
+                rad.coolLength                = obj.radCoollen; % We let the cooling function define dx
                 rad.strengthMethod            = 'coollen';
                 rad.setStrength               = obj.radBeta;
                 
