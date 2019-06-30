@@ -50,7 +50,7 @@ for N = 1:S.numFrames
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
-    t = sum(F.time.history) * norm(IC.ini.pWavenumber);
+    t = F.time.time * norm(IC.ini.pWavenumber);
     
     % Compute the displacement of a reference characteristic packet
     % Parameterized by original phase
@@ -68,7 +68,7 @@ for N = 1:S.numFrames
     delta = rhoAnalytic - F.mass;
     if runParallel; delta = geo.withoutHalo(delta); end
 
-    if sum(F.time.history) >= tCritical
+    if F.time.time >= tCritical
         disp(['At frame', num2str(S.tellFrame()), ' time ', num2str(t), ' exceeded tCritical=', num2str(tCritical),'; Analysis ended.'])
         break;
     end

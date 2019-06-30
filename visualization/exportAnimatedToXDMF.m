@@ -128,7 +128,7 @@ for N = 2:numel(range)
     SP.setFrame(range(N));
     frname = SP.getSegmentFilename();
     datameta = SP.getMetadata();
-    tau = sum(datameta.time.history);
+    tau = datameta.time.time;
     fprintf(outx, '      <!-- Frame %i of output -->\n', int32(N));
     fprintf(outx, '      <Grid GridType="Uniform">\n');
     fprintf(outx, '        <Topology Reference="/Xdmf/Domain/Grid/Grid/Topology[@name=''thetopo'']" />\n');
@@ -153,7 +153,7 @@ end
 
 function writeFrameAtts(outx, frfile, frmeta, rez, varnames, timefactor)
 
-tau = sum(frmeta.time.history);
+tau = frmeta.time.time;
 fprintf(outx, '        <Time Value="%f" />\n', tau / timefactor);
 
 for p = 1:numel(varnames)

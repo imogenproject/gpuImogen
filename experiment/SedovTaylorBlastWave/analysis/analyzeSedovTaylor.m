@@ -47,7 +47,7 @@ radii = (0:nRadial)/nRadial;
 spatialDimension = 1 + 1*(rez(2) > 2) + 1*(rez(3) > 1);
 
 for N = 1:S.numFrames
-    [rho, vradial, P] = SedovSolver.FlowSolution(1, sum(f.time.history), radii, rho0, f.gamma, spatialDimension, sedovAlpha);
+    [rho, vradial, P] = SedovSolver.FlowSolution(1, f.time.time, radii, rho0, f.gamma, spatialDimension, sedovAlpha);
 
     truerho = interp1(radii, rho, R);
     truev   = interp1(radii, vradial, R);
@@ -70,7 +70,7 @@ for N = 1:S.numFrames
 
     NE = mpi_sum(numel(deltarho));
     
-    result.time(end+1)  = sum(f.time.history);
+    result.time(end+1)  = f.time.time;
     result.rhoL1(end+1) = mpi_sum(norm(deltarho(:),1) / NE);
     result.rhoL2(end+1) = sqrt(mpi_sum(norm(deltarho(:),2).^2) / NE);
     

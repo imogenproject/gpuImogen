@@ -74,7 +74,7 @@ for x = 1:X
         eval(['clear ' evstr]);
     end
 
-    result.xaxis(x) = sum(sxcur.time.history) / (2*pi); % Normalize to chirps
+    result.xaxis(x) = sxcur.time.time / (2*pi); % Normalize to chirps
     
     % Perform polar transform, rescale by radius while radially summing
     mpolar = diskUnwrap(sxcur.mass);

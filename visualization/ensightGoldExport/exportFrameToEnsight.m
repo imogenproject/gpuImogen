@@ -4,6 +4,6 @@ function exportFrameToEnsight(frame)
 basename = input('Basename: ','s');
 
 exportEnsightDatafiles(basename, 0, frame);
-writeEnsightMasterFiles(basename, numel(frame.time.history), frame, 1);
+writeEnsightMasterFiles(basename, frame.time.time, frame, 1);
 
 end

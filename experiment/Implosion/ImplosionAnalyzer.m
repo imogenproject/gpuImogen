@@ -31,7 +31,7 @@ classdef ImplosionAnalyzer < handle
 
             calculatedAsymmetry = norm((m - m'),'fro');
             obj.asymmetryNorm(end+1) = calculatedAsymmetry;
-            obj.time(end+1) = sum(run.time.history);
+            obj.time(end+1) = run.time.time;
 	end
 
 	function result = ImplosionAnalyzer()

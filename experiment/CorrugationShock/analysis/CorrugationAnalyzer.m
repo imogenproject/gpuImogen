@@ -125,7 +125,7 @@ classdef CorrugationAnalyzer < Analyzer
                                         ./ inputData.mass) );
             end
             
-            obj.pSimulationTimes(obj.pDataIndex)  = sum(inputData.time.history);
+            obj.pSimulationTimes(obj.pDataIndex)  = inputData.time.time;
             obj.pIterations(obj.pDataIndex)       = inputData.time.iteration;
             
             

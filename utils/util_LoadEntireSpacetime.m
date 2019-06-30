@@ -36,7 +36,7 @@ for x = 1:N
         F = fi;
         % Let's not be *too* casual about larger datasets
         if (numel(F.mass) * 40 * N > 10e9)
-            if nargin == 1
+            if nargin < 3
                 damnTheTorpedoes = input('Yikes! This function will attempt to load over 10GB of data and no override was given. Nonzero if you are sure: ');
             else
                 damnTheTorpedoes = hugeStructIsOkay;
@@ -44,25 +44,33 @@ for x = 1:N
             if damnTheTorpedoes == 0; return; end
         end
 
+        dee = [size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N];
         for a = 1:nfields
-            fourd{a} = zeros([size(fi.mass,1) size(fi.mass,2) size(fi.mass,3) N]);
+            fourd{a} = zeros(dee);
         end
+        
+        F.time.time = zeros([N 1]);
     end
-   
+
+    % Build the 4D structure
     for a = 1:nfields
         fourd{a}(:,:,:,x) = fi.(fields{a});
     end 
     
+    % Append frame time
+    F.time.time(x) = fi.time.time;
+    
     % Final events 
     if x == N
         F.mass = fourd{1};
-        %F.momX = fourd{2};
-        %F.momY = fourd{3};
-        %F.momZ = fourd{4};
-        %F.ener = fourd{5};
+        F.momX = fourd{2};
+        F.momY = fourd{3};
+        F.momZ = fourd{4};
+        F.ener = fourd{5};
+        tau = F.time.time;
+        
         F.time = fi.time; % Set time history by last frame
-        tau = [0; cumsum(F.time.history)];
-        F.tFrame = tau(frameset+1);
+        F.time.time = tau;% But copy last frame time
     end
     
     fprintf('.');
@@ -70,6 +78,8 @@ for x = 1:N
 
 end
 fprintf('\n');
+
+
 
 
 end

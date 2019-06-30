@@ -105,7 +105,7 @@ classdef DustyBoxAnalyzer < LinkedListNode
 
         function analyzeDrag(self, evt, run, fluids, mag) %#ok<INUSD>
             
-            tFinal = sum(run.time.history);
+            tFinal = run.time.time;
             
             % Apply out-of-the-box ODE solver with most stringent error tolerances...
             opts = odeset('Reltol',1e-13,'AbsTol',1e-14);

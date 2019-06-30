@@ -39,6 +39,8 @@ classdef TimeManager < handle
     properties (SetAccess = private, GetAccess = private)
         pItersDigits; 
         pLogString;
+        
+        pKahanTimeC;
     end
     
     %==============================================================================================
@@ -81,6 +83,8 @@ classdef TimeManager < handle
             
             obj.stepsPerChkpt=25;
             obj.stepsSinceIncident = inf;
+            
+            obj.pKahanTimeC = 0;
         end
         
         function nProblems = parseIni(self, ini)
@@ -124,7 +128,7 @@ classdef TimeManager < handle
             dtMin = 1e38;
 
             for f = 1:numel(fluids)
-                if fluids(f).checkCFL == 0; continue; end % Call kenny loggins...
+                if fluids(f).checkCFL == 0; continue; end
                 
                 mass = fluids(f).mass;
                 ener = fluids(f).ener;
@@ -263,7 +267,14 @@ classdef TimeManager < handle
         % Increments the iteration variable by one for the next loop.
         function step(obj)
             obj.iteration   = obj.iteration + 1;
-            obj.time        = obj.time + 2*obj.dTime;
+            
+            % Accumulate dt in a Kahan-compensated manner
+            y = (2*obj.dTime) - obj.pKahanTimeC;
+            t = obj.time + y;
+            obj.pKahanTimeC = (t-obj.time)-y;
+            obj.time = t;
+            
+            
             obj.wallTime    = etime(clock(), obj.startTime)/3600;
             
             obj.timePercent = 100*obj.time/obj.TIMEMAX;

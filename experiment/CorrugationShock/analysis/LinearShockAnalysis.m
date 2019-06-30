@@ -209,7 +209,7 @@ methods (Access = public)
                 if mod(ITER, 50) == 0; fprintf('\n'); end
             end
 
-            obj.frameTimes(ITER)     = sum(dataframe.time.history);
+            obj.frameTimes(ITER)     = dataframe.time.time;
             obj.frameLinearity(ITER) = isFrameLinear(dataframe.time.history);
 
             if ITER == 1 % Extract equilibrium data from the first frame

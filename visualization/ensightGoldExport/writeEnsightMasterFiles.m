@@ -54,7 +54,7 @@ nwritten = fprintf(CASE, 'time values: ');
 fprintf('Writing time meta: ');
 for q = 1:numel(range)
     m = SP.getMetadata(range(q));
-    tau = sum(m.time.history);
+    tau = m.time.time;
 
     nwritten = nwritten + fprintf(CASE,'%5.5g ', tau/timeNormalization);
     if nwritten > 72; fprintf(CASE, '\n'); nwritten = 0; end

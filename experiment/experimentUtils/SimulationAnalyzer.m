@@ -223,7 +223,7 @@ methods (Access = public)
                     obj.kzValues = (0:(size(dataframe.mass,3)-1))*2*pi/(size(dataframe.mass,3)*dataframe.dGrid{3});
                 end
 
-                obj.frameT = [obj.frameT; sum(dataframe.time.history)];
+                obj.frameT = [obj.frameT; dataframe.time.time];
                 obj.FrameAnalyzer(dataframe, iter);
 
                 if iter == 2; fprintf('\nEst. %fsec remaining in analysis.\n', (numel(outarray)-2)*toc/2); end
@@ -261,7 +261,7 @@ methods (Access = public)
             end
 
             dataframe = util_LoadWholeFrame(obj.inputBasename, obj.setOfFrames(iter));
-            obj.frameT(iter,1) = sum(dataframe.time.history);
+            obj.frameT(iter,1) = dataframe.time.time;
             obj.frameAnalyzerFunction(dataframe, iter);
 
             if zf == 2; fprintf('\nEst. %fsec remaining in analysis.\n', (numel(obj.setOfFrames)-numel(obj.analyzedFrames)-2)*toc/2); end

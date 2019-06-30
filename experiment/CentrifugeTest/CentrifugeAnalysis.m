@@ -21,7 +21,7 @@ geo = GeometryManager(initset.ini.geometry.globalDomainRez);
 for N = 2:S.numFrames
     f = S.nextFrame();
 
-    tval(N-1) = sum(f.time.history);
+    tval(N-1) = f.time.time;
     delta = f.mass - equil.mass;
 
     if runParallel; delta = geo.withoutHalo(delta); end

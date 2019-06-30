@@ -5,8 +5,7 @@ function frame = util_HDF2Frame(hname, options)
 if nargin < 2; options = 'nothing'; end
 metaonly = strcmpi(options, 'metaonly');
 
-frame.time = struct('history',[], 'time', [], 'iterMax', [], 'timeMax', [], 'wallMax', [], 'iteration', [], 'started', []);
-frame.time.history = h5read(hname, '/timehist');
+frame.time = struct('time', [], 'iterMax', [], 'timeMax', [], 'wallMax', [], 'iteration', [], 'started', []);
 
 timeatts = {'time', 'iterMax', 'timeMax', 'wallMax', 'iteration', 'started'};
 for i = 1:5

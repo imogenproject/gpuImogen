@@ -2,12 +2,7 @@ function util_Frame2HDF(hname, frame)
 % function util_Frame2HDF(hname, frame)
 % saves the Imogen data frame 'frame' to the file named by 'hname' as an HDF5 file
 
-% prevent 0 elements glitch
-if numel(frame.time.history) == 0; frame.time.history = 0; end
-
 % Save the 'time' struct
-h5create(hname, '/timehist', size(frame.time.history), 'Datatype','double');
-
 h5create(hname, '/dgridx', size(frame.dGrid{1}), 'Datatype', 'double');
 h5create(hname, '/dgridy', size(frame.dGrid{2}), 'Datatype', 'double');
 h5create(hname, '/dgridz', size(frame.dGrid{3}), 'Datatype', 'double');
@@ -37,8 +32,6 @@ if numel(frame.magX)==0; frame.magX = 0; frame.magY = 0; frame.magZ = 0; end
 h5create(hname, '/mag/X', size(frame.magX));
 h5create(hname, '/mag/Y', size(frame.magY));
 h5create(hname, '/mag/Z', size(frame.magZ));
-
-h5write(hname, '/timehist', frame.time.history);
 
 timeatts = {'time', 'iterMax', 'timeMax', 'wallMax', 'iteration', 'started'};
 for i = 1:5

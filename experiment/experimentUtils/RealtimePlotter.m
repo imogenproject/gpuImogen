@@ -280,7 +280,7 @@ classdef RealtimePlotter <  LinkedListNode
                 end
             end
 
-            fig.Name = ['Output at iteration ' num2str(run.time.iteration) ', time ' num2str(sum(run.time.history))];
+            fig.Name = ['Output at iteration ' num2str(run.time.iteration) ', time ' num2str(run.time.time)];
             if self.forceRedraw; drawnow; end
 
         end
@@ -288,7 +288,7 @@ classdef RealtimePlotter <  LinkedListNode
         function FrameAnalyzer(self, p, run, fluids, ~)
             self.drawGfx(run, fluids);
             
-            tfin = sum(run.time.history);
+            tfin = run.time.time;
             
             if self.insertPause
                 if self.spawnGUI
@@ -628,7 +628,7 @@ classdef RealtimePlotter <  LinkedListNode
                 if i == 1; hold on; end
             end
             
-            title(sum(run.time.history));
+            title(run.time.time);
             if self.forceRedraw; drawnow; end
             
             % Rearm myself

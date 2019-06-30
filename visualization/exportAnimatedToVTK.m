@@ -72,7 +72,7 @@ for ITER = (myworker+1):nstep:ntotal
     if ITER ~= (myworker+1); dataframe = SP.setFrame(range(ITER)); end
 
 % FIXME this fails in parallel horribly...
-    stepnums(ITER) = sum(dataframe.time.history) / timeNormalization;
+    stepnums(ITER) = dataframe.time.time / timeNormalization;
 
     finalstr = sprintf(outcmdstr, ITER);
     % for elements of varset,

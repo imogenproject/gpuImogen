@@ -5,9 +5,6 @@ function util_Frame2NCD(nfile, frame)
 %d3_fixed = {'nx','ny','nz'};
 % or nr, ntheta, nz...
 
-th = frame.time.history;
-if isempty(frame.time.history); th = 0; end
-
 ncid = netcdf.create(nfile, '64BIT_OFFSET');
 
 % FIXME: check for r/w failure here
@@ -16,7 +13,6 @@ vecdim = netcdf.defDim(ncid, '3elem', 3); % this is dumb but it's historically l
 scaldim= netcdf.defDim(ncid, '1elem', 1);
 
 % Define time substructure dimensions
-dthist = netcdf.defDim(ncid, 'dthist', numel(th));
 tinfo  = netcdf.defDim(ncid, 'tinfo', 5);
 tstart = netcdf.defDim(ncid, 'tstart', length(frame.time.started));
 
@@ -42,7 +38,6 @@ nz = netcdf.defDim(ncid, 'nz', size(frame.mass,3));
 
 % DEFINE ALL VARIABLES
 % Define time info substructure
-timeinfo_hist   = netcdf.defVar(ncid, 'timeinfo_hist', 'double', dthist);
 timeinfo_scals  = netcdf.defVar(ncid, 'timeinfo_scals', 'double', tinfo);
 timeinfo_tstart = netcdf.defVar(ncid, 'timeinfo_tstart', 'char', tstart);
 
@@ -108,7 +103,6 @@ end
 netcdf.endDef(ncid);
 
 % Serialize time substructure
-netcdf.putVar(ncid, timeinfo_hist, th);
 netcdf.putVar(ncid, timeinfo_scals, [frame.time.time;frame.time.iterMax;frame.time.timeMax;frame.time.wallMax;frame.time.iteration]);
 netcdf.putVar(ncid, timeinfo_tstart, frame.time.started);
 

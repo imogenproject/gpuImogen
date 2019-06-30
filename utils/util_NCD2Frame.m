@@ -8,8 +8,6 @@ metaonly = strcmpi(options, 'metaonly');
 ncid = netcdf.open(nfile,'NC_NOWRITE');
 
 % Deserialize time substructure
-v = netcdf.inqVarID(ncid, 'timeinfo_hist');
-frame.time.history = netcdf.getVar(ncid, v);
 v = netcdf.inqVarID(ncid, 'timeinfo_scals');
 ts = netcdf.getVar(ncid, v);
   frame.time.time = ts(1);

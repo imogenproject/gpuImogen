@@ -49,7 +49,7 @@ for N = 1:S.numFrames
     F = S.nextFrame();
     % In actuality, our 'error' is asserting that the length of a wave is
     % 1. But we'd have to remap a whole grid of Xes, so we just scale time the opposite way    
-    t = sum(F.time.history);
+    t = F.time.time;
     
     rhogt = IC.ini.pDensity(1) + imag(amp*evec(1)*exp(1i*KdotX - 1i*omega*t));
     

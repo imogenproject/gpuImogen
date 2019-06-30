@@ -31,7 +31,7 @@ for ITER = (myworker+1):nstep:ntotal
     dataframe = SP.setFrame(ITER); 
 
 % FIXME this fails in parallel horribly...
-    stepnums(ITER) = sum(dataframe.time.history);
+    stepnums(ITER) = dataframe.time.time;
 
     writeEnsightDatafiles(outBasename, ITER-1, dataframe, varset, reverseIndexOrder);
     if ITER == ntotal

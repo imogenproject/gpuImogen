@@ -24,7 +24,7 @@ save('modeAnalysis.mat','modes');
 
   fig = diskModePlot(cframe, mft, innercut);
 
-  text(.5,.5,sprintf('Time = %.3f mirps',sum(cframe.time.history)/(2*pi)),'HorizontalAlignment','center','fontsize',16);
+  text(.5,.5,sprintf('Time = %.3f mirps',cframe.time.time/(2*pi)),'HorizontalAlignment','center','fontsize',16);
 
   set(fig, 'PaperPositionMode', 'auto')
   print(fig,sprintf('%s-%.3i.png',imgprefix,N+noffset),'-dpng', '-r0');

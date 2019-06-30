@@ -47,7 +47,7 @@ for ITER = 1:numel(range)
     fprintf('*');
     if mod(ITER, 100) == 0; fprintf('\n'); end
 
-    ANALYSIS.frameTimes(ITER) = sum(dataframe.time.history);
+    ANALYSIS.frameTimes(ITER) = dataframe.time.time;
     
     if ITER == 1
         ANALYSIS.equil.rho = dataframe.mass(:,1,1);

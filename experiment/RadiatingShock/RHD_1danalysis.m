@@ -17,10 +17,7 @@ plot(x);
 
 nlpoint = input('Saturation of nonlinearity frame? ');
 
-ttotal = cumsum(F.time.history);
-ttotal = [0; ttotal(1:800:end)]; % hack: assumption!
-
-timepts = F.time.tFrame(nlpoint:end);
+timepts = F.time.time(nlpoint:end);
 pospts = x(nlpoint:end)';
 
 [coeffs, resid] = polyfit(timepts, pospts, 1)

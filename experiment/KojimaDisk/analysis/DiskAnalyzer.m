@@ -81,7 +81,7 @@ classdef DiskAnalyzer < Analyzer
                 obj.index = x;   %<----- set data index
                 sxcur = obj.data; %<----- retrieve data
 
-                result.xaxis(x) = sum(sxcur.time.history) / (2*pi); % Normalize to chirps
+                result.xaxis(x) = sxcur.time.time / (2*pi); % Normalize to chirps
 
                 % Perform polar transform, rescale by radius while radially summing
                 mpolar = diskUnwrap(sxcur.mass);

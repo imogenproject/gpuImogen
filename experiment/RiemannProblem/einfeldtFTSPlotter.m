@@ -20,7 +20,7 @@ for j = 1:numel(x.N)
    figure(q0); plot(xpts,F.mass);
    
    figure(q0+1);
-   rhot = einfeldtSolution(xpts, 1, sqrt(1.4)*5.5, 1, 1.4, sum(F.time.history));
+   rhot = einfeldtSolution(xpts, 1, sqrt(1.4)*5.5, 1, 1.4, F.time.time);
    plot(xpts,rhot - F.mass);
 end
 
