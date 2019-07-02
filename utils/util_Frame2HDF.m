@@ -16,6 +16,9 @@ for i = 1:5
     h5create(hname, ['/fluid1/' fluvars{i}], size(frame.(fluvars{i})), 'Datatype', 'double');
 end
 
+% Make a placeholder for time attributes
+h5create(hname, '/timehist', 1, 'Datatype','double');
+
 if isfield(frame, 'mass2')
     if isfield(frame, 'momX2')
         flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
@@ -32,6 +35,8 @@ if numel(frame.magX)==0; frame.magX = 0; frame.magY = 0; frame.magZ = 0; end
 h5create(hname, '/mag/X', size(frame.magX));
 h5create(hname, '/mag/Y', size(frame.magY));
 h5create(hname, '/mag/Z', size(frame.magZ));
+
+h5write(hname, '/timehist', [1]);
 
 timeatts = {'time', 'iterMax', 'timeMax', 'wallMax', 'iteration', 'started'};
 for i = 1:5
