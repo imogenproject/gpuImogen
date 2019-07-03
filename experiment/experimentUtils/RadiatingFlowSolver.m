@@ -294,10 +294,8 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
              self.flowSolution = [0 vx];
              
              self.restartLMM(vx, h);
-@@ -304,7 +308,11 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
                  % Adaptively monitor stepsize for problems:
                  % Back up and decrease in event of error
-                 if ohCrap
             nRestarts = 0;
             self.flowSolution = [0 vx];
             
