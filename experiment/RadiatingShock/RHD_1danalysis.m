@@ -2,41 +2,51 @@ load 4D_XYZT
 
 F = DataFrame(F);
 
-x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, 2.5);
+x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, (F.gamma+1)/(F.gamma-1));
 
+hold off;
 imagesc(diff(squeeze(F.mass), 1, 2)./squeeze(F.mass(:,1,1,1:(end-1))));
 thefig = gca();
 thefig.CLim = [-.3 .3];
+drawnow;
+hold off;
+drawnow;
 
 pts = input('Identify frames demarking one round-trip: ');
+
+pts(1) = RHD_utils.walkdown(x, pts(1), 5);
+pts(2) = RHD_utils.walkdown(x, pts(2), 5);
 
 % This block projects parabolas onto the left and right areas indicated
 % and takes their nearby intercept as the true shock bounce point;
 % This is much better than the nearest-guess method previously used.
 
-% NOTE: Assumes at least 8 frames between shock bounces!!!
-xleft = x(pts(1) - [7 4 1]);
-xright= x(pts(1) + [1 4 7]);
-% Convert to polynomials
-xlpoly = polyfit( - [7 4 1], xleft, 2);
-xrpoly = polyfit( + [1 4 7], xright,2);
-% Solve intersection point: Assume it is the small-x one
-deltapoly = xlpoly - xrpoly;
+plot((pts(1)-10):(pts(2)+10), x((pts(1)-10):(pts(2)+10)));
+hold on;
 
-interframe1 = pts(1)+min(roots(deltapoly(end:-1:1)));
+pointspace = 2;
 
-% NOTE: Assumes at least 8 frames between shock bounces!!!
-xleft = x(pts(2) - [7 4 1]);
-xright= x(pts(2) + [1 4 7]);
-% Convert to polynomials
-xlpoly = polyfit( - [7 4 1], xleft, 2);
-xrpoly = polyfit( + [1 4 7], xright,2);
-% Solve intersection point: Assume it is the small-x one
-deltapoly = xlpoly - xrpoly;
+interframe1 = RHD_utils.projectParabolicMinimum(x, pts(1), 1, pointspace);
 
-interframe2 = pts(2)+min(roots(deltapoly(end:-1:1)));
+if ~isreal(interframe1)
+    hold off;
+    plot((pts(1)-10):(pts(2)+10), x((pts(1)-10):(pts(2)+10)));
+    hold on;
+    disp('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
+    interframe1 = RHD_utils.projectParabolicMinimum(x, pts(1), 1, 1);
+    pointspace = 1;    
+end
+
+interframe2 = RHD_utils.projectParabolicMinimum(x, pts(2), 1, pointspace);
+if ~isreal(interframe2) && pointspace > 1
+    disp('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
+    interframe2 = RHD_utils.projectParabolicMinimum(x, pts(2), 1, 1);
+end
 
 tfunda = interp1(1:size(F.time.time), F.time.time, [interframe1 interframe2],'linear');
+
+plot([interframe1 interframe2], x(round([interframe1 interframe2])), 'kv', 'MarkerSize', 10);
+hold off;
 
 tfunda0 = F.time.time(pts);
 ffunda0 = 1/(tfunda0(2) - tfunda0(1));
@@ -50,23 +60,33 @@ else
     disp(['2nd order extrapolation of ' num2str(ffunda) ' differs from 0th order estimate by ' num2str(100*dfreq) '%, good.']);
 end
 
-plot(x);
+input('Enter if satisfied with projection: ');
 
+plot(x(3:end));
 nlpoint = input('Frame to start spectral analysis at? ');
 
-npc = nlpoints_class(x, F.time.time, nlpoint);
+if numel(nlpoint) > 1
+    endpt = nlpoint(2);
+else
+    endpt = numel(F.time.time);
+end
+    
 
-timepts = F.time.time(nlpoint:end);
-pospts = x(nlpoint:end)';
+npc = nlpoints_class(x(1:endpt), F.time.time(1:endpt), nlpoint);
+
+timepts = F.time.time(nlpoint:endpt);
+pospts = x(nlpoint:endpt)';
 
 [coeffs, resid] = polyfit(timepts, pospts, 1);
 oscil = pospts - (coeffs(1)*timepts + coeffs(2));
 plot(timepts, oscil);
 
 dump = input('Use up/down arrow to get the endpoints to match & minimize spectral garbage, then press enter: ');
+stpt = npc.leftpoint;
+clear npc;
 
-timepts = F.time.time(npc.leftpoint:end);
-pospts = x(npc.leftpoint:end)';
+timepts = F.time.time(stpt:endpt);
+pospts = x(stpt:endpt)';
 
 [coeffs, resid] = polyfit(timepts, pospts, 1)
 
@@ -82,6 +102,14 @@ ypt = interp1((1:xi)/tfunda, xfourier(2:end/2), fquery, 'linear');
 
 plot((1:xi)/tfunda, xfourier(2:end/2));
 hold on
+
+rth = input('Radiative theta? ');
+rr = RHD_utils.computeRelativeLuminosity(F, rth);
+
+rft = fft(rr(stpt:endpt));
+
+plot((1:xi)/tfunda,log(abs(rft(2:end/2))));
+
 plot(fquery, ypt, 'rx');
 
 nneighbor = round(fquery*tfunda);
@@ -108,7 +136,7 @@ if size(fatdot,1) > 0
         fi = fatdot(sortidx(n),1)/tfunda;
        fprintf('Spectral peak at f=%f = %f f0 has magnitude %f\n', fi, fi / ffunda, exp( fatdot(sortidx(n),2)));
     end
-    legend('Spectral measurement', 'Harmonics of indicated period', 'Possible base tones');
+    legend('X_{shock} spectrum', 'Relative luminosity spectrum', 'Harmonics of indicated period', 'Possible base tones');
 else
     disp('Well this is embarassing; No multiples of Ffunda hit a spectral peak...');
     legend('Measured spectrum', 'harmonics of user-input period');
@@ -116,21 +144,15 @@ end
 
 hold off;
 
+peaks = input('Input list of other spectral peaks of interest if desired: ');
 
-
-peaks = input('Input list of spectral peaks: ');
-
+pwd
 disp('F/F_round trip: ')
 disp(peaks / ffunda)
+disp(ffunda)
 
-dump = input('enter to continue');
 
-ntime = size(F.mass,4);
 
-for N = (ntime-25):ntime
-	plot(log(squeeze(F.mass(:,1,1,N)))); title(N);
-	dump = input('enter to cont');
-end
 
 
 
