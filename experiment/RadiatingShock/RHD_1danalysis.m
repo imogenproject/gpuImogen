@@ -2,7 +2,7 @@ load 4D_XYZT
 
 F = DataFrame(F);
 
-x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, (F.gamma+1)/(F.gamma-1));
+x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 
 hold off;
 imagesc(diff(squeeze(F.mass), 1, 2)./squeeze(F.mass(:,1,1,1:(end-1))));
@@ -11,6 +11,11 @@ thefig.CLim = [-.3 .3];
 drawnow;
 hold off;
 drawnow;
+
+vx = squeeze(F.velX);
+cs = squeeze(sqrt(F.gamma*F.pressure ./ F.mass));
+
+
 
 pts = input('Identify frames demarking one round-trip: ');
 
@@ -100,7 +105,7 @@ tfunda = (timepts(end) - timepts(1));
 fquery = (1:16)*ffunda;
 ypt = interp1((1:xi)/tfunda, xfourier(2:end/2), fquery, 'linear');
 
-plot((1:xi)/tfunda, xfourier(2:end/2));
+plot((1:xi)/tfunda, exp(xfourier(2:end/2)));
 hold on
 
 rth = input('Radiative theta? ');
@@ -108,9 +113,9 @@ rr = RHD_utils.computeRelativeLuminosity(F, rth);
 
 rft = fft(rr(stpt:endpt));
 
-plot((1:xi)/tfunda,log(abs(rft(2:end/2))));
+plot((1:xi)/tfunda,abs(rft(2:end/2)));
 
-plot(fquery, ypt, 'rx');
+plot(fquery, exp(ypt), 'rx');
 
 nneighbor = round(fquery*tfunda);
 
@@ -119,16 +124,17 @@ ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & (y(xi-1) > y(xi-2)) & 
 fatdot = [];
 for n = 1:16
     p = nneighbor(n)+1;
+    if p - 4 > numel(xfourier); break; end
+    
+    % look up to 4 freq bins away
+    p = RHD_utils.walkdown(xfourier, p, 4); 
+    
     if ispeak(xfourier, p)
         fatdot(end+1,:) = [p-1, xfourier(p)];
-    elseif ispeak(xfourier, p-1)
-        fatdot(end+1,:) = [p-2, xfourier(p-1)];
-    elseif ispeak(xfourier, p+1)
-        fatdot(end+1,:) = [p+0, xfourier(p+1)];
     end
 end
 if size(fatdot,1) > 0
-    plot(fatdot(:,1)/tfunda, fatdot(:,2), 'kv', 'MarkerSize', 8);
+    plot(fatdot(:,1)/tfunda, exp(fatdot(:,2)), 'kv', 'MarkerSize', 8);
     
     [~, sortidx] = sort(fatdot(:,2),'descend');
     fprintf("Frequency resolution = +-%f\n", 1/tfunda);
