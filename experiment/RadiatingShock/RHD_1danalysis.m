@@ -4,9 +4,6 @@ F = DataFrame(F);
 
 x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 
-yyaxis right; hold off; cla('reset');
-yyaxis left; hold off; cla('reset');
-
 imagesc(diff(squeeze(F.mass), 1, 2)./squeeze(F.mass(:,1,1,1:(end-1))));
 thefig = gca();
 thefig.CLim = [-.3 .3];
@@ -22,7 +19,6 @@ pts(2) = RHD_utils.walkdown(x, pts(2), 5);
 % This block projects parabolas onto the left and right areas indicated
 % and takes their nearby intercept as the true shock bounce point;
 % This is much better than the nearest-guess method previously used.
-
 cla('reset');
 
 plot((pts(1)-10):(pts(2)+10), x((pts(1)-10):(pts(2)+10)));
@@ -107,46 +103,37 @@ pospts = x(stpt:endpt)';
 
 oscil = pospts - (coeffs(1)*timepts + coeffs(2));
 
-xfourier = log(abs(fft(oscil)));
+xfourier = 2*abs(fft(oscil))/numel(oscil);
 xi = numel(xfourier(2:end/2));
 
 tfunda = (timepts(end) - timepts(1));
-% Generate harmonic markersnumel(xfori
+% Generate harmonic markers
 fquery = (1:16)*ffunda;
 ypt = interp1((1:xi)/tfunda, xfourier(2:end/2), fquery, 'linear');
 
 hold off;
-yyaxis left;
-
-plot((1:xi)/tfunda, exp(xfourier(2:end/2)),'b-');
+plot((1:xi)/tfunda, xfourier(2:end/2),'b-');
 hold on
-plot(fquery, exp(ypt), 'bo','markersize',7);
+plot(fquery, ypt, 'bo','markersize',7);
 
-% Determine radiative theta from the directory name because I'm sick of
-% entering it by hand
-thedir = pwd();
-thedir = thedir(1:(end-7));
-chrs = find(thedir=='_');
-rth = .01 * sscanf(thedir((max(chrs)+6):end), '%i');
+runparams = RHD_utils.parseDirectoryName(); % the worst way of learning this lol
+rth = runparams.theta;
 
 % Compute the luminosity on the given interval, normalized by L(t=0)
 rr = RHD_utils.computeRelativeLuminosity(F, rth);
 
 rft = 2*fft(rr(stpt:endpt)) / (1+endpt-stpt);
 
-yyaxis right; 
 plot((1:xi)/tfunda,abs(rft(2:end/2)), 'r-');
 ypt = interp1((1:xi)/tfunda, abs(rft(2:end/2)), fquery, 'linear');
 
-plot(fquery, (ypt), 'rx','markersize',7);
+plot(fquery, ypt, 'rx','markersize',7);
 
 nneighbor = round(fquery*tfunda);
 
-ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & (y(xi-1) > y(xi-2)) & (y(xi+1) > y(xi+2));
+ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & ( y(xi) > 2*sum(y(xi+[-2, -1, 1, 2])) )
 
 grid on;
-
-yyaxis left;
 
 fatdot = [];
 for n = 1:16
@@ -162,13 +149,15 @@ for n = 1:16
 end
 
 if size(fatdot,1) > 0
-    plot(fatdot(:,1)/tfunda, exp(fatdot(:,2)), 'kv', 'MarkerSize', 8);
+    plot(fatdot(:,1)/tfunda, fatdot(:,2), 'kv', 'MarkerSize', 8);
     
     [~, sortidx] = sort(fatdot(:,2),'descend');
+    fatdot = fatdot(sortidx, :);
     fprintf("Frequency resolution = +-%f\n", 1/tfunda);
     for n = 1:size(fatdot)
-        fi = fatdot(sortidx(n),1)/tfunda;
-       fprintf('Spectral peak at f=%f = %f f0 has magnitude %f\n', fi, fi / ffunda, exp( fatdot(sortidx(n),2)));
+        fi = fatdot(n,1)/tfunda;
+        fprintf('Spectral peak at f=%f = %f f0 has magnitude %f\n', fi, fi / ffunda, fatdot(n,2));
+
     end
     legend('X_{shock} spectrum',  'Harmonics of indicated period', 'Possible base tones', 'Relative luminosity spectrum');
 else
@@ -182,12 +171,67 @@ peaks = input('Input list of other spectral peaks of interest if desired: ');
 
 pwd
 
-disp('F/F_round trip: ')
-disp(peaks / ffunda)
-disp(ffunda)
 
+cleanspectrum = 1;
+% spectral purity test
+if size(fatdot,1) >= 3
+    % Check ratio of 2nd and 3rd peaks: must be multiples of dominant tone
+    mr = fatdot(2,1)/fatdot(1,1);
+    if abs(mr - round(mr)) > .01; cleanspectrum = 0; end
+    mf = fatdot(3,1)/fatdot(1,1);
+    if abs(mr - round(mr)) > .01; cleanspectrum = 0; end
+    
+    if cleanspectrum
+        msel = zeros([numel(xfourier)/2 - 1, 1]);
+        for qq = [-1 0 1 2 3]; msel(fatdot(1:3,1)+qq) = 1; end
 
+        if sum(xfourier(find(msel))) < .4*sum(xfourier(2:end/2))
+            cleanspectrum = 0;
+            disp('Low spectral purity: Less than 40% of power in first 3 modes');
+        else
+            domF = fatdot(1,1)/tfunda;
+            domMode = round(domF/ffunda)-1;
+            fprintf('Clean spectrum detected: Automatically inserting m=%f, theta=%f, F=%f, m=%i\n', runparams.m, runparams.theta, domF, domMode);
+        end
+    else
+        disp('Low spectral purity: Top 3 most powerful tones are not harmonic multiples of f0') 
+    end
+else
+    cleanspectrum = 0;
+    disp('Spectrum unclear: Less than 3 peaks aligned with f0 found');
+end
+    
+if cleanspectrum == 0
+    disp('Automatic data insertion off');
+    fm = input('User override: Enter [frequency, mode] or just f manually, or empty to bypass: ');
+    
+    if numel(fm)==2
+        domF = fm(1);
+        domMode = round(fm(2));
+        cleanspectrum = 1;
+    elseif numel(fm)==1
+        domF = fm;
+        domMode = round(fm / ffunda)-1;
+        cleanspectrum = 1;
+    else
+        
+    end
+end
 
-
-
-
+if cleanspectrum
+    if runparams.gamma == 167
+        if exist('f53','var')
+            f53.insertPoint(runparams.m, runparams.theta, domF, domMode);
+        end
+    elseif runparams.gamma == 140
+        if exist('f75','var')
+            f75.insertPoint(runparams.m, runparams.theta, domF, domMode);
+        end
+    elseif runparams.gamma == 129
+        if exist('f97','var')
+            f97.insertPoint(runparams.m, runparams.theta, domF, domMode);
+        end
+    else
+        
+    end
+end

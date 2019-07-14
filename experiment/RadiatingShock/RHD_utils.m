@@ -83,7 +83,7 @@ classdef RHD_utils < handle
             % rr = rho^2 T^theta
             
             rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
-            rr = squeeze(rr .* (F.pressure > 1.05*F.mass));
+            rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
             
             rr = sum(rr,1);
             plot(rr ./ rr(1));
@@ -91,10 +91,38 @@ classdef RHD_utils < handle
         
         function rr = computeRelativeLuminosity(F, radTheta)
              rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
-            rr = squeeze(rr .* (F.pressure > 1.05*F.mass));
+            rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
             
             rr = sum(rr,1);
             rr = rr / rr(1);
+        end
+        
+        function p = parseDirectoryName()
+           x=pwd();
+           
+           s = find(x=='_');
+           
+           m = sscanf(x((s(3)+1):(s(4)-1)), 'ms%e');
+           
+           if strcmp(x(s(5)+[1 2 3]), 'rth')
+               th = sscanf(x((s(5)+1):(s(6)-1)), 'rth%i') / 100;
+           else
+               th = sscanf(x((s(5)+1):(s(6)-1)), 'radth%i') / 100;
+           end
+           g =  sscanf(x((s(6)+1):end), 'gam%i');
+           
+           p = struct('m', m, 'theta', th, 'gamma', g);
+        end
+        
+        function lpp = ppLuminosity(F, theta)
+            rr = RHD_utils.computeRelativeLuminosity(F, theta);
+            plot(rr); drawnow;
+            
+            %x = input('Frame range to get lpp from: ');
+            %if numel(x) == 1; x(2) = numel(rr); end
+            x = [50 numel(rr)];
+            
+            lpp = max(rr(x(1):x(2))) - min(rr(x(1):x(2)));
         end
         
     end%PROTECTED
