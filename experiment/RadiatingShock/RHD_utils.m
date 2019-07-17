@@ -100,6 +100,9 @@ classdef RHD_utils < handle
         function p = parseDirectoryName()
            x=pwd();
            
+           s = find(x=='/');
+           x=x((s(end)+1):end);
+           
            s = find(x=='_');
            
            m = sscanf(x((s(3)+1):(s(4)-1)), 'ms%e');

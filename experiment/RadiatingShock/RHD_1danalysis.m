@@ -11,10 +11,21 @@ thefig.CLim = [-.3 .3];
 vx = squeeze(F.velX);
 cs = squeeze(sqrt(F.gamma*F.pressure ./ F.mass));
 
-pts = input('Identify frames demarking one round-trip: ');
+%pts = input('Identify frames demarking one round-trip: ');
 
-pts(1) = RHD_utils.walkdown(x, pts(1), 5);
-pts(2) = RHD_utils.walkdown(x, pts(2), 5);
+P = pointGetter();
+pt = P.waitForClick();
+P.clickedPoint = [];
+pts(1) = RHD_utils.walkdown(x, round(pt(1)), 10);
+fprintf('First point: %i\n', pts(1));
+
+pt = P.waitForClick();
+P.clickedPoint = [];
+pts(2) = RHD_utils.walkdown(x, round(pt(1)), 10);
+fprintf('Second point: %i\n', pts(2));
+
+%pts(1) = RHD_utils.walkdown(x, pts(1), 5);
+%pts(2) = RHD_utils.walkdown(x, pts(2), 5);
 
 % This block projects parabolas onto the left and right areas indicated
 % and takes their nearby intercept as the true shock bounce point;
@@ -24,7 +35,8 @@ cla('reset');
 plot((pts(1)-10):(pts(2)+10), x((pts(1)-10):(pts(2)+10)));
 hold on;
 
-pointspace = 2;
+pointspace = input('Enter value to force pointspace or blank for default=2: ');
+if isempty(pointspace); pointspace = 2; end
 
 interframe1 = RHD_utils.projectParabolicMinimum(x, pts(1), 1, pointspace);
 
@@ -100,7 +112,8 @@ if npt/2 ~= round(npt/2); stpt = stpt-1; end
 timepts = F.time.time(stpt:endpt);
 pospts = x(stpt:endpt)';
 
-[coeffs, resid] = polyfit(timepts, pospts, 1)
+[coeffs, resid] = polyfit(timepts, pospts, 1);
+fprintf('Shock fallback velocity = %f\n', coeffs(1));
 
 oscil = pospts - (coeffs(1)*timepts + coeffs(2));
 
@@ -188,9 +201,11 @@ if size(fatdot,1) >= 3
     if abs(mr - round(mr)) > .01; cleanspectrum = 0; end
     
     if cleanspectrum
-        if rms(spec_residual(2:(end/2))) > .15*rms(xfourier(2:(end/2)))
+        resid = rms(spec_residual(2:(end/2)));
+        tspec = rms(xfourier(2:(end/2)));
+        if  resid > .15*tspec
             cleanspectrum = 0;
-            disp('Low spectral purity: Less than 85% of power in identified peaks');
+            fprintf('Low spectral purity: rms(residual) = %f x rms(spectrum) is > 15%%.\n', resid/tspec);
         else
             domF = fatdot(1,1)/tfunda;
             domMode = round(domF/ffunda)-1;
@@ -226,16 +241,22 @@ if cleanspectrum
         if exist('f53','var')
             f53.insertPoint(runparams.m, runparams.theta, domF, domMode);
             f53.insertLumi(runparams.m, runparams.theta, lpp);
+        else
+            fprintf('f53.insertPoint(%f, %f, %f, %f);\nf53.insertLumi(%f, %f, %f);\n', runparams.m, runparams.theta, domF, domMode, runparams.m, runparams.theta, lpp);
         end
     elseif runparams.gamma == 140
         if exist('f75','var')
             f75.insertPoint(runparams.m, runparams.theta, domF, domMode);
             f75.insertLumi(runparams.m, runparams.theta, lpp);
+        else
+            fprintf('f75.insertPoint(%f, %f, %f, %f);\nf75.insertLumi(%f, %f, %f);\n', runparams.m, runparams.theta, domF, domMode, runparams.m, runparams.theta, lpp);
         end
     elseif runparams.gamma == 129
         if exist('f97','var')
             f97.insertPoint(runparams.m, runparams.theta, domF, domMode);
             f97.insertLumi(runparams.m, runparams.theta, lpp);
+        else
+            fprintf('f97.insertPoint(%f, %f, %f, %f);\nf97.insertLumi(%f, %f, %f);\n', runparams.m, runparams.theta, domF, domMode, runparams.m, runparams.theta, lpp);
         end
     else
         
