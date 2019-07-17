@@ -63,7 +63,8 @@ end
 input('Enter if satisfied with projection: ');
 
 plot(x(3:end));
-nlpoint = input('Frame to start spectral analysis at? ');
+nlpoint = [];
+while isempty(nlpoint); nlpoint = input('Frame to start spectral analysis at? '); end
 
 if numel(nlpoint) > 1
     endpt = nlpoint(2);
@@ -124,6 +125,8 @@ rr = RHD_utils.computeRelativeLuminosity(F, rth);
 
 rft = 2*fft(rr(stpt:endpt)) / (1+endpt-stpt);
 
+lpp = max(rr(stpt:endpt))-min(rr(stpt:endpt));
+
 plot((1:xi)/tfunda,abs(rft(2:end/2)), 'r-');
 ypt = interp1((1:xi)/tfunda, abs(rft(2:end/2)), fquery, 'linear');
 
@@ -131,7 +134,9 @@ plot(fquery, ypt, 'rx','markersize',7);
 
 nneighbor = round(fquery*tfunda);
 
-ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & ( y(xi) > 2*sum(y(xi+[-2, -1, 1, 2])) )
+ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & ( y(xi) > 2*sum(y(xi+[-2, -1, 1, 2])) );
+
+isgausspeak = @(mag, center, std) (abs(center) < .55) & (std < 1.5);
 
 grid on;
 
@@ -141,20 +146,24 @@ for n = 1:16
     if p - 4 > numel(xfourier); break; end
     
     % look up to 4 freq bins away
-    p = RHD_utils.walkdown(xfourier, p, 4); 
+    p = RHD_utils.walkdown(xfourier, p, 4);
     
-    if ispeak(xfourier, p)
-        fatdot(end+1,:) = [p-1, xfourier(p)];
+    [mag, center, std] = RHD_utils.gaussianPeakFit(xfourier, p);
+    
+    if isgausspeak(mag, center - p, std)
+        fatdot(end+1,:) = [center-1, mag, std];
     end
 end
+
+spec_residual = RHD_utils.subtractKnownPeaks(xfourier, fatdot);
 
 if size(fatdot,1) > 0
     plot(fatdot(:,1)/tfunda, fatdot(:,2), 'kv', 'MarkerSize', 8);
     
-    [~, sortidx] = sort(fatdot(:,2),'descend');
-    fatdot = fatdot(sortidx, :);
+    %[~, sortidx] = sort(fatdot(:,2),'descend');
+    %fatdot = fatdot(sortidx, :);
     fprintf("Frequency resolution = +-%f\n", 1/tfunda);
-    for n = 1:size(fatdot)
+    for n = 1:size(fatdot,1)
         fi = fatdot(n,1)/tfunda;
         fprintf('Spectral peak at f=%f = %f f0 has magnitude %f\n', fi, fi / ffunda, fatdot(n,2));
 
@@ -166,11 +175,8 @@ else
 end
 
 hold off;
-
-peaks = input('Input list of other spectral peaks of interest if desired: ');
-
 pwd
-
+fprintf('Normalized Peak-peak luminosity fluctuation is %f.\n', lpp);
 
 cleanspectrum = 1;
 % spectral purity test
@@ -182,12 +188,9 @@ if size(fatdot,1) >= 3
     if abs(mr - round(mr)) > .01; cleanspectrum = 0; end
     
     if cleanspectrum
-        msel = zeros([numel(xfourier)/2 - 1, 1]);
-        for qq = [-1 0 1 2 3]; msel(fatdot(1:3,1)+qq) = 1; end
-
-        if sum(xfourier(find(msel))) < .4*sum(xfourier(2:end/2))
+        if rms(spec_residual(2:(end/2))) > .15*rms(xfourier(2:(end/2)))
             cleanspectrum = 0;
-            disp('Low spectral purity: Less than 40% of power in first 3 modes');
+            disp('Low spectral purity: Less than 85% of power in identified peaks');
         else
             domF = fatdot(1,1)/tfunda;
             domMode = round(domF/ffunda)-1;
@@ -222,14 +225,17 @@ if cleanspectrum
     if runparams.gamma == 167
         if exist('f53','var')
             f53.insertPoint(runparams.m, runparams.theta, domF, domMode);
+            f53.insertLumi(runparams.m, runparams.theta, lpp);
         end
     elseif runparams.gamma == 140
         if exist('f75','var')
             f75.insertPoint(runparams.m, runparams.theta, domF, domMode);
+            f75.insertLumi(runparams.m, runparams.theta, lpp);
         end
     elseif runparams.gamma == 129
         if exist('f97','var')
             f97.insertPoint(runparams.m, runparams.theta, domF, domMode);
+            f97.insertLumi(runparams.m, runparams.theta, lpp);
         end
     else
         

@@ -125,6 +125,30 @@ classdef RHD_utils < handle
             lpp = max(rr(x(1):x(2))) - min(rr(x(1):x(2)));
         end
         
+        function [mag, xbar, sigma] = gaussianPeakFit(y, bin)
+            xi = (-4:4)';
+            yi = y((bin-4):(bin+4));
+            
+            thefit = fit(xi, yi, 'gauss1');
+            
+            mag = thefit.a1;
+            xbar = bin+thefit.b1;
+            sigma = thefit.c1;
+        end
+        
+        function residual = subtractKnownPeaks(y, fatdot)
+            % fatdot = [center, mag, stdev]
+            x = (0:(numel(y)-1))';
+            
+            for n = 1:size(fatdot, 1)
+                q = fatdot(n,3)^-2;
+                gau = fatdot(n, 2) * exp( -(x - fatdot(n,1)).^2 *q );
+                y = y - gau;
+            end
+            
+            residual = y;
+        end
+        
     end%PROTECTED
     
 end%CLASS
