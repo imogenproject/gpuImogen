@@ -34,6 +34,7 @@ classdef RadiatingShockInitializer < Initializer
 
         machY_boost; % Galiean transform makes everything slide sideways at this mach;
                      % Prevent HLLC from being a victim of its own success
+        fallbackBoost;
 
         radBeta;          % Radiation rate = radBeta P^radTheta rho^(2-radTheta)
         radTheta; 
@@ -95,6 +96,7 @@ classdef RadiatingShockInitializer < Initializer
             obj.alfvenMach       = -1;
 
             obj.machY_boost      = .02*obj.sonicMach;
+            obj.fallbackBoost    = 0; 
 
             obj.radTheta = .5;
             obj.radBeta = 1;
@@ -226,6 +228,10 @@ classdef RadiatingShockInitializer < Initializer
             dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
             yboost = mass*dvy;
             mom(2,:,:,:) = squish(mom(2,:,:,:)) + yboost;
+            if obj.fallbackBoost ~= 0
+                xboost = mass*obj.fallbackBoost;
+                mom(1,:,:,:) = squish(mom(1,:,:,:)) - xboost;
+            end
             
             %----------- SALT TO SEED INSTABILITIES -----------%
             % Salt everything from half the preshock region to half the cooling region.
