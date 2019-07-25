@@ -29,6 +29,33 @@ classdef RHD_utils < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
+
+        function N = lastValidFrame(F, x)
+        % Given the dataframe F and tracked shock position x,
+	% track the shock position over time.
+	% compute the equilibrium shock cooling depth
+
+	T = F.pressure(:,1,1,1) ./ F.mass(:,1,1,1);
+
+        % logical for identifying the cold layer
+	clayer = (T <= 1.05001) & (F.mass(:,1,1,1) > 1.1);
+
+	x = x / F.dGrid{1}; % convert back to cells
+
+	xBottomIni = find(clayer); xBottomIni = xBottomIni(1);
+
+	hShock = xBottomIni - x(1); % height of shock in cells
+
+        % estimate where the base of the cooling layer is
+	xb = x + hShock;
+    
+    q = find(xb + .3*hShock > size(F.mass,1));
+    
+
+    if ~isempty(q); N=q(1); else; N = size(F.mass,4); end
+
+	end
+
         function f = walkdown(x, i, itermax)
             % f = walkdown(x, i) accepts shock position vector x and initial index i
             % It walks i by one until it reaches a local maximum (or it has made itermax moves)
@@ -151,6 +178,8 @@ classdef RHD_utils < handle
             
             residual = y;
         end
+
+
         
     end%PROTECTED
     

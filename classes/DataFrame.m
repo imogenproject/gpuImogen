@@ -219,6 +219,45 @@ classdef DataFrame < handle
             
         end
         
+        function truncate(self, x, y, z, t)
+            if (nargin < 5) || isempty(t)
+                t = 1:size(self.mass,4);
+            end
+            if (nargin < 4) || isempty(z)
+                z = 1:size(self.mass,3);
+            end
+            if (nargin < 3) || isempty(y)
+                y = 1:size(self.mass, 2);
+            end
+            if (nargin < 2) || isempty(x)
+                x = 1:size(self.mass, 1);
+            end
+            
+            if self.pInternalVarFmt == self.fmtConservative
+               if self.pTwoFluids
+                   % conservative format two fluids
+                   f2 = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner', 'pMass2', 'pMomX2', 'pMomY2', 'pMomZ2', 'pEner2'};
+               else
+                   % conservative format one fluid
+                   f2 = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner'};
+               end
+           else
+               if self.pTwoFluids
+                   % conservative format two fluid
+                   f2 = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint', 'pMass2', 'pVelX2', 'pVelY2', 'pVelZ2', 'pEint2'};
+               else
+                   f2 = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint'};
+               end
+           end
+           
+           for j = 1:numel(f2)
+               b = self.(f2{j});
+               self.(f2{j}) = b(x, y, z, t);
+           end
+           
+           self.time.time = self.time.time(t);
+        end
+        
     end%PUBLIC
     
     %===================================================================================================

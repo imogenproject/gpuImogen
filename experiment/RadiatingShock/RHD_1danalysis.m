@@ -4,6 +4,16 @@ F = DataFrame(F);
 
 x = trackFront2(squeeze(F.mass), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 
+% Automatically strip junk at the end of the run off if it hit the end of the grid
+N = RHD_utils.lastValidFrame(F, x);
+
+if N < size(F.mass,4)
+    fprintf('Note: shock gets too close to end of grid at frame %i: Truncating dataset.\n', N);
+    %F.truncate([], [], [], 1:N);
+    %x=x(1:N);
+end
+
+% throw up pretty spacetime diagram
 imagesc(diff(squeeze(F.mass), 1, 2)./squeeze(F.mass(:,1,1,1:(end-1))));
 thefig = gca();
 thefig.CLim = [-.3 .3];
@@ -11,7 +21,7 @@ thefig.CLim = [-.3 .3];
 vx = squeeze(F.velX);
 cs = squeeze(sqrt(F.gamma*F.pressure ./ F.mass));
 
-%pts = input('Identify frames demarking one round-trip: ');
+fprintf('Please zoom in & click two points demarking one oscillation period.\n');
 
 P = pointGetter();
 pt = P.waitForClick();
@@ -24,8 +34,8 @@ P.clickedPoint = [];
 pts(2) = RHD_utils.walkdown(x, round(pt(1)), 10);
 fprintf('Second point: %i\n', pts(2));
 
-%pts(1) = RHD_utils.walkdown(x, pts(1), 5);
-%pts(2) = RHD_utils.walkdown(x, pts(2), 5);
+% In case they click right then left
+pts = sort(pts);
 
 % This block projects parabolas onto the left and right areas indicated
 % and takes their nearby intercept as the true shock bounce point;
