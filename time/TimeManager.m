@@ -189,7 +189,7 @@ classdef TimeManager < handle
             %--- Clock first loops ---%
             %           Clocks the first loop of execution and uses that to determine an estimated
             %           time to complete that is displayed in the UI and log files.
-            if obj.iteration < 5
+            if obj.iteration < 12
                 switch obj.iteration
                     
                     case 0        %Activate clock timer for the first loop
@@ -198,12 +198,12 @@ classdef TimeManager < handle
                         obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %.3g iter/s | by %s at %s ]]\n';
                         obj.pLogString(6) = sprintf('%i',obj.pItersDigits);
                         obj.pLogString(11) = sprintf('%i',obj.pItersDigits);
-                    case 4        %Stop clock timer and use the elapsed time to predict total run time
-                        tPerStep = toc(obj.startSecs)/3;
-                        save.logPrint('\tFirst three timesteps averaged %0.4g secs ea.\n', tPerStep);
+                    case 10        %Stop clock timer and use the elapsed time to predict total run time
+                        tPerStep = toc(obj.startSecs)/10;
+                        save.logPrint('\tFirst 10 timesteps averaged %0.4g secs ea.\n', tPerStep);
                         
                         if (obj.iterPercent > obj.timePercent)
-                            secsRemaining = tPerStep*(obj.ITERMAX-3);
+                            secsRemaining = tPerStep*(obj.ITERMAX-10);
                         else
                             secsRemaining = tPerStep*ceil(obj.TIMEMAX/obj.time);
                         end
@@ -322,13 +322,17 @@ classdef TimeManager < handle
             %newlimit.itermax = 20;
             %newlimit.timemax = 100;
             %newlimit.frame = 8;
-            obj.parent.save.PERSLICE = obj.parent.save.PERSLICE * obj.ITERMAX / newlimit.itermax;
-            obj.parent.save.logPrint('    Resume notice: Automatically rescaling all save rates by %f.\n', newlimit.itermax/obj.ITERMAX);
             
             obj.time       = elapsed.time;
-            obj.history    = elapsed.history;
-            obj.ITERMAX    = newlimit.itermax;
-            obj.TIMEMAX    = newlimit.timemax;
+            if isfield(newlimit, 'itermax')
+                obj.parent.save.PERSLICE = obj.parent.save.PERSLICE * obj.ITERMAX / newlimit.itermax;
+                obj.parent.save.logPrint('    Resume notice: Automatically rescaling all save rates by %f.\n', newlimit.itermax/obj.ITERMAX);
+                obj.ITERMAX    = newlimit.itermax;
+            end
+            obj.history    = zeros([obj.ITERMAX 1]);
+            if isfield(newlimit, 'timemax')
+                obj.TIMEMAX    = newlimit.timemax;
+            end
             obj.WALLMAX    = elapsed.wallMax;
             obj.iteration  = elapsed.iteration;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
