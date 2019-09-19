@@ -32,6 +32,8 @@ classdef BowShockInitializer < Initializer
         radTheta; 
         radCoollen;
         
+        ymirrorsym, zmirrorsym;
+        
     end %PUBLIC
     
     %===================================================================================================
@@ -97,6 +99,9 @@ classdef BowShockInitializer < Initializer
             
             obj.radBeta = 1;
             obj.radTheta = 0.0;
+            
+            obj.ymirrorsym = 0;
+            obj.zmirrorsym = 0;
             
             obj.operateOnInput(input, [800, 256, 1]);
         end
@@ -165,6 +170,15 @@ classdef BowShockInitializer < Initializer
             Ltotal = obj.pBallXRadius * geo.globalDomainRez(1) / obj.ballCells(1);
             geo.makeBoxSize(Ltotal);
             %geo.makeBoxOriginCoord(ceil(geo.globalDomainRez/2));
+            if obj.ymirrorsym
+                obj.ballCenter(2) = 4.5;
+                obj.bcMode.y = {ENUM.BCMODE_MIRROR, obj.bcMode.y};
+            end
+            if obj.zmirrorsym
+                obj.ballCenter(3) = 4.5;
+                obj.bcMode.z = {ENUM.BCMODE_MIRROR, obj.bcMode.z};
+            end
+            
             geo.makeBoxOriginCoord(ceil(obj.ballCenter));
 
             %--- Background Values ---%
