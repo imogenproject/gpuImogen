@@ -39,7 +39,6 @@ classdef RayleighTaylorInitializer < Initializer
 %____________________________________________________________________________ GravityTestInitializer
         function obj = RayleighTaylorInitializer(input)            
             obj                     = obj@Initializer();
-            obj.grid = input;
             obj.runCode             = 'RAYLEIGH_TAYLOR';
             obj.info                = 'Rayleigh-Taylor instability test';
             obj.mode.fluid          = true;
@@ -53,7 +52,6 @@ classdef RayleighTaylorInitializer < Initializer
             obj.bcMode.z            = 'circ';
 
             obj.activeSlices.xy     = true;
-            obj.timeUpdateMode      = ENUM.TIMEUPDATE_PER_STEP;
             obj.gravConstant        = 1;
             obj.gravity.constant    = .1;
             obj.gravity.solver      = ENUM.GRAV_SOLVER_EMPTY;
@@ -94,18 +92,20 @@ classdef RayleighTaylorInitializer < Initializer
             grid = geo.globalDomainRez;
             geo.makeBoxSize(grid(2)/grid(1));
 
-            % Initialize Parallelized X,Y,Z vectors
-            [X, Y, Z] = geo.ndgridSetIJK([0 0 0], obj.dGrid);
+            X = geo.localXposition;
+            Y = geo.localYposition;
+            Z = geo.localZposition;
+            [xp, yp, zp] = ndgrid(X, Y, Z);
 
             % Define boundary
-            Y0 = .5*obj.dGrid(2)*geo.localDomainRez(2);
+            Y0 = .5*geo.d3h(2)*geo.localDomainRez(2);
 
             % Initialize Arrays
             [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Establish low density below, high density above
-            mass(Y < Y0)     = obj.rhoBottom;
-            mass(Y >= Y0)    = obj.rhoTop;
+            mass(yp < Y0)     = obj.rhoBottom;
+            mass(yp >= Y0)    = obj.rhoTop;
 
             % Establish variable to define pressure gradient
             if Y(1,1,1) < Y0
@@ -115,29 +115,33 @@ classdef RayleighTaylorInitializer < Initializer
             end
 
             % Set gas pressure gradient to balance gravity
-            ener = (obj.P0 - Pnode - obj.gravConstant * (cumsum(mass,2)-mass(1,1,1)) * obj.dGrid(2) );
+            ener = (obj.P0 - Pnode - obj.gravConstant * (cumsum(mass,2)-mass(1,1,1)) * geo.d3h(2) );
 
             % Create gravity field
-            potentialField.field = Y;
+            
+            potentialField.field = yp;
             potentialField.constant = obj.gravConstant;
+            if yp(1,1,1) == 0
+                potentialField.field(:,1:4,:) = -potentialField.field(:,1:4,:);
+            end
 
         % If random perturbations are selected, it will impart random y-velocity to each column of the grid.
         % Otherwise, it will create a sinusoid of wavenumber Kx,Ky,Kz.
             if obj.randomPert == 0
                 if geo.localDomainRez(3) == 1
-                    mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5))/ 4;
+                    mom(2,:,:,:) = cos(2*pi*obj.Kx*xp) .* exp(-2*abs(yp-Y0)*obj.Kx*2*pi);
                 else
-                    mom(2,:,:,:) = obj.pertAmplitude * (1+cos(2*pi*obj.Kx*X/.5)) .* (1+cos(2*pi*obj.Ky*(Y-Y0)/1.5)) .* (1+cos(2*pi*obj.Kz*Z/.5))/ 8;
+                    mom(2,:,:,:) = cos(2*pi*obj.Kx*xp) .* cos(2*pi*obj.Kz*zp) .* exp(-2*abs(yp-Y0)*obj.Kx*2*pi);
                 end
             else
-                w = (rand([geo.localDomainRez(1) geo.localDomainRez(3)])*-0.5) * obj.pertAmplitude;
+                w = (rand([geo.localDomainRez(1) geo.localDomainRez(3)])*-0.5);
 
-                for y = 1:geo.localDomainRez(2); mom(2,:,y,:) = w; end
+                for q = 1:geo.localDomainRez(2); mom(2,:,q,:) = w * exp(-2*abs(Y(q)-Y0)*obj.Kx*2*pi); end
             end
-            mom(2,:,:,:) = squish(mom(2,:,:,:)).*mass;
+            mom(2,:,:,:) = squish(mom(2,:,:,:)).*mass*obj.pertAmplitude;
 
             % Don't perturb +y limit
-	    if geo.edgeInterior(2,2) == 0; mom(2,:,(end-2):end,:) = 0; end
+            if geo.edgeInterior(2,2) == 0; mom(2,:,(end-2):end,:) = 0; end
         
             % If doing magnetic R-T, turn on magnetic flux & set magnetic field & add magnetic energy
             if (obj.Bx ~= 0.0) || (obj.Bz ~= 0.0)
@@ -152,7 +156,7 @@ classdef RayleighTaylorInitializer < Initializer
             + 0.5*squish(sum(mag.*mag,1));
 
             fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
-	    obj.fluidDetails.minMass = .0001*obj.rhoBottom;
+            obj.fluidDetails.minMass = .0001*obj.rhoBottom;
         end
     end%PROTECTED
         
