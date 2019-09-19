@@ -44,14 +44,18 @@ classdef MassConservationAnalyzer < LinkedListNode
         function computeMass(self, evt, run, fluids, mag)
             % set up by initializer to be called every self.stepsPerCheck iterations
             % computes total mass on the grid assuming all-mirror BCs,
-            r = fluids(1).mass.gridSize;
+            
 
             F = fluids(1).mass.array;
 
-            a = sum(sum(F(5:(end-4),5:(end-4))));
-            b = sum(sum(F([4 (end-3)],5:(end-4))));
-            c = sum(sum(F(5:(end-4),[4 (end-3)])));
-            d = F(4,4) + F(end-3,4) + F(end-3,end-3) + F(4,end-3);
+            gm = GPUManager.getInstance();
+
+            r = gm.haloSize + 1;
+
+            a = sum(sum(F((r+1):(end-r),(r+1):(end-r))));
+            b = sum(sum(F([r (end-r+1)],(r+1):(end-r))));
+            c = sum(sum(F((r+1):(end-r),[r (end-r+1)])));
+            d = F(r,r) + F(end-r+1,r) + F(end-r+1,end-r+1) + F(r,end-r+1);
 
             m = a + .5*(b+c) + .25*d;
 

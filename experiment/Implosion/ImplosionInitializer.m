@@ -98,6 +98,14 @@ classdef ImplosionInitializer < Initializer
             + 0.5*squish(sum(mag.*mag,1));           % magnetic
 
            fluids = obj.rhoMomEtotToFluid(mass, mom, ener);
+           
+           obj.bcMode.x = ENUM.BCMODE_MIRROR;
+           obj.bcMode.y = ENUM.BCMODE_MIRROR;
+           if rez(3) > 1
+               obj.bcMode.z = ENUM.BCMODE_MIRROR;
+           else
+               obj.bcMode.z = ENUM.BCMODE_CIRCULAR;
+           end
         end
     end%PROTECTED       
 %===================================================================================================    
