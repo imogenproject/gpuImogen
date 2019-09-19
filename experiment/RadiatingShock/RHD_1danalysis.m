@@ -13,6 +13,7 @@ if N < size(F.mass,4)
     %x=x(1:N);
 end
 
+hold off;
 % throw up pretty spacetime diagram
 imagesc(diff(squeeze(F.mass), 1, 2)./squeeze(F.mass(:,1,1,1:(end-1))));
 thefig = gca();
@@ -26,12 +27,12 @@ fprintf('Please zoom in & click two points demarking one oscillation period.\n')
 P = pointGetter();
 pt = P.waitForClick();
 P.clickedPoint = [];
-pts(1) = RHD_utils.walkdown(x, round(pt(1)), 10);
+pts(1) = RHD_utils.walkdown(x, round(pt(1)), 20);
 fprintf('First point: %i\n', pts(1));
 
 pt = P.waitForClick();
 P.clickedPoint = [];
-pts(2) = RHD_utils.walkdown(x, round(pt(1)), 10);
+pts(2) = RHD_utils.walkdown(x, round(pt(1)), 20);
 fprintf('Second point: %i\n', pts(2));
 
 % In case they click right then left
@@ -133,6 +134,10 @@ xi = numel(xfourier(2:end/2));
 tfunda = (timepts(end) - timepts(1));
 % Generate harmonic markers
 fquery = (1:16)*ffunda;
+
+% This should pick up the F tone peak if it's an IF mode
+fquery = [.6*ffunda fquery];
+
 ypt = interp1((1:xi)/tfunda, xfourier(2:end/2), fquery, 'linear');
 
 hold off;
@@ -159,13 +164,16 @@ nneighbor = round(fquery*tfunda);
 
 ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & ( y(xi) > 2*sum(y(xi+[-2, -1, 1, 2])) );
 
-isgausspeak = @(mag, center, std) (abs(center) < .55) & (std < 1.5);
+isgausspeak = @(mag, center, std) (abs(center) < .55) & (std < 2);
 
 grid on;
 
 fatdot = [];
+possibleFmode = 0;
+
 for n = 1:16
     p = nneighbor(n)+1;
+    if p < 5; continue; end
     if p - 4 > numel(xfourier); break; end
     
     % look up to 4 freq bins away
@@ -174,6 +182,7 @@ for n = 1:16
     [mag, center, std] = RHD_utils.gaussianPeakFit(xfourier, p);
     
     if isgausspeak(mag, center - p, std)
+        if n == 1; possibleFmode = 1; end
         fatdot(end+1,:) = [center-1, mag, std];
     end
 end
@@ -192,6 +201,22 @@ if size(fatdot,1) > 0
 
     end
     legend('X_{shock} spectrum',  'Harmonics of indicated period', 'Possible base tones', 'Relative luminosity spectrum');
+    
+    if possibleFmode
+        disp('There appears to be a peak just below 1/3 of the 1O mode frequency: This may be an IF mode!'); 
+        if abs(fatdot(2,1)/fatdot(1,1) - 3.3) < .25
+            fb = 2;
+        else
+            fb = 3;
+        end
+        rat = fatdot(1,2)/fatdot(fb,2);
+        
+        if rat < 3
+            fprintf('Mode amplitude ratio = %f < 3: Suggest this be classed as a 1O\n', rat);
+        else
+            fprintf('Mode amplitude ratio = %f > 3: Suggest this be classed as an F/IF\n', rat);
+        end
+    end
 else
     disp('Well this is embarassing; No multiples of Ffunda hit a spectral peak...');
     legend('X_{shock} spectrum',  'Harmonics of indicated period', 'Relative luminosity spectrum');

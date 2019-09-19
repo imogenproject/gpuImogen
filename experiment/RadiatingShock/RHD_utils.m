@@ -32,39 +32,52 @@ classdef RHD_utils < handle
 
         function N = lastValidFrame(F, x)
         % Given the dataframe F and tracked shock position x,
-	% track the shock position over time.
-	% compute the equilibrium shock cooling depth
+        % track the shock position over time.
+        % compute the equilibrium shock cooling depth
 
-	T = F.pressure(:,1,1,1) ./ F.mass(:,1,1,1);
+        T = F.pressure(:,1,1,1) ./ F.mass(:,1,1,1);
 
         % logical for identifying the cold layer
-	clayer = (T <= 1.05001) & (F.mass(:,1,1,1) > 1.1);
+        clayer = (T <= 1.05001) & (F.mass(:,1,1,1) > 1.1);
 
-	x = x / F.dGrid{1}; % convert back to cells
+        x = x / F.dGrid{1}; % convert back to cells
 
-	xBottomIni = find(clayer); xBottomIni = xBottomIni(1);
+        xBottomIni = find(clayer); xBottomIni = xBottomIni(1);
 
-	hShock = xBottomIni - x(1); % height of shock in cells
+        hShock = xBottomIni - x(1); % height of shock in cells
 
         % estimate where the base of the cooling layer is
-	xb = x + hShock;
+        xb = x + hShock;
     
     q = find(xb + .3*hShock > size(F.mass,1));
     
 
     if ~isempty(q); N=q(1); else; N = size(F.mass,4); end
 
-	end
+        end
 
         function f = walkdown(x, i, itermax)
             % f = walkdown(x, i) accepts shock position vector x and initial index i
             % It walks i by one until it reaches a local maximum (or it has made itermax moves)
             
             for N = 1:itermax
+                sd = 0;
                 if x(i+1) > x(i)
+                    sd = 1;
+                end
+                
+                if x(i-1) > x(i)
+                    if sd
+                        if x(i-1) > x(i+1)
+                            i = i - 1;
+                        else
+                            i = i + 1;
+                        end
+                    else
+                        i = i - 1;
+                    end
+                else
                     i = i + 1;
-                elseif x(i-1) > x(i)
-                    i = i - 1;
                 end
                 
                 if (x(i+1) < x(i)) && (x(i-1) < x(i)) % done
@@ -124,24 +137,28 @@ classdef RHD_utils < handle
             rr = rr / rr(1);
         end
         
-        function p = parseDirectoryName()
-           x=pwd();
+        function p = parseDirectoryName(x)
+            if nargin < 1
+                x=pwd();
+            end
            
-           s = find(x=='/');
-           x=x((s(end)+1):end);
+            % remove leading full path if present
+            s = find(x=='/');
+            if ~isempty(s)
+                x=x((s(end)+1):end);
+            end
+            s = find(x=='_');
            
-           s = find(x=='_');
+            m = sscanf(x((s(3)+1):(s(4)-1)), 'ms%e');
            
-           m = sscanf(x((s(3)+1):(s(4)-1)), 'ms%e');
+            if strcmp(x(s(5)+[1 2 3]), 'rth')
+                th = sscanf(x((s(5)+1):(s(6)-1)), 'rth%i') / 100;
+            else
+                th = sscanf(x((s(5)+1):(s(6)-1)), 'radth%i') / 100;
+            end
+            g =  sscanf(x((s(6)+1):end), 'gam%i');
            
-           if strcmp(x(s(5)+[1 2 3]), 'rth')
-               th = sscanf(x((s(5)+1):(s(6)-1)), 'rth%i') / 100;
-           else
-               th = sscanf(x((s(5)+1):(s(6)-1)), 'radth%i') / 100;
-           end
-           g =  sscanf(x((s(6)+1):end), 'gam%i');
-           
-           p = struct('m', m, 'theta', th, 'gamma', g);
+            p = struct('m', m, 'theta', th, 'gamma', g);
         end
         
         function lpp = ppLuminosity(F, theta)
@@ -159,8 +176,11 @@ classdef RHD_utils < handle
             xi = (-4:4)';
             yi = y((bin-4):(bin+4));
             
-            thefit = fit(xi, yi, 'gauss1');
-            
+            try
+                thefit = fit(xi, yi, 'gauss1');
+            catch derp
+                thefit.a1 = 0; thefit.b1 = 0; thefit.c1 = 9999; 
+            end
             mag = thefit.a1;
             xbar = bin+thefit.b1;
             sigma = thefit.c1;
