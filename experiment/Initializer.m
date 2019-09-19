@@ -1,12 +1,12 @@
 classdef Initializer < handle
     % Base class for data initialization objects.
     
-    %===================================================================================================
-    properties (Constant = true, Transient = true) %                         C O N S T A N T [P]
+    %===============================================================================================
+    properties (Constant = true, Transient = true) %                        C O N S T A N T [P]
     end%CONSTANT
     
-    %===================================================================================================
-    properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
+    %===============================================================================================
+    properties (SetAccess = public, GetAccess = public) %                      P U B L I C  [P]
         activeSlices;   % Which slices to save.                             struct
         bcMode;         % Boundary value types and settings.                struct
         cfl;            % Multiplicative coefficient for timesteps.         double
@@ -62,7 +62,7 @@ classdef Initializer < handle
     end %PUBLIC
 
 %===================================================================================================
-    properties (Dependent = true) %                                            D E P E N D E N T [P]
+    properties (Dependent = true) %                                       D E P E N D E N T [P]
         fades;
         saveSlicesSpecified; % Specifies if save slices have been specified.
         gamma; % Compat: feeds through to .fluidDetails(1).gamma
@@ -70,7 +70,7 @@ classdef Initializer < handle
     end %DEPENDENT
         
 %===================================================================================================
-    properties (SetAccess = private, GetAccess = private) %                        P R I V A T E [P]
+    properties (SetAccess = private, GetAccess = private) %                   P R I V A T E [P]
         pInfo;
         pInfoIndex;
         pFades;
@@ -83,9 +83,9 @@ classdef Initializer < handle
     end %PROTECTED
         
 %===================================================================================================
-    methods %                                                                     G E T / S E T  [M]
+    methods %                                                                G E T / S E T  [M]
 
-%_______________________________________________________________________________________ Initializer
+%__________________________________________________________________________________ Initializer
         function obj = Initializer()
             obj.pInfo                = cell(1,100);
             obj.pInfoIndex           = 1;
@@ -138,7 +138,7 @@ classdef Initializer < handle
             obj.geomgr = GeometryManager([128 128 128]);
         end           
 
-%___________________________________________________________________________ GS: saveSlicesSpecified
+%______________________________________________________________________ GS: saveSlicesSpecified
         function result = get.saveSlicesSpecified(obj)
             s      = obj.activeSlices;
             result = s.x || s.y || s.z || s.xy || s.xz || s.yz || s.xyz;
@@ -151,20 +151,20 @@ classdef Initializer < handle
         function set.minMass(self, m); self.fluidDetails(1).minMass = m; end
 
         
-%_________________________________________________________________________________________ GS: fades
+%____________________________________________________________________________________ GS: fades
         function result = get.fades(obj)
             if (obj.pFadesIndex < 2);  result = [];
             else;                     result = obj.pFades(1:(obj.pFadesIndex-1));
             end
         end
         
-%__________________________________________________________________________________________ GS: info
+%_____________________________________________________________________________________ GS: info
         function result = get.info(obj)
             if isempty(obj.info); obj.info = 'Unspecified trial information.'; end
             result = ['---+ (' obj.runCode ') ' obj.info];
         end
 
-%_________________________________________________________________________________________ GS: image
+%____________________________________________________________________________________ GS: image
         function result = get.image(obj)
             fields = ImageManager.IMGTYPES;
             if ~isempty(obj.image);     result = obj.image; end
@@ -178,7 +178,7 @@ classdef Initializer < handle
             
         end
                 
-%___________________________________________________________________________________________ GS: cfl        
+%______________________________________________________________________________________ GS: cfl        
         function result = get.cfl(obj)
            if isempty(obj.cfl)
                if obj.mode.magnet;      result = 0.35;
@@ -188,7 +188,7 @@ classdef Initializer < handle
            end
         end
         
-%________________________________________________________________________________________ GS: bcMode     
+%___________________________________________________________________________________ GS: bcMode     
         function result = get.bcMode(obj)
            if isempty(obj.bcMode)
                 result.x = 'circ'; result.y = 'circ'; result.z = 'circ';
@@ -196,7 +196,7 @@ classdef Initializer < handle
            end
         end
         
-%___________________________________________________________________________________ GS: fluxLimiter
+%______________________________________________________________________________ GS: fluxLimiter
         function result = get.fluxLimiter(obj)
             result = struct();
             fields = {'x', 'y', 'z'};
@@ -212,9 +212,9 @@ classdef Initializer < handle
         end%GET/SET
         
 %===================================================================================================
-    methods (Access = public) %                                                     P U B L I C  [M]
+    methods (Access = public) %                                                P U B L I C  [M]
         
-%____________________________________________________________________________________ operateOnInput
+%_______________________________________________________________________________ operateOnInput
         function operateOnInput(obj, input, defaultGrid)
             if isempty(input)
                 grid        = defaultGrid;
@@ -230,7 +230,7 @@ classdef Initializer < handle
             obj.geomgr.setup(grid);
         end
         
-%______________________________________________________________________________ getInitialConditions
+%_________________________________________________________________________ getInitialConditions
 % Given simulation parameters filled out in a superclass, uses the superclass' calculateInitialConditions
 % function to get Q(x,0) fluid fields.
         function [fluids, mag, statics, potentialField, selfGravity, iniSettings] = getInitialConditions(obj)
@@ -265,6 +265,8 @@ classdef Initializer < handle
 %            if isempty(obj.slice)
                 obj.slice = ceil(obj.geomgr.globalDomainRez/2);
 %            end
+
+            obj.checkForInvalidBCs();
 
              % If not /actually/ using them, calling it at this point just stamps out copies of the
              % bcMode structure into cells so we don't have to do any conditional junk downstream
@@ -366,8 +368,39 @@ classdef Initializer < handle
              end
             
         end
+        
+        function checkForInvalidBCs(self)
+            % FIXME - expand the BC structure and check if anything glaringly not OK is done.
+            % FIXME - that is primarily to say, check that all size-one dimensions are set to circ
+            % because other conditions often assume the ability to read a boundary at least N cells
+            % from the edge, which is not the case if size in a dimension is one!
 
-%___________________________________________________________________________________________________ getRunSettings
+            m = BCManager.expandBCStruct(self.bcMode);
+            s0 = ['There is only one cell in the Y direction but the boundary mode is "%s"\nThis is an error in the ' class(self) ' initializer''s settings, it must be set to ENUM.BCMODE_CIRCULAR.\nThe problem is not fixed here because of possible further self consistency problems within the Initializer.\nViolations of this requirement cause invalid address exceptions at simulation start time.'];
+            
+            % trawl the Y part: if ny == 1 anything but circular is an error
+            if self.geomgr.globalDomainRez(2) == 1
+                if strcmp(m{1,2}, ENUM.BCMODE_CIRCULAR) ~= 1
+                    error(s0, m{1,2});
+                end
+                if strcmp(m{2,2}, ENUM.BCMODE_CIRCULAR) ~= 1
+                    error(s0, m{2,2});
+                end
+            end
+
+            % trawl the Z part: if nz == 1 anything but circular is an error
+            if self.geomgr.globalDomainRez(3) == 1
+                if strcmp(m{1,3}, ENUM.BCMODE_CIRCULAR) ~= 1
+                    error(s0, m{1,3});
+                end
+                if strcmp(m{2,3}, ENUM.BCMODE_CIRCULAR) ~= 1
+                    error(s0, m{2,3});
+                end
+            end
+            
+        end
+
+%_______________________________________________________________________________ getRunSettings
         function result = getRunSettings(obj)
             % This function dumps the initializer class' members into a big fat dynamic structure for
             % initializer.m to parse
@@ -390,7 +423,7 @@ classdef Initializer < handle
         end
 
         
-%___________________________________________________________________________________________________ addFade
+%______________________________________________________________________________________ addFade
 % Adds a fade object to the run.
         function addFade(obj, location, fadeSize, fadeType, fadeFluxes, activeList)
             index                       = obj.pFadesIndex;
@@ -404,12 +437,12 @@ classdef Initializer < handle
 
         end%PUBLIC
         
-%===================================================================================================        
-        methods (Access = protected) %                                      P R O T E C T E D    [M]
+%===================================================================================================      
+        methods (Access = protected) %                                 P R O T E C T E D    [M]
    
 
         
-%___________________________________________________________________________________________________ calculateInitialConditions
+%___________________________________________________________________ calculateInitialConditions
 % Calculates all of the initial conditions for the run and returns a simplified structure containing
 % all of the initialization property settings for the run.
 
@@ -417,7 +450,7 @@ classdef Initializer < handle
             %%%% Must be implemented in subclasses %%%%
         end
 
-%___________________________________________________________________________________________________ loadDataFromFile
+%_____________________________________________________________________________ loadDataFromFile
         function loadDataFromFile(obj, filePathToLoad)
             if isempty(filePathToLoad); return; end
             % filePathToLoad should contain the prefix only, i.e. '~/Results/Dec12/blah/3D_XYZ
@@ -450,7 +483,7 @@ classdef Initializer < handle
         end
         
         
-%___________________________________________________________________________________________________ getInfo
+%______________________________________________________________________________________ getInfo
 % Gets the information string
         function result = getInfo(obj)
             
@@ -475,7 +508,7 @@ classdef Initializer < handle
                     ImogenRecord.valueToString(obj, skips, 1)];
         end                
                 
-%___________________________________________________________________________________________________ appendInfo
+%___________________________________________________________________________________ appendInfo
 % Adds argument string to the info string list for inclusion in the iniInfo property. A good way
 % to store additional information about a run.
         function appendInfo(obj, infoStr, varargin)
@@ -491,7 +524,7 @@ classdef Initializer < handle
             obj.pInfoIndex = obj.pInfoIndex + 1;
         end
         
-        %___________________________________________________________________________________________________ populateValues
+        %_______________________________________________________________________ populateValues
         function populateValues(obj, loadedInput, inputFields)
             if (nargin < 3 || isempty(inputFields)); inputFields = {}; end
             fields  = fieldnames(getfield(loadedInput, {1}, inputFields{:}, {1}));
@@ -532,10 +565,10 @@ classdef Initializer < handle
         
         end%PROTECTED
         
-        %===================================================================================================
-        methods (Static = true) %                                                                                                          S T A T I C    [M]
+        %===========================================================================================
+        methods (Static = true) %                                            S T A T I C    [M]
             
-            %___________________________________________________________________________________________________ parseValues
+            %______________________________________________________________________ parseValues
             % Parses an object and returns a structure of corresponding fields and value pairs.
             function result = parseValues(objectToParse, skips)
                 fields = fieldnames(objectToParse);
@@ -549,11 +582,11 @@ classdef Initializer < handle
                 end
             end
             
-            %___________________________________________________________________________________________________ make3D
+            %___________________________________________________________________________ make3D
             % Enforces the 3D nature of an input value, so that it has a value for each spatial component.
-            %>>        inputValue                value to make 3D, can be length 1,2, or 3.                                                        double(?)
-            %>>        fill                        value to use when one is missing in the inputValue.                                        double
-            %<< result                        converted value to have 3 spatial components                                                double(3)
+            %>> inputValue       value to make 3D, can be length 1,2, or 3.           double(?)
+            %>> fill             value to use when one is missing in the inputValue.  double
+            %<< result           converted value to have 3 spatial components         double(3)
             function result = make3D(inputValue, fill)
                 if nargin < 3 || isempty(fill);                fill = min(inputValue);                end
                 inLen = length(inputValue);
