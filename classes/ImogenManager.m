@@ -193,9 +193,7 @@ classdef ImogenManager < handle
             end
             self.compositeSrcOrders = cso;
 
-            if ini.numFluids > 1
-                SaveManager.logPrint(['    cudaSourceComposite will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.\n']);
-            end
+            SaveManager.logPrint(['    cudaSourceComposite (if used) will have space order ' num2str(cso(1)) ' and time order ' num2str(cso(2)) '.\n']);
 
             if ~isempty(ini.checkpointSteps)
                 self.checkpointInterval = ini.checkpointSteps(1);
