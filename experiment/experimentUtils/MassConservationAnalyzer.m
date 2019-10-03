@@ -50,7 +50,7 @@ classdef MassConservationAnalyzer < LinkedListNode
 
             gm = GPUManager.getInstance();
 
-            r = gm.haloSize + 1;
+            r = gm.useHalo + 1;
 
             a = sum(sum(F((r+1):(end-r),(r+1):(end-r))));
             b = sum(sum(F([r (end-r+1)],(r+1):(end-r))));

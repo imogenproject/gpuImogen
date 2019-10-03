@@ -15,6 +15,7 @@ classdef ImplosionInitializer < Initializer
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         Mcorner;
         Pcorner;
+        oneNorm;
     end %PUBLIC
 
 %===================================================================================================
@@ -49,6 +50,8 @@ classdef ImplosionInitializer < Initializer
             
             obj.Mcorner = 0.125;
             obj.Pcorner = 0.14;
+            
+            obj.oneNorm = .5;
 
             obj.operateOnInput(input, [512 512 1]);
 
@@ -85,8 +88,13 @@ classdef ImplosionInitializer < Initializer
             [mass, mom, mag, ener] = geo.basicFluidXYZ();
 
             % Setup parallel vectors and structures
-            [X, Y] = geo.ndgridSetIJ();
-            corn = (X + Y < rez(1)/2);
+            if rez(3) == 1
+                [X, Y] = geo.ndgridSetIJ('pos');
+                corn = (X + Y < obj.oneNorm);
+            else
+                [X, Y, Z] = geo.ndgridSetIJK('pos');
+                corn = (X + Y + Z < obj.oneNorm);
+            end
 
             % Define the properties of the perturbed corner
             mass(corn) = obj.Mcorner;
