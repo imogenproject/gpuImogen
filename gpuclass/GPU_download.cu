@@ -11,6 +11,8 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
+#include "nvToolsExt.h"
+
 #include "cudaCommon.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -19,6 +21,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	if((nlhs != 1) || ( (nrhs != 1) && (nrhs != 2) ) ) {
 		mexErrMsgTxt("Form: host_array = GPU_download(GPU array, 'dump')");
 	}
+
+#ifdef USE_NVTX
+	nvtxRangePush("Entering GPU_download");
+#endif
 	
 	CHECK_CUDA_ERROR("entering GPU_download");
 	
@@ -65,6 +71,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	double *result = mxGetPr(plhs[0]);
 	
 	worked = MGA_downloadArrayToCPU(&m, &result, -1);
+
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
+
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		mexErrMsgTxt("GPU_download accessed but couldn't download GPU array.");
 		return;

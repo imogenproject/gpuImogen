@@ -12,6 +12,8 @@
 #include "cuda_runtime.h"
 #include "cublas.h"
 
+#include "nvToolsExt.h"
+
 #include "driver_types.h"
 
 #include "cudaCommon.h"
@@ -2221,6 +2223,9 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 
 		cudaSetDevice(g->deviceID[i]);
 		cudaDeviceSynchronize();
+#ifdef USE_NVTX
+		nvtxRangePush("GPU to ML array copy");
+#endif
 
 		for(w = 0; w < ptExtent.z; w++) {
 			for(v = 0; v < ptExtent.y; v++) {
@@ -2231,6 +2236,10 @@ int MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom)
 				}
 			}
 		}
+
+#ifdef USE_NVTX
+		nvtxRangePop();
+#endif
 
 		free(gmem[i]);
 	}
