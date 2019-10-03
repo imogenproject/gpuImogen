@@ -44,7 +44,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGArray fluid[5];
 
 #ifdef USE_NVTX
-	nvtxRangePush("Entered compiled flux step");
+	nvtxRangePush(".cu flux step");
 #endif
 
 	/* Access bx/by/bz cell-centered arrays if magnetic!!!! */
