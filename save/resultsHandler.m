@@ -22,7 +22,6 @@ function resultsHandler(saveEvent, run, fluids, mag)
     
     if ~run.save.FSAVE; return; end
 
-
     iteration = run.time.iteration;
     saveState = 1*(iteration == 0) +2*(run.save.done == true);
 

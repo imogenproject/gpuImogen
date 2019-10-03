@@ -107,6 +107,7 @@ classdef SaveManager < LinkedListNode
             return;
         end
 
+        % relevant fields: IC.ini.{ppSave
 % FIXME: This should determine *when* resultsHandler should be called
 % and mark THAT iteration/time, not waste time on every iteration...
         saver = ImogenEvent([], 1, [], @resultsHandler);
@@ -157,6 +158,11 @@ classdef SaveManager < LinkedListNode
             if ~isfield(ini.activeSlices,slLabels{i}); self.ACTIVE(i) = false;
             else; self.ACTIVE(i) = logical(ini.activeSlices.(slLabels{i}));
             end
+        end
+        
+        % Force save off if all slices are off
+        if all(self.ACTIVE == false)
+            self.FSAVE = false;
         end
         
         % ????

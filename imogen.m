@@ -8,9 +8,15 @@ function outdirectory = imogen(srcData, resumeinfo)
 %< outdirectory    Path to directory containing output data
 
     if isstruct(srcData) == 0
-        myIni = sprintf('%s/SimInitializer_rank%i.mat',srcData,mpi_myrank() );
-        load(myIni); %#ok<LOAD>
-        SaveManager.logPrint('---------- Imogen initializing from directory / restarting\n');
+        if isfile(srcData)
+            load(srcData); %#ok<LOAD>
+            SaveManager.logPrint('---------- Imogen initializing from IC file\n');
+        else
+            myIni = sprintf('%s/SimInitializer_rank%i.mat',srcData,mpi_myrank() );
+            load(myIni); %#ok<LOAD>
+            SaveManager.logPrint('---------- Imogen initializing from directory / restarting\n');    
+        end
+        
     else
         IC = srcData;
         clear srcData;
@@ -48,7 +54,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         % (2) Q(x,t0) from saved files
         % WARNING - this really, really needs to _know_ which frame type to load
         origpath=pwd(); cd(run.paths.save);
-        dframe = util_LoadFrameSegment('2D_XY', mpi_myrank(), resumeinfo.frame);
+        dframe = util_LoadFrameSegment('3D_XYZ', mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
         if isfield(resumeinfo, 'imgframe'); run.image.frame = resumeinfo.imgframe; end
@@ -66,11 +72,12 @@ function outdirectory = imogen(srcData, resumeinfo)
     end
     mpi_errortest(collectiveFailure);
 
-    writeSimInitializer(run, IC);
-
     %--- Pre-loop actions ---%
     SaveManager.logPrint('---------- Setting up any other physics subsystems\n');
     run.initialize(IC, mag);
+    
+    % This comes last, it dumps all f(x,y,z) fields to avoid huge SimInitializer.m files
+    writeSimInitializer(run, IC);
 
     srcFunc = sourceChooser(run, run.fluid, mag);
 
@@ -102,14 +109,13 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     run.save.logPrint('---------- Entering simulation loop\n');
     run.time.updateUI();
-
-    
+run.time.CFL = .3;
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag); % chooses dt
-        if run.chkpointThisIter()
-            backupData = dumpCheckpoint(run);
-        end
+%        if run.chkpointThisIter()
+%            backupData = dumpCheckpoint(run);
+%        end
         
         srcFunc(run, run.fluid, mag, 0.5);
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1  1 run.time.iteration run.cfdMethod], run.geometry);
@@ -118,22 +124,24 @@ function outdirectory = imogen(srcData, resumeinfo)
         fluidstep(run.fluid, mag(1).cellMag, mag(2).cellMag, mag(3).cellMag, [run.time.dTime 1 -1 run.time.iteration run.cfdMethod], run.geometry);
         srcFunc(run, run.fluid, mag, 0.5);
         
-        if run.VTOSettings(1)
-            % This isn't a physical operator anyway so don't cry about temporal accuracy
-            cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
-        end
+%        if run.VTOSettings(1)
+%            % This isn't a physical operator anyway so don't cry about temporal accuracy
+%            cudaSourceVTO(run.fluid(1), [run.time.dTime, run.VTOSettings(2:3)], run.geometry);
+%        end
         
-        if run.checkpointInterval && checkPhysicality(run.fluid)
-            restoreCheckpoint(run, backupData);
-        end
+%        if run.checkpointInterval && checkPhysicality(run.fluid)
+%            restoreCheckpoint(run, backupData);
+%        end
         
         run.time.step(); % updates t -> t+2dt
         run.pollEventList(run.fluid, mag);
 
+        
+        if run.time.iteration == 250; run.time.CFL = .85; end
 % lame hack
-	%if run.time.iteration >= 749900
-	%run.save.PERSLICE(3) = .025;
-	%end
+%	if run.time.iteration == 1499000
+%	run.save.PERSLICE(3) = .0125;
+%	end
 
     end
     %%%=== END MAIN LOOP ========================================================================%%%
