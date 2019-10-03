@@ -91,7 +91,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	int worked = setArrayBoundaryConditions(NULL, prhs[0], &geom, (int)*mxGetPr(prhs[3]));
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
-		DROP_MEX_ERROR("setBoundaryCondition called from standalone has crashed: Crashing interpreter.");
+		DROP_MEX_ERROR("setBoundaryCondition called from standalone has crashed: Crashing interpreter. If this happens on entry and before any iterations, check for valid BC mode settings\n");
 	}
 }
 #endif
@@ -1356,33 +1356,35 @@ __global__ void cukern_applySpecial_fade(double *phi, double *statics, int nSpec
 // X direction kernels just use 3 threads in order to acheive slightly less terrible
 // memory access patterns
 
+#define MIRROR_OFFSET 1
+
 // The X directions we can use blockSize.x to tell us the halo depth
 __global__ void cukern_xminusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
 	int depth = blockDim.x;
-	phi[depth-1-threadIdx.x] = phi[depth+1+threadIdx.x];
+	phi[depth-1-threadIdx.x] = phi[depth+MIRROR_OFFSET+threadIdx.x];
 }
 
 __global__ void cukern_xminusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
 	int depth = blockDim.x;
-	phi[depth-1-threadIdx.x] = -phi[depth+1+threadIdx.x];
+	phi[depth-1-threadIdx.x] = -phi[depth+MIRROR_OFFSET+threadIdx.x];
 }
 
 __global__ void cukern_xplusSymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
 	int depth = blockDim.x;
-	phi[nx-depth+threadIdx.x] = phi[nx-depth-1-threadIdx.x];
+	phi[nx-depth+threadIdx.x] = phi[nx-depth-1-MIRROR_OFFSET-threadIdx.x];
 }
 
 __global__ void cukern_xplusAntisymmetrize(double *phi, int nx, int ny, int nz)
 {
 	XSASKERN_PREAMBLE
 	int depth = blockDim.x;
-	phi[nx-depth+threadIdx.x] = -phi[nx-depth-1-threadIdx.x];
+	phi[nx-depth+threadIdx.x] = -phi[nx-depth-1-MIRROR_OFFSET-threadIdx.x];
 }
 
 /* These are called when a BC is set to 'const' or 'linear' */
@@ -1482,25 +1484,25 @@ __global__ void cukern_yminusSymmetrize(double *phi, int nx, int ny, int nz, int
 {
 	YSASKERN_PREAMBLE
 
-	for(q = 0; q < depth; q++) { phi[nx*q] = phi[nx*(2*depth-q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*q] = phi[nx*(2*depth-1+MIRROR_OFFSET-q)]; }
 }
 
 __global__ void cukern_yminusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < depth; q++) { phi[nx*q] = -phi[nx*(2*depth-q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*q] = -phi[nx*(2*depth-1+MIRROR_OFFSET-q)]; }
 }
 
 __global__ void cukern_yplusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = phi[nx*(ny-1-2*depth+q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = phi[nx*(ny-MIRROR_OFFSET-2*depth+q)]; }
 }
 
 __global__ void cukern_yplusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
 {
 	YSASKERN_PREAMBLE
-	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = -phi[nx*(ny-1-depth+q)]; }
+	for(q = 0; q < depth; q++) { phi[nx*(ny-1-q)] = -phi[nx*(ny-MIRROR_OFFSET-2*depth+q)]; }
 }
 
 __global__ void cukern_extrapolateFlatConstBdyYMinus(double *phi, int nx, int ny, int nz, int depth)
@@ -1537,7 +1539,7 @@ __global__ void cukern_zminusSymmetrize(double *phi, int nx, int ny, int nz, int
 
 	int q;
 	for(q = 0; q < depth; q++) // nvcc will unroll it
-		phi[q*stride] = phi[(2*depth-q)*stride];
+		phi[q*stride] = phi[(2*depth+MIRROR_OFFSET-q)*stride];
 }
 
 __global__ void cukern_zminusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
@@ -1545,7 +1547,7 @@ __global__ void cukern_zminusAntisymmetrize(double *phi, int nx, int ny, int nz,
 	ZSASKERN_PREAMBLE
 	int q;
 	for(q = 0; q < depth; q++)
-		phi[q*stride] = -phi[(2*depth-q)*stride];
+		phi[q*stride] = -phi[(2*depth+MIRROR_OFFSET-q)*stride];
 }
 
 __global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz, int depth)
@@ -1553,7 +1555,7 @@ __global__ void cukern_zplusSymmetrize(double *phi, int nx, int ny, int nz, int 
 	ZSASKERN_PREAMBLE
 	int q;
 	for(q = 0; q < depth; q++)
-		phi[stride*(nz-1-q)] = phi[stride*(nz-1-2*depth+q)];
+		phi[stride*(nz-1-q)] = phi[stride*(nz-MIRROR_OFFSET-2*depth+q)];
 }
 
 __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz, int depth)
@@ -1561,7 +1563,7 @@ __global__ void cukern_zplusAntisymmetrize(double *phi, int nx, int ny, int nz, 
 	ZSASKERN_PREAMBLE
 	int q;
 	for(q = 0; q < depth; q++)
-		phi[stride*(nz-1-q)] = -phi[stride*(nz-1-2*depth+q)];
+		phi[stride*(nz-1-q)] = -phi[stride*(nz-MIRROR_OFFSET-2*depth+q)];
 
 }
 
