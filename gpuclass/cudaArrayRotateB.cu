@@ -63,7 +63,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Unable to access array.\n"); }
 	int indExchange = (int)*mxGetPr(prhs[1]);
 
-	MGArray *novelty;
+	MGArray nouveau;
+	MGArray *novelty = &nouveau;
 	returnCode = CHECK_IMOGEN_ERROR(flipArrayIndices(&src, (makeNew ? &novelty : NULL), 1, indExchange));
 	if(returnCode != SUCCESSFUL)
 		{ DROP_MEX_ERROR("cudaArrayRotateB aborting: Index transposition failed.\n"); }
