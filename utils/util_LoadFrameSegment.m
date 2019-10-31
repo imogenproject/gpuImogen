@@ -1,6 +1,6 @@
 function dataframe = util_LoadFrameSegment(basename, rank, frameno, meta)
 % function dataframe = util_LoadFrameSegment(basename, rank, frameno, metaonly)
-% > basename: prefix of files
+% > basename: prefix of files (2D_XY, 3D_XYZ, etc)
 % > rank:     integer of MPI rank whose segment we load
 % > frameno:  frame number of file to load
 % > meta:     If identical the to the string 'metaonly', does not load the large 3D data arrays

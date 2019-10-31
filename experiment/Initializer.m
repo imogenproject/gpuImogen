@@ -261,17 +261,17 @@ classdef Initializer < handle
 
             end
 
-% FIXME his is an ugly hack; slice determination is a FAIL since parallelization.
+% FIXME this is an ugly hack; slice determination is a FAIL since parallelization.
 %            if isempty(obj.slice)
                 obj.slice = ceil(obj.geomgr.globalDomainRez/2);
 %            end
 
-            obj.checkForInvalidBCs();
-
-             % If not /actually/ using them, calling it at this point just stamps out copies of the
-             % bcMode structure into cells so we don't have to do any conditional junk downstream
             obj.activateComplexBoundaryConditions(numel(fluids));
+            % If not /actually/ using them, calling it at this point just stamps out copies of the
+            % bcMode structure into cells so we don't have to do any conditional junk downstream
 
+            obj.checkForInvalidBCs();
+            
             iniSettings = obj.getRunSettings();
 
             % One more act: The geometric settings and partitioning are now fixed,
@@ -375,26 +375,34 @@ classdef Initializer < handle
             % because other conditions often assume the ability to read a boundary at least N cells
             % from the edge, which is not the case if size in a dimension is one!
 
-            m = BCManager.expandBCStruct(self.bcMode);
-            s0 = ['There is only one cell in the Y direction but the boundary mode is "%s"\nThis is an error in the ' class(self) ' initializer''s settings, it must be set to ENUM.BCMODE_CIRCULAR.\nThe problem is not fixed here because of possible further self consistency problems within the Initializer.\nViolations of this requirement cause invalid address exceptions at simulation start time.'];
-            
-            % trawl the Y part: if ny == 1 anything but circular is an error
-            if self.geomgr.globalDomainRez(2) == 1
-                if strcmp(m{1,2}, ENUM.BCMODE_CIRCULAR) ~= 1
-                    error(s0, m{1,2});
-                end
-                if strcmp(m{2,2}, ENUM.BCMODE_CIRCULAR) ~= 1
-                    error(s0, m{2,2});
-                end
+            if isa(self.bcMode, 'cell') == 0
+                bc = {self.bcMode};
+            else
+                bc = self.bcMode;
             end
-
-            % trawl the Z part: if nz == 1 anything but circular is an error
-            if self.geomgr.globalDomainRez(3) == 1
-                if strcmp(m{1,3}, ENUM.BCMODE_CIRCULAR) ~= 1
-                    error(s0, m{1,3});
+            
+            for j = 1:numel(bc)
+                m = BCManager.expandBCStruct(bc{j});
+                s0 = ['There is only one cell in the Y direction but the boundary mode is "%s"\nThis is an error in the ' class(self) ' initializer''s settings, it must be set to ENUM.BCMODE_CIRCULAR.\nThe problem is not fixed here because of possible further self consistency problems within the Initializer.\nViolations of this requirement cause invalid address exceptions at simulation start time.'];
+                
+                % trawl the Y part: if ny == 1 anything but circular is an error
+                if self.geomgr.globalDomainRez(2) == 1
+                    if strcmp(m{1,2}, ENUM.BCMODE_CIRCULAR) ~= 1
+                        error(s0, m{1,2});
+                    end
+                    if strcmp(m{2,2}, ENUM.BCMODE_CIRCULAR) ~= 1
+                        error(s0, m{2,2});
+                    end
                 end
-                if strcmp(m{2,3}, ENUM.BCMODE_CIRCULAR) ~= 1
-                    error(s0, m{2,3});
+                
+                % trawl the Z part: if nz == 1 anything but circular is an error
+                if self.geomgr.globalDomainRez(3) == 1
+                    if strcmp(m{1,3}, ENUM.BCMODE_CIRCULAR) ~= 1
+                        error(s0, m{1,3});
+                    end
+                    if strcmp(m{2,3}, ENUM.BCMODE_CIRCULAR) ~= 1
+                        error(s0, m{2,3});
+                    end
                 end
             end
             

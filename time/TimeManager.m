@@ -193,6 +193,7 @@ classdef TimeManager < handle
                 switch obj.iteration
                     
                     case 0        %Activate clock timer for the first loop
+                        % NOTE - if this is changed update code for resumption below as well!
                         obj.startSecs = tic;
                         obj.pItersDigits = ceil(log10(obj.ITERMAX)); %
                         obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %.3g iter/s | by %s at %s ]]\n';
@@ -240,8 +241,6 @@ classdef TimeManager < handle
                     case 3
                         info = {'Wall time', obj.wallTime, obj.WALLMAX};
                 end
-                
-                infoStr = sprintf('%s: %0.5g of %0.5g', info{1}, info{2}, info{3});
                 
                 %--- Prepare and display the UI update string ---%
                 cTime   = now;
@@ -324,15 +323,23 @@ classdef TimeManager < handle
             %newlimit.frame = 8;
             
             obj.time       = elapsed.time;
+            if isfield(newlimit, 'addframes')
+                newlimit.itermax = obj.ITERMAX + newlimit.addframes;
+            end
+            
             if isfield(newlimit, 'itermax')
                 obj.parent.save.PERSLICE = obj.parent.save.PERSLICE * obj.ITERMAX / newlimit.itermax;
                 obj.parent.save.logPrint('    Resume notice: Automatically rescaling all save rates by %f.\n', newlimit.itermax/obj.ITERMAX);
+                if isfield(newlimit, 'scaleSaverate')
+                    obj.parent.save.PERSLICE = obj.parent.save.PERSLICE / newlimit.scaleSaverate;
+                end
                 obj.ITERMAX    = newlimit.itermax;
             end
             obj.history    = zeros([obj.ITERMAX 1]);
             if isfield(newlimit, 'timemax')
                 obj.TIMEMAX    = newlimit.timemax;
             end
+                
             obj.WALLMAX    = elapsed.wallMax;
             obj.iteration  = elapsed.iteration;
             obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
@@ -340,7 +347,18 @@ classdef TimeManager < handle
             obj.updateWallTime();
             obj.dtAverage  = mean(obj.history);
             
+            % NOTE - if this is changed update the code for the iteration=0 updateUI function above
+            obj.startSecs = tic;
+            obj.pItersDigits = ceil(log10(obj.ITERMAX)); %
+            obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %.3g iter/s | by %s at %s ]]\n';
+            obj.pLogString(6) = sprintf('%i',obj.pItersDigits);
+            obj.pLogString(11) = sprintf('%i',obj.pItersDigits);
             
+            % reset our completion fractions
+            obj.timePercent = 100*obj.time/obj.TIMEMAX;
+            obj.iterPercent = 100*obj.iteration/obj.ITERMAX;
+            obj.wallPercent = 100*obj.wallTime/obj.WALLMAX;
+            obj.lastOutputPercent = [obj.timePercent obj.iterPercent obj.wallPercent];
         end
         
     end%PUBLIC
