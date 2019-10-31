@@ -132,7 +132,7 @@ for N = 1:doublings
     
      ev = ic.ini.waveEigenvector;
      w0 = ic.ini.waveOmega;
-     tau = sum(F.time.history);
+     tau = F.time.time;
         
     if prettyPictures
         figure(1); % plot absolute errors
