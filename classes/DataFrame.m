@@ -115,15 +115,16 @@ classdef DataFrame < handle
         end
             
         function y = get.soundspeedL(self)
+            gg1 = self.gamma*(self.gamma-1);
             if self.pTwoFluids
-                y = sqrt(self.gamma*(self.gamma-1)*self.pEint ./ (self.pMass+self.pMass2));
+                y = sqrt(gg1*self.eint ./ (self.pMass+self.pMass2));
             else
-                y = sqrt(self.gamma*(self.gamma-1)*self.pEint ./ self.pMass);
+                y = sqrt(gg1*self.eint ./ self.pMass);
             end
         end
                 
         function y = get.soundspeedH(self)
-            y = sqrt(self.gamma*(self.gamma-1)*self.pEint ./ self.pMass);
+            y = sqrt(self.gamma*(self.gamma-1)*self.eint ./ self.pMass);
         end
         
         % basic rho/v/p/E for fluid 2
@@ -213,8 +214,9 @@ classdef DataFrame < handle
             for q = 1:5
                 self.(fieldsA{q}) = cat(4, self.(fieldsB{q}), F.(fieldsB{q}));
             end
-            if isfield(self.time, 'tFrame') && isfield(F.time, 'tFrame')
-                self.time.tFrame = [self.time.tFrame; F.time.tFrame]; 
+            
+            if isfield(self.time, 'time') && isfield(F.time, 'time')
+                self.time.time = [self.time.time; F.time.time]; 
             end
             
         end

@@ -215,6 +215,7 @@ classdef SaveManager < LinkedListNode
            %            reuse.
            save([obj.parent.paths.save filesep 'ini_settings.mat'],'ini');
            
+           if 0% oh come on, never has this ever been used
             %--- Create run.log Entry ---%
             %               Writes basic run information to the run.log file for later 
             %               reference. This includes fixed basic information as well as any
@@ -243,6 +244,7 @@ classdef SaveManager < LinkedListNode
             fid      = fopen(strcat(paths.save, '/run.log'), 'w');
             fprintf(fid, data);
             fclose(fid);
+           end
        end
     end
 

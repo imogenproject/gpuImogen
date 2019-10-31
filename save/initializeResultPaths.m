@@ -8,7 +8,19 @@ function initializeResultPaths(run, IC)
     SaveManager.logPrint('--------- Preparing for output\n');
 
     if isfield(IC, 'originalPathStruct')
+        r = IC.resumeinfo;
+        ops = IC.originalPathStruct;
+        outpathOrig = [ops.resultPath '/' ops.containerFolder '/' ops.saveFolder];
+        if strcmp(r.directory, outpathOrig) ~= 1
+            SaveManager.logPrint('    NOTICE - run directory has moved since original creation.\n    Clobbering output path info.');
+            
+            IC.originalPathStruct.saveFolder = r.directory;
+            IC.originalPathStruct.resultPath = '/';
+            IC.originalPathStruct.containerFolder = '/';
+        end
+            
         run.paths.deserialize(IC.originalPathStruct); 
+        
         setupDirectories = 0;
     else
         run.paths.initialize(run);
