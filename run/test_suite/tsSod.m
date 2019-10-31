@@ -59,7 +59,7 @@ for p = 1:doublings
 
     % Compute L_n integral error norms and output
     % FIXME broken in parallel
-    T = sum(u.time.history);
+    T = u.time.time;
     X = SodShockSolution(run.geomgr.localXposition, T);
 
     result.L2(p)    = sqrt(mpi_sum(norm(u.mass(:,1)-X.mass',2).^2) / mpi_sum(numel(X.mass)) );

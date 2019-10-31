@@ -68,7 +68,7 @@ for R = 1:doublings
     f = S.jumpToLastFrame();
     
     % Generate analytic solution and compute metrics
-    T = sum(f.time.history);
+    T = f.time.time;
     %[rho, v, P] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
     [rho, ~, ~] = einfeldtSolution(run.geomgr.localXposition', 1, M*sqrt(gamma), 1, run.gamma, T);
     

@@ -72,7 +72,7 @@ for N = 1:doublings
     F = S.jumpToLastFrame();
     rhoSim = F.mass;
 
-    xExact = NT.shockPositionGivenTime(run.r0, sum(F.time.history));
+    xExact = NT.shockPositionGivenTime(run.r0, F.time.time);
     [X, Y, Z] = run.geomgr.ndgridSetIJK('pos');
     
     rhoExact = NT.solve(1, X, xExact);
