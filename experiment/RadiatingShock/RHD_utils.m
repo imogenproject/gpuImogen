@@ -60,6 +60,8 @@ classdef RHD_utils < handle
             % f = walkdown(x, i) accepts shock position vector x and initial index i
             % It walks i by one until it reaches a local maximum (or it has made itermax moves)
             
+            imax = numel(x);
+            
             for N = 1:itermax
                 sd = 0;
                 if x(i+1) > x(i)
@@ -80,9 +82,13 @@ classdef RHD_utils < handle
                     i = i + 1;
                 end
                 
+                if i == 1; break; end
+                if i == imax; break; end
+                
                 if (x(i+1) < x(i)) && (x(i-1) < x(i)) % done
                     break;
                 end
+                
             end
             
             f = i;
@@ -173,8 +179,10 @@ classdef RHD_utils < handle
         end
         
         function [mag, xbar, sigma] = gaussianPeakFit(y, bin)
-            xi = (-4:4)';
-            yi = y((bin-4):(bin+4));
+            q=5;
+            if bin < 6; q = bin-1; end
+            xi = (-q:q)';
+            yi = y((bin-q):(bin+q));
             
             try
                 thefit = fit(xi, yi, 'gauss1');
@@ -186,9 +194,24 @@ classdef RHD_utils < handle
             sigma = thefit.c1;
         end
         
+        function residual = chopPeakForSearch(y, idx)
+            
+            ip = idx; in = idx;
+            for q = idx:(numel(y)-1)
+                if y(q+1) > y(q); ip = q; break; end
+            end
+            for q = idx:-1:2
+                if y(q-1) > y(q); in = q; break; end 
+            end
+            
+            a = y(in); b = y(ip);
+            residual = y;
+            residual(in:ip) = a + (b-a)*((in:ip)-in)/(ip-in);
+        end
+        
         function residual = subtractKnownPeaks(y, fatdot)
             % fatdot = [center, mag, stdev]
-            x = (0:(numel(y)-1))';
+            x = (1:(numel(y)))';
             
             for n = 1:size(fatdot, 1)
                 q = fatdot(n,3)^-2;
@@ -199,7 +222,39 @@ classdef RHD_utils < handle
             residual = y;
         end
 
-
+        function str = assignModeName(w, M, gamma, theta)
+            str = '';
+            modes = {'F', '1O', '2O', '3O', '4O', '5O', '6O', '7O', '8O', '9O'};
+            
+            switch gamma
+                case 167
+                    ftower = [.85 2.85 5 7 9 11 13 15 17 19];
+                    w = w / ((1 + 1.75/M)*(1-.038*theta));
+                    m = abs(w - .256*ftower);
+                    q = find(m < .1);
+                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
+                        str = modes{q(1)};
+                    end    
+                case 140
+                    ftower = [.92 2.76 5 7 9 11 13 15 17 19];
+                    w = w / ((1 + 2.5/M)*(1-.04*theta));
+                    m = abs(w - .185*ftower);
+                    q = find(m < .1);
+                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
+                        str = modes{q(1)};
+                    end                    
+                case 129
+                    ftower = [.8 2.47 4.25 6.16 9 11 13 15 17 19];
+                    w = w / ((1 + 2.84/M)*(1-.06*theta));
+                    m = abs(w - .171*ftower);
+                    q = find(m < .1);
+                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
+                        str = modes{q(1)};
+                    end                    
+            end
+        end
+        
+        
         
     end%PROTECTED
     

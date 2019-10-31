@@ -27,6 +27,8 @@ classdef RadiatingFlowSolver < handle
     properties (SetAccess = private, GetAccess = public)
         flowSolution;
         Tcutoff;
+        luminance;
+        xshock;
     end
 
     methods (Access = public)
@@ -51,13 +53,17 @@ classdef RadiatingFlowSolver < handle
             self.gamma = gamma;
             self.beta = beta;
             self.theta = theta; 
-            self.Tcutoff = Tmin;
+            
             self.vxTerminal = 0;
+            self.luminance = 0;
 
             self.px = self.vx0 * self.rho0;
             self.fx = self.px*self.vx0 + self.Pgas0 +(by^2-bx^2)/2;
             self.fy = rho*vx*vy-bx*by;
 
+            self.Tcutoff = Tmin;
+            self.setCutoff('thermal',Tmin);
+            
             self.numericalSetup(1,1);
             self.solver('AB5');
         end
@@ -82,7 +88,7 @@ classdef RadiatingFlowSolver < handle
         end
 
         function help(self)
-fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta, Tcutoff).\n  R.calculateFlowtable(vx0) solves the differential equation starting at vx0.\n  R.coolingLength(vx) gives the instantaneous cooling length evaluated at vx.\n  R.coolingTime(vx) gives the instantaneous characterisic cooling time evaluated at vx.\n  R.magCutoffV(), if the flow is magnetized, returns the magnetic asymptotic velocity.\n  R.thermalCutoffV(T) returns the velocity when P/rho drops to T.\n  R.temperature(vx) returns the temperature when the flow has velocity vx.\n  R.solutionTable returns an Nx7 matrix with rows [x rho vx vy bx by Pgas].\n');
+            fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlowSolver(rho, vx, vy, bx, by, P, gamma, beta, theta, Tcutoff).\n  R.calculateFlowtable(vx0) solves the differential equation starting at vx0.\n  R.coolingLength(vx) gives the instantaneous cooling length evaluated at vx.\n  R.coolingTime(vx) gives the instantaneous characterisic cooling time evaluated at vx.\n  R.magCutoffV(), if the flow is magnetized, returns the magnetic asymptotic velocity.\n  R.thermalCutoffV(T) returns the velocity when P/rho drops to T.\n  R.temperature(vx) returns the temperature when the flow has velocity vx.\n  R.solutionTable returns an Nx7 matrix with rows [x rho vx vy bx by Pgas].\n');
         end
 
         function s = solutionTable(self)
@@ -97,10 +103,24 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             s(:,6) = self.by(v);
             s(:,7) = self.Ptherm(v);
         end
+        
+        function tau = roundTripTime(self)
+            v = self.flowSolution(:,2);
+            
+            rho = self.rho(v);
+            P = self.Ptherm(v);
+            
+            c = sqrt(self.gamma*P./rho);
+            
+            vfwd = v;
+            vbkw = c-v;
+            
+            tau = 1./trapz(self.flowSolution(:,1), 1./vfwd + 1./vbkw);
+        end
 
         function lx = coolingLength(self, v)
         % Returns the instantaneous cooling length given vx=v
-            if nargin == 1; % vx not given
+            if nargin == 1 % vx not given
                 v = self.vx0;
             end
 
@@ -185,11 +205,11 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             den = self.rho(vx);
 
             % Calculate the derivative using the same v1 formula as below
-            if self.isHydro;
+            if self.isHydro
                 vp = (Pgas^self.theta*self.beta*(-1 + self.gamma)*den^(2 -self.theta))/(PX*vx - Pgas*self.gamma);
             else
                 BX = self.bx0;
-                BY = self.by(vx);
+                %BY = self.by(vx);
                 vp = (2*Pgas^self.theta*PX^2*(-BX^2 + PX*vx)^3*self.beta*(-1 + self.gamma))/ (vx^2*(BX^8*self.gamma + BX^6*(PX*vx*(-2 - 5*self.gamma) + 2*FX*self.gamma) + 2*PX^3*vx^3*(-(FX*self.gamma) + PX*vx*(1 + self.gamma)) + BX^4*(-(FY^2*self.gamma) - 6*FX*PX*vx*self.gamma + PX^2*vx^2*(6 + 9*self.gamma)) + BX^2*PX*vx*(FY^2*(-2 + self.gamma) + PX*vx*(PX*vx*(-6 - 7*self.gamma) + 6*FX*self.gamma)))*den^self.theta);
             end
 
@@ -215,24 +235,25 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             FX = self.fx;
             FY = self.fy;
             BX = self.bx0;
-            BY = self.by(vx);
+            %BY = self.by(vx);
             den = self.rho(vx);
             G = self.gamma;
-            gp1 = self.gamma + 1;
+            %gp1 = self.gamma + 1;
+	        th = self.theta;
  
-            if self.isHydro;
-                v1 = (Pgas^self.theta*self.beta*(-1 + G)*den^(2 - self.theta))/(PX*vx - Pgas*G);
-                v2 = -(PX*(-1 + G)*v1*((Pgas^(-1 + self.theta)*self.beta*(Pgas*(2 - self.theta) + PX*vx*self.theta)*den^(2 - self.theta))/(PX*vx) + ((1 + G)*v1)/(-1 + G)))/(2.*(PX*vx - Pgas*G));
-                v3 = -((PX*(1 + G)*v1*v2)/(PX*vx - Pgas*G)) - (Pgas^(-1 + self.theta)*(-1 + G)*den^(2 - self.theta)* (-((self.beta*(6*Pgas^2 + (-FX^2 + 6*FX*Pgas - 10*Pgas^2)*self.theta + (FX - 2*Pgas)^2*self.theta^2)*v1^2)/(Pgas*vx^2)) + 2*self.beta*(-((Pgas*(-2 + self.theta))/vx) + PX*self.theta)*v2))/ (6.*(PX*vx - Pgas*G));
-                v4 = -(PX*(1 + G)*(v2^2 + 2*v1*v3))/(2.*(PX*vx - Pgas*G)) - (Pgas^(-3 + self.theta)*self.beta*(-1 + G)*den^(1 - self.theta)*(FX^3*(-2 + self.theta)*(-1 + self.theta)*self.theta*den*v1^3 - 4*Pgas^3*(-1 + self.theta)*(-3 + 2*self.theta)*v1*((-2 + self.theta)*den*v1^2 + 3*PX*v2) + 12*Pgas^4*(-1 + self.theta)*v3 + FX*(6*Pgas^2*self.theta*(-3 + 2*self.theta)*v1*((-2 + self.theta)*den*v1^2 + 2*PX*v2) + 6*Pgas^3*(2 - 3*self.theta)*v3) + FX^2*(-6*Pgas*(-1 + self.theta)*self.theta*v1*((-2 + self.theta)*den*v1^2 + PX*v2) + 6*Pgas^2*self.theta*v3)))/(24.*vx^3*(PX*vx - Pgas*G));
-                v5 = -((PX*(v2*v3 + G*v2*v3 + v1*v4 + G*v1*v4))/(PX*vx - Pgas*G)) + (Pgas^self.theta*self.beta*(-1 + G)*den^(3 - self.theta)*((6*vx*(-2 + self.theta)*self.theta*(PX*(-1 + self.theta)*v1^2 - 2*Pgas*v2)*((-3 + self.theta)*v1^2 + 2*vx*v2))/Pgas^2 + (4*vx^2*(-2 + self.theta)*self.theta*v1*(-(PX^2*(-2 + self.theta)*(-1 + self.theta)*v1^3) + 6*Pgas*PX*(-1 + self.theta)*v1*v2 - 6*Pgas^2*v3))/Pgas^3 - (4*(-2 + self.theta)*self.theta*v1*((12 - 7*self.theta + self.theta^2)*v1^3 + 6*vx*(-3 + self.theta)*v1*v2 + 6*vx^2*v3))/Pgas + (vx^3*self.theta*(PX^3*(-3 + self.theta)*(-2 + self.theta)*(-1 + self.theta)*v1^4 - 12*(FX - Pgas)*Pgas*(2 - 3*self.theta + self.theta^2)*den*v1^2*v2 + 12*Pgas^2*PX*(-1 + self.theta)*(v2^2 + 2*v1*v3) - 24*Pgas^3*v4))/Pgas^4 + ((-2 + self.theta)*(((-60 + 47*self.theta - 12*self.theta^2 + self.theta^3)*v1^4)/vx + 12*(12 - 7*self.theta + self.theta^2)*v1^2*v2 + 24*vx*(-3 + self.theta)*v1*v3 + 12*vx*((-3 + self.theta)*v2^2 + 2*vx*v4)))/PX))/(120.*vx^2*(PX*vx - Pgas*G));
-                v6 = -(PX*(1 + G)*(v3^2 + 2*v2*v4 + 2*v1*v5))/(2.*(PX*vx - Pgas*G)) + (Pgas^self.theta*self.beta*(-1 + G)*den^(2 - self.theta)*((den*((2*vx*(-2 + self.theta)*self.theta*((-3 + self.theta)*v1^2 + 2*vx*v2)* (-(PX^2*(-2 + self.theta)*(-1 + self.theta)*v1^3) + 6*Pgas*PX*(-1 + self.theta)*v1*v2 - 6*Pgas^2*v3))/Pgas^2 + (2*(-2 + self.theta)*self.theta*(PX*(-1 + self.theta)*v1^2 - 2*Pgas*v2)*((12 - 7*self.theta + self.theta^2)*v1^3 + 6*vx*(-3 + self.theta)*v1*v2 + 6*vx^2*v3))/Pgas + (vx^2*(-2 + self.theta)*self.theta*v1*(PX^3*(-3 + self.theta)*(-2 + self.theta)*(-1 + self.theta)*v1^4 - 12*(FX - Pgas)*Pgas*(2 - 3*self.theta + self.theta^2)*den*v1^2*v2 + 12*Pgas^2*PX*(-1 + self.theta)*(v2^2 + 2*v1*v3) - 24*Pgas^3*v4))/Pgas^3 - (-2 + self.theta)*self.theta*v1*(((-60 + 47*self.theta - 12*self.theta^2 + self.theta^3)*v1^4)/vx + 12*(12 - 7*self.theta + self.theta^2)*v1^2*v2 + 24*vx*(-3 + self.theta)*v1*v3 + 12*vx*((-3 + self.theta)*v2^2 + 2*vx*v4)) + (vx^3*self.theta* (-(PX^4*(-4 + self.theta)*(-3 + self.theta)*(-2 + self.theta)*(-1 + self.theta)*v1^5) + 20*Pgas*PX^3*(-3 + self.theta)*(-2 + self.theta)*(-1 + self.theta)*v1^3*v2 - 60*Pgas^2*PX^2*(-2 + self.theta)*(-1 + self.theta)*v1*(v2^2 + v1*v3) + 120*Pgas^3*PX*(-1 + self.theta)*(v2*v3 + v1*v4) - 120*Pgas^4*v5))/(5.*Pgas^4)))/ (12.*Pgas) + ((-2 + self.theta)*(((360 - 342*self.theta + 119*self.theta^2 - 18*self.theta^3 + self.theta^4)*v1^5)/60. + (vx*(-60 + 47*self.theta - 12*self.theta^2 + self.theta^3)*v1^3*v2)/3. + vx^2*(12 - 7*self.theta + self.theta^2)*v1^2*v3 + vx^2*(-3 + self.theta)*v1*((-4 + self.theta)*v2^2 + 2*vx*v4) + 2*vx^3*((-3 + self.theta)*v2*v3 + vx*v5)))/vx^3) )/(12.*vx^2*(PX*vx - Pgas*G));
+            if self.isHydro
+                v1 = (Pgas^th*self.beta*(-1 + G)*den^(2 - th))/(PX*vx - Pgas*G);
+                v2 = -(PX*(-1 + G)*v1*((Pgas^(-1 + th)*self.beta*(Pgas*(2 - th) + PX*vx*th)*den^(2 - th))/(PX*vx) + ((1 + G)*v1)/(-1 + G)))/(2.*(PX*vx - Pgas*G));
+                v3 = -((PX*(1 + G)*v1*v2)/(PX*vx - Pgas*G)) - (Pgas^(-1 + th)*(-1 + G)*den^(2 - th)* (-((self.beta*(6*Pgas^2 + (-FX^2 + 6*FX*Pgas - 10*Pgas^2)*th + (FX - 2*Pgas)^2*th^2)*v1^2)/(Pgas*vx^2)) + 2*self.beta*(-((Pgas*(-2 + th))/vx) + PX*th)*v2))/ (6.*(PX*vx - Pgas*G));
+                v4 = -(PX*(1 + G)*(v2^2 + 2*v1*v3))/(2.*(PX*vx - Pgas*G)) - (Pgas^(-3 + th)*self.beta*(-1 + G)*den^(1 - th)*(FX^3*(-2 + th)*(-1 + th)*th*den*v1^3 - 4*Pgas^3*(-1 + th)*(-3 + 2*th)*v1*((-2 + th)*den*v1^2 + 3*PX*v2) + 12*Pgas^4*(-1 + th)*v3 + FX*(6*Pgas^2*th*(-3 + 2*th)*v1*((-2 + th)*den*v1^2 + 2*PX*v2) + 6*Pgas^3*(2 - 3*th)*v3) + FX^2*(-6*Pgas*(-1 + th)*th*v1*((-2 + th)*den*v1^2 + PX*v2) + 6*Pgas^2*th*v3)))/(24.*vx^3*(PX*vx - Pgas*G));
+                v5 = -((PX*(v2*v3 + G*v2*v3 + v1*v4 + G*v1*v4))/(PX*vx - Pgas*G)) + (Pgas^th*self.beta*(-1 + G)*den^(3 - th)*((6*vx*(-2 + th)*th*(PX*(-1 + th)*v1^2 - 2*Pgas*v2)*((-3 + th)*v1^2 + 2*vx*v2))/Pgas^2 + (4*vx^2*(-2 + th)*th*v1*(-(PX^2*(-2 + th)*(-1 + th)*v1^3) + 6*Pgas*PX*(-1 + th)*v1*v2 - 6*Pgas^2*v3))/Pgas^3 - (4*(-2 + th)*th*v1*((12 - 7*th + th^2)*v1^3 + 6*vx*(-3 + th)*v1*v2 + 6*vx^2*v3))/Pgas + (vx^3*th*(PX^3*(-3 + th)*(-2 + th)*(-1 + th)*v1^4 - 12*(FX - Pgas)*Pgas*(2 - 3*th + th^2)*den*v1^2*v2 + 12*Pgas^2*PX*(-1 + th)*(v2^2 + 2*v1*v3) - 24*Pgas^3*v4))/Pgas^4 + ((-2 + th)*(((-60 + 47*th - 12*th^2 + th^3)*v1^4)/vx + 12*(12 - 7*th + th^2)*v1^2*v2 + 24*vx*(-3 + th)*v1*v3 + 12*vx*((-3 + th)*v2^2 + 2*vx*v4)))/PX))/(120.*vx^2*(PX*vx - Pgas*G));
+                v6 = -(PX*(1 + G)*(v3^2 + 2*v2*v4 + 2*v1*v5))/(2.*(PX*vx - Pgas*G)) + (Pgas^th*self.beta*(-1 + G)*den^(2 - th)*((den*((2*vx*(-2 + th)*th*((-3 + th)*v1^2 + 2*vx*v2)* (-(PX^2*(-2 + th)*(-1 + th)*v1^3) + 6*Pgas*PX*(-1 + th)*v1*v2 - 6*Pgas^2*v3))/Pgas^2 + (2*(-2 + th)*th*(PX*(-1 + th)*v1^2 - 2*Pgas*v2)*((12 - 7*th + th^2)*v1^3 + 6*vx*(-3 + th)*v1*v2 + 6*vx^2*v3))/Pgas + (vx^2*(-2 + th)*th*v1*(PX^3*(-3 + th)*(-2 + th)*(-1 + th)*v1^4 - 12*(FX - Pgas)*Pgas*(2 - 3*th + th^2)*den*v1^2*v2 + 12*Pgas^2*PX*(-1 + th)*(v2^2 + 2*v1*v3) - 24*Pgas^3*v4))/Pgas^3 - (-2 + th)*th*v1*(((-60 + 47*th - 12*th^2 + th^3)*v1^4)/vx + 12*(12 - 7*th + th^2)*v1^2*v2 + 24*vx*(-3 + th)*v1*v3 + 12*vx*((-3 + th)*v2^2 + 2*vx*v4)) + (vx^3*th* (-(PX^4*(-4 + th)*(-3 + th)*(-2 + th)*(-1 + th)*v1^5) + 20*Pgas*PX^3*(-3 + th)*(-2 + th)*(-1 + th)*v1^3*v2 - 60*Pgas^2*PX^2*(-2 + th)*(-1 + th)*v1*(v2^2 + v1*v3) + 120*Pgas^3*PX*(-1 + th)*(v2*v3 + v1*v4) - 120*Pgas^4*v5))/(5.*Pgas^4)))/ (12.*Pgas) + ((-2 + th)*(((360 - 342*th + 119*th^2 - 18*th^3 + th^4)*v1^5)/60. + (vx*(-60 + 47*th - 12*th^2 + th^3)*v1^3*v2)/3. + vx^2*(12 - 7*th + th^2)*v1^2*v3 + vx^2*(-3 + th)*v1*((-4 + th)*v2^2 + 2*vx*v4) + 2*vx^3*((-3 + th)*v2*v3 + vx*v5)))/vx^3) )/(12.*vx^2*(PX*vx - Pgas*G));
                 newv = pade([vx, v1, v2, v3, v4 v5 v6], self.Nt, self.Mt, h);
             else
-                v1 = (2*Pgas^self.theta*PX^2*(-BX^2 + PX*vx)^3*self.beta*(-1 + G))/ (vx^2*(BX^8*G + BX^6*(PX*vx*(-2 - 5*G) + 2*FX*G) + 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^4*(-(FY^2*G) - 6*FX*PX*vx*G + PX^2*vx^2*(6 + 9*G)) + BX^2*PX*vx*(FY^2*(-2 + G) + PX*vx*(PX*vx*(-6 - 7*G) + 6*FX*G)))*den^self.theta);
-                v2 = (PX*(-BX^2 + PX*vx)^3*(-1 + G)*v1*(-((Pgas^self.theta*PX*self.beta*(-2 + self.theta + (PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*self.theta)/Pgas))/(vx^3*den^self.theta)) + ((BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1)/((BX^2 - PX*vx)^4*(-1 + G))))/ (-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G))));
-                v3 = (PX*(-BX^2 + PX*vx)^3*(-1 + G)*((4*(BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1*v2)/ ((BX^2 - PX*vx)^4*(-1 + G)) + (v1*(2*BX^10*(1 + G)*v2 - 10*BX^8*PX*vx*(1 + G)*v2 - 2*PX^5*vx^5*(1 + G)*v2 + 2*BX^6*(FY^2 + 10*PX^2*vx^2)*(1 + G)*v2 + BX^2*PX^2*vx*(10*PX^2*vx^3*(1 + G)*v2 - FY^2*(-2 + G)*(3*v1^2 - 2*vx*v2)) + BX^4*PX*(-20*PX^2*vx^3*(1 + G)*v2 + FY^2*(3*(2 + G)*v1^2 + 2*vx*(1 - 2*G)*v2))))/((BX^2 - PX*vx)^5*(-1 + G)) - (Pgas^self.theta*PX*self.beta*((2*PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-2 + self.theta)*self.theta*v1^2)/Pgas + (-2 + self.theta)*((-3 + self.theta)*v1^2 + 2*vx*v2) + (PX*vx^2*self.theta*(PX*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^2*(-1 + self.theta)*v1^2 + Pgas*(-2*v2 - (2*BX^4*FY^2*v2)/(BX^2 - PX*vx)^4 + (BX^2*FY^2*PX*(-3*v1^2 + 2*vx*v2))/(BX^2 - PX*vx)^4)))/ Pgas^2))/(vx^4*den^self.theta)))/ (3.*(-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G)))));
-                v4 = ((-BX^2 + PX*vx)^3*(-1 + G)*((PX*v2*(2*BX^10*(1 + G)*v2 - 10*BX^8*PX*vx*(1 + G)*v2 - 2*PX^5*vx^5*(1 + G)*v2 + 2*BX^6*(FY^2 + 10*PX^2*vx^2)*(1 + G)*v2 + BX^2*PX^2*vx*(10*PX^2*vx^3*(1 + G)*v2 - FY^2*(-2 + G)*(3*v1^2 - 2*vx*v2)) + BX^4*PX*(-20*PX^2*vx^3*(1 + G)*v2 + FY^2*(3*(2 + G)*v1^2 + 2*vx*(1 - 2*G)*v2))))/((BX^2 - PX*vx)^5*(-1 + G)) + (3*PX*(BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1*v3)/((BX^2 - PX*vx)^4*(-1 + G)) + (PX*v1*(BX^12*(1 + G)*v3 - 6*BX^10*PX*vx*(1 + G)*v3 + PX^6*vx^6*(1 + G)*v3 + BX^8*(FY^2 + 15*PX^2*vx^2)*(1 + G)*v3 - BX^2*PX^3*vx*(6*PX^2*vx^4*(1 + G)*v3 + FY^2*(-2 + G)*(2*v1^3 - 3*vx*v1*v2 + vx^2*v3)) + BX^4*PX^2*(15*PX^2*vx^4*(1 + G)*v3 + FY^2*(2*(3 + G)*v1^3 - 6*vx*G*v1*v2 + 3*vx^2*(-1 + G)*v3)) + BX^6*PX*(-20*PX^2*vx^3*(1 + G)*v3 + 3*FY^2*((2 + G)*v1*v2 - vx*G*v3))))/((BX^2 - PX*vx)^6*(-1 + G)) - (Pgas^self.theta*PX^2*self.beta*((3*PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-2 + self.theta)*self.theta*v1*((-3 + self.theta)*v1^2 + 2*vx*v2))/Pgas + (3*vx^2*(-2 + self.theta)*self.theta*v1*(PX^2*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^2*(-1 + self.theta)*v1^2 + 2*Pgas*(-(PX*v2) - (BX^2*FY^2*PX*(3*PX*v1^2 + 2*BX^2*v2 - 2*PX*vx*v2))/(2.*(BX^2 - PX*vx)^4))))/Pgas^2 + (-2 + self.theta)*((12 - 7*self.theta + self.theta^2)*v1^3 + 6*vx*(-3 + self.theta)*v1*v2 + 6*vx^2*v3) + (vx^3*self.theta*(-(PX^3*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^3*(-2 + self.theta)*(-1 + self.theta)*v1^3) + 6*Pgas*PX*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-1 + self.theta)*v1* (-(PX*v2) - (BX^2*FY^2*PX*(3*PX*v1^2 + 2*BX^2*v2 - 2*PX*vx*v2))/(2.*(BX^2 - PX*vx)^4)) + 6*Pgas^2*(-(PX*v3) - (BX^2*FY^2*PX* (BX^4*v3 + BX^2*PX*(3*v1*v2 - 2*vx*v3) + PX^2*(2*v1^3 - 3*vx*v1*v2 + vx^2*v3)))/(BX^2 - PX*vx)^5)))/ Pgas^3))/(6.*vx^5*den^self.theta)))/ (2.*(-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G)))));
+                v1 = (2*Pgas^th*PX^2*(-BX^2 + PX*vx)^3*self.beta*(-1 + G))/ (vx^2*(BX^8*G + BX^6*(PX*vx*(-2 - 5*G) + 2*FX*G) + 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^4*(-(FY^2*G) - 6*FX*PX*vx*G + PX^2*vx^2*(6 + 9*G)) + BX^2*PX*vx*(FY^2*(-2 + G) + PX*vx*(PX*vx*(-6 - 7*G) + 6*FX*G)))*den^th);
+                v2 = (PX*(-BX^2 + PX*vx)^3*(-1 + G)*v1*(-((Pgas^th*PX*self.beta*(-2 + th + (PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*th)/Pgas))/(vx^3*den^th)) + ((BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1)/((BX^2 - PX*vx)^4*(-1 + G))))/ (-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G))));
+                v3 = (PX*(-BX^2 + PX*vx)^3*(-1 + G)*((4*(BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1*v2)/ ((BX^2 - PX*vx)^4*(-1 + G)) + (v1*(2*BX^10*(1 + G)*v2 - 10*BX^8*PX*vx*(1 + G)*v2 - 2*PX^5*vx^5*(1 + G)*v2 + 2*BX^6*(FY^2 + 10*PX^2*vx^2)*(1 + G)*v2 + BX^2*PX^2*vx*(10*PX^2*vx^3*(1 + G)*v2 - FY^2*(-2 + G)*(3*v1^2 - 2*vx*v2)) + BX^4*PX*(-20*PX^2*vx^3*(1 + G)*v2 + FY^2*(3*(2 + G)*v1^2 + 2*vx*(1 - 2*G)*v2))))/((BX^2 - PX*vx)^5*(-1 + G)) - (Pgas^th*PX*self.beta*((2*PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-2 + th)*th*v1^2)/Pgas + (-2 + th)*((-3 + th)*v1^2 + 2*vx*v2) + (PX*vx^2*th*(PX*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^2*(-1 + th)*v1^2 + Pgas*(-2*v2 - (2*BX^4*FY^2*v2)/(BX^2 - PX*vx)^4 + (BX^2*FY^2*PX*(-3*v1^2 + 2*vx*v2))/(BX^2 - PX*vx)^4)))/ Pgas^2))/(vx^4*den^th)))/ (3.*(-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G)))));
+                v4 = ((-BX^2 + PX*vx)^3*(-1 + G)*((PX*v2*(2*BX^10*(1 + G)*v2 - 10*BX^8*PX*vx*(1 + G)*v2 - 2*PX^5*vx^5*(1 + G)*v2 + 2*BX^6*(FY^2 + 10*PX^2*vx^2)*(1 + G)*v2 + BX^2*PX^2*vx*(10*PX^2*vx^3*(1 + G)*v2 - FY^2*(-2 + G)*(3*v1^2 - 2*vx*v2)) + BX^4*PX*(-20*PX^2*vx^3*(1 + G)*v2 + FY^2*(3*(2 + G)*v1^2 + 2*vx*(1 - 2*G)*v2))))/((BX^2 - PX*vx)^5*(-1 + G)) + (3*PX*(BX^8*(1 + G) - 4*BX^6*PX*vx*(1 + G) + PX^4*vx^4*(1 + G) + BX^4*(FY^2 + 6*PX^2*vx^2)*(1 + G) - BX^2*PX*vx*(FY^2*(-2 + G) + 4*PX^2*vx^2*(1 + G)))*v1*v3)/((BX^2 - PX*vx)^4*(-1 + G)) + (PX*v1*(BX^12*(1 + G)*v3 - 6*BX^10*PX*vx*(1 + G)*v3 + PX^6*vx^6*(1 + G)*v3 + BX^8*(FY^2 + 15*PX^2*vx^2)*(1 + G)*v3 - BX^2*PX^3*vx*(6*PX^2*vx^4*(1 + G)*v3 + FY^2*(-2 + G)*(2*v1^3 - 3*vx*v1*v2 + vx^2*v3)) + BX^4*PX^2*(15*PX^2*vx^4*(1 + G)*v3 + FY^2*(2*(3 + G)*v1^3 - 6*vx*G*v1*v2 + 3*vx^2*(-1 + G)*v3)) + BX^6*PX*(-20*PX^2*vx^3*(1 + G)*v3 + 3*FY^2*((2 + G)*v1*v2 - vx*G*v3))))/((BX^2 - PX*vx)^6*(-1 + G)) - (Pgas^th*PX^2*self.beta*((3*PX*vx*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-2 + th)*th*v1*((-3 + th)*v1^2 + 2*vx*v2))/Pgas + (3*vx^2*(-2 + th)*th*v1*(PX^2*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^2*(-1 + th)*v1^2 + 2*Pgas*(-(PX*v2) - (BX^2*FY^2*PX*(3*PX*v1^2 + 2*BX^2*v2 - 2*PX*vx*v2))/(2.*(BX^2 - PX*vx)^4))))/Pgas^2 + (-2 + th)*((12 - 7*th + th^2)*v1^3 + 6*vx*(-3 + th)*v1*v2 + 6*vx^2*v3) + (vx^3*th*(-(PX^3*(1 + (BX^2*FY^2)/(BX^2 - PX*vx)^3)^3*(-2 + th)*(-1 + th)*v1^3) + 6*Pgas*PX*(-1 - (BX^2*FY^2)/(BX^2 - PX*vx)^3)*(-1 + th)*v1* (-(PX*v2) - (BX^2*FY^2*PX*(3*PX*v1^2 + 2*BX^2*v2 - 2*PX*vx*v2))/(2.*(BX^2 - PX*vx)^4)) + 6*Pgas^2*(-(PX*v3) - (BX^2*FY^2*PX* (BX^4*v3 + BX^2*PX*(3*v1*v2 - 2*vx*v3) + PX^2*(2*v1^3 - 3*vx*v1*v2 + vx^2*v3)))/(BX^2 - PX*vx)^5)))/ Pgas^3))/(6.*vx^5*den^th)))/ (2.*(-(BX^8*G) + BX^4*(PX^2*vx^2*(-6 - 9*G) + FY^2*G + 6*FX*PX*vx*G) - 2*PX^3*vx^3*(-(FX*G) + PX*vx*(1 + G)) + BX^6*(-2*FX*G + PX*vx*(2 + 5*G)) + BX^2*PX*vx*(FY^2*(2 - G) + PX*vx*(-6*FX*G + PX*vx*(6 + 7*G)))));
                 newv = pade([vx, v1, v2, v3, v4], self.Nt, self.Mt, h);
             end
 
@@ -251,7 +272,7 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
         % Coefficients on f'_1 to f'_-3 are [646 -264 102 -19]/720
         function vnew = takeAM5Step(self, vx, dx)
             vb = vx + dx*(self.ABHistory*[251; -1274; 2616; -2774; 1901])/720; % Prediction
-            va = vx;
+            %va = vx;
             % y-independent part of y'=f(x, y)
             G = vx + dx*(self.ABHistory(2:5)*[-19; 106; -264; 646])/720;
 
@@ -259,7 +280,8 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             
             for N = 1:3
                 vc = vb - fnc(vb) *imag(1e-8*1i*vb)/imag(fnc(vb*(1+1i*1e-8)));
-                va = vb; vb = vc;
+                %va = vb;
+                vb = vc;
             end
 
             vnew = vb;
@@ -270,14 +292,15 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
         % Coefficients on f'_1 to f'_-4 are [1427 -798 482 -173 27]/1440
         function vnew = takeAM6Step(self, vx, dx)
             vb = vx + dx*(self.ABHistory*[251; -1274; 2616; -2774; 1901])/720; % AB5 Prediction
-            va = vx;
+            %va = vx;
             G = vx + dx*(self.ABHistory(1:5)*[27; -173; 482; -798; 1427])/1440;
 
             fnc = @(x) x - 95*dx*self.calculateVprime(x)/288 - G;
             
             for N = 1:3
                 vc = vb - fnc(vb) *imag(1e-8*1i*vb)/imag(fnc(vb*(1+1i*1e-8)));
-                va = vb; vb = vc;
+                %va = vb; 
+                vb = vc;
             end
 
             vnew = vb;
@@ -348,7 +371,6 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
                     break;
                 end
 
-
                 % The above timestep strategy will succeed because we know the characteristic
                 % behavior of our flows, either the solution's curvature becomes singular in 
                 % finite distance or it asymptotes to zero slope
@@ -360,6 +382,16 @@ fprintf('Help for the radiating flow solver:\n\nInitialize with R = RadiatingFlo
             end
 
             dsingularity = self.flowSolution(end,1);
+            self.xshock = dsingularity;
+            
+            % luminance = input energy flux density - output energy flux density
+            % vy irrelevant because vy conserved
+            % = vx(.5 rho vx^2 + gamma P / gamma-1) pre - base
+            v = self.flowSolution([1 end], 2);
+            Eflux = v.*(.5*self.rho(v).* v.^2 + self.Ptherm(v)*self.gamma/(self.gamma-1));
+            
+            self.luminance = Eflux(1) - Eflux(2);
+            
         end
 
     end
