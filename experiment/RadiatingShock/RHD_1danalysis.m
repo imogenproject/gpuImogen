@@ -29,7 +29,9 @@ x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+
 
 basepos = trackBase(F.pressure(:,1,1,1), (1:size(F.mass,1))*F.dGrid{1});
 
-tHat = ((basepos - x(1)) / F.velX(1,1,1,1));
+xShock = basepos - x(1);
+
+tHat = xShock / F.velX(1,1,1,1);
 
 tNormal = F.time.time / tHat / 2 / pi;
 
@@ -62,9 +64,10 @@ thefig.CLim = [-2*q, 2*q];
 % we are identifying modes automatically now, no need to use this...
     
 % Acquire data points demarking an oscillation period
-fprintf('Please zoom in & click two points demarking one oscillation period.\n');
+
 
 if exist('rhdAutodrive','var') == 0
+    fprintf('Please zoom in & click two points demarking one oscillation period.\n');
     P = pointGetter();
     pt = P.waitForClick();
     P.clickedPoint = [];
@@ -140,19 +143,42 @@ end
 % Two may be used if the shock drifts off the simulation volume
 plot(x(3:end));
 
-
-if ~exist('rhdAutodrive','var')
-    nlpoint = [];
+if exist('rhdAutodrive','var') == 0
+    disp('Click the start & end points of the interval to transform.');
     
-    while isempty(nlpoint); nlpoint = input('Frame to start spectral analysis at? '); end
+    P = pointGetter();
+    pt = P.waitForClick();
+    P.clickedPoint = [];
+    nlpoint(1) = round(pt(1));
+    fprintf('Starting at: %i\n', pt(1));
     
-    if numel(nlpoint) > 1
-        endpt = nlpoint(2);
-    else
-        endpt = numel(tNormal);
+    pt = P.waitForClick();
+    P.clickedPoint = [];
+    nlpoint(2) = round(pt(1));
+    fprintf('Ending at: %i\n', pt(1));
+   
+else
+    nlpoint(2) = endpt;
+    if rhdAutodrive == 2
+        disp('Click the start & end points of the interval to transform.');
+        
+        P = pointGetter();
+        pt = P.waitForClick();
+        P.clickedPoint = [];
+        nlpoint(1) = round(pt(1));
+        fprintf('Starting at: %i\n', pt(1));
+        
+        pt = P.waitForClick();
+        P.clickedPoint = [];
+        nlpoint(2) = round(pt(1));
+        fprintf('Ending at: %i\n', pt(1));
     end
 end
+
+% In case they click right then left
+nlpoint = sort(nlpoint);
     
+endpt = nlpoint(2);
 
 % This attempts to get an even number of cycles into the FFT
 % this minimizes artificial spectral peaks, sidebanding and junk in general
@@ -172,7 +198,7 @@ timepts = tNormal(stpt:endpt);
 pospts = x(stpt:endpt)';
 
 [coeffs, resid] = polyfit(timepts, pospts, 1);
-fprintf('Shock fallback velocity = %f\n', coeffs(1));
+fprintf('Shock fallback velocity = %f\n', coeffs(1)/(2*pi*tHat));
 
 oscil = pospts - (coeffs(1)*timepts + coeffs(2));
 
@@ -188,7 +214,7 @@ tfunda = (timepts(end) - timepts(1));
 
 % Throw up fft of shock position
 hold off;
-plot((1:xi)/tfunda, xfourier(2:end/2),'b-');
+plot((1:xi)/tfunda, xfourier(2:end/2)/xShock,'b-');
 hold on
 
 % Compute the luminosity on the given interval and normalize it by L(t=0) and fft it
@@ -238,7 +264,7 @@ fatdot(:,1) = fatdot(:,1) / tfunda;
 raddot(:,1) = raddot(:,1) / tfunda;
 
 % Drop the detected peaks onto the graph and print about them
-plot(fatdot(:,1), fatdot(:,2), 'kv', 'MarkerSize', 8);
+plot(fatdot(:,1), fatdot(:,2)/xShock, 'kv', 'MarkerSize', 8);
 xlim([0 2*max(fatdot(:,1))]);
 
 fprintf("Frequency resolution = +-%f\n", 1/tfunda);
@@ -255,7 +281,7 @@ for n = 1:size(fatdot,1)
         % Attempt to identify harmonic distortion
         for u=1:size(fatdot,1)
             if isempty(modenames{u})
-                for hd = 2:7
+                for hd = 2:9
                     if abs(fatdot(u,1) - hd*fatdot(n,1)) < 1.5/tfunda
                         modenames{u} = sprintf('%sx%i', modenames{n}, int32(hd));
                     end

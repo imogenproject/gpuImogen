@@ -224,11 +224,11 @@ classdef RHD_utils < handle
 
         function str = assignModeName(w, M, gamma, theta)
             str = '';
-            modes = {'F', '1O', '2O', '3O', '4O', '5O', '6O', '7O', '8O', '9O'};
+            modes = {'F', '1O', '2O', '3O', '4O', '5O', '6O', '7O', '8O', '9O','10O','11O'};
             
             switch gamma
                 case 167
-                    ftower = [.85 2.85 5 7 9 11 13 15 17 19];
+                    ftower = [.85 2.85 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 1.75/M)*(1-.038*theta));
                     m = abs(w - .256*ftower);
                     q = find(m < .1);
@@ -236,7 +236,7 @@ classdef RHD_utils < handle
                         str = modes{q(1)};
                     end    
                 case 140
-                    ftower = [.92 2.76 5 7 9 11 13 15 17 19];
+                    ftower = [.92 2.76 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.5/M)*(1-.04*theta));
                     m = abs(w - .185*ftower);
                     q = find(m < .1);
@@ -244,7 +244,7 @@ classdef RHD_utils < handle
                         str = modes{q(1)};
                     end                    
                 case 129
-                    ftower = [.8 2.47 4.25 6.16 9 11 13 15 17 19];
+                    ftower = [.8 2.47 4.25 6.16 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.84/M)*(1-.06*theta));
                     m = abs(w - .171*ftower);
                     q = find(m < .1);

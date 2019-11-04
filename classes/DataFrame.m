@@ -235,37 +235,56 @@ classdef DataFrame < handle
                 x = 1:size(self.mass, 1);
             end
             
-            if self.pInternalVarFmt == self.fmtConservative
-               if self.pTwoFluids
-                   % conservative format two fluids
-                   f2 = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner', 'pMass2', 'pMomX2', 'pMomY2', 'pMomZ2', 'pEner2'};
-               else
-                   % conservative format one fluid
-                   f2 = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner'};
-               end
-           else
-               if self.pTwoFluids
-                   % conservative format two fluid
-                   f2 = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint', 'pMass2', 'pVelX2', 'pVelY2', 'pVelZ2', 'pEint2'};
-               else
-                   f2 = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint'};
-               end
-           end
-           
-           for j = 1:numel(f2)
-               b = self.(f2{j});
-               self.(f2{j}) = b(x, y, z, t);
-           end
-           
+            f2 = self.pNamesOfInternalFields();
+            
+            for j = 1:numel(f2)
+                b = self.(f2{j});
+                self.(f2{j}) = b(x, y, z, t);
+            end
+            
            self.time.time = self.time.time(t);
+        end
+        
+        function patchBadTimeslice(self, tIndex)
+            disp('WARNING: This function patches a bad time slice by averaging adjacent slices.')
+            disp('WARNING: This is not valid for transient structures!');
+            disp('WARNING: This should be used ONLY in the event that a failed resume leaves behind a partly-written garbage frame');
+            
+            F = self.pNamesOfInternalFields();
+            
+            for j = 1:numel(F)
+                b = self.(F{j});
+                b(:,:,:,tIndex) = .5*(b(:,:,:,tIndex-1) + b(:,:,:,tIndex+1));
+                self.(F{j}) = b;
+            end
+
         end
         
     end%PUBLIC
     
     %===================================================================================================
     methods (Access = protected) %                                      P R O T E C T E D    [M]
+        function nof = pNamesOfInternalFields(self)
+            if self.pInternalVarFmt == self.fmtConservative
+                if self.pTwoFluids
+                    % conservative format two fluids
+                    nof = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner', 'pMass2', 'pMomX2', 'pMomY2', 'pMomZ2', 'pEner2'};
+                else
+                    % conservative format one fluid
+                    nof = {'pMass', 'pMomX', 'pMomY', 'pMomZ', 'pEner'};
+                end
+            else
+                if self.pTwoFluids
+                    % conservative format two fluid
+                    nof = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint', 'pMass2', 'pVelX2', 'pVelY2', 'pVelZ2', 'pEint2'};
+                else
+                    nof = {'pMass', 'pVelX', 'pVelY', 'pVelZ', 'pEint'};
+                end
+            end
+        end
+        
         function pPopulateFluidFields(self, frame)
-           if self.pInternalVarFmt == self.fmtConservative
+            if self.pInternalVarFmt == self.fmtConservative
                if self.pTwoFluids
                    % conservative format two fluids
                    f1 = {'mass',  'momX',  'momY',  'momZ',  'ener',  'mass2',  'momX2',  'momY2',  'momZ2',  'ener2'};

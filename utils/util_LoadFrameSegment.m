@@ -25,7 +25,7 @@ try
     end
     if act == ENUM.FORMAT_HDF; dataframe = util_HDF2Frame(fname, meta); end
 catch ERR
-    str = sprintf('SERIOUS on %s: Frame in cwd %s exists but load returned error\nThis most likely occurs due to out-of-disk while writing: Check file sizes & delete truncated garbage.', getenv('HOSTNAME'), pwd());
+    str = sprintf('SERIOUS on %s: Frame %s in cwd %s exists but load returned error\nThis most likely occurs due to out-of-disk while writing: Check file sizes & delete truncated garbage.', getenv('HOSTNAME'),fname,  pwd());
     prettyprintException(ERR, 0, str);
     
     dataframe = -1;

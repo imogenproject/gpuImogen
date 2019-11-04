@@ -64,7 +64,7 @@ classdef FMHandler2 < handle
             if nargin < 2; startat = 1; end
             dlist = dir(sprintf('RADHD*gam%3i',round(100*self.gamma)));
             
-            rhdAutodrive = 1; % FULL SPEED AHEAD!!! *if possible
+            rhdAutodrive = 2; % FULL SPEED AHEAD!!! *if possible
             
             fprintf('Located a total of %i runs to analyze in this directory.\n', int32(numel(dlist)));
             
@@ -229,9 +229,7 @@ classdef FMHandler2 < handle
 
         function rebuildFnorms(self)
             u = self.MachRange; v = self.thetaRange;
-            
-            [m, t] = ndgrid(u(1):u(2):u(3), v(1):v(2):v(3));
-            
+
             self.fnormPts = zeros(size(self.machPts));
             for q = 1:numel(self.machPts)
                 h = HDJumpSolver(self.machPts(q), 0, self.gamma);
@@ -313,8 +311,10 @@ classdef FMHandler2 < handle
                     z = self.peakMassAmps(q) ./ self.xnormPts(:);
                 case 3
                     z = self.peakLumAmps(q);% ./ self.radnormPts(:);
+                case 4
+                    z = sqrt(sum(self.peakLumAmps.^2, 2));
                 otherwise
-                    error('Invalid qty argument: not 1, 2 or 3');
+                    error('Invalid qty argument: not 1 to 4');
             end
             
             switch colorBy
@@ -404,7 +404,7 @@ classdef FMHandler2 < handle
             u = self.MachRange; v = self.thetaRange;
             [m, t] = ndgrid(u(1):u(2):u(3), v(1):v(2):v(3));
             
-            colstring = 'rgbcmkrgbcmk';
+            colstring = 'kbcgyrkbcgyr';
             
             for modeno = 1:numel(drawOverlaid)
                 q = drawOverlaid(modeno)+1;
