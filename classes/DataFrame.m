@@ -218,6 +218,8 @@ classdef DataFrame < handle
             if isfield(self.time, 'time') && isfield(F.time, 'time')
                 self.time.time = [self.time.time; F.time.time]; 
             end
+            self.time.iterMax = F.time.iterMax;
+            self.time.iteration = F.time.iteration;
             
         end
         

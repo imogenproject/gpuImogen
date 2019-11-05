@@ -53,19 +53,12 @@ thefig = gca();
 % This is usually a reasonable automatic scaling of the displayed plot
 h0 = round(numel(x)/2);
 q = dlrdt(round(x(h0)/F.dGrid{1}+250), (h0-300):(h0+300));
-q = max(q);
+q = max(abs(q));
 thefig.CLim = [-2*q, 2*q];
 
-%lp = lowpass(x, .02);
-%xlp(1:24) = xlp(25);
-%xlp((end-20):end) = xlp(end-21) + (1:21)*(xlp(end-21)-xlp(end-121))/100;
-
-
-% we are identifying modes automatically now, no need to use this...
-    
 % Acquire data points demarking an oscillation period
-
-
+% This is no longer needed for mode identification but it is useful for making the
+% spectrograms of pure tones awful purty
 if exist('rhdAutodrive','var') == 0
     fprintf('Please zoom in & click two points demarking one oscillation period.\n');
     P = pointGetter();

@@ -18,9 +18,7 @@ classdef FMHandler2 < handle
         
         dangerous_autoOverwrite;
         
-        peakFreqs;
-        peakMassAmps;
-        peakLumAmps;
+        convergenceLevel;
     end %PUBLIC
     
     %===================================================================================================
@@ -31,6 +29,10 @@ classdef FMHandler2 < handle
         fnormPts;   % Coefficients for frequency normalization
         xnormPts;   % X_shock coefficients for position amplitude normalization
         radnormPts; % Equilibrium radiance for luminance amplitude normalization
+        
+        peakFreqs;  % Gaussian-estimate peaks in frequency 
+        peakMassAmps;%Xshock displacement amplitudes
+        peakLumAmps;% Integrated luminosity fluctuation amplitudes
     end %PROTECTED
     
     properties (SetAccess = protected, GetAccess = protected)
@@ -242,6 +244,16 @@ classdef FMHandler2 < handle
             self.fnormPts = reshape(self.fnormPts, [numel(self.machPts) 1]);
         end
         
+        function updateConvergenceLevel(self, m, t, lvl)
+            p = self.findPoint(m, t);
+            
+            if p > 0
+                self.convergenceLevel(p) = lvl;
+            else
+                disp('No such point!\n');
+            end
+        end
+        
         function S = queryAt(self, m, t)
             ff = scatteredInterpolant(self.machPts, self.thetaPts, 2*pi*self.freqPts ./ self.fnormPts);
             ff.Method = 'linear';
@@ -256,6 +268,17 @@ classdef FMHandler2 < handle
             modes = ff(m, t);
             
             S = struct('freq', freq, 'mode', modes);
+        end
+        
+        function p = findPoint(self, m, t)
+            a = find(self.machPts == m);
+            b = find(self.thetaPts == t);
+
+            p = intersect(a, b);
+            
+            if numel(p) == 0
+                p = -1;
+            end
         end
 
         function tf = havePoint(self, m, t)
@@ -290,7 +313,8 @@ classdef FMHandler2 < handle
             % .emitDominantFreqPlot(self, qty, logScale, colorBy)
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
             %   logScale: If true, rendered in log scale. Otherwise, linear (default)
-            %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp
+            %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp,
+            %            5 = convergence quality
             
             if nargin < 4; colorBy = 1; end
             if nargin < 3; logScale = 0; end
@@ -327,6 +351,8 @@ classdef FMHandler2 < handle
                     c = self.peakMassAmps(q);
                 case 4
                     c = self.peakLumAmps(q);
+                case 5
+                    c = self.convergenceLevel';
                 otherwise
                     error('colorBy is not one of 1, 2, 3, or 4.');
             end
