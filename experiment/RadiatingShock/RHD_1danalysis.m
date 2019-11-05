@@ -333,6 +333,8 @@ for n = 1:size(fatdot,1)
 end
 
 legend('X_{shock} spectrum',  'Relative luminosity spectrum', 'Detected peaks');
+
+drawnow;
     
 hold off;
 pwd
