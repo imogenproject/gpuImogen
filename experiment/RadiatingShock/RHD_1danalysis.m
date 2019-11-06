@@ -32,6 +32,7 @@ F.chopOutAnomalousTimestep();
 % Track the shock position (x) and cold layer transition (basepos)
 x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 basepos = RHD_utils.trackColdBoundary(F);
+xmax = F.dGrid{1}*size(F.mass,1);
 
 % Normalizations
 xShock = basepos(1) - x(1);
