@@ -37,6 +37,7 @@ classdef DataFrame < handle
         % Derived properties
         speed, speed2;
         soundspeed, soundspeedL, soundspeedH;
+        temperature;
         % if two fluids, 'soundspeed' picks L
         % L -> low K, perfectly coupled lower soundspeed
         % H -> high K, dust-uncoupled higher ('normal') soundspeed
@@ -154,6 +155,8 @@ classdef DataFrame < handle
                 y = sqrt(self.pVelX2.^2+self.pVelY2.^2+self.pVelZ2.^2);
             end
         end
+        
+        function y = get.temperature(self); y = (self.gamma-1)*self.eint ./ self.mass; end
         
         function y = get.deltavX(self)
             if self.pTwoFluids == 0; y = []; return; end
