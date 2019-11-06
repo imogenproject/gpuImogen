@@ -35,25 +35,24 @@ classdef RHD_utils < handle
         % track the shock position over time.
         % compute the equilibrium shock cooling depth
 
-        T = F.pressure(:,1,1,1) ./ F.mass(:,1,1,1);
-
-        % logical for identifying the cold layer
-        clayer = (T <= 1.05001) & (F.mass(:,1,1,1) > 1.1);
-
-        x = x / F.dGrid{1}; % convert back to cells
-
-        xBottomIni = find(clayer); xBottomIni = xBottomIni(1);
-
-        hShock = xBottomIni - x(1); % height of shock in cells
-
-        % estimate where the base of the cooling layer is
-        xb = x + hShock;
+        b = RHD_utils.trackColdBoundary(F);
+        
+        hShock = b(1)-x(1);
     
-    q = find(xb + .3*hShock > size(F.mass,1));
+        xmax = size(F.mass,1)*F.dGrid{1};
     
-
-    if ~isempty(q); N=q(1); else; N = size(F.mass,4); end
-
+        N = find(xmax - b < .33*hShock, 1);
+        
+        if isempty(N); N = size(F.mass,4); end
+        
+        end
+        
+        function b = trackColdBoundary(F)
+            clayer = squeeze((F.temperature < 1.05001) & (F.mass > 1.1));
+            c2 = diff(clayer,1,1);
+            c2(1,:) = 0;
+            [b, ~] = find(c2);
+            b=b*F.dGrid{1};
         end
 
         function f = walkdown(x, i, itermax)

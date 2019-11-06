@@ -362,9 +362,9 @@ classdef FMHandler2 < handle
                  end
             end
            
-            fprintf('Found %i runs in cwd that report convergence level of %i\n', int32(nR-1), int32(lvl));
+            fprintf('Found %i runs in cwd that report convergence level of %i with my gamma\n', int32(nR-1), int32(lvl));
             
-            R = R{1:(nR-1)};
+            R = R(1:(nR-1));
         end
 
         function emitDominantFreqPlot(self, qty, logScale, colorBy)

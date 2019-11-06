@@ -1,6 +1,6 @@
  dirlist = dir('RAD*');
 
-for Q = 66:numel(dirlist)
+for Q = 646:numel(dirlist)
     cd(dirlist(Q).name);
     load('4D_XYZT.mat');
     

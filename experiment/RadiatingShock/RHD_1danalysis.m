@@ -25,23 +25,27 @@ if ~isa(F, 'DataFrame')
     F = DataFrame(F);
 end
 
+% Track the shock position (x) and cold layer transition (basepos)
 x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
+basepos = RHD_utils.trackColdBoundary(F);
 
-basepos = trackBase(F.pressure(:,1,1,1), (1:size(F.mass,1))*F.dGrid{1});
-
-xShock = basepos - x(1);
-
+% Normalizations
+xShock = basepos(1) - x(1);
 tHat = xShock / F.velX(1,1,1,1);
-
 tNormal = F.time.time / tHat / 2 / pi;
 
 % Automatically strip junk at the end of the run off if it hit the end of the grid
 N = RHD_utils.lastValidFrame(F, x);
 
 if N < size(F.mass,4)
-    fprintf('Note: shock gets too close to end of grid at frame %i: Truncating dataset.\n', N);
-    %F.truncate([], [], [], 1:N);
-    %x=x(1:N);
+    plot(x);
+    fprintf('Note: Shock gets too close to end of grid at frame %i', int32(N));
+    nuke = input(': Truncate?\n');
+    if nuke
+        F.truncate([], [], [], 1:N);
+        x=x(1:N);
+        basepos = basepos(1:N);
+    end
 end
 
 hold off;
@@ -87,11 +91,7 @@ cla('reset');
 plot((pts(1)-10):(pts(2)+10), x((pts(1)-10):(pts(2)+10)));
 hold on;
 
-if exist('rhdAutodrive','var') == 0
-    pointspace = input('Enter value to force pointspace or blank for default=2: ');
-end
-if isempty(pointspace); pointspace = 2; end
-
+pointspace = 2;
 interframe1 = RHD_utils.projectParabolicMinimum(x, pts(1), 1, pointspace);
 
 if ~isreal(interframe1)
@@ -134,7 +134,13 @@ end
 % Have the user enter the interval to fourier transform
 % One point uses [point end]
 % Two may be used if the shock drifts off the simulation volume
-plot(x(3:end));
+plot(x);
+hold on;
+plot(basepos);
+if max(basepos) > .8*xmax
+    plot([0 size(F.mass,4)], [xmax xmax], 'g-x');
+end
+hold off;
 
 if exist('rhdAutodrive','var') == 0
     disp('Click the start & end points of the interval to transform.');
@@ -170,11 +176,10 @@ end
 
 % In case they click right then left
 nlpoint = sort(nlpoint);
-    
 endpt = nlpoint(2);
 
 % This attempts to get an even number of cycles into the FFT
-% this minimizes artificial spectral peaks, sidebanding and junk in general
+% this minimizes artificial spectral peaks, sidebanding and junk for pure tones
 spacing = round(pts(2)-pts(1));
 cycles = round(endpt-nlpoint(1))/(interframe2 - interframe1) - 1;
 
@@ -185,7 +190,7 @@ npt = 1+endpt-stpt;
 
 if npt/2 ~= round(npt/2); stpt = stpt-1; end
 
-% Removes the constant and linear parts of the shock position drift,
+% Removes the constant and linear parts from the shock's position,
 % again to minimize spurious spectral junk in the FFT
 timepts = tNormal(stpt:endpt);
 pospts = x(stpt:endpt)';
@@ -361,15 +366,20 @@ if exist('reenableAuto','var')
     clear reenableAuto;
 end
 
+conq = input('Convergence quality (1-5)? ');
+
 if exist('self', 'var') && isa(self, 'FMHandler2')
     disp('"self" exists: Assuming I am running inside FMHandler.autoanalyzeEntireDirectory on automatic.');
     if round(100*self.gamma) == runparams.gamma
         self.insertPointNew(runparams.m, runparams.theta, datablock);
     end
+    
+    self.updateConvergenceLevel(runparams.m, runparams.theta, conq);
 else
     if runparams.gamma == 167
         if exist('f53','var')
             f53.insertPointNew(runparams.m, runparams.theta, datablock);
+            f53.updateConvergenceLevel(runparams.m, runparams.theta, conq);
         elseif exist('self', 'var')
             
         else
@@ -378,12 +388,14 @@ else
     elseif runparams.gamma == 140
         if exist('f75','var')
             f75.insertPointNew(runparams.m, runparams.theta, datablock);
+            f75.updateConvergenceLevel(runparams.m, runparams.theta, conq);
         else
             disp('Access to FMHandler directly is required to insert data.\n');
         end
     elseif runparams.gamma == 129
         if exist('f97','var')
             f97.insertPointNew(runparams.m, runparams.theta, datablock);
+            f97.updateConvergenceLevel(runparams.m, runparams.theta, conq);
         else
             disp('Access to FMHandler directly is required to insert data.\n');
         end
