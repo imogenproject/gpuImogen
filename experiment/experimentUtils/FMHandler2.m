@@ -63,6 +63,11 @@ classdef FMHandler2 < handle
         end
 
         function autoanalyzeEntireDirectory(self, startat)
+            % autoanalyzeEntireDirectory(self, startat)
+            % Searches the cwd for any directories matching RADHD*gam###
+            % where ### is the adiabatic index of myself x 100 and
+            % and runs RHD_1danalysis in them with rhdAutodrive=2 (auto
+            % everything except for spectral analysis interval)
             if nargin < 2; startat = 1; end
             dlist = dir(sprintf('RADHD*gam%3i',round(100*self.gamma)));
             
@@ -108,6 +113,9 @@ classdef FMHandler2 < handle
         end
         
         function removePoint(self, M, theta)
+            % removePoint(self, M, theta)
+            % Checks if I have a datapoint for (M, theta) and removes it
+            % from all fields if so
             samem = find(abs(self.machPts - M) < 1e-12);
             samet = find(abs(self.thetaPts-theta) < 1e-12);
             
@@ -201,7 +209,6 @@ classdef FMHandler2 < handle
             % read all data points out of 'other' and insertPointNew() them to myself
             % be careful about setting self.dangerous_autoOverwrite!
             
-            %otherPts = 
             if ~isa(other, 'FMHandler2')
                 disp('Did not receive an FMHandler2: Cannot import.');
                 return;
@@ -226,11 +233,15 @@ classdef FMHandler2 < handle
                 data = [other.peakFreqs(N,:)' other.peakMassAmps(N,:)' other.peakLumAmps(N,:)'];
                 
                 self.insertPointNew(m, t, data);
+                self.updateConvergenceLevel(m, t, other.convergenceLevel(N));
             end
         end
 
         function rebuildFnorms(self)
-            u = self.MachRange; v = self.thetaRange;
+            % rebuildFnorms() 
+            % Recomputes the equilibrium radiating flow for all stored
+            % parameters and recomputes the frequency/amplitude
+            % normalization coefficients
 
             self.fnormPts = zeros(size(self.machPts));
             for q = 1:numel(self.machPts)
@@ -238,13 +249,19 @@ classdef FMHandler2 < handle
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(q), 1.05);
                 xshock = R.calculateFlowTable();
                 self.fnormPts(q) = h.v(1,1) / xshock;% * (1 + 1.05*self.gamma / self.machPts(q)) * (1 - .038 * self.thetaPts(q));
+                self.xnormPts(q) = xshock;
+                self.radnormPts(q) = R.luminance;
                 waitbar(q/numel(self.machPts));
             end
-            
-            self.fnormPts = reshape(self.fnormPts, [numel(self.machPts) 1]);
         end
         
         function updateConvergenceLevel(self, m, t, lvl)
+            % updateConvergenceLevel(m, t, lvl)
+            % Updates the simulation's stored value for the 'convergence
+            % level' of the simulation. This rates the quality of the
+            % results on a qualitative scale from 1 (definitely not the
+            % final state) to 5 (definitely converged, flawless spectrum
+            % with excellent resolution)
             p = self.findPoint(m, t);
             
             if p > 0
@@ -255,6 +272,9 @@ classdef FMHandler2 < handle
         end
         
         function S = queryAt(self, m, t)
+            % S = queryAt(Mach, theta)
+            % Returns data for the input (M, t) point. Data is linearly
+            % extrapolated inside of known data points
             ff = scatteredInterpolant(self.machPts, self.thetaPts, 2*pi*self.freqPts ./ self.fnormPts);
             ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
@@ -271,6 +291,10 @@ classdef FMHandler2 < handle
         end
         
         function p = findPoint(self, m, t)
+            % p = self.findPoint(Mach, theta)
+            % looks for a data point matching the input (m, t) value and
+            % returns the index within the FMHandler's internal data
+            % structures if found, or -1 if not.
             a = find(self.machPts == m);
             b = find(self.thetaPts == t);
 
@@ -282,6 +306,9 @@ classdef FMHandler2 < handle
         end
 
         function tf = havePoint(self, m, t)
+            % tf = havePoint(Mach, theta)
+            % returns true if a data point with the given parameters is
+            % stored and false if not.
             a = find(self.machPts == m);
             b = find(self.thetaPts == t);
 
@@ -294,6 +321,9 @@ classdef FMHandler2 < handle
         end
 
         function l = findUnanalyedRuns(self)
+            % self.findUnanalyzedRuns() searches for any radiating shock
+            % directory name (RADHD_*) in the cwd whose gamma matches my
+            % gamma and displays any for which we lack a data point.
 
             d = dir('RADHD*');
 
@@ -307,6 +337,34 @@ classdef FMHandler2 < handle
                     disp(d(q).name)
                 end
             end
+        end
+        
+        function R = selectRunsByConvergenceLevel(self, lvl)
+            d = dir('RADHD*');
+            
+            fprintf('There are %i radiating shock runs in the cwd.\n', int32(numel(d)));
+            
+            R = cell([numel(d) 1]);
+            nR = 1;
+            
+            for N = 1:numel(d)
+                 dn = d(N).name;
+                 props = RHD_utils.parseDirectoryName(dn);
+                 
+                 if props.gamma == round(100*self.gamma)
+                    p = self.findPoint(props.m, props.theta);
+                    if p > 0
+                        if self.convergenceLevel(p) == lvl
+                            R{nR} = dn;
+                            nR = nR + 1;
+                        end
+                    end
+                 end
+            end
+           
+            fprintf('Found %i runs in cwd that report convergence level of %i\n', int32(nR-1), int32(lvl));
+            
+            R = R{1:(nR-1)};
         end
 
         function emitDominantFreqPlot(self, qty, logScale, colorBy)
@@ -326,8 +384,6 @@ classdef FMHandler2 < handle
             
             q = (1:n)' + n*(idx-1);
             
-            freq = self.peakFreqs(q) ./ self.fnormPts(:);
-
             switch qty
                 case 1
                     z = 2*pi*self.peakFreqs(q) ./ self.fnormPts(:);
@@ -394,21 +450,6 @@ classdef FMHandler2 < handle
             ca.CLim = [0, 6];
             colorbar;
         end
-        %{
-        What do we want?
-        - pictures of dominant luminance
-        - frequency over params
-        - mode amplitude over params (overlaid)
-        - lum amplitude over params (overlaid)
-        - linear or log vertical scale
-        
-        so, plot params:
-        (dominant or overlaid)
-        (frequency, X amplitude, luminance amplitude) for z
-        (linear or log scale for Z)
-        (dom mode #, frequency, X amp, luminance amp) for color
-        %}
-        
         
         function generate3DPlot(self, drawOverlaid, qty, logScale, colorBy)
             % .generate3DPlot(self, drawOverlaid, qty, logScale, colorBy)
@@ -417,7 +458,8 @@ classdef FMHandler2 < handle
             %                 default, -1
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
             %   logScale: If true, rendered in log scale. Otherwise, linear (default)
-            %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp
+            %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x
+            %   amp; 4 = lum amp, 5 = convergence level
             
             if nargin < 5; colorBy = 1; end
             if nargin < 4; logScale = 0; end
@@ -455,6 +497,8 @@ classdef FMHandler2 < handle
                         c = self.peakMassAmps(:, q);
                     case 4
                         c = self.peakLumAmps(:, q);
+                    case 5
+                        c = self.convergenceLevel';
                     otherwise
                         error('colorBy is not one of 1, 2, 3, or 4.');
                 end

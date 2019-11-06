@@ -1,6 +1,6 @@
  dirlist = dir('RAD*');
 
-for Q = 308:numel(dirlist)
+for Q = 66:numel(dirlist)
     cd(dirlist(Q).name);
     load('4D_XYZT.mat');
     
@@ -25,8 +25,9 @@ for Q = 308:numel(dirlist)
     x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 
     xmax = size(F.mass,1)*F.dGrid{1};
-basepos = trackBase(F.pressure(:,1,1,1), (1:size(F.mass,1))*F.dGrid{1});
 
+    basepos = trackBase(F.pressure(:,1,1,1), (1:size(F.mass,1))*F.dGrid{1});
+    
 xShock = basepos - x(1);
 
 tHat = xShock / F.velX(1,1,1,1);
@@ -101,14 +102,7 @@ rth = runparams.theta;
 % This is the time unit for display of FFT results
 tfunda = (timepts(end) - timepts(1));
 
-    
-    
-    
-    
-    
-    
-    
-    
+  
     
 
     % Plot shock X

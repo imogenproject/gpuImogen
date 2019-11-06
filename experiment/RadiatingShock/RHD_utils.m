@@ -126,7 +126,9 @@ classdef RHD_utils < handle
         end
         
         function plotRR(F, radTheta)
-            % rr = rho^2 T^theta
+            % throws up a plot of the radiation rate decribed by frameset F
+            % assuming
+            %   rad rate = rho^2 T^theta
             
             rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
             rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
@@ -136,6 +138,9 @@ classdef RHD_utils < handle
         end
         
         function rr = computeRelativeLuminosity(F, radTheta)
+            % Computes the column integrated luminosity of F assuming
+            % radiation parameter theta and normalizes by the integrated
+            % luminosity of frame 1 (assumed equilibrium).
              rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
             rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
             
@@ -144,6 +149,10 @@ classdef RHD_utils < handle
         end
         
         function p = parseDirectoryName(x)
+            % Accepts argument x, presumably the name of a radiating hydro
+            % flow as named by Imogen. returns structure {.m (mach), .theta
+            % (theta parameter), .gamma (adiabatic index). Note 'gamma' is
+            % round(100*gamma) and theta is .01*round(100*theta).
             if nargin < 1
                 x=pwd();
             end
@@ -168,17 +177,21 @@ classdef RHD_utils < handle
         end
         
         function lpp = ppLuminosity(F, theta)
+            % Computes the equilibrium-normalized luminosity of F and
+            % returns the max minus the min, i.e. the peak-peak normalized
+            % luminosity fluctuation.
             rr = RHD_utils.computeRelativeLuminosity(F, theta);
             plot(rr); drawnow;
-            
-            %x = input('Frame range to get lpp from: ');
-            %if numel(x) == 1; x(2) = numel(rr); end
+
             x = [50 numel(rr)];
             
             lpp = max(rr(x(1):x(2))) - min(rr(x(1):x(2)));
         end
         
         function [mag, xbar, sigma] = gaussianPeakFit(y, bin)
+            % [mag, xbar, sigma] = gaussianPeakFit(y, bin)
+            % Extracts y((bin-5):(bin+5)) and tries to fit a single
+            % Gaussian
             q=5;
             if bin < 6; q = bin-1; end
             xi = (-q:q)';
