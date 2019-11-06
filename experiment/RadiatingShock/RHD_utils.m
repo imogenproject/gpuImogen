@@ -49,9 +49,7 @@ classdef RHD_utils < handle
         
         function b = trackColdBoundary(F)
             clayer = squeeze((F.temperature < 1.05001) & (F.mass > 1.1));
-            c2 = diff(clayer,1,1);
-            c2(1,:) = 0;
-            [b, ~] = find(c2);
+            [~, b] = max(clayer, [], 1);
             b=b*F.dGrid{1};
         end
 
@@ -63,22 +61,26 @@ classdef RHD_utils < handle
             
             for N = 1:itermax
                 sd = 0;
-                if x(i+1) > x(i)
+                if i < imax
+                    if x(i+1) > x(i)
                     sd = 1;
+                    end
                 end
                 
-                if x(i-1) > x(i)
-                    if sd
-                        if x(i-1) > x(i+1)
-                            i = i - 1;
+                if i > 1
+                    if x(i-1) > x(i)
+                        if sd
+                            if x(i-1) > x(i+1)
+                                i = i - 1;
+                            else
+                                i = i + 1;
+                            end
                         else
-                            i = i + 1;
+                            i = i - 1;
                         end
                     else
-                        i = i - 1;
+                        i = i + 1;
                     end
-                else
-                    i = i + 1;
                 end
                 
                 if i == 1; break; end

@@ -1,7 +1,12 @@
- dirlist = dir('RAD*');
+ %dirlist = dir('RAD*');
 
-for Q = 646:numel(dirlist)
-    cd(dirlist(Q).name);
+for Q = 1:numel(dirlist)
+    if isa(dirlist, 'cell')
+        cd(dirlist{Q});
+    else
+        cd(dirlist(Q).name);
+    end
+    
     load('4D_XYZT.mat');
     
     if ~isa(F, 'DataFrame')

@@ -1,13 +1,17 @@
 function RHD_fixconcat(dirlist)
     
-if nargin < 1; dirlist = dir('RAD*');
+if nargin < 1; dirlist = dir('RAD*'); end
 
 n = numel(dirlist);
 
 fprintf('Have %i entries in cwd to fix... ', int32(n));
 
-for Q = 659:n
-    cd(dirlist(Q).name);
+for Q = 1:n
+    if isa(dirlist, 'cell')
+        cd(dirlist{Q});
+    else
+        cd(dirlist(Q).name);
+    end
     fprintf('%i ', int32(Q));
     if exist('4D_XYZT.mat','file')
         load('4D_XYZT.mat');

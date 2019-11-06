@@ -265,6 +265,29 @@ classdef DataFrame < handle
 
         end
         
+        function chopOutAnomalousTimestep(self)
+            tau = diff(self.time.time);
+            t0 = mean(tau);
+    
+            b = find(tau < .5*t0);
+    
+            for x = 1:numel(b)
+                fprintf('F.chopOutAnomalousTimestep: deleting:\n');
+                fprintf('frame %i has dt=%f < .5 t0=%f\n', int32(b+1), tau(b), t0);
+            end
+            
+            b = [0, b+1, numel(self.time.time)];
+            
+            rng = [];
+            for x = 1:(numel(b)-1)
+                rng = [rng (b(x)+1):(b(x+1)-1)];
+            end
+            rng = [rng b(end)];
+            
+            self.truncate([], [], [], rng);
+    
+        end
+        
     end%PUBLIC
     
     %===================================================================================================

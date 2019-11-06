@@ -21,9 +21,6 @@ for Q = 1:numel(dirlist)
         nbad = nbad+1;
         cd ..; continue;
     end
-
-    s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
-    s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
     
     autoAnalyze = 1;
     try
@@ -44,7 +41,9 @@ for Q = 1:numel(dirlist)
     end
     
     x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
-    bot = trackBase(F.pressure(:,1,1,1), (1:size(F.mass,1))*F.dGrid{1});
+    basepos = RHD_utils.trackColdBoundary(F);
+    bot = basepos(1);
+    
     N = RHD_utils.lastValidFrame(F, x);
     xmax = size(F.mass,1)*F.dGrid{1};
     
@@ -58,14 +57,14 @@ for Q = 1:numel(dirlist)
     
     plot(x,'r');
     hold on;
-    plot(bot,'b');
+    plot(basepos,'b');
     if autoAnalyze
         plot([nlpoint endpt], x(round([nlpoint endpt])), 'rO');
         fprintf('Original FFTed interval indicated.\n');
     end
     % x max value
-    plot([0 size(F.mass,4)], [xmax xmax], 'b-x');
-    plot([0 size(F.mass,4)], [0 0], 'r-x');
+    plot([0 size(F.mass,4)], [xmax xmax], 'b-.x');
+    plot([0 size(F.mass,4)], [0 0], 'r-.x');
     hold off;
     
     fprintf('%i frames: ', int32(size(F.mass, 4)-1));
@@ -81,6 +80,8 @@ for Q = 1:numel(dirlist)
         
         spf = round(actualIters / (size(F.mass, 4)-1));
         
+        s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
+        s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
         s3 = sprintf('%s%i, ', s3, int32(actualIters + spf * nadd));
     else
         badlist{end+1} = dirlist{Q};

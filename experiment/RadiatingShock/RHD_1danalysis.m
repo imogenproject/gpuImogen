@@ -25,6 +25,10 @@ if ~isa(F, 'DataFrame')
     F = DataFrame(F);
 end
 
+% Resumes leave a spurious frame advanced by only one timestep: cut it out so time spacing is
+% uniform
+F.chopOutAnomalousTimestep();
+
 % Track the shock position (x) and cold layer transition (basepos)
 x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 basepos = RHD_utils.trackColdBoundary(F);
