@@ -266,14 +266,27 @@ classdef DataFrame < handle
         end
         
         function chopOutAnomalousTimestep(self)
+            % .chopOutAnomalousTimestep()
+            % Resumed runs save a frame immediately after taking one step, which it not usually what we want.
+            % This looks for frames separated by only a single timestep and chops them out.
+            % for sanity reasons, it limits itself to cutting out a maximum of 10 frames
+
             tau = diff(self.time.time);
             t0 = mean(tau(round(end/2):end));
     
-            b = find(tau < .5*t0);
+            % assuming at least 50 timesteps per saveframe - safe
+            b = find(tau < t0/50);
     
-            for x = 1:numel(b)
+            if numel(b) > 10
+                fprintf('F.chopOutAnomalousTimestep: Apparently found %i anomalous frames... doing nothing, I am probably wrong.\n', numel(b));
+            end
+
+            if numel(b) > 0
                 fprintf('F.chopOutAnomalousTimestep: deleting:\n');
-                fprintf('frame %i has dt=%f < .5 t0=%f\n', int32(b+1), tau(b), t0);
+            end
+            
+            for x = 1:numel(b)
+                fprintf('frame %i has dt=%f < .5 t0=%f\n', int32(b(x)+1), tau(b(x)), t0);
             end
             
             b = [0, b+1, numel(self.time.time)];
