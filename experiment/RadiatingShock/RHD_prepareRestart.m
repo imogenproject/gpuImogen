@@ -9,6 +9,12 @@ s3 = 'runto   = [';
 badlist = cell([1 numel(dirlist)]);
 nbad = 1;
 
+if isa(dirlist, 'struct')
+    j = cell([numel(dirlist) 1]);
+    for Q = 1:numel(dirlist); j{Q} = dirlist(Q).name; end
+    dirlist = j;
+end
+
 for Q = 1:numel(dirlist)
     cd(dirlist{Q});
     

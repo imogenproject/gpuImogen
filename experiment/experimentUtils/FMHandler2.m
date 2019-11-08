@@ -151,20 +151,24 @@ classdef FMHandler2 < handle
             end
         end
         
-        function insertPointNew(self, M, theta, data)
-            % FMHandler.insertPointNew(M, theta, data)
+        function insertPointNew(self, M, theta, data, convLvl)
+            % FMHandler.insertPointNew(M, theta, data, convLvl)
             % M: mach
             % theta: radiation theta
             % data: 11x3 block, Nth row has [frequency, x amp, radiance amp] of (n-1)th mode
+            % convLvl: Convergence level (scale of 1, crap, to 5, golden); 0 if not given
             samem = find(abs(self.machPts - M) < 1e-12);
             samet = find(abs(self.thetaPts-theta) < 1e-12);
             
             p = intersect(samem, samet);
             
+            if nargin < 5; convLvl = 0; end
+            
             if ~isempty(p)
                 % this is a duplicate point
                 if self.dangerous_autoOverwrite ~= 1
-                    really = input('WARNING: this point already exists in my internal dataset.\nEnter 314 if you are sure: ');
+                    fprintf('WARNING: This point already in internal dataset with conv lvl = %i\nEnter 314 to overwrite with point with conv lvl=%i', int32(self.convergenceLevel(p)), int32(convLvl));
+                    really = input(': ');
                 else
                     really = 314;
                 end
@@ -176,14 +180,18 @@ classdef FMHandler2 < handle
                     self.peakFreqs(p, :) = data(:, 1)';
                     self.peakMassAmps(p, :) = data(:, 2)';
                     self.peakLumAmps(p, :) = data(:, 3)';
+                    
+                    self.convergenceLevel(p) = convLvl;
                 end
             else
                 self.machPts(end+1) = M;
                 self.thetaPts(end+1) = theta;
-                
+
                 self.peakFreqs(end+1, :) = data(:, 1)';
                 self.peakMassAmps(end+1, :) = data(:, 2)';
                 self.peakLumAmps(end+1, :) = data(:, 3)';
+
+                self.convergenceLevel(end+1) = convLvl;
                 
                 h = HDJumpSolver(self.machPts(end), 0, self.gamma);
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(end), 1.05);
@@ -231,6 +239,14 @@ classdef FMHandler2 < handle
                 m = other.machPts(N);
                 t = other.thetaPts(N);
                 data = [other.peakFreqs(N,:)' other.peakMassAmps(N,:)' other.peakLumAmps(N,:)'];
+                
+                p = self.findPoint(m, t);
+                if p > 0
+                    if self.convergenceLevel(p) > other.convergenceLevel(N)
+                        fprintf('For point (%f, %f), existing point with conv lvl %i > new %i. Ignoring new.\n', m, t, self.convergenceLevel(p), other.convergenceLevel(N));
+                        continue;
+                    end
+                end
                 
                 self.insertPointNew(m, t, data);
                 self.updateConvergenceLevel(m, t, other.convergenceLevel(N));

@@ -61,7 +61,7 @@ thefig = gca();
 
 % This is usually a reasonable automatic scaling of the displayed plot
 h0 = round(numel(x)/2);
-q = dlrdt(round(x(h0)/F.dGrid{1}+250), (h0-300):(h0+300));
+q = dlrdt(round(x(h0)/F.dGrid{1}+250), (h0-100):(h0+100));
 q = max(abs(q));
 thefig.CLim = [-2*q, 2*q];
 
@@ -376,15 +376,13 @@ conq = input('Convergence quality (1-5)? ');
 if exist('self', 'var') && isa(self, 'FMHandler2')
     disp('"self" exists: Assuming I am running inside FMHandler.autoanalyzeEntireDirectory on automatic.');
     if round(100*self.gamma) == runparams.gamma
-        self.insertPointNew(runparams.m, runparams.theta, datablock);
+        self.insertPointNew(runparams.m, runparams.theta, datablock, conq);
     end
     
-    self.updateConvergenceLevel(runparams.m, runparams.theta, conq);
 else
     if runparams.gamma == 167
         if exist('f53','var')
-            f53.insertPointNew(runparams.m, runparams.theta, datablock);
-            f53.updateConvergenceLevel(runparams.m, runparams.theta, conq);
+            f53.insertPointNew(runparams.m, runparams.theta, datablock, conq);
         elseif exist('self', 'var')
             
         else
@@ -392,15 +390,13 @@ else
         end
     elseif runparams.gamma == 140
         if exist('f75','var')
-            f75.insertPointNew(runparams.m, runparams.theta, datablock);
-            f75.updateConvergenceLevel(runparams.m, runparams.theta, conq);
+            f75.insertPointNew(runparams.m, runparams.theta, datablock, conq);
         else
             disp('Access to FMHandler directly is required to insert data.\n');
         end
     elseif runparams.gamma == 129
         if exist('f97','var')
-            f97.insertPointNew(runparams.m, runparams.theta, datablock);
-            f97.updateConvergenceLevel(runparams.m, runparams.theta, conq);
+            f97.insertPointNew(runparams.m, runparams.theta, datablock, conq);
         else
             disp('Access to FMHandler directly is required to insert data.\n');
         end

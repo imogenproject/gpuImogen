@@ -267,7 +267,7 @@ classdef DataFrame < handle
         
         function chopOutAnomalousTimestep(self)
             tau = diff(self.time.time);
-            t0 = mean(tau);
+            t0 = mean(tau(round(end/2):end));
     
             b = find(tau < .5*t0);
     
