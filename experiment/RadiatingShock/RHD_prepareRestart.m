@@ -5,8 +5,9 @@ function badlist = RHD_prepareRestart(dirlist)
 s1 = 'dirs    = {';
 s2 = 'frameno = [';
 s3 = 'runto   = [';
+s4 = 'scalerate=[';
 
-badlist = cell([1 numel(dirlist)]);
+badlist = {};
 nbad = 1;
 
 if isa(dirlist, 'struct')
@@ -89,6 +90,12 @@ for Q = 1:numel(dirlist)
         s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
         s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
         s3 = sprintf('%s%i, ', s3, int32(actualIters + spf * nadd));
+        
+        srate = mean(diff(F.time.time(1:20))) / mean(diff(F.time.time((end-20):end)));
+        if round(srate) > 1
+            fprintf('Inserting saverate scaling of %i.\n', round(srate));
+        end
+        s4 = sprintf('%s%i, ', s4, int32(round(srate)));
     else
         badlist{end+1} = dirlist{Q};
     end
@@ -98,10 +105,15 @@ end
 s1 = s1(1:(end-2)); s1 = [s1 '};'];
 s2 = s2(1:(end-2)); s2 = [s2 '];'];
 s3 = s3(1:(end-2)); s3 = [s3 '];'];
+s4 = s4(1:(end-2)); s4 = [s4 '];'];
 
-disp('=========== Paste for special_Resume: ');
+
+disp('=========== Paste for special_Resume:');
 disp(s1);
 disp(s2);
 disp(s3);
+disp(s4);
+disp('=====================================');
+
 
 end
