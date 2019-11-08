@@ -200,8 +200,13 @@ if npt/2 ~= round(npt/2); stpt = stpt-1; end
 timepts = tNormal(stpt:endpt);
 pospts = x(stpt:endpt)';
 
+% This is, of course, measured in the lab frame, while .fallbackBoost is as naturally in the
+% shock rest frame, so we need the original boost
+zz = load('SimInitializer_rank0.mat','IC');
+zz = zz.IC.ini.fallbackBoost;
+
 [coeffs, resid] = polyfit(timepts, pospts, 1);
-fprintf('Shock fallback velocity = %f\n', coeffs(1)/(2*pi*tHat));
+fprintf('Shock fallback velocity (equil rest frame) = %f\n', coeffs(1)/(2*pi*tHat) + zz);
 
 oscil = pospts - (coeffs(1)*timepts + coeffs(2));
 
