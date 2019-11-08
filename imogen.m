@@ -36,7 +36,8 @@ function outdirectory = imogen(srcData, resumeinfo)
     %       needed in the process.
     run = ImogenManager(ini);
 
-    if isfield(IC, 'amResuming'); RESTARTING = true; else; RESTARTING = false; end
+    if isfield(IC, 'amResuming'); RESTARTING = true; IC.resumeinfo = resumeinfo;
+    else; RESTARTING = false; end
 
     % Behavior depends if IC.originalPathStruct exists
     initializeResultPaths(run, IC)
@@ -54,7 +55,7 @@ function outdirectory = imogen(srcData, resumeinfo)
         % (2) Q(x,t0) from saved files
         % WARNING - this really, really needs to _know_ which frame type to load
         origpath=pwd(); cd(run.paths.save);
-        dframe = util_LoadFrameSegment('3D_XYZ', mpi_myrank(), resumeinfo.frame);
+        dframe = util_LoadFrameSegment(resumeinfo.frameType, mpi_myrank(), resumeinfo.frame);
         % (3) serialized time history, from saved data files, except for newly adultered time limits.
         run.time.resumeFromSavedTime(dframe.time, resumeinfo);
         if isfield(resumeinfo, 'imgframe'); run.image.frame = resumeinfo.imgframe; end
@@ -109,7 +110,7 @@ function outdirectory = imogen(srcData, resumeinfo)
 
     run.save.logPrint('---------- Entering simulation loop\n');
     run.time.updateUI();
-run.time.CFL = .3;
+
     %%%=== MAIN ITERATION LOOP ==================================================================%%%
     while run.time.running
         run.time.update(run.fluid, mag); % chooses dt
@@ -135,14 +136,6 @@ run.time.CFL = .3;
         
         run.time.step(); % updates t -> t+2dt
         run.pollEventList(run.fluid, mag);
-
-        
-        if run.time.iteration == 250; run.time.CFL = .85; end
-% lame hack
-%	if run.time.iteration == 1499000
-%	run.save.PERSLICE(3) = .0125;
-%	end
-
     end
     %%%=== END MAIN LOOP ========================================================================%%%
 
