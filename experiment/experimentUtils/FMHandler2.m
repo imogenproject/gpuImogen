@@ -557,6 +557,36 @@ classdef FMHandler2 < handle
             colorbar;
         end        
         
+        function searchForDuplicateRuns(self)
+           
+            r = zeros(size(self.machPts));
+            
+            d = dir(sprintf('RAD*gam%i', int32(round(100*self.gamma))));
+            
+            for n = 1:numel(d)
+                x = RHD_utils.parseDirectoryName(d(n).name);
+                p = self.findPoint(x.m, x.theta);
+                
+                if p > 0
+                    r(p) = r(p) + 1;
+                end
+            end
+            
+            np = 0;
+            for n = 1:numel(r)
+                if r(n) > 1
+                    fprintf('For parameters M=%f theta=%f found %i runs:\n', self.machPts(n), self.thetaPts(n), r(n));
+                    self.searchMode(self.machPts(n), self.thetaPts(n));
+                    np = np + 1;
+                    if np == 10
+                        fprintf('10 shown: continue printing? ', numel(r));
+                        tf = input('');
+                        if ~tf; break; end
+                    end
+                end
+            end
+        end
+        
         function searchMode(self, M, th)
             if nargin < 3
                 th = M(:,2);
