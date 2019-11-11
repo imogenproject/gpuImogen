@@ -62,6 +62,8 @@ classdef DataFrame < handle
         pMomX2, pMomY2, pMomZ2;
         pVelX2, pVelY2, pVelZ2;
         pEner2, pEint2;
+        
+        pTrueShape;
     end %PROTECTED
     
     %===================================================================================================
@@ -80,6 +82,7 @@ classdef DataFrame < handle
            self.pPopulateFluidFields(input);
            self.pPopulateAttributeFields(input);
     
+           self.pTrueShape = size(self.pMass);
         end
 
         % basic rho/v/p/E for fluid 1
@@ -275,7 +278,7 @@ classdef DataFrame < handle
             t0 = mean(tau(round(end/2):end));
     
             % assuming at least 50 timesteps per saveframe - safe
-            b = find(tau < t0/50);
+            b = find(tau < t0/50)';
     
             if numel(b) > 10
                 fprintf('F.chopOutAnomalousTimestep: Apparently found %i anomalous frames... doing nothing, I am probably wrong.\n', numel(b));
@@ -301,6 +304,56 @@ classdef DataFrame < handle
     
         end
         
+        function checkForBadRestartFrame(self)
+           % This function looks for a huge negative jump in diff(self.time.time)
+           % If this has occurred, some bulls*** has caused a run to restart in the middle of
+           % itself instead of at the end: Chops out the large range of frames in the middle.
+           
+           ohno = find(diff(self.time.time) < 0);
+           
+           if numel(ohno) > 0
+               N = size(self.time.time,4);
+               
+               fprintf('Oh dear, there is a large negative time jump, the restart screwed up.');
+               e0 = self.time.time(ohno+1);
+               for j = 1:(ohno-1)
+                   if self.time.time(j) > e0; break; end
+               end
+               
+               fprintf('Proposed juncture times:\n');
+               disp(self.time.time([(j-4):j (ohno+2):(ohno+5)]));
+               fprintf('delta-T:');
+               disp(diff(self.time.time([(j-4):j (ohno+2):(ohno+5)])))
+               
+               doit = input('Accept and save result? ');
+               if doit
+                   self.truncate([], [], [], [1:j (ohno+2):N]);
+               end
+               
+           end
+            
+        end
+        
+        function squashme(self)
+           
+            self.pTrueShape = size(self.mass);
+            
+            names = self.pNamesOfInternalFields();
+            for n = 1:numel(names)
+                self.(names{n}) = squeeze(self.(names{n}));
+            end
+            
+        end
+        
+        function unsquashme(self)
+            
+            names = self.pNamesOfInternalFields();
+            for n = 1:numel(names)
+                self.(names{n}) = reshape(self.(names{n}), self.pTrueShape);
+            end
+                
+        
+        end
     end%PUBLIC
     
     %===================================================================================================
