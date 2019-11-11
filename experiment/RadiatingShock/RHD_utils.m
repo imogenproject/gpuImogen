@@ -58,35 +58,25 @@ classdef RHD_utils < handle
             % It walks i by one until it reaches a local maximum (or it has made itermax moves)
             
             imax = numel(x);
+            if i < 1; i = 1; end
+            if i > imax; i = imax; end
             
             for N = 1:itermax
                 sd = 0;
                 if i < imax
                     if x(i+1) > x(i)
-                    sd = 1;
+                        sd = 1;
                     end
                 end
                 
                 if i > 1
                     if x(i-1) > x(i)
-                        if sd
-                            if x(i-1) > x(i+1)
-                                i = i - 1;
-                            else
-                                i = i + 1;
-                            end
-                        else
-                            i = i - 1;
-                        end
-                    else
-                        i = i + 1;
+                        sd = sd - 1;
                     end
                 end
                 
-                if i == 1; break; end
-                if i == imax; break; end
-                
-                if (x(i+1) < x(i)) && (x(i-1) < x(i)) % done
+                i=i+sd;
+                if sd == 0
                     break;
                 end
                 
@@ -258,9 +248,9 @@ classdef RHD_utils < handle
                         str = modes{q(1)};
                     end                    
                 case 129
-                    ftower = [.8 2.47 4.25 6.16 9 11 13 15 17 19 21 23];
+                    ftower = [.8 3 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.84/M)*(1-.06*theta));
-                    m = abs(w - .171*ftower);
+                    m = abs(w - .15*ftower);
                     q = find(m < .1);
                     if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
                         str = modes{q(1)};

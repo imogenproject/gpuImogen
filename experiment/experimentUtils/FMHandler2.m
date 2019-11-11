@@ -71,7 +71,7 @@ classdef FMHandler2 < handle
             if nargin < 2; startat = 1; end
             dlist = dir(sprintf('RADHD*gam%3i',round(100*self.gamma)));
             
-            rhdAutodrive = 2; % FULL SPEED AHEAD!!! *if possible
+            rhdAutodrive = 1; % FULL SPEED AHEAD!!! *if possible
             
             fprintf('Located a total of %i runs to analyze in this directory.\n', int32(numel(dlist)));
             
@@ -162,7 +162,7 @@ classdef FMHandler2 < handle
             
             p = intersect(samem, samet);
             
-            if nargin < 5; convLvl = 0; end
+            if nargin < 5; convLvl = -1; end
             
             if ~isempty(p)
                 % this is a duplicate point
@@ -180,8 +180,9 @@ classdef FMHandler2 < handle
                     self.peakFreqs(p, :) = data(:, 1)';
                     self.peakMassAmps(p, :) = data(:, 2)';
                     self.peakLumAmps(p, :) = data(:, 3)';
-                    
-                    self.convergenceLevel(p) = convLvl;
+                    if convLvl > -1
+                        self.convergenceLevel(p) = convLvl;
+                    end
                 end
             else
                 self.machPts(end+1) = M;
@@ -264,7 +265,7 @@ classdef FMHandler2 < handle
                 h = HDJumpSolver(self.machPts(q), 0, self.gamma);
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(q), 1.05);
                 xshock = R.calculateFlowTable();
-                self.fnormPts(q) = h.v(1,1) / xshock;% * (1 + 1.05*self.gamma / self.machPts(q)) * (1 - .038 * self.thetaPts(q));
+                self.fnormPts(q) = h.v(1,1) / xshock * (1 + 2.84 / self.machPts(q)) * (1 - .06 * self.thetaPts(q));
                 self.xnormPts(q) = xshock;
                 self.radnormPts(q) = R.luminance;
                 waitbar(q/numel(self.machPts));

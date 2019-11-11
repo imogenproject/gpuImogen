@@ -29,6 +29,9 @@ end
 % uniform
 F.chopOutAnomalousTimestep();
 
+% If the restarter has screwed up, we may have to delete a big block of data
+F.checkForBadRestartFrame();
+
 % Track the shock position (x) and cold layer transition (basepos)
 x = trackFront2(squeeze(F.pressure), (1:size(F.mass,1))*F.dGrid{1}, .5*(F.gamma+1)/(F.gamma-1));
 basepos = RHD_utils.trackColdBoundary(F);
@@ -105,6 +108,12 @@ if ~isreal(interframe1)
     hold on;
     disp('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
     interframe1 = RHD_utils.projectParabolicMinimum(x, pts(1), 1, 1);
+    
+    if ~isreal(interframe1)
+        disp('WARNING: Parabolas failed for point 1. Using 0th order approximation.');
+        interframe1 = pts(1);
+    end
+    
     pointspace = 1;    
 end
 
@@ -112,6 +121,11 @@ interframe2 = RHD_utils.projectParabolicMinimum(x, pts(2), 1, pointspace);
 if ~isreal(interframe2) && pointspace > 1
     disp('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
     interframe2 = RHD_utils.projectParabolicMinimum(x, pts(2), 1, 1);
+end
+
+if ~isreal(interframe2)
+    disp('WARNING: Parabolas failed for point 2. Using 0th order approximation.');
+    interframe2 = pts(2);
 end
 
 % Compute the interval of the demarked oscillation period to find the 'fundamental' period
@@ -203,7 +217,11 @@ pospts = x(stpt:endpt)';
 % This is, of course, measured in the lab frame, while .fallbackBoost is as naturally in the
 % shock rest frame, so we need the original boost
 zz = load('SimInitializer_rank0.mat','IC');
-zz = zz.IC.ini.fallbackBoost;
+if isfield(zz.IC.ini, 'fallbackBoost')
+    zz = zz.IC.ini.fallbackBoost;
+else
+    zz = 0;
+end
 
 [coeffs, resid] = polyfit(timepts, pospts, 1);
 fprintf('Shock fallback velocity (equil rest frame) = %f\n', coeffs(1)/(2*pi*tHat) + zz);
@@ -376,7 +394,15 @@ if exist('reenableAuto','var')
     clear reenableAuto;
 end
 
-conq = input('Convergence quality (1-5)? ');
+if exist('rhdAutodrive','var')
+    if rhdAutodrive == 1
+        conq = -1;
+    else
+        conq = input('Convergence quality (1-5)? ');
+    end
+else
+    conq = input('Convergence quality (1-5)? ');
+end
 
 if exist('self', 'var') && isa(self, 'FMHandler2')
     disp('"self" exists: Assuming I am running inside FMHandler.autoanalyzeEntireDirectory on automatic.');
