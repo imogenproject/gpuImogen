@@ -1,7 +1,8 @@
-function badlist = RHD_prepareRestart(dirlist)
-% RHD_prepareRestart({'list','of','directories'})
+function badlist = RHD_prepareRestart(dirlist, max, start)
+% RHD_prepareRestart({'list','of','directories'}, max, start)
 % Provides a graphic of completed run status & assists the user in generating the long lists of
-% directory names and frame numbers required to resume large numbers of shock runs
+% directory names and frame numbers required to resume large numbers of shock runs, processed from 
+% dirlist{start} to dirlist{max}, if given, 1:end by default.
 s1 = 'dirs    = {';
 s2 = 'frameno = [';
 s3 = 'runto   = [';
@@ -10,13 +11,17 @@ s4 = 'scalerate=[';
 badlist = {};
 nbad = 1;
 
+if nargin < 2; max = numel(dirlist); end
+if nargin < 3; start = 1; end
+
 if isa(dirlist, 'struct')
     j = cell([numel(dirlist) 1]);
     for Q = 1:numel(dirlist); j{Q} = dirlist(Q).name; end
     dirlist = j;
 end
 
-for Q = 1:numel(dirlist)
+for Q = start:max
+    fprintf('Run %i | %s | ', int32(Q), dirlist{Q});
     cd(dirlist{Q});
     
     try
@@ -81,6 +86,7 @@ for Q = 1:numel(dirlist)
         % Previous concatFrame implementation failed to update F.iteration / F.iterMax
         % This is fixed going forward but we need to find out the dumb way
         hl = dir('2D_XY*h5');
+        if isempty(hl); hl = dir('2D_XY*mat'); end
         % the last savefile names the iteration count
         hl = hl(end).name;
         actualIters = sscanf(hl, '2D_XY_rank0_%i.h5');

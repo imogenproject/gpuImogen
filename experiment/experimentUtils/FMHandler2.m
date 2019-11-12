@@ -167,7 +167,7 @@ classdef FMHandler2 < handle
             if ~isempty(p)
                 % this is a duplicate point
                 if self.dangerous_autoOverwrite ~= 1
-                    fprintf('WARNING: This point already in internal dataset with conv lvl = %i\nEnter 314 to overwrite with point with conv lvl=%i', int32(self.convergenceLevel(p)), int32(convLvl));
+                    fprintf('WARNING: This point already in internal dataset with conv lvl = %i\nEnter 314 to overwrite with point with conv lvl=%i: ', int32(self.convergenceLevel(p)), int32(convLvl));
                     really = input(': ');
                 else
                     really = 314;
@@ -249,8 +249,7 @@ classdef FMHandler2 < handle
                     end
                 end
                 
-                self.insertPointNew(m, t, data);
-                self.updateConvergenceLevel(m, t, other.convergenceLevel(N));
+                self.insertPointNew(m, t, data, other.convergenceLevel(N));
             end
         end
 
