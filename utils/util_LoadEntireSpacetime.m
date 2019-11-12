@@ -1,19 +1,24 @@
-function F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay)
-% F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay) will replace the
+function F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay, progressReport)
+% F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay, progressReport) will replace the
 % spatial mass/momentum/energy fields with a 4th index for time.
 % Even if loading 2- or 1D data, time is the 4th index.
-% If F will require more than 10GB of memory and the third argument is not
-% present, this function will require interactive input.
-% FIXME: 'fields' is presently nonfunctional and this just returns rho/mom/E
+% fields: FIXME: 'fields' is presently nonfunctional and this just returns rho/mom/E
+% prefix: One of 3D_XYZ, 2D_XY, 2D_YZ, 2D_XZ, 1D_X, 1D_Y, 1D_Z; Default 3D_XYZ;
+%         This refers to the file set to access
+% hugeStructIsOkay: Turns off warning and confirmation request for output predicted to exceed 10GB
+% progressReport:   0 - none; 1 - print '.' per frame; 2 - print # per 100 frames; 3 - waitbar()
 
 list = enumerateSavefiles();
 
 F = [];
 
-if nargin == 0
-    fields = {'mass','momX','momY','momZ','ener'};
-    prefix = '3D_XYZ';
-end
+if nargin < 4; progressReport = 2; end
+if nargin < 3; hugeStructIsOkay = 0; end
+if nargin < 2; prefix = '3D_XYZ'; end
+if nargin < 1; fields = {'mass','momX','momY','momZ','ener'}; end
+
+if isempty(fields); fields = {'mass','momX','momY','momZ','ener'}; end
+if isempty(prefix); prefix = '3D_XYZ'; end
 
 % FIXME: This feels dumb. ENUM a cell array that maps these?
 if strcmp(prefix, '3D_XYZ'); frameset = list.XYZ; end
@@ -28,6 +33,14 @@ N = numel(frameset);
 
 nfields = numel(fields);
 fourd = cell(nfields, 1);
+
+if progressReport == 2
+    fprintf('%i frames: ', int32(N));
+end
+
+if progressReport == 3
+    wb = waitbar(0, sprintf('4D load: 0/%i', int32(N)));
+end
 
 for x = 1:N
     fi = util_LoadWholeFrame(prefix,frameset(x));
@@ -73,8 +86,16 @@ for x = 1:N
         F.time.time = tau;% But copy last frame time
     end
     
-    fprintf('.');
-    if mod(x,100) == 0; fprintf('\n'); end
+    switch progressReport
+        case 1
+            fprintf('.');
+            if mod(x, 100) == 0; fprintf('\n'); end
+        case 2
+            if mod(x, 100) == 0; fprintf('%i ', int32(x)); end
+            if mod(x, 2000) == 0; fprintf('\n'); end
+        case 3
+            if mod(x, 10) == 0; waitbar(x/N, wb, sprintf('4F load: %i/%i', int32(x), int32(N))); end
+    end
 
 end
 fprintf('\n');
