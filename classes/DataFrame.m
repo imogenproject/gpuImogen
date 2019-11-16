@@ -268,7 +268,7 @@ classdef DataFrame < handle
 
         end
         
-        function chopOutAnomalousTimestep(self)
+        function n = chopOutAnomalousTimestep(self)
             % .chopOutAnomalousTimestep()
             % Resumed runs save a frame immediately after taking one step, which it not usually what we want.
             % This looks for frames separated by only a single timestep and chops them out.
@@ -285,7 +285,7 @@ classdef DataFrame < handle
             end
 
             if numel(b) > 0
-                fprintf('F.chopOutAnomalousTimestep: deleting:\n');
+                fprintf('| F.chopOutAnomalousTimestep: deleting\n');
             end
             
             for x = 1:numel(b)
@@ -302,32 +302,38 @@ classdef DataFrame < handle
             
             self.truncate([], [], [], rng);
     
+            n = numel(b)-2;
         end
         
-        function checkForBadRestartFrame(self)
+        function tf = checkForBadRestartFrame(self, doit)
            % This function looks for a huge negative jump in diff(self.time.time)
            % If this has occurred, some bulls*** has caused a run to restart in the middle of
            % itself instead of at the end: Chops out the large range of frames in the middle.
            
            ohno = find(diff(self.time.time) < 0);
+           tf = 0;
            
            if numel(ohno) > 0
                N = size(self.time.time,4);
                
-               fprintf('Oh dear, there is a large negative time jump, the restart screwed up.');
+               fprintf('| negative time jump after frame %i ', int32(ohno) );
                e0 = self.time.time(ohno+1);
                for j = 1:(ohno-1)
                    if self.time.time(j) > e0; break; end
                end
+               j=j-1;
                
-               fprintf('Proposed juncture times:\n');
-               disp(self.time.time([(j-4):j (ohno+2):(ohno+5)]));
-               fprintf('delta-T:');
-               disp(diff(self.time.time([(j-4):j (ohno+2):(ohno+5)])))
-               
-               doit = input('Accept and save result? ');
+               if nargin < 2
+                   fprintf('Proposed juncture times:\n');
+                   disp(self.time.time([(j-4):j (ohno+2):(ohno+5)]));
+                   fprintf('delta-T:\n');
+                   disp(diff(self.time.time([(j-4):j (ohno+2):(ohno+5)])))
+                   doit = input('Accept and save result? ');
+               end
+                  
                if doit
                    self.truncate([], [], [], [1:j (ohno+2):N]);
+                   tf = 1;
                end
                
            end

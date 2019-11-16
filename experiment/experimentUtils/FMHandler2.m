@@ -264,7 +264,7 @@ classdef FMHandler2 < handle
                 h = HDJumpSolver(self.machPts(q), 0, self.gamma);
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(q), 1.05);
                 xshock = R.calculateFlowTable();
-                self.fnormPts(q) = h.v(1,1) / xshock * (1 + 2.84 / self.machPts(q)) * (1 - .06 * self.thetaPts(q));
+                self.fnormPts(q) = h.v(1,1) / xshock;% * (1 + 2.84 / self.machPts(q)) * (1 - .06 * self.thetaPts(q));
                 self.xnormPts(q) = xshock;
                 self.radnormPts(q) = R.luminance;
                 waitbar(q/numel(self.machPts));
@@ -356,6 +356,8 @@ classdef FMHandler2 < handle
         end
         
         function R = selectRunsByConvergenceLevel(self, lvl)
+            % Searches for all RADHD* directories in the pwd
+            % and lists returns the list of all which have convergence level below lvl.
             d = dir('RADHD*');
             
             fprintf('There are %i radiating shock runs in the cwd.\n', int32(numel(d)));
@@ -382,6 +384,31 @@ classdef FMHandler2 < handle
             
             R = R(1:(nR-1));
         end
+        
+        function plist = selectParamsByConvergenceLevel(self, lvl)
+            ll = find(self.convergenceLevel <= lvl);
+            machs = self.machPts(ll);
+            thets = self.thetaPts(ll);
+            falls = zeros(size(machs));
+            
+            plist = [machs' thets' falls'];
+        end
+        
+        function outlist = pruneParamlistByConvergenceLvl(self, plist, critLevel)
+            
+            N = size(plist, 1);
+            xlist = ones([N 1]);
+            for x = 1:N
+                p = self.findPoint(plist(x,1), plist(x,2));
+                if p > 0
+                    if self.convergenceLevel(p) >= critLevel
+                        xlist(x) = 0;
+                    end
+                end
+            end
+            
+            outlist = plist(find(xlist), :);
+        end
 
         function emitDominantFreqPlot(self, qty, logScale, colorBy)
             % .emitDominantFreqPlot(self, qty, logScale, colorBy)
@@ -403,12 +430,20 @@ classdef FMHandler2 < handle
             switch qty
                 case 1
                     z = 2*pi*self.peakFreqs(q) ./ self.fnormPts(:);
+                    titlestring = 'z: \omega; ';
+                    zstring = '\omega';
                 case 2
                     z = self.peakMassAmps(q) ./ self.xnormPts(:);
+                    titlestring = 'z: \delta x; ';
+                    zstring = '\delta x / x_{shock}';
                 case 3
                     z = self.peakLumAmps(q);% ./ self.radnormPts(:);
+                    titlestring = 'z: \delta L; ';
+                    zstring = '\delta L / L_{eq}';
                 case 4
                     z = sqrt(sum(self.peakLumAmps.^2, 2));
+                    titlestring = 'z: rms \delta L; ';
+                    zstring = 'rms(\delta L) / L_{eq';
                 otherwise
                     error('Invalid qty argument: not 1 to 4');
             end
@@ -417,22 +452,31 @@ classdef FMHandler2 < handle
                 case 1 % dominant position modulation's mode #
                     [~, c] = max(self.peakMassAmps, [], 2);
                     c = c - 1;
+                    zl = [0 8];
+                    titlestring = [titlestring 'color: mode #'];
                 case 2
-                    c = 2*pi*self.peakFreqs(q);
+                    c = 2*pi*self.peakFreqs(q)./ self.fnormPts(:);
+                    zl = [0 5];
+                    titlestring = [titlestring 'color: \omega'];
                 case 3
-                    c = self.peakMassAmps(q);
+                    c = self.peakMassAmps(q)./ self.xnormPts(:);
+                    zl = [0 .5];
+                    titlestring = [titlestring 'color: \delta x'];
                 case 4
                     c = self.peakLumAmps(q);
+                    zl = [0 1];
+                    titlestring = [titlestring 'color: \delta L'];
                 case 5
                     c = self.convergenceLevel';
+                    zl = [0 5];
+                    titlestring = [titlestring 'color: convergence lvl'];
                 otherwise
                     error('colorBy is not one of 1, 2, 3, or 4.');
             end
                 
             dohaveit = (z ~= 0);
            
-            if logScale; z = log(z); end
-            
+            if logScale; z = log(z); zl = log(zl + .00001); end
    
             u = self.MachRange; v = self.thetaRange;
             [m, t] = ndgrid(u(1):u(2):u(3), v(1):v(2):v(3));
@@ -453,17 +497,16 @@ classdef FMHandler2 < handle
             hold on;
             scatter3(self.thetaPts(dohaveit)', self.machPts(dohaveit)', z(dohaveit), 'r*');
             
-            
-            
             xlabel('\theta');
             ylabel('Mach');
-            zlabel('F');
+            zlabel(zstring);
+            title(titlestring);
             hold off;
             view([-123 32]);
             
             colormap('jet');
             ca = gca();
-            ca.CLim = [0, 6];
+            ca.CLim = zl;
             colorbar;
         end
         

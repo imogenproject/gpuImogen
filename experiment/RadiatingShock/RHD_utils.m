@@ -258,7 +258,12 @@ classdef RHD_utils < handle
             end
         end
         
-        
+        function [xtilde, vee] = extractFallback(x, t)
+           [coeffs, resid] = polyfit(t, x, 1);
+
+           xtilde = x - (coeffs(1)*t + coeffs(2));
+           vee = coeffs(1);
+        end
         
     end%PROTECTED
     

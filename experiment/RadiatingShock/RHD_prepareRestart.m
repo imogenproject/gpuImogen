@@ -1,13 +1,15 @@
-function badlist = RHD_prepareRestart(dirlist, max, start)
-% RHD_prepareRestart({'list','of','directories'}, max, start)
+function badlist = RHD_prepareRestart(dirlist, max, start, autoframes)
+% RHD_prepareRestart({'list','of','directories'}, max, start, autoframes)
 % Provides a graphic of completed run status & assists the user in generating the long lists of
 % directory names and frame numbers required to resume large numbers of shock runs, processed from 
 % dirlist{start} to dirlist{max}, if given, 1:end by default.
+% if autoframes is given, it is as if 'autoframes' were entered for all frame count requests
 s1 = 'dirs    = {';
 s2 = 'frameno = [';
 s3 = 'runto   = [';
 s4 = 'scalerate=[';
 
+plist = 'plist = [';
 badlist = {};
 nbad = 1;
 
@@ -18,6 +20,18 @@ if isa(dirlist, 'struct')
     j = cell([numel(dirlist) 1]);
     for Q = 1:numel(dirlist); j{Q} = dirlist(Q).name; end
     dirlist = j;
+end
+
+moveto = [];
+tf = input('Move unresumable runs? ');
+if tf
+    moveto = input('To where: ','s');
+end
+
+makeplist = input('Generate plist = [] incl fallback rate for unresumable runs? ');
+
+if makeplist
+    disp('Enter -1 as frames to add to force a resumable run to be restarted cold'); 
 end
 
 for Q = start:max
@@ -61,10 +75,30 @@ for Q = start:max
     
     % Can't resume if it's already crashed into the bottom of the grid
     if N < size(F.mass,4)
-        fprintf('Problem: Run %i cannot be restarted, shock has already walked off grid at frame %i.\n', 0, int32(N));
+        fprintf('Run %i unrestartable, shock off grid at frame %i.\n', Q, int32(N));
+        if makeplist
+            rp = RHD_utils.parseDirectoryName(pwd());
+            
+            zz = load('SimInitializer_rank0.mat','IC');
+            if isfield(zz.IC.ini, 'fallbackBoost')
+                zz = zz.IC.ini.fallbackBoost;
+            else
+                zz = 0;
+            end
+            
+            [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
+            
+            plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
+        end
+        cd ..;
+        if ~isempty(moveto)
+            s = sprintf('!mv %s %s', dirlist{Q}, moveto);
+            disp(s);
+            eval(s);
+        end
         badlist{nbad} = dirlist{Q};
         nbad = nbad + 1;
-        cd ..; continue;
+        continue;
     end
     
     plot(x,'r');
@@ -80,7 +114,11 @@ for Q = start:max
     hold off;
     
     fprintf('%i frames: ', int32(size(F.mass, 4)-1));
-    nadd = input('Number of frames to add? ');
+    if nargin < 4
+        nadd = input('Number of frames to add? ');
+    else
+        nadd = autoframes;
+    end
     
     if nadd > 0
         % Previous concatFrame implementation failed to update F.iteration / F.iterMax
@@ -103,6 +141,22 @@ for Q = start:max
         end
         s4 = sprintf('%s%i, ', s4, int32(round(srate)));
     else
+        if nadd == -1
+           if makeplist
+            rp = RHD_utils.parseDirectoryName(pwd());
+            
+            zz = load('SimInitializer_rank0.mat','IC');
+            if isfield(zz.IC.ini, 'fallbackBoost')
+                zz = zz.IC.ini.fallbackBoost;
+            else
+                zz = 0;
+            end
+            
+            [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
+            
+            plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
+        end 
+        end
         badlist{end+1} = dirlist{Q};
     end
     cd ..;
@@ -113,7 +167,6 @@ s2 = s2(1:(end-2)); s2 = [s2 '];'];
 s3 = s3(1:(end-2)); s3 = [s3 '];'];
 s4 = s4(1:(end-2)); s4 = [s4 '];'];
 
-
 disp('=========== Paste for special_Resume:');
 disp(s1);
 disp(s2);
@@ -121,5 +174,10 @@ disp(s3);
 disp(s4);
 disp('=====================================');
 
+if makeplist
+    disp('=========== Parameter list for unresumable runs:');
+    plist((end-1):end) = '];';
+    disp(plist);
+end
 
 end

@@ -155,9 +155,9 @@ end
 % Two may be used if the shock drifts off the simulation volume
 plot(x);
 hold on;
-plot(basepos);
+plot(basepos - xShock);
 if max(basepos) > .8*xmax
-    plot([0 size(F.mass,4)], [xmax xmax], 'g-x');
+    plot([0 size(F.mass,4)], [xmax xmax] - xShock, 'g-x');
 end
 hold off;
 
@@ -223,10 +223,8 @@ else
     zz = 0;
 end
 
-[coeffs, resid] = polyfit(timepts, pospts, 1);
-fprintf('Shock fallback velocity (equil rest frame) = %f\n', coeffs(1)/(2*pi*tHat) + zz);
-
-oscil = pospts - (coeffs(1)*timepts + coeffs(2));
+[oscil, vfall] = RHD_utils.extractFallback(pospts, timepts / (2*pi*tHat));
+fprintf('Shock fallback velocity (equil rest frame) = %f\n', vfall + zz);
 
 % Rescale the fft
 xfourier = 2*abs(fft(oscil))/numel(oscil);
