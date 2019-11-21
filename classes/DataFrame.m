@@ -250,7 +250,12 @@ classdef DataFrame < handle
                 self.(f2{j}) = b(x, y, z, t);
             end
             
-           self.time.time = self.time.time(t);
+            if numel(size(self.mass)) ~= self.pTrueShape % if we've been squished
+                lst = {x,y,z,t};
+                self.time.time = self.time.time(lst{numel(size(self.mass))});
+            else
+                self.time.time = self.time.time(t);
+            end
         end
         
         function patchBadTimeslice(self, tIndex)
@@ -311,29 +316,44 @@ classdef DataFrame < handle
            % itself instead of at the end: Chops out the large range of frames in the middle.
            
            ohno = find(diff(self.time.time) < 0);
+           ohno = ohno + 1; % this picks the first stupidly placed restart frame
            tf = 0;
            
            if numel(ohno) > 0
                N = size(self.time.time,4);
                
-               fprintf('| negative time jump after frame %i ', int32(ohno) );
-               e0 = self.time.time(ohno+1);
+               fprintf('| negative time jump at frame %i ', int32(ohno) );
+               e0 = self.time.time(ohno);
+               tau = self.time.time(ohno+1)-self.time.time(ohno);
+               
                for j = 1:(ohno-1)
-                   if self.time.time(j) > e0; break; end
+                   if self.time.time(j) > e0 - tau/2; break; end
                end
-               j=j-1;
+               j=j-2;
                
                if nargin < 2
                    fprintf('Proposed juncture times:\n');
-                   disp(self.time.time([(j-4):j (ohno+2):(ohno+5)]));
-                   fprintf('delta-T:\n');
-                   disp(diff(self.time.time([(j-4):j (ohno+2):(ohno+5)])))
-                   doit = input('Accept and save result? ');
+                   disp(self.time.time([(j-4):j ohno:(ohno+4)])');
+                   
+                   dtproper = max(abs(diff(self.time.time([(j-4):j ohno:(ohno+4)]), 2) ));
+                   if any(dtproper > 1e-4)
+                       fprintf('Expected frame juncture: [1:%i %i:end]\n',j, ohno);
+                       fprintf('Times: ');
+                       disp(self.time.time([(j-4):j ohno:(ohno+3)]));
+                       error('Found max delta^2 T/delta frame^2 > 1e-4 -> unacceptable.\n');
+                   end
+                   doit = 1;
                end
                   
                if doit
-                   self.truncate([], [], [], [1:j (ohno+2):N]);
-                   tf = 1;
+                   self.truncate([], [], [], [1:(j-1) (ohno+2):N]);
+                   plot(diff(self.time.time));
+                   disp('Good to save? ');
+                   tf = input('?');
+                   if tf
+                       F = self;
+                       save('4D_XYZT','F');
+                   end
                end
                
            end
