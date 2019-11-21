@@ -92,9 +92,9 @@ classdef RHD_utils < handle
             ap = [1, 1+h0, 1+2*h0];
             am = [1+2*h0, 1+h0, 1];
             
-            % NOTE: Assumes at least 8 frames between shock bounces!!!
-            xleft = x(pt - am);
-            xright= x(pt + ap);
+            % Eff your effed up inconsistency you PoS
+            xleft = reshape(x(pt - am), [1 3]);
+            xright= reshape(x(pt + ap), [1 3]);
             % Convert to polynomials
             xlpoly = polyfit( - am, xleft, 2);
             xrpoly = polyfit( + ap, xright,2);
@@ -108,10 +108,10 @@ classdef RHD_utils < handle
             if mkplot
                 q = -3:.25:3;
                 hold on;
-                plot(pt - am, xleft, 'k*');
-                plot(pt + ap, xright, 'k*');
-                plot(pt + q, polyval(xlpoly, q));
-                plot(pt + q, polyval(xrpoly, q));
+                plot(pt - am, xleft', 'r*');
+                plot(pt + ap, xright', 'r*');
+                plot(pt + q, polyval(xlpoly, q), 'g-');
+                plot(pt + q, polyval(xrpoly, q), 'g-');
             end
             
         end
