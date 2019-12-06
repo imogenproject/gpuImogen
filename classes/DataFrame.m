@@ -83,6 +83,20 @@ classdef DataFrame < handle
            self.pPopulateAttributeFields(input);
     
            self.pTrueShape = size(self.pMass);
+           
+
+        end
+        
+        function checkpinteg(self)
+            if prod(self.pTrueShape) ~= numel(self.mass)
+                fprintf('WARNING: self.pTrueShape WRONG SIZE: SAVE GLITCH CAUGHT: AUTOFIXING\n');
+                self.pTrueShape = [size(self.mass,1) 1 1 size(self.mass,2)];
+                if prod(self.pTrueShape) ~= numel(self.mass)
+                    self.pTrueShape(4) = size(self.mass,4);
+                end
+                self.unsquashme;
+                F = self; save('4D_XYZT.mat','F','-v7.3');
+            end
         end
 
         % basic rho/v/p/E for fluid 1
@@ -227,6 +241,7 @@ classdef DataFrame < handle
             self.time.iterMax = F.time.iterMax;
             self.time.iteration = F.time.iteration;
             
+            self.pTrueShape = size(self.mass);
         end
         
         function truncate(self, x, y, z, t)
@@ -253,9 +268,13 @@ classdef DataFrame < handle
             if numel(size(self.mass)) ~= self.pTrueShape % if we've been squished
                 lst = {x,y,z,t};
                 self.time.time = self.time.time(lst{numel(size(self.mass))});
+                self.pTrueShape = [numel(x) numel(y) numel(z) numel(t)];
             else
                 self.time.time = self.time.time(t);
+                self.pTrueShape = size(self.mass);
             end
+            
+            
         end
         
         function patchBadTimeslice(self, tIndex)
@@ -379,6 +398,13 @@ classdef DataFrame < handle
             end
                 
         
+        end
+        
+        function reshape(self, shape)
+            if prod(shape) ~= numel(self.mass); error('To reshape, numel(x) must not change.'); end
+            
+            self.pTrueShape = shape;
+            self.unsquashme;            
         end
     end%PUBLIC
     

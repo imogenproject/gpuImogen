@@ -26,6 +26,8 @@ classdef FMHandler2 < handle
         machPts; % X
         thetaPts; % Y
         
+        fNormMode;
+        
         fnormPts;   % Coefficients for frequency normalization
         xnormPts;   % X_shock coefficients for position amplitude normalization
         radnormPts; % Equilibrium radiance for luminance amplitude normalization
@@ -62,25 +64,37 @@ classdef FMHandler2 < handle
             end
         end
 
-        function autoanalyzeEntireDirectory(self, startat)
-            % autoanalyzeEntireDirectory(self, startat)
+        function autoanalyzeEntireDirectory(self, startat, A)
+            % autoanalyzeEntireDirectory(self, startat, RHD_Analyzer)
             % Searches the cwd for any directories matching RADHD*gam###
             % where ### is the adiabatic index of myself x 100 and
             % and runs RHD_1danalysis in them with rhdAutodrive=2 (auto
             % everything except for spectral analysis interval)
+            % if nargin < 3, creates its own RHD_Analyzer, otherwise uses the passed one.
             if nargin < 2; startat = 1; end
             dlist = dir(sprintf('RADHD*gam%3i',round(100*self.gamma)));
             
-            rhdAutodrive = 1; % FULL SPEED AHEAD!!! *if possible
-            
             fprintf('Located a total of %i runs to analyze in this directory.\n', int32(numel(dlist)));
+            
+            if nargin < 3; A = RHD_Analyzer(); end
+            
+            a0 = A.automaticMode;
+            A.automaticMode = 1;
+            
+            q0 = self.dangerous_autoOverwrite;
+            self.dangerous_autoOverwrite = 1;
             
             for dlc = startat:numel(dlist)
                 cd(dlist(dlc).name);
-                RHD_1danalysis
-                cd ..
+                A.dbgclear(); % for safety
+                A.runFullAnalysis();
+                cd ..;
+                
                 fprintf('Finished %i/%i\n', int32(dlc), int32(numel(dlist)));
             end
+            
+            A.automaticMode = a0;
+            self.dangerous_autoOverwrite = q0;
         end
         
         function tf = checkSelfConsistency(self)
@@ -253,18 +267,37 @@ classdef FMHandler2 < handle
             end
         end
 
-        function rebuildFnorms(self)
-            % rebuildFnorms() 
+        function rebuildFnorms(self, type)
+            % rebuildFnorms(type) 
             % Recomputes the equilibrium radiating flow for all stored
             % parameters and recomputes the frequency/amplitude
-            % normalization coefficients
+            % normalization coefficients.
+            % if type == 1 or empty, uses standard normalization
+            % if type == 2, uses flattening normalization.
+            
+            if nargin < 2; type = 1; end
 
             self.fnormPts = zeros(size(self.machPts));
             for q = 1:numel(self.machPts)
                 h = HDJumpSolver(self.machPts(q), 0, self.gamma);
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(q), 1.05);
                 xshock = R.calculateFlowTable();
-                self.fnormPts(q) = h.v(1,1) / xshock;% * (1 + 2.84 / self.machPts(q)) * (1 - .06 * self.thetaPts(q));
+                
+                if type == 1
+                    xi = 1;
+                    self.fNormMode = 1;
+                else
+                    switch round(100*self.gamma)
+                        case 167
+                            xi = (1 + 1.75 / self.machPts(q)) * (1 - .025*self.thetaPts(q));
+                        case 140
+                            xi = (1 + 2.50 / self.machPts(q)) * (1 - .040*self.thetaPts(q));
+                        case 129
+                            xi = (1 + 2.84 / self.machPts(q)) * (1 - .060*self.thetaPts(q));
+                    end
+                    self.fNormMode = 2;
+                end
+                self.fnormPts(q) = xi * h.v(1,1) / xshock;
                 self.xnormPts(q) = xshock;
                 self.radnormPts(q) = R.luminance;
                 waitbar(q/numel(self.machPts));

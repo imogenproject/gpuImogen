@@ -115,7 +115,7 @@ for Q = start:max
     
     fprintf('%i frames: ', int32(size(F.mass, 4)-1));
     if nargin < 4
-        nadd = input('Number of frames to add? ');
+        nadd = util_inputNumberBulletproof('Number of frames to add? ');
     else
         nadd = autoframes;
     end
@@ -123,39 +123,55 @@ for Q = start:max
     if nadd > 0
         % Previous concatFrame implementation failed to update F.iteration / F.iterMax
         % This is fixed going forward but we need to find out the dumb way
-        hl = dir('2D_XY*h5');
-        if isempty(hl); hl = dir('2D_XY*mat'); end
-        % the last savefile names the iteration count
-        hl = hl(end).name;
-        actualIters = sscanf(hl, '2D_XY_rank0_%i.h5');
         
-        spf = round(actualIters / (size(F.mass, 4)-1));
+        % to be safe
+        !rm savefileIndex.mat
+        SP = SavefilePortal;
+        SP.setFrametype('XY');
+        SP.setMetamode(1);
+        J = SP.jumpToLastFrame();
         
-        s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
-        s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
-        s3 = sprintf('%s%i, ', s3, int32(actualIters + spf * nadd));
-        
-        srate = mean(diff(F.time.time(1:20))) / mean(diff(F.time.time((end-20):end)));
-        if round(srate) > 1
-            fprintf('Inserting saverate scaling of %i.\n', round(srate));
+        % there -SHOULDN'T- be a restart Xmillion + 1 'glitch' frame at the end, but
+        % stupider crap has happened
+        if abs(J.iter - F.time.iteration) > 1
+            warning('WARNING DANGER DANGER iterations from filenames and F.time.iteration disagree')
+            warning('dbstop in RHD_prepareRestart.m at 140 - to access the screwup at the detect point & fix it')
         end
-        s4 = sprintf('%s%i, ', s4, int32(round(srate)));
+        
+        if abs(J.iter - F.time.iteration) < 2
+        
+            spf = round(J.iter / (size(F.mass, 4)-1));
+            
+            s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
+            s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
+            s3 = sprintf('%s%i, ', s3, int32(J.iter + spf * nadd));
+            
+            inidt = diff(F.time.time(2:20));
+            if std(inidt) > mean(inidt)
+                warning('EXTREME DANGER WARNING Simulation save history is SCREWED and will OOM/ENODISK this machine if run');
+            end
+            srate = mean(inidt) / mean(diff(F.time.time((end-20):end)));
+            if round(srate) > 1
+                fprintf('Inserting saverate scaling of %i.\n', round(srate));
+            end
+            s4 = sprintf('%s%i, ', s4, int32(round(srate)));
+        end
     else
         if nadd == -1
-           if makeplist
-            rp = RHD_utils.parseDirectoryName(pwd());
-            
-            zz = load('SimInitializer_rank0.mat','IC');
-            if isfield(zz.IC.ini, 'fallbackBoost')
-                zz = zz.IC.ini.fallbackBoost;
-            else
-                zz = 0;
+            if makeplist
+                rp = RHD_utils.parseDirectoryName(pwd());
+                
+                zz = load('SimInitializer_rank0.mat','IC');
+                if isfield(zz.IC.ini, 'fallbackBoost')
+                    zz = zz.IC.ini.fallbackBoost;
+                else
+                    zz = 0;
+                end
+                
+                [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
+                
+                plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
             end
-            
-            [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
-            
-            plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
-        end 
         end
         badlist{end+1} = dirlist{Q};
     end

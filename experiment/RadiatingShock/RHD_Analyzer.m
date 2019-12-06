@@ -14,6 +14,8 @@ classdef RHD_Analyzer < handle
         ctrlPanel;
         ctrlButtons;
         msgBox;
+        dynrngButtons;
+        infoPanel; infoText;
         
         F; % the data (F)rame, with a nice short variable name :)
         
@@ -39,6 +41,7 @@ classdef RHD_Analyzer < handle
     
     properties(Dependent = true)
         runAnalysisPhase;
+        automaticMode;
     end
     
     %===================================================================================================
@@ -51,6 +54,10 @@ classdef RHD_Analyzer < handle
         pHaveAutovars;
         
         pAbortSequence;
+        
+        pAutomaticMode;
+        
+        pTryAutoOscil;
     end %PROTECTED
     
     %===================================================================================================
@@ -65,6 +72,13 @@ classdef RHD_Analyzer < handle
             end
             
             for j = 1:numel(bvals); self.ctrlButtons{j}.Value = bvals(j); end
+            
+            if self.pCurrentAnalysisPhase == 3
+                for j = 1:2; self.dynrngButtons{j}.Visible = 1; end
+            else
+                for j = 1:2; self.dynrngButtons{j}.Visible = 0; end
+            end
+            
             drawnow();
             
             self.executeCurrentAnalysisPhase();
@@ -79,6 +93,19 @@ classdef RHD_Analyzer < handle
             p = self.pCurrentAnalysisPhase;
         end
     
+        function set.automaticMode(self, m)
+            if m
+                self.pAutomaticMode = 1;
+                warndlg({'RHD_Analyzer automatic mode is being enabled','All analyses will be automatically inserted','CONVERGENCE LEVEL 5 WILL BE ASSUMED','THIS CAN POTENTIALLY CORRUPT DATA','There will be no further warnings.'}, 'Automatic mode warning');
+            else
+                self.pAutomaticMode = 0;
+            end
+        end
+        
+        function p = get.automaticMode(self)
+            p = self.pAutomaticMode;
+        end
+        
     end%GET/SET
     
     %===================================================================================================
@@ -86,6 +113,25 @@ classdef RHD_Analyzer < handle
         
         function dbgclear(self)
             self.pCurrentAnalysisPhase = 0;
+            self.runAnalysisPhase = 0;
+            self.pTryAutoOscil = 0; 
+        end
+        
+        function dumpContents(self)
+            self.F = [];
+            self.runParameters = [];
+            self.xNormalization = []; self.xVec = [];
+            self.tNormalization = []; self.timeVec = [];
+            
+            self.shockPos = []; self.coldPos = [];
+            self.fallbackBoost = 0; self.vfallback = [];
+            self.autovars = [];
+            self.oscilPoints = [];
+            self.projectedPts = [];
+            self.fOscillate = [];
+            self.fftPoints = [];
+            self.fftFundamentalFreq = [];
+            self.datablock = [];
         end
         
         function self = RHD_Analyzer()
@@ -108,20 +154,21 @@ classdef RHD_Analyzer < handle
                 self.figWindow = figs(f0);
             end
             
+            self.figWindow.SizeChangedFcn = @self.handleAnalyzerResize;
+            
             self.setupControlPanel();
             
+            self.automaticMode         = 0;
             self.pCurrentAnalysisPhase = 0;
-            self.pAbortSequence = 0;
+            self.pAbortSequence        = 0;
+            self.pTryAutoOscil = 0;
+            
             % Buttons: [run full sequence] [auto = 2] [pick oscil period] [pick fft range] [fft] [save] 
             
             self.graphAxes = gca();
-            
-            spix = self.figWindow.OuterPosition;
-            pix = 1 ./ self.figWindow.OuterPosition(3:4);
-            
-            dy = self.ctrlPanel.Position(4) / spix(4); 
-            
-            self.graphAxes.Position = [.1 (dy + 48*pix(2)) .8 (.95-dy - 64*pix(2))];
+
+            qq.Position = self.figWindow.OuterPosition;
+            self.handleAnalyzerResize(qq); 
         end
         
         function setupControlPanel(self)
@@ -131,13 +178,62 @@ classdef RHD_Analyzer < handle
             
             self.ctrlButtons{1} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','RUN','tag','runbutton','position',[8,      8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbRunButton);
             
-            self.ctrlButtons{2} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','LOAD','tag','loadbutton','position',[8+7*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbLoadButton);
-            self.ctrlButtons{3} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','BASICS','tag','basicsbutton','position',[8+14*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbBasicButton);
-            self.ctrlButtons{4} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','OSCIL','tag','oscilbutton','position',[8+21*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbOscilButton);
-            self.ctrlButtons{5} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','RANGE','tag','rangebutton','position',[8+28*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbXformButton);
-            self.ctrlButtons{6} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','FFT','tag','fftbutton','position',[8+35*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbFFTButton);
-            self.ctrlButtons{7} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','WRITE','tag','fftbutton','position',[8+42*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbWriteButton);
-            self.msgBox         = uicontrol(self.ctrlPanel, 'Style','text','String','info', 'position',[0, 8+2*self.pCharH, 49*dx, 1.2*self.pCharH]);
+            self.ctrlButtons{2} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','LOAD','tag','loadbutton','position',[8+7*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{3} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','BASICS','tag','basicsbutton','position',[8+14*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{4} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','OSCIL','tag','oscilbutton','position',[8+21*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{5} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','RANGE','tag','rangebutton','position',[8+28*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{6} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','FFT','tag','fftbutton','position',[8+35*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{7} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','WRITE','tag','writebutton','position',[8+42*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{8} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','STATUS','tag','statusbutton','position',[8, 8+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbShowStatus);
+            self.msgBox         = uicontrol(self.ctrlPanel, 'Style','text','String','info', 'position',[8+7*dx, 8+2*self.pCharH, 42*dx, 1.2*self.pCharH]);
+            
+            self.dynrngButtons{1} = uicontrol(self.figWindow, 'Style','pushbutton','String','Dynrng  x 5','tag','dynrngbtn','position',[8, 250+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngPlus);
+            self.dynrngButtons{2} = uicontrol(self.figWindow, 'Style','pushbutton','String','Dyn Rng / 5','tag','dynrngbtn','position',[8, 250, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngMinus);
+            
+            for q = 1:2; self.dynrngButtons{q}.Visible = 0; end
+            
+            self.infoPanel = uipanel(self.figWindow,'Title','STATUS', 'units', 'pixels', 'position', [8 16+4*self.pLineH, 320, 384], 'visible', 'off');
+            
+            % 16 lines text output
+            self.infoText = uicontrol(self.infoPanel,'Style','text', 'position', [8 8 306 354], 'string', cell([16 1]),'HorizontalAlignment','left');
+        end
+        
+        function updateInfoPanel(self)
+            
+            if ~isempty(self.runParameters)
+                switch(self.runParameters.gamma)
+                case 167; gs = '5/3';
+                case 140; gs = '7/5';
+                case 129; gs = '9/7';
+                otherwise; gs = sprintf('%g', self.runParameters.gamma / 100);
+                end
+                self.infoText.String{1} = sprintf('M=%.3g, theta=%.2g, gamma=%s', self.runParameters.m, self.runParameters.theta, gs);
+            end
+            if ~isempty(self.F);             self.infoText.String{2} = sprintf('Resolution: %iX x %iT', size(self.F.mass,1), size(self.F.mass,2)); end
+            if ~isempty(self.xNormalization); self.infoText.String{3} = sprintf('Xshock = %f', self.xNormalization); end
+            if self.pHaveAutovars; self.infoText.String{4} = 'Have autovars'; else; self.infoText.String{4} = 'Lack autovars'; end
+            if ~isempty(self.fOscillate);    self.infoText.String{5} = sprintf('Fosc = %f', self.fOscillate); end
+            if ~isempty(self.fftPoints);     self.infoText.String{6} = sprintf('FFT frames = [%i %i]', self.fftPoints(1), self.fftPoints(2)); end
+            if ~isempty(self.vfallback);     self.infoText.String{7} = sprintf('Vfallback = %f', self.vfallback); end
+            if ~isempty(self.fftFundamentalFreq); self.infoText.String{8} = sprintf('Freq. resolution = %f', self.fftFundamentalFreq); end
+%%=
+%0 ms=%.2g, \theta=%.2g, \gamma=%s
+%1 Resolution: %ix x %it
+%2 [have / dont have] autovars
+%3 Foscillate = %.5g
+%4 FFT range: [%i %i]
+%5 Fallback velocity: %g
+%6 Freq. resolution: %g
+%7 
+%8 
+%9 
+%a 
+%b 
+%c 
+%d 
+%e 
+%f 
+%---% 
         end
         
         function executeCurrentAnalysisPhase(self)
@@ -160,23 +256,28 @@ classdef RHD_Analyzer < handle
         function loadRunFrame(self)
             % Loads 4D_XYZT from the pwd, checks for glitches or bad restarts and squeeze()es F.
 
+            self.dumpContents();
+            self.updateInfoPanel();
+            
             if exist('4D_XYZT.mat','file')
                 load('4D_XYZT','F');
                 % Fix this BS if we encounter it
-                if ~isa(F, 'DataFrame'); F = DataFrame(F); save('4D_XYZT','F'); end
+                if ~isa(F, 'DataFrame'); F = DataFrame(F); save('4D_XYZT','F','-v7.3'); end %#ok<PROP>
                 
-                self.F = F; %#ok<CPROP>
+                self.F = F; %#ok<PROP>
             else
                 % ... ? 
             end
+            
+            self.F.checkpinteg(); 
             
             br = self.F.checkForBadRestartFrame();
             chopped = self.F.chopOutAnomalousTimestep();
             
             if chopped
-                disp('User indicates acceptable truncation of bad restart: Saving correct data.');
-                F = self.F;
-                save('4D_XYZT','F');
+                self.print('User indicates acceptable truncation of bad restart: Saving correct data.');
+                F = self.F; %#ok<NASGU,PROP>
+                save('4D_XYZT','F','-v7.3');
             end
             
             self.F.squashme(); % convert XYZT to XT
@@ -187,7 +288,7 @@ classdef RHD_Analyzer < handle
             hold on;
             
             try
-                load('autovars.mat');
+                load('autovars.mat','autovars');
                 
                 self.autovars = double(autovars); %#ok<CPROP> % wtf? true, but this somehow ended up as a single one
                 
@@ -197,7 +298,9 @@ classdef RHD_Analyzer < handle
                 %endpt = autovars(5);
                 
                 self.pHaveAutovars = 1;
-            catch crap
+                self.fftPoints = self.autovars(4:5);
+            catch
+                self.autovars = []; % prevent old one from hanging on
                 self.pHaveAutovars = 0;
             end
             
@@ -213,6 +316,8 @@ classdef RHD_Analyzer < handle
             self.fallbackBoost = zz;
             
             self.runParameters = RHD_utils.parseDirectoryName(); % the worst way of learning this lol
+            
+            self.updateInfoPanel();
         end
         
         function updateBasics(self)
@@ -237,6 +342,12 @@ classdef RHD_Analyzer < handle
                     self.F.truncate([], 1:trunc)
                     self.coldPos = self.coldPos(1:trunc);
                 end
+                trunc = inputdlg('Save', 'Save truncated dataset to disk?', [1 10], {'1'});
+                if str2num(trunc{1})
+                    F = self.F;
+                    save('4D_XYZT.mat','F','-v7.3');
+                    clear F;
+                end
             end
             
             self.shockPos = trackFront2(self.F.pressure, self.xVec, .5*(self.F.gamma+1)/(self.F.gamma-1))';
@@ -254,7 +365,10 @@ classdef RHD_Analyzer < handle
             imagesc(dlrdt);
             hold on;
             
-            q = dlrdt(1:end, (end-500):end);
+            lp = max(self.shockPos((end-500):end));
+            up = min(self.coldPos((end-500):end));
+            vv = round(sort([lp, up])/self.F.dGrid{1});
+            q = dlrdt(vv(1):vv(2), (end-500):end);
             q = max(abs(q(:)));
             self.graphAxes.CLim = [-q/2, q/2];
 
@@ -264,10 +378,10 @@ classdef RHD_Analyzer < handle
             
             if self.pHaveAutovars
                 % use them to autoposition for period selection
-                xrng = self.autovars(2)-self.autovars(1);
+                xrng = abs(self.autovars(2)-self.autovars(1));
                 nt = size(self.F.mass);
                 
-                xr = [round(nt(2) - 1.5*xrng) nt(2)];
+                xr = [round(nt(2) - 2.5*xrng) nt(2)];
                 
                 self.graphAxes.XLim = xr;
                 up = min(self.shockPos(xr(1):xr(2))) / self.F.dGrid{1};
@@ -278,19 +392,28 @@ classdef RHD_Analyzer < handle
                 
             end
             
-            title('Click 2 points demarking a round trip')
+            doauto = self.pHaveAutovars && self.pTryAutoOscil && (self.autovars(2) > 0.9*size(self.F.mass,2)) && (self.autovars(2) < size(self.F.mass,2));
             
-            P = pointGetter();
-            pt = P.waitForClick();
-            P.clickedPoint = [];
+            if doauto
+                pt = self.autovars(1);
+            else
+                title('Click 2 points demarking a round trip')
+                P = pointGetter();
+                pt = P.waitForClick();
+                P.clickedPoint = [];
+            end
             pts(1) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
             
             plot(pts(1), self.shockPos(pts(1)) / self.F.dGrid{1}, 'rX');
             
-            pt = P.waitForClick();
-            P.clickedPoint = [];
-            pts(2) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+            if doauto
+                pt = self.autovars(2);
+            else
+                pt = P.waitForClick();
+                P.clickedPoint = [];
+            end
             
+            pts(2) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
             % In case they click right then left
             self.oscilPoints = sort(pts);
 
@@ -300,11 +423,11 @@ classdef RHD_Analyzer < handle
             interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 0, pointspace);
 
             if ~isreal(interframe1)
-                disp('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
+                self.print('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
                 interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 0, 1);
                 
                 if ~isreal(interframe1)
-                    disp('WARNING: Parabolas failed for point 1. Using 0th order approximation.');
+                    self.print('WARNING: Parabolas failed for point 1. Using 0th order approximation.');
                     interframe1 = pts(1);
                 else % rerun and request a plot this time
                     interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 1, 1);
@@ -322,7 +445,7 @@ classdef RHD_Analyzer < handle
                 end
                 
                 if ~isreal(interframe2)
-                    disp('WARNING: Parabolas failed for point 2. Using 0th order approximation.');
+                    self.print('WARNING: Parabolas failed for point 2. Using 0th order approximation.');
                     interframe2 = pts(2);
                 else % rerun and request a plot this time
                     interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(2), 1, 1);
@@ -335,7 +458,7 @@ classdef RHD_Analyzer < handle
             
             tfunda = interp1(1:size(self.timeVec), self.timeVec, [interframe1 interframe2],'linear');
 
-            plot([interframe1 interframe2], self.shockPos(round([interframe1 interframe2])), 'kv', 'MarkerSize', 10);
+            plot([interframe1 interframe2], self.shockPos(round([interframe1 interframe2])) / self.F.dGrid{1}, 'kv', 'MarkerSize', 10);
             hold off;
 
             tfunda0 = self.timeVec(pts);
@@ -347,10 +470,11 @@ classdef RHD_Analyzer < handle
             self.msgBox.String = sprintf('F_{oscillate} = %.3g', ffunda);
             if dfreq > .03
                 warndlg({['0th and 2nd order fundamental frequencies differ by ' num2str(100*dfreq) '%'],'consider restarting run or rerunning OSCIL'}, 'Frequency accuracy');
+                figure(self.figWindow);
             end
             
-            
             self.fOscillate = ffunda;
+            self.updateInfoPanel();
         end
         
         function pickFFTRange(self)
@@ -374,8 +498,7 @@ classdef RHD_Analyzer < handle
             plot(self.shockPos,'r');
             hold off;
             
-            
-            disp('Click the start & end points of the interval to transform.');
+            self.print('Click the start & end points of the interval to transform.');
             
             P = pointGetter();
             pt = P.waitForClick();
@@ -388,7 +511,7 @@ classdef RHD_Analyzer < handle
             nlpoint(2) = round(pt(1));
             nlpoint = sort(nlpoint);
             
-            self.msgBox.String = sprintf('Interval: [%i, %i]', int32(nlpoint(1)), int32(nlpoint(2)));
+            self.print(sprintf('Interval: [%i, %i]', int32(nlpoint(1)), int32(nlpoint(2))));
             
             frmOsc = self.projectedPts(2)-self.projectedPts(1);
             
@@ -399,9 +522,11 @@ classdef RHD_Analyzer < handle
             
             npt = 1+endpt-stpt;
             
-            if npt/2 ~= round(npt/2); stpt = stpt-1; end
-            
+            if npt ~= 2*round(npt/2); stpt = stpt-1; end
+
             self.fftPoints = [stpt endpt];
+            
+            self.updateInfoPanel();
         end
         
         function runFFT(self)
@@ -412,11 +537,11 @@ classdef RHD_Analyzer < handle
             
             [oscil, vfall] = RHD_utils.extractFallback(pospts, timepts * self.tNormalization);
             self.vfallback = self.fallbackBoost + vfall;
-            self.msgBox.String = sprintf('Vfallback (equil rest frame) = %.6f\n', self.vfallback);
+            self.print(sprintf('Vfallback (equil rest frame) = %.6f\n', self.vfallback));
 
             % take and rescale the FFT
             xfourier = 2*abs(fft(oscil))/numel(oscil);
-            xi = numel(xfourier(2:end/2));
+            xi = numel(xfourier(2:round(end/2)));
 
             rth = self.runParameters.theta;
 
@@ -428,34 +553,46 @@ classdef RHD_Analyzer < handle
             
             % Throw up fft of shock position
             hold off;
-            plot(freqAxis, xfourier(2:end/2)/self.xNormalization,'b-');
+            plot(freqAxis, xfourier(2:round(end/2))/self.xNormalization,'b-');
             hold on
 
             % Compute the luminosity on the given interval and normalize it by L(t=0) and fft it
             rr = RHD_utils.computeRelativeLuminosity(self.F, rth);
             rft = 2*fft(rr(self.fftPoints(1):self.fftPoints(2)))' / numel(oscil);
 
-            plot(freqAxis,abs(rft(2:end/2)), 'r-');
+            plot(freqAxis,abs(rft(2:round(end/2))), 'r-');
 
             %lpp = max(rr(stpt:endpt))-min(rr(stpt:endpt));
  
             grid on;
             
+            xlabel('Normalized frequency');
+            ylabel('Normalized amplitudes');
+            title('Spectral analysis results');
+            
             self.datablock = self.tagModes(xfourier, rft);
-            self.sanityCheckModes(self.datablock);
+            self.datablock = self.sanityCheckModes(self.datablock);
             
-            
+            self.updateInfoPanel();
         end
         
         function insertData(self)
             
             % write autovars here
-            autovars = double([round(self.projectedPts), 2, self.fftPoints]); %#ok<PROP>
+            autovars = double([round(self.projectedPts), 2, self.fftPoints]); %#ok<NASGU,PROP>
             save('autovars.mat','autovars');
             
             % get convergence level estimate from user
-            conq = inputdlg('Convergence quality (1-5)?','figure selection', [1 10], {'0'});
-            conq = str2double(conq);
+            if self.pAutomaticMode
+                conq = 5;
+            else
+                conq = inputdlg('Convergence quality (1-5)?','figure selection', [1 10], {'0'});
+                conq = str2double(conq);
+            end
+            
+            if isempty(conq) || isnan(conq) % user clicked 'cancel' or entered garbage
+                return;
+            end
             
             % Go through this rigamarole to access the next frame up and insert the data myself
             proto = 'f%i.insertPointNew(%f, %f, %s, %i);';
@@ -489,6 +626,15 @@ classdef RHD_Analyzer < handle
                 disp('Strange, an adiabatic index that is not 5/3, 7/5 or 9/7?\n');
             end
 
+            od = pwd();
+            cd ..;
+            if conq == 5
+                xd = pwd();
+                if strcmp(xd((end-8):end), 'radshocks') == 0
+                    eval(sprintf('!mv %s ../radshocks', od));
+                end
+                self.print('Automatically moved conv lvl = 5 run to ../radshocks');
+            end
             
         end
         
@@ -496,14 +642,16 @@ classdef RHD_Analyzer < handle
             
             fatdot = [];
             raddot = [];
-            possibleFmode = 0;
             
             % helpers to identify gaussian peaks
             ispeak = @(y, xi) (y(xi) > y(xi+1)) & (y(xi) > y(xi-1)) & ( y(xi) > 2*sum(y(xi+[-2, -1, 1, 2])) );
             isgausspeak = @(mag, center, std) (abs(center) < .55) & (std < 3);
             
-            xresid = xfourier(2:end/2);
-            for n = 1:10
+            xresid = xfourier(2:round(end/2));
+            % wipe out very low freq noise potentials
+            xresid(1:4) = xresid(5);
+            
+            for n = 1:12
                 % Pick the highest peak
                 [~, pkidx] = max(xresid);
                 p = pkidx + 1;
@@ -525,87 +673,40 @@ classdef RHD_Analyzer < handle
                 xresid = RHD_utils.chopPeakForSearch(xresid, pkidx);
             end
             
-            spec_residual = RHD_utils.subtractKnownPeaks(xfourier(2:end/2), fatdot);
+%            spec_residual = RHD_utils.subtractKnownPeaks(xfourier(2:end/2), fatdot);
             
             % convert the indexes in fatdot to frequencies
-            fatdot(:,1) = fatdot(:,1) * self.fftFundamentalFreq;
-            raddot(:,1) = raddot(:,1) * self.fftFundamentalFreq;
+            fatdot(:,[1 3]) = fatdot(:,[1 3]) * self.fftFundamentalFreq;
+            raddot(:,[1 3]) = raddot(:,[1 3]) * self.fftFundamentalFreq;
             
             % Drop the detected peaks onto the graph and print about them
             plot(fatdot(:,1), fatdot(:,2)/self.xNormalization, 'kv', 'MarkerSize', 8);
-            xlim([0 2*max(fatdot(:,1))]);
+            xlim([0 min(10, 2*max(fatdot(:,1)))]);
             
-            fprintf("Frequency resolution = +-%f\n", self.fftFundamentalFreq);
-            modenames = cell([n 1]);
+            runpar = self.runParameters;
             
-            % First round of mode tagging
-            for n = 1:size(fatdot,1)
-                fi = fatdot(n,1);
-                
-                if ~isempty(modenames{n}); continue; end
-                
-                s0 = RHD_utils.assignModeName(fi, self.runParameters.m, self.runParameters.gamma, self.runParameters.theta);
-                
-                if numel(s0) > 0
-                    modenames{n} = s0;
-                    % Attempt to identify harmonic distortion
-                    for u=1:size(fatdot,1)
-                        if isempty(modenames{u})
-                            for hd = 2:9
-                                if abs(fatdot(u,1) - hd*fatdot(n,1)) < 1.5*self.fftFundamentalFreq
-                                    modenames{u} = sprintf('%sx%i', modenames{n}, int32(hd));
-                                end
-                            end
-                        end
-                    end
-                    
-                end
+            % Plot frequency bin markers
+            wpk = [.86 2.85 5 7 9 11 13 15];
+            switch self.runParameters.gamma
+                case 167; wpk = wpk * (1 + 1.75 / runpar.m) * (1 - .040*runpar.theta) * .256;
+                case 140; wpk = wpk * (1 + 2.50 / runpar.m) * (1 - .042*runpar.theta) * .186;
+                case 129; wpk = wpk * (1 + 2.84 / runpar.m) * (1 - .060*runpar.theta) * .150;
             end
+            lm = max(abs(Lfourier(2:(end/2))));
+            wpk = [wpk; wpk];
+            lm = lm*[0; 1]*[1 1 1 1 1 1 1 1];
+            plot(wpk, lm, 'g-');
             
-            pklist = [];
-            for n = 1:size(fatdot, 1); if ~isempty(modenames{n}); if numel(modenames{n}) <= 2; pklist(end+1) = n; end; end; end
-            nPeaks = numel(pklist);
             
-            % Identify 2nd order intermodulation
-            for n = 1:size(fatdot, 1)
-                if isempty(modenames{n}) % not identified as a mode
-                    for u=1:nPeaks
-                        for v = (u+1):nPeaks
-                            if abs(fatdot(pklist(u),1) + fatdot(pklist(v),1) - fatdot(n,1)) < self.fftFundamentalFreq
-                                modenames{n} = [modenames{pklist(u)} '+' modenames{pklist(v)}];
-                            end
-                            
-                            if abs(fatdot(pklist(u),1) - fatdot(pklist(v),1) - fatdot(n,1)) < self.fftFundamentalFreq
-                                modenames{n} = [modenames{pklist(u)} '-' modenames{pklist(v)}];
-                            end
-                            
-                            if abs(fatdot(pklist(v),1) - fatdot(pklist(u),1) - fatdot(n,1)) < self.fftFundamentalFreq
-                                modenames{n} = [modenames{pklist(u)} '-' modenames{pklist(v)}];
-                            end
-                        end
-                    end
-                end
-                
-            end
+            self.print(sprintf("Frequency resolution = +-%f\n", self.fftFundamentalFreq));
             
-            for n = 1:size(fatdot,1)
-                s0 = modenames{n};
-                fi = fatdot(n,1);
-                fprintf('Spectral peak at f = %f = %f f0 has magnitude %f', fi, fi / self.fOscillate, fatdot(n,2));
-                if numel(s0) > 0
-                    if numel(s0) > 2
-                        if s0(3) == 'x'
-                            fprintf(' - %s harmonic distortion\n', s0);
-                        else
-                            fprintf(' - %s intermodulation\n', s0);
-                        end
-                    else
-                        fprintf(' - %s peak identified\n', s0);
-                    end
-                else
-                    fprintf('\n');
-                end
-            end
+            SA = SpectralAnalyzer(fatdot, raddot);
+            SA.aprioriTag(@(w) RHD_utils.assignModeNumber(w, runpar.m, runpar.gamma, runpar.theta));
+            SA.thereCanBeOnlyOne();
+            SA.testFakeIntermodulation();
+            SA.tagIntermodulation;
+            
+            SA.printTable();
             
             legend('X_{shock} spectrum',  'Relative luminosity spectrum', 'Detected peaks');
             
@@ -613,25 +714,28 @@ classdef RHD_Analyzer < handle
             
             hold off;
             pwd
-            
-            modelist = {'F','1O','2O','3O','4O','5O','6O','7O','8O','9O','10O'};
+
             datablock = zeros([11 3]); % rows of [frequency xshock_amp radiance_amp] for mode F to 10
             
-            for q = 1:numel(pklist)
-                qp = pklist(q);
-                for k=1:numel(modelist)
-                    if strcmp(modenames{qp},modelist{k}) == 1
-                        datablock(k, :) = [fatdot(qp,1)/self.tNormalization, fatdot(qp,2), raddot(qp,2)];
+            for q = 1:numel(SA.table)
+                tau = SA.table(q);
+                if (tau.m >= 0) && (tau.m < 11)
+                    if tau.hd == 1
+                        datablock(tau.m+1, :) = [tau.f/self.tNormalization, tau.dx, tau.dl];
                     end
                 end
                 
             end
 
+            self.updateInfoPanel();
         end
         
         function y = sanityCheckModes(self, blk)
             % Look for absurd values fitted by the Gaussian fitter
-            a = find(blk(:,2) > 10);
+            
+            % Absurd amplitudes
+            a = find(blk(:,2) > 2*self.xNormalization);
+            % Unreasonable luminance fluctuation (these are bounded by roughly 1)
             b = find(blk(:,3) > 5);
             
             keeps = ones([size(blk,1) 1]);
@@ -651,12 +755,7 @@ classdef RHD_Analyzer < handle
             y = blk(find(keeps),:);
         end
         
-    end%PUBLIC
-    
-    %===================================================================================================
-    methods (Access = protected) %                                      P R O T E C T E D    [M]
-
-        function cbRunButton(self, src, data)
+        function runFullAnalysis(self)
             % Iterates through all the run phases in sequence
             if self.pCurrentAnalysisPhase ~= 0; return; end
             
@@ -664,47 +763,75 @@ classdef RHD_Analyzer < handle
             
             self.runAnalysisPhase = 2; % basics
             
-            if self.pHaveAutovars && (self.autovars(2) / size(self.F.mass,2) > .95)
-                % no need to run this if the oscillation interval is chosen from end of run anyway
-            else
-                self.runAnalysisPhase = 3; % oscil
+            self.pTryAutoOscil = 1;
+            self.runAnalysisPhase = 3; % run oscil (it skips input itself if possible)
+            self.pTryAutoOscil = 0;
+                        
+            if (self.pAutomaticMode == 0) || (self.pHaveAutovars == 0)
+                self.runAnalysisPhase = 4; % pick fft range
+            else % this is curious, interrupt for manual input
+                if (self.fftPoints(2) < .95*size(self.F.mass,2)) || any(self.fftPoints > size(self.F.mass,2))
+                    self.runAnalysisPhase = 4;
+                end
             end
-            
-            self.runAnalysisPhase = 4; % fft rng
+                
             
             self.runAnalysisPhase = 5; % fft 
             
-            %self.runAnalysisPhase = 6; % save     
+            if self.pAutomaticMode
+                self.runAnalysisPhase = 6; % save     
+            end
         end
         
-        function cbLoadButton(self, src, data)
-            if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 1;
+    end%PUBLIC
+    
+    %===================================================================================================
+    methods (Access = protected) %                                      P R O T E C T E D    [M]
+        
+        function print(self, s)
+            disp(s);
+            self.msgBox.String = s;
+        end
+
+        function cbRunButton(self, src, data)
+            self.runFullAnalysis();
         end
         
-        function cbBasicButton(self, src, data)
-            if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 2;
+        function cbDynrngPlus(self, src, data)
+            self.graphAxes.CLim = self.graphAxes.CLim * 5;
+        end
+            
+        function cbDynrngMinus(self, src, data)
+            self.graphAxes.CLim = self.graphAxes.CLim / 5;
         end
         
-        function cbOscilButton(self, src, data)
+        function cbSequenceBtns(self, src, data)
             if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 3;
+            if strcmp(src.Tag, 'loadbutton'); self.runAnalysisPhase = 1; end
+            if strcmp(src.Tag, 'basicsbutton'); self.runAnalysisPhase = 2; end
+            if strcmp(src.Tag, 'oscilbutton'); self.runAnalysisPhase = 3; end
+            if strcmp(src.Tag, 'rangebutton'); self.runAnalysisPhase = 4; end
+            if strcmp(src.Tag, 'fftbutton'); self.runAnalysisPhase = 5; end
+            if strcmp(src.Tag, 'writebutton'); self.runAnalysisPhase = 6; end
         end
         
-        function cbXformButton(self, src, data)
-            if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 4;
+        function cbShowStatus(self, src, data)
+            if data.Source.Value == 1 % pushed
+                self.infoPanel.Visible = 'on';
+            else
+                self.infoPanel.Visible = 'off';
+            end
         end
-        
-        function cbFFTButton(self, src, data)
-            if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 5;
-        end
-        
-        function cbWriteButton(self, src, data)
-            if self.pCurrentAnalysisPhase ~= 0; return; end
-            self.runAnalysisPhase = 6;
+
+        function handleAnalyzerResize(self, src, data)
+            rez = src.Position;
+
+            pix = 1 ./ self.figWindow.OuterPosition(3:4);
+            
+            dy = self.ctrlPanel.Position(4) / rez(4); 
+            
+            self.graphAxes.Position = [.10 (dy + 48*pix(2) + 1*self.pCharH/rez(4)) .85 (.95-dy - 64*pix(2))];
+            
         end
         
         function interrogateSystemDPI(self)

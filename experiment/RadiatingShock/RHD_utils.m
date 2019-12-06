@@ -226,36 +226,39 @@ classdef RHD_utils < handle
             residual = y;
         end
 
-        function str = assignModeName(w, M, gamma, theta)
-            str = '';
-            modes = {'F', '1O', '2O', '3O', '4O', '5O', '6O', '7O', '8O', '9O','10O','11O'};
+        function [M offset] = assignModeNumber(w, M, gamma, theta)
             
             switch gamma
                 case 167
-                    ftower = [.85 2.85 5 7 9 11 13 15 17 19 21 23];
+                    ftower = [.857 2.85 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 1.75/M)*(1-.038*theta));
                     m = abs(w - .256*ftower);
-                    q = find(m < .1);
-                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
-                        str = modes{q(1)};
-                    end    
+                    M = find(m < .07, 1);
                 case 140
-                    ftower = [.92 2.76 5 7 9 11 13 15 17 19 21 23];
-                    w = w / ((1 + 2.5/M)*(1-.04*theta));
-                    m = abs(w - .185*ftower);
-                    q = find(m < .1);
-                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
-                        str = modes{q(1)};
-                    end                    
+                    ftower = [.85 2.85 5 7 9 11 13 15 17 19 21 23];
+                    w = w / ((1 + 2.5/M)*(1-.042*theta));
+                    m = abs(w - .186*ftower);
+                    M = find(m < .07, 1);
                 case 129
-                    ftower = [.8 3 5 7 9 11 13 15 17 19 21 23];
+                    ftower = [.85 2.86 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.84/M)*(1-.06*theta));
                     m = abs(w - .15*ftower);
-                    q = find(m < .1);
-                    if numel(q) > 0 % numel > 1 ought to be impossible but who knows 
-                        str = modes{q(1)};
-                    end                    
+                    M = find(m < .07, 1);
             end
+            
+            if isempty(M)
+                offset = Inf;
+                M = -1;
+            else
+                offset = m(M);
+                M = M - 1;
+            end
+        end
+        
+        function str = assignModeName(m)
+            str = '';
+            modes = {'F', '1O', '2O', '3O', '4O', '5O', '6O', '7O', '8O', '9O','10O','11O'};
+            if m > -1; str = modes{m+1}; else; str = ''; end
         end
         
         function [xtilde, vee] = extractFallback(x, t)
