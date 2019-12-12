@@ -189,7 +189,7 @@ classdef RHD_utils < handle
             yi = y((bin-q):(bin+q));
             
             try
-                thefit = fit(xi, yi, 'gauss1');
+                thefit = fit(xi, yi, 'gauss1','StartPoint',[.1 0 1], 'Lower', [-1 -7 0], 'Upper', [25 7 5]);
             catch derp
                 thefit.a1 = 0; thefit.b1 = 0; thefit.c1 = 9999; 
             end
@@ -202,10 +202,10 @@ classdef RHD_utils < handle
             
             ip = idx; in = idx;
             for q = idx:(numel(y)-1)
-                if y(q+1) > y(q); ip = q; break; end
+                if y(q+1) >= y(q); ip = q; break; end
             end
             for q = idx:-1:2
-                if y(q-1) > y(q); in = q; break; end 
+                if y(q-1) >= y(q); in = q; break; end 
             end
             
             a = y(in); b = y(ip);
@@ -230,17 +230,17 @@ classdef RHD_utils < handle
             
             switch gamma
                 case 167
-                    ftower = [.857 2.85 5 7 9 11 13 15 17 19 21 23];
-                    w = w / ((1 + 1.75/M)*(1-.038*theta));
-                    m = abs(w - .256*ftower);
+                    ftower = [.87 2.85 5 7 9 11 13 15 17 19 21 23];
+                    w = w / ((1 + 1.14/M + 1.45/M^2)*(1-.02*theta));
+                    m = abs(w - .261*ftower);
                     M = find(m < .07, 1);
                 case 140
-                    ftower = [.85 2.85 5 7 9 11 13 15 17 19 21 23];
+                    ftower = [.87 2.85 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.5/M)*(1-.042*theta));
                     m = abs(w - .186*ftower);
                     M = find(m < .07, 1);
                 case 129
-                    ftower = [.85 2.86 5 7 9 11 13 15 17 19 21 23];
+                    ftower = [.87 2.85 5 7 9 11 13 15 17 19 21 23];
                     w = w / ((1 + 2.84/M)*(1-.06*theta));
                     m = abs(w - .15*ftower);
                     M = find(m < .07, 1);
