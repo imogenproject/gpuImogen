@@ -87,7 +87,7 @@ classdef DataFrame < handle
 
         end
         
-        function checkpinteg(self)
+        function needtoresave = checkpinteg(self)
             if prod(self.pTrueShape) ~= numel(self.mass)
                 fprintf('WARNING: self.pTrueShape WRONG SIZE: SAVE GLITCH CAUGHT: AUTOFIXING\n');
                 self.pTrueShape = [size(self.mass,1) 1 1 size(self.mass,2)];
@@ -95,7 +95,9 @@ classdef DataFrame < handle
                     self.pTrueShape(4) = size(self.mass,4);
                 end
                 self.unsquashme;
-                F = self; save('4D_XYZT.mat','F','-v7.3');
+                needtoresave = 1;
+            else
+                needtoresave = 0;
             end
         end
 
@@ -359,9 +361,12 @@ classdef DataFrame < handle
                        fprintf('Expected frame juncture: [1:%i %i:end]\n',j, ohno);
                        fprintf('Times: ');
                        disp(self.time.time([(j-4):j ohno:(ohno+3)]));
-                       error('Found max delta^2 T/delta frame^2 > 1e-4 -> unacceptable.\n');
+                       warning('Found max delta^2 T/delta frame^2 > 1e-4 -> unacceptable, will not truncate\n');
+                       doit = 0;
+                   else
+                       doit = 1;
                    end
-                   doit = 1;
+                   
                end
                   
                if doit
@@ -370,9 +375,12 @@ classdef DataFrame < handle
                    disp('Good to save? ');
                    tf = input('?');
                    if tf
-                       F = self;
-                       save('4D_XYZT','F');
+                       tf = 1;
+                   else
+                       tf = 0;
                    end
+               else
+                   tf = 0;
                end
                
            end

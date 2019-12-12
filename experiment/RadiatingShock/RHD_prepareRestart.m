@@ -13,6 +13,9 @@ plist = 'plist = [';
 badlist = {};
 nbad = 1;
 
+dbstop in RHD_prepareRestart.m at 143
+dbstop in RHD_prepareRestart.m at 150
+
 if nargin < 2; max = numel(dirlist); end
 if nargin < 3; start = 1; end
 
@@ -35,7 +38,7 @@ if makeplist
 end
 
 for Q = start:max
-    fprintf('Run %i | %s | ', int32(Q), dirlist{Q});
+    fprintf('Run %i/%i | %s | ', int32(Q), int32(max), dirlist{Q});
     cd(dirlist{Q});
     
     try
@@ -88,7 +91,12 @@ for Q = start:max
             
             [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
             
-            plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
+            switch rp.gamma
+                case 167; rt = 1;
+                case 140; rt = 2;
+                case 129; rt = 3;
+            end
+            plist = sprintf('%s %.3f, %.2f, %.5g, %i; ', plist, rp.m, rp.theta, vfall + zz, int32(rt));
         end
         cd ..;
         if ~isempty(moveto)
@@ -126,16 +134,21 @@ for Q = start:max
         
         % to be safe
         !rm savefileIndex.mat
-        SP = SavefilePortal;
-        SP.setFrametype('XY');
-        SP.setMetamode(1);
-        J = SP.jumpToLastFrame();
+        try
+            SP = SavefilePortal;
+            SP.setFrametype('XY');
+            SP.setMetamode(1);
+            J = SP.jumpToLastFrame();
+        catch
+            disp('ERROR: something has shitted up a savefile and the SavefilePortal dumped')
+            disp('This needs to be fixed and J must exist & be the last frame before dbcont.');
+        end
         
         % there -SHOULDN'T- be a restart Xmillion + 1 'glitch' frame at the end, but
         % stupider crap has happened
         if abs(J.iter - F.time.iteration) > 1
             warning('WARNING DANGER DANGER iterations from filenames and F.time.iteration disagree')
-            warning('dbstop in RHD_prepareRestart.m at 140 - to access the screwup at the detect point & fix it')
+            warning('dbstop in RHD_prepareRestart.m at 150 - to access the screwup at the detect point & fix it')
         end
         
         if abs(J.iter - F.time.iteration) < 2
@@ -169,8 +182,19 @@ for Q = start:max
                 end
                 
                 [~, vfall] = RHD_utils.extractFallback(x(nlpoint:endpt), F.time.time(nlpoint:endpt)');
-                
-                plist = sprintf('%s %.3f, %.2f, %.5g; ', plist, rp.m, rp.theta, vfall + zz);
+
+                thermotype = 0;
+                switch rp.gamma
+                    case 167; thermotype = 1;
+                    case 140; thermotype = 2;
+                    case 129; thermotype = 3;
+                end
+                plist = sprintf('%s %.3f, %.2f, %.5g, %i; ', plist, rp.m, rp.theta, vfall + zz, thermotype);
+            end
+            if ~isempty(moveto)
+                s = sprintf('!mv %s %s', dirlist{Q}, moveto);
+                disp(s);
+                eval(s);
             end
         end
         badlist{end+1} = dirlist{Q};

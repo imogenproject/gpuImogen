@@ -18,6 +18,10 @@ classdef FMHandler2 < handle
         
         dangerous_autoOverwrite;
         
+        fallbackRate;
+        nShockCells;
+        spectralResolution;
+        
         convergenceLevel;
     end %PUBLIC
     
@@ -38,6 +42,7 @@ classdef FMHandler2 < handle
     end %PROTECTED
     
     properties (SetAccess = protected, GetAccess = protected)
+
 
     end
     
@@ -88,7 +93,7 @@ classdef FMHandler2 < handle
                 cd(dlist(dlc).name);
                 A.dbgclear(); % for safety
                 A.runFullAnalysis();
-                cd ..;
+                %cd ..;
                 
                 fprintf('Finished %i/%i\n', int32(dlc), int32(numel(dlist)));
             end
@@ -161,12 +166,16 @@ classdef FMHandler2 < handle
                     self.fnormPts = self.fnormPts(s);
                     self.xnormPts = self.xnormPts(s);
                     self.radnormPts = self.radnormPts(s);
+                    
+                    self.fallbackRate = self.fallbackRate(s);
+                    self.nShockCells = self.nShockCells(s);
+                    self.spectralResolution = self.spectralResolution(s);
                 end
             end
         end
         
-        function insertPointNew(self, M, theta, data, convLvl)
-            % FMHandler.insertPointNew(M, theta, data, convLvl)
+        function insertPointNew(self, M, theta, data, numprops)
+            % FMHandler.insertPointNew(M, theta, data, [conv level, fallback rate, n shock cells, spec resoln])
             % M: mach
             % theta: radiation theta
             % data: 11x3 block, Nth row has [frequency, x amp, radiance amp] of (n-1)th mode
@@ -176,12 +185,12 @@ classdef FMHandler2 < handle
             
             p = intersect(samem, samet);
             
-            if nargin < 5; convLvl = -1; end
+            if nargin < 5; numprops = [0 0 0 0]; end
             
             if ~isempty(p)
                 % this is a duplicate point
                 if self.dangerous_autoOverwrite ~= 1
-                    fprintf('WARNING: This point already in internal dataset with conv lvl = %i\nEnter 314 to overwrite with point with conv lvl=%i: ', int32(self.convergenceLevel(p)), int32(convLvl));
+                    fprintf('WARNING: This point already in internal dataset with conv lvl = %i\nEnter 314 to overwrite with point with conv lvl=%i: ', int32(self.convergenceLevel(p)), int32(numprops(1)));
                     really = input(': ');
                 else
                     really = 314;
@@ -194,9 +203,12 @@ classdef FMHandler2 < handle
                     self.peakFreqs(p, :) = data(:, 1)';
                     self.peakMassAmps(p, :) = data(:, 2)';
                     self.peakLumAmps(p, :) = data(:, 3)';
-                    if convLvl > -1
-                        self.convergenceLevel(p) = convLvl;
-                    end
+                    
+                    
+                    self.convergenceLevel(p) = numprops(1);
+                    self.fallbackRate(p) = numprops(2);
+                    self.nShockCells(p) = numprops(3);
+                    self.spectralResolution(p) = numprops(4);
                 end
             else
                 self.machPts(end+1) = M;
@@ -205,8 +217,11 @@ classdef FMHandler2 < handle
                 self.peakFreqs(end+1, :) = data(:, 1)';
                 self.peakMassAmps(end+1, :) = data(:, 2)';
                 self.peakLumAmps(end+1, :) = data(:, 3)';
-
-                self.convergenceLevel(end+1) = convLvl;
+ 
+                self.convergenceLevel(end+1) = numprops(1);
+                self.fallbackRate(end+1) = numprops(2);
+                self.nShockCells(end+1) = numprops(3);
+                self.spectralResolution(end+1) = numprops(4);
                 
                 h = HDJumpSolver(self.machPts(end), 0, self.gamma);
                 R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(end), 1.05);
@@ -214,7 +229,6 @@ classdef FMHandler2 < handle
                 self.fnormPts(end+1) = h.v(1,1) / xshock;
                 self.xnormPts(end+1) = xshock;
                 self.radnormPts(end+1) = R.luminance;
-                
             end
             
             if ~isempty(self.dataFilename)
@@ -289,7 +303,9 @@ classdef FMHandler2 < handle
                 else
                     switch round(100*self.gamma)
                         case 167
-                            xi = (1 + 1.75 / self.machPts(q)) * (1 - .025*self.thetaPts(q));
+                            %xi = (1 + 1.75 / self.machPts(q)) * (1 - .025*self.thetaPts(q));
+                            xi = (1 + .7/(self.machPts(q)-1)) * (1 - .025*self.thetaPts(q));
+                            %xi = (self.machPts(q)) * (1 - .025*self.thetaPts(q)) / (self.machPts(q) - 1);
                         case 140
                             xi = (1 + 2.50 / self.machPts(q)) * (1 - .040*self.thetaPts(q));
                         case 129
@@ -446,6 +462,8 @@ classdef FMHandler2 < handle
         function emitDominantFreqPlot(self, qty, logScale, colorBy)
             % .emitDominantFreqPlot(self, qty, logScale, colorBy)
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
+            %        4 = rms delta-luminosity;5 = fallback rate; 6 = # shock cells;
+            %        7 = spectral resolution
             %   logScale: If true, rendered in log scale. Otherwise, linear (default)
             %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp,
             %            5 = convergence quality
@@ -477,8 +495,20 @@ classdef FMHandler2 < handle
                     z = sqrt(sum(self.peakLumAmps.^2, 2));
                     titlestring = 'z: rms \delta L; ';
                     zstring = 'rms(\delta L) / L_{eq';
+                case 5
+                    z = self.fallbackRate';
+                    titlestring = 'z: fallback speed';
+                    zstring = 'V_{fallback}';
+                case 6
+                    z = self.nShockCells';
+                    titlestring = 'z: # shock cells';
+                    zstring = 'N cells';
+                case 7
+                    z = self.spectralResolution';
+                    titlestring = 'z: Spectral resolution';
+                    zstring = 'd\omega';
                 otherwise
-                    error('Invalid qty argument: not 1 to 4');
+                    error('Invalid qty argument: not 1 to 7');
             end
             
             switch colorBy
@@ -612,7 +642,27 @@ classdef FMHandler2 < handle
                 fmode = scatteredInterpolant(self.machPts(dohaveit)', self.thetaPts(dohaveit)', c(dohaveit));
                 fmode.Method = 'linear';
                 fmode.ExtrapolationMethod = 'none';
-                
+
+                if 0
+                    figure(2);
+                    hold off;
+                    tau = delaunay(self.machPts(dohaveit)', self.thetaPts(dohaveit)');
+                    trisurf(tau, self.thetaPts, self.machPts, self.freqPts, self.modePts)
+                    hold on;
+                    scatter3(self.thetaPts, self.machPts, self.freqPts, 'r*');
+                    xlabel('\theta');
+                    ylabel('Mach');
+                    zlabel('F');
+                    hold off;
+                    view([-123 32]);
+                    
+                    colormap('jet');
+                    ca = gca();
+                    ca.CLim = [0, 6];
+                    colorbar;
+                    figure(1);
+                end
+
                 csmooth = fmode(m, t);
                 
                 surf(v(1):v(2):v(3), u(1):u(2):u(3), zsmooth, csmooth);
@@ -675,6 +725,15 @@ classdef FMHandler2 < handle
                 eval(str);
             end
         end
+        
+        
+        function fbr = queryFallback(self, m, theta)
+            fsi = scatteredInterpolant(self.machPts', self.thetaPts', self.fallbackRate');
+            fbr = fsi(m, theta);
+        end
+        
+        
+        
     end%PUBLIC
     
     %===================================================================================================

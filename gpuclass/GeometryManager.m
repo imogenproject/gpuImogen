@@ -123,7 +123,8 @@ classdef GeometryManager < handle
             % runs the bookkeeping for it, determining what set of I/J/K vectors out of the global grid that
             % this node has.
             % geo.setup(global_resolution, Initializer) sets the resolution and
-            if numel(global_size) == 2; global_size(3) = 1; end
+            if numel(global_size) < 3; global_size(3) = 1; end
+            if numel(global_size) < 2; global_size(2) = 1; end
 
             % Default to circular BCS
             obj.circularBCs = [1 1 1];

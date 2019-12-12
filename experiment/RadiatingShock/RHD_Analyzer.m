@@ -36,6 +36,8 @@ classdef RHD_Analyzer < handle
         fftPoints;
         fftFundamentalFreq;
         
+        disableAutoOscil;
+        
         datablock;
     end %PUBLIC
     
@@ -53,7 +55,7 @@ classdef RHD_Analyzer < handle
         pDisableSequenceButtons;
         pHaveAutovars;
         
-        pAbortSequence;
+        pAbortedSequence;
         
         pAutomaticMode;
         
@@ -87,6 +89,7 @@ classdef RHD_Analyzer < handle
             drawnow();
             
             self.pCurrentAnalysisPhase = 0;
+            self.disableAutoOscil = 0;
         end
         
         function p = get.runAnalysisPhase(self)
@@ -160,7 +163,7 @@ classdef RHD_Analyzer < handle
             
             self.automaticMode         = 0;
             self.pCurrentAnalysisPhase = 0;
-            self.pAbortSequence        = 0;
+            self.pAbortedSequence      = 0;
             self.pTryAutoOscil = 0;
             
             % Buttons: [run full sequence] [auto = 2] [pick oscil period] [pick fft range] [fft] [save] 
@@ -269,13 +272,22 @@ classdef RHD_Analyzer < handle
                 % ... ? 
             end
             
-            self.F.checkpinteg(); 
+            if numel(size(self.F.mass)) ~= 4 % it was mistakenly saved while squeezed
+                self.print('Glitch: dataframe was saved while squeezed. Automatically fixed.');
+                self.F.reshape([size(self.F.mass,1) 1 1 size(self.F.mass,2)]);
+                resave = 1;
+            else
+                resave = 0;
+            end
             
-            br = self.F.checkForBadRestartFrame();
+            resave = resave + self.F.checkpinteg();
+            
+            resave = resave + self.F.checkForBadRestartFrame();
             chopped = self.F.chopOutAnomalousTimestep();
+            if chopped; resave = resave + 1; end
             
-            if chopped
-                self.print('User indicates acceptable truncation of bad restart: Saving correct data.');
+            if resave
+                self.print('1 or more BS glitches repaired: Saving correct data');
                 F = self.F; %#ok<NASGU,PROP>
                 save('4D_XYZT','F','-v7.3');
             end
@@ -296,6 +308,9 @@ classdef RHD_Analyzer < handle
                 %pointspace = autovars(3);
                 %nlpoint = autovars(4);
                 %endpt = autovars(5);
+                if self.disableAutoOscil
+                    self.autovars(1:2) = autovars(1:2) + (size(F.mass,2) - autovars(2) + 100);
+                end
                 
                 self.pHaveAutovars = 1;
                 self.fftPoints = self.autovars(4:5);
@@ -376,7 +391,7 @@ classdef RHD_Analyzer < handle
             % This is no longer needed for mode identification but it is useful for making the
             % spectrograms of pure tones awful purty
             
-            if self.pHaveAutovars
+            if self.pHaveAutovars && (self.autovars(2) > self.autovars(1))
                 % use them to autoposition for period selection
                 xrng = abs(self.autovars(2)-self.autovars(1));
                 nt = size(self.F.mass);
@@ -394,64 +409,57 @@ classdef RHD_Analyzer < handle
             
             doauto = self.pHaveAutovars && self.pTryAutoOscil && (self.autovars(2) > 0.9*size(self.F.mass,2)) && (self.autovars(2) < size(self.F.mass,2));
             
-            if doauto
-                pt = self.autovars(1);
-            else
-                title('Click 2 points demarking a round trip')
-                P = pointGetter();
-                pt = P.waitForClick();
-                P.clickedPoint = [];
-            end
-            pts(1) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
-            
-            plot(pts(1), self.shockPos(pts(1)) / self.F.dGrid{1}, 'rX');
-            
-            if doauto
-                pt = self.autovars(2);
-            else
-                pt = P.waitForClick();
-                P.clickedPoint = [];
+            if doauto; haveauto = 2; else
+                title('Click 2 points demarking a round trip');
+                haveauto = 0; 
             end
             
-            pts(2) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+            [pt, haveauto] = self.acquireValidOscPoint(haveauto);
+            self.oscilPoints(1) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+            plot(self.oscilPoints(1), self.shockPos(self.oscilPoints(1)) / self.F.dGrid{1}, 'rX');
+            
+            [pt, ~] = self.acquireValidOscPoint(haveauto);
+            self.oscilPoints(2) = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+            plot(self.oscilPoints(2), self.shockPos(self.oscilPoints(2)) / self.F.dGrid{1}, 'rX');
+            
+            title('');
+            
             % In case they click right then left
-            self.oscilPoints = sort(pts);
-
-            plot(pts(2), self.shockPos(pts(2)) / self.F.dGrid{1}, 'rX');
+            self.oscilPoints = sort(self.oscilPoints);
             
             pointspace = 2;
-            interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 0, pointspace);
+            interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(1), 0, pointspace);
 
             if ~isreal(interframe1)
                 self.print('WARNING: the shock bounce period appears to be VERY short. Trying again with tighter spaced points.');
-                interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 0, 1);
+                interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(1), 0, 1);
                 
                 if ~isreal(interframe1)
                     self.print('WARNING: Parabolas failed for point 1. Using 0th order approximation.');
-                    interframe1 = pts(1);
+                    interframe1 = self.oscilPoints(1);
                 else % rerun and request a plot this time
-                    interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 1, 1);
+                    interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(1), 1, 1);
                 end
                 
                 pointspace = 1;
             else % rerun with orders to plot
-                interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(1), 1, pointspace);
+                interframe1 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(1), 1, pointspace);
             end
             
-            interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(2), 0, pointspace);
+            interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(2), 0, pointspace);
             if ~isreal(interframe2)
                 if pointspace > 1
-                    interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(2), 0, 1);
+                    interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(2), 0, 1);
                 end
                 
                 if ~isreal(interframe2)
                     self.print('WARNING: Parabolas failed for point 2. Using 0th order approximation.');
-                    interframe2 = pts(2);
+                    interframe2 = self.oscilPoints(2);
                 else % rerun and request a plot this time
-                    interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(2), 1, 1);
+                    interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(2), 1, 1);
                 end
             else % rerun with orders to plot
-                interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, pts(2), 1, pointspace);
+                interframe2 = RHD_utils.projectParabolicMinimum(self.shockPos, self.oscilPoints(2), 1, pointspace);
             end            
 
             self.projectedPts = [interframe1 interframe2];
@@ -461,7 +469,7 @@ classdef RHD_Analyzer < handle
             plot([interframe1 interframe2], self.shockPos(round([interframe1 interframe2])) / self.F.dGrid{1}, 'kv', 'MarkerSize', 10);
             hold off;
 
-            tfunda0 = self.timeVec(pts);
+            tfunda0 = self.timeVec(self.oscilPoints);
             ffunda0 = 1/(tfunda0(2) - tfunda0(1));
 
             ffunda = 1/(tfunda(2)-tfunda(1));
@@ -475,6 +483,53 @@ classdef RHD_Analyzer < handle
             
             self.fOscillate = ffunda;
             self.updateInfoPanel();
+        end
+        
+        function [pt, autoremain] = acquireValidOscPoint(self, haveauto)
+            autoremain = haveauto;
+            
+            % If we have two autovars points, try the 1st one 1st
+            if autoremain == 2
+                pt = self.autovars(1);
+                q = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+                if q < (numel(self.shockPos)-5)
+                    autoremain = 1;
+                    return;
+                end
+            end
+            
+            % If we have one autovars point, try it
+            if autoremain == 1
+                pt = self.autovars(2);
+                q = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+                if q < (numel(self.shockPos)-5)
+                    autoremain = 0;
+                    return;
+                end
+            end
+            
+            ptvalid = 0;
+            
+            P = pointGetter('image');
+            while ptvalid == 0
+                pt = P.waitForClick();
+                q = RHD_utils.walkdown(self.shockPos, round(pt(1)), 100);
+                if q < (numel(self.shockPos)-5)
+                    if numel(self.oscilPoints) > 0
+                        if q ~= self.oscilPoints(1)
+                            ptvalid = 1;
+                        else
+                            self.print('Invalid point: Same as first point');
+                        end
+                    else
+                        ptvalid = 1;
+                    end
+                else
+                    self.print('Invalid point: walks down too close to end of grid.');
+                end
+            end
+            ax = gca();
+            ax.Children(1).ButtonDownFcn = [];
         end
         
         function pickFFTRange(self)
@@ -500,7 +555,8 @@ classdef RHD_Analyzer < handle
             
             self.print('Click the start & end points of the interval to transform.');
             
-            P = pointGetter();
+            
+            P = pointGetter('line');
             pt = P.waitForClick();
             P.clickedPoint = [];
             nlpoint(1) = round(pt(1));
@@ -594,11 +650,13 @@ classdef RHD_Analyzer < handle
                 return;
             end
             
+            numprops = [conq, self.vfallback, round(self.xNormalization / self.F.dGrid{1}), self.fftFundamentalFreq];
+                        
             % Go through this rigamarole to access the next frame up and insert the data myself
-            proto = 'f%i.insertPointNew(%f, %f, %s, %i);';
+            proto = 'f%i.insertPointNew(%f, %f, %s, %s);';
             if self.runParameters.gamma == 167
                 if evalin('base', 'exist(''f53'', ''var'')')
-                    p = sprintf(proto, 53, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), conq);
+                    p = sprintf(proto, 53, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), mat2str(numprops));
                     evalin('base', p);
                     %f53.insertPointNew(self.runParameters.m, self.runParameters.theta, self.datablock, conq);
                 elseif exist('self', 'var')
@@ -608,7 +666,7 @@ classdef RHD_Analyzer < handle
                 end
             elseif self.runParameters.gamma == 140
                 if evalin('base', 'exist(''f75'', ''var'')')
-                    p = sprintf(proto, 75, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), conq);
+                    p = sprintf(proto, 75, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), mat2str(numprops));
                     evalin('base', p);
                     %f75.insertPointNew(runparams.m, runparams.theta, self.datablock, conq);
                 else
@@ -616,7 +674,7 @@ classdef RHD_Analyzer < handle
                 end
             elseif self.runParameters.gamma == 129
                 if evalin('base', 'exist(''f97'', ''var'')')
-                    p = sprintf(proto, 97, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), conq);
+                    p = sprintf(proto, 97, self.runParameters.m, self.runParameters.theta, mat2str(self.datablock), mat2str(numprops));
                     evalin('base', p);
                     %f97.insertPointNew(runparams.m, runparams.theta, self.datablock, conq);
                 else
@@ -628,7 +686,7 @@ classdef RHD_Analyzer < handle
 
             od = pwd();
             cd ..;
-            if conq == 5
+            if (conq == 5) && (self.automaticMode == 0)
                 xd = pwd();
                 if strcmp(xd((end-8):end), 'radshocks') == 0
                     eval(sprintf('!mv %s ../radshocks', od));
@@ -686,9 +744,9 @@ classdef RHD_Analyzer < handle
             runpar = self.runParameters;
             
             % Plot frequency bin markers
-            wpk = [.86 2.85 5 7 9 11 13 15];
+            wpk = [.87 2.85 5 7 9 11 13 15];
             switch self.runParameters.gamma
-                case 167; wpk = wpk * (1 + 1.75 / runpar.m) * (1 - .040*runpar.theta) * .256;
+                case 167; wpk = wpk * (1 + 1.14 / runpar.m + 1.45/runpar.m^2) * (1 - .020*runpar.theta) * .261;
                 case 140; wpk = wpk * (1 + 2.50 / runpar.m) * (1 - .042*runpar.theta) * .186;
                 case 129; wpk = wpk * (1 + 2.84 / runpar.m) * (1 - .060*runpar.theta) * .150;
             end
@@ -782,6 +840,7 @@ classdef RHD_Analyzer < handle
                 self.runAnalysisPhase = 6; % save     
             end
         end
+        
         
     end%PUBLIC
     
