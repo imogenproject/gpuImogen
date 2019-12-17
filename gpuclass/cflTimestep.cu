@@ -42,6 +42,14 @@ __constant__ __device__ double geoParams[5];
 #define GEO_DZ geoParams[2]
 #define GEO_RIN geoParams[3]
 
+// The process of acquiring page locked memory on the host is nauseatingly slow
+// If this is set, grab these pointers once and never look again
+#ifdef USE_STATIC_CHALLOC
+static double *hostptrs[MAX_GPUS_USED];
+// amount alloc'd in # doubles
+static int hostptrLength[MAX_GPUS_USED];
+#endif
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// Form of call: tau = cflTimestep(FluidManager, soundspeed gpu array, GeometryManager)
 
@@ -100,13 +108,30 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if(geom.shape == CYLINDRICAL) gt = 1;
     int ctype = spacedim + 3*(gt + 2*(meth-1)); // value in 0..17
 
+
     int numBlocks[fluid->nGPUs];
 
     for(i = 0; i < fluid->nGPUs; i++) {
+    	// This DOES grow the allocation "dumbly" however it is extremely unlikely that reallocation will be necessary more than once, if that
+#ifdef USE_STATIC_CHALLOC
+    	if(hblockElements > hostptrLength[i]) {
+    		cudaSetDevice(fluid->deviceID[i]);
+    		CHECK_CUDA_ERROR("cudaSetDevice()");
+    		if(hostptrLength[i] > 0) {
+    			cudaFreeHost(hostptrs[i]);
+    			CHECK_CUDA_ERROR("cudaFreeHost()");
+    		}
+    		cudaMallocHost((void **)&hostptrs[i], hblockElements * sizeof(double));
+    		hostptrLength[i] = hblockElements;
+    		CHECK_CUDA_ERROR("CFL malloc doubles");
+    	}
+    	blkA[i] = hostptrs[i];
+#else
     	cudaSetDevice(fluid->deviceID[i]);
     	CHECK_CUDA_ERROR("cudaSetDevice()");
     	cudaMallocHost((void **)&blkA[i], hblockElements * sizeof(double));
     	CHECK_CUDA_ERROR("CFL malloc doubles");
+#endif
 
     	cudaMemcpyToSymbol(geoParams, &geoarray[0], 5*sizeof(double), 0, cudaMemcpyHostToDevice);
     	if(CHECK_CUDA_ERROR("cfl const memcpy") != SUCCESSFUL) { mexErrMsgTxt("Dumping"); }
@@ -116,26 +141,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	if(gridsize.x > 128) gridsize.x = 128;
 
     	numBlocks[i] = gridsize.x;
+    	double *fpi = fluid[0].devicePtr[i];
+    	double *spi = sndspeed.devicePtr[i];
 
     	switch(ctype) {
-    	case 0:  cukern_CFLtimestep<1, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 1:  cukern_CFLtimestep<2, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 2:  cukern_CFLtimestep<3, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 3:  cukern_CFLtimestep<1, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 4:  cukern_CFLtimestep<2, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 5:  cukern_CFLtimestep<3, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 6:  cukern_CFLtimestep<1, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 7:  cukern_CFLtimestep<2, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 8:  cukern_CFLtimestep<3, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 9:  cukern_CFLtimestep<1, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 10: cukern_CFLtimestep<2, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 11: cukern_CFLtimestep<3, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 12: cukern_CFLtimestep<1, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 13: cukern_CFLtimestep<2, SQUARE,      METHOD_XINJIN><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 14: cukern_CFLtimestep<3, SQUARE,      METHOD_XINJIN><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 15: cukern_CFLtimestep<1, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 16: cukern_CFLtimestep<2, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
-    	case 17: cukern_CFLtimestep<3, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fluid[0].devicePtr[i], sndspeed.devicePtr[i], blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 0:  cukern_CFLtimestep<1, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 1:  cukern_CFLtimestep<2, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 2:  cukern_CFLtimestep<3, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 3:  cukern_CFLtimestep<1, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 4:  cukern_CFLtimestep<2, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 5:  cukern_CFLtimestep<3, CYLINDRICAL, METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 6:  cukern_CFLtimestep<1, SQUARE,      METHOD_HLL   ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 7:  cukern_CFLtimestep<2, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 8:  cukern_CFLtimestep<3, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 9:  cukern_CFLtimestep<1, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 10: cukern_CFLtimestep<2, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 11: cukern_CFLtimestep<3, CYLINDRICAL, METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 12: cukern_CFLtimestep<1, SQUARE,      METHOD_HLLC  ><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 13: cukern_CFLtimestep<2, SQUARE,      METHOD_XINJIN><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 14: cukern_CFLtimestep<3, SQUARE,      METHOD_XINJIN><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 15: cukern_CFLtimestep<1, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 16: cukern_CFLtimestep<2, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
+    	case 17: cukern_CFLtimestep<3, CYLINDRICAL, METHOD_XINJIN><<<gridsize, blocksize>>>(fpi, spi, blkA[i], sub[3], fluid[0].partNumel[i], fluid[0].slabPitch[i] / 8); break;
     	default:
     		DROP_MEX_ERROR("cflTimestep was passed a 4th argument (method) which was not 1 (hll), 2 (hllc) or 3 (xin/jin).");
     		break;
@@ -147,13 +174,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     int j;
     for(i = 0; i < fluid->nGPUs; i++) {
+    	// They were all fired off at once, but we have to make sure each is done before
+    	// reading the results of course
     	cudaSetDevice(fluid->deviceID[i]);
     	cudaDeviceSynchronize();
     	for(j = 0; j < numBlocks[i]; j++) {
     		tmin = (tmin < blkA[i][j]) ? tmin : blkA[i][j];
     	}
+#ifdef USE_STATIC_CHALLOC
+
+#else
     	cudaFreeHost(blkA[i]);
     	if(CHECK_CUDA_ERROR("freeing blkA") != SUCCESSFUL) { mexErrMsgTxt("Dumping"); }
+#endif
     }
 
     double trueMin;

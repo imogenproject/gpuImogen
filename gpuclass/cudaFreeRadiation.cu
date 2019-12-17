@@ -63,6 +63,7 @@ __constant__ __device__ double radparam[8];
 #define ALGO_GENERAL_ANALYTIC 2
 #define ALGO_GENERAL_IMPLICIT 3
 
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
@@ -129,7 +130,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 #endif
 	return;
 }
-
+#endif
 
 int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, double exponent, double prefactor, double minimumTemperature)
 {

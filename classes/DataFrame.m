@@ -19,6 +19,7 @@ classdef DataFrame < handle
         about;
         ver;
         dGrid;
+        magX, magY, magZ;
     end %PUBLIC
     
     properties (Dependent = true, SetAccess = private) %                    D E P E N D E N T [P]
@@ -84,7 +85,7 @@ classdef DataFrame < handle
     
            self.pTrueShape = size(self.pMass);
            
-
+           self.magX = 0; self.magY = 0; self.magZ = 0;
         end
         
         function needtoresave = checkpinteg(self)
@@ -413,6 +414,30 @@ classdef DataFrame < handle
             
             self.pTrueShape = shape;
             self.unsquashme;            
+        end
+        
+        function circshift(self, amt)
+            if numel(amt) == numel(size(self.mass))
+                names = self.pNamesOfInternalFields();
+                for n = 1:numel(names)
+                    self.(names{n}) = circshift(self.(names{n}), amt);
+                end
+            else
+                error('asdf');
+            end
+        end
+        
+        function remap(self, m)
+            if numel(m) == size(self.mass,1)
+                names = self.pNamesOfInternalFields();
+                for n = 1:numel(names)
+                    x = self.(names{n});
+                    
+                    self.(names{n}) = x(m,:,:,:);
+                end
+            else
+                error('asdf');
+            end
         end
     end%PUBLIC
     

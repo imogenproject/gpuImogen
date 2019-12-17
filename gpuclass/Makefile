@@ -2,13 +2,15 @@
 
 include ../Make.config
 
-DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY -DUSE_NVTX
+DEFINES = -DUNIX -D_FORCE_INLINES -DRECONSTRUCT_VELOCITY -DUSE_NVTX -DUSE_STATIC_CHALLOC
 #-DALLOCFREE_DEBUG      - printf()s to console with every MGA_Alloc/AllocSlab/Free call: A very poor man's Valgrind
 #-DFLOATFLUX            - compute fluxes using floats instead of doubles
 #-DRECONSTRUCT_VELOCITY - apply PLM reconstruction to velocity instead of momentum
 #-DSYNCMEX		- does a complete CUDA device synchronization at the end of MEX functions to
 #                         try and help the Matlab profiler be more useful
 #-DUSE_NVTX		- inserts a lot of useful nvtx range markers to assist with profiling/debugging
+#-DUSE_STATIC_CHALLOC   - Instructs cflTimestep.cu to use cudaHostAlloc once & hold memory in static pointers
+#                         This matters for very, very small simulations doing millions of iterations                   
 
 NVCC_OPTS = $(DEFINES) -gencode arch=$(NVARCH),code=$(NVCODE) -Wno-deprecated-gpu-targets -O2 -g -lineinfo
 #-Xptxas="-v"
@@ -66,16 +68,25 @@ cudaCommon.o: cudaCommon.cu cudaCommon.h
 
 
 ############# Routines that are part of the "compiled core" and have a different
-standalones: cudaArrayRotateB cudaHaloExchange cudaFluidStep cudaStatics cudaSoundspeed
-
 # build procedure from the rest
 # Remove all object code once done to prevent standalone/not-standalone cross contamination
+standalones: cudaArrayRotateB cudaHaloExchange cudaFluidStep cudaStatics cudaSoundspeed
+
+
+
 fluidstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o ../mpi/mpi_common.o
 	mex $(PAR_INCL) $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o flux.o iface.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS) $(OTHER_LIBS)
+
+mergedstep: cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o cudaFreeRadiationFcn.o flux.o iface_merged.o ../mpi/mpi_common.o
+	mex $(PAR_INCL) $(MEX_OPTS) $(MEX_INCL) $(PAR_LDIR) -cxx cudaArrayRotateFcn.o cudaFluidStepFcn.o cudaHaloExchangeFcn.o cudaStaticsFcn.o cudaFreeRadiationFcn.o flux.o iface_merged.o cudaCommon.o ../mpi/mpi_common.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LIBS) $(OTHER_LIBS)
 
 flux.o: flux.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux.cu -o flux.cpp
 	mex $(MEX_OPTS) -c flux.cpp
+
+iface_merged.o: flux_multi.cu cudaCommon.h cudaFluidStep.h cudaFreeRadiation.h
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux_multi.cu -o iface_merged.cpp
+	mex $(MEX_OPTS) -c iface_merged.cpp
 
 iface.o: flux_ML_iface.cu cudaCommon.h
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda flux_ML_iface.cu -o iface.cpp
@@ -339,11 +350,15 @@ cudaSourceCylindricalTerms.o: cudaSourceCylindricalTerms.cu
 cudaSourceCylindricalTerms: cudaCommon.o cudaSourceCylindricalTerms.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) $(OTHER_LIBS)
 
+cudaFreeRadiationFcn.o: cudaFreeRadiation.cu
+	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFreeRadiation.cu -o cudaFreeRadiationFcn.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFreeRadiationFcn.cpp
 cudaFreeRadiation.o: cudaFreeRadiation.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaFreeRadiation.cu -o cudaFreeRadiation.cpp
-	mex $(MEX_OPTS) $(MEX_INCL) -c cudaFreeRadiation.cpp
+	mex $(MEX_OPTS) $(MEX_INCL) -DSTANDALONE_MEX_FUNCTION -c cudaFreeRadiation.cpp
 cudaFreeRadiation: cudaCommon.o cudaFreeRadiation.o
 	mex $(MEX_OPTS) $(MEX_INCL) -cxx $@.o cudaCommon.o $(OUTPUTCMD) $@ $(MEX_LDIR) $(MEX_LIBS) $(PAR_LDIR) $(PAR_LIBS) $(OTHER_LIBS)
+
 
 cudaAccretingStar.o: cudaAccretingStar.cu
 	nvcc $(NVCC_OPTS) $(PAR_INCL) $(NVCC_INCL) -cuda cudaAccretingStar.cu -o cudaAccretingStar.cpp
