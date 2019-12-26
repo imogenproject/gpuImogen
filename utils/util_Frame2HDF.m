@@ -7,7 +7,7 @@ h5create(hname, '/dgridx', size(frame.dGrid{1}), 'Datatype', 'double');
 h5create(hname, '/dgridy', size(frame.dGrid{2}), 'Datatype', 'double');
 h5create(hname, '/dgridz', size(frame.dGrid{3}), 'Datatype', 'double');
 
-if isfield(frame, 'momX')
+if isfield(frame, 'momX') || isprop(frame, 'momX')
     fluvars = {'mass', 'momX', 'momY', 'momZ', 'ener'};
 else
     fluvars = {'mass', 'velX', 'velY', 'velZ', 'eint'};
@@ -20,7 +20,7 @@ end
 h5create(hname, '/timehist', 1, 'Datatype','double');
 
 if isfield(frame, 'mass2')
-    if isfield(frame, 'momX2')
+    if isfield(frame, 'momX2') || isprop(frame, 'momX2')
         flu2vars = {'mass2', 'momX2', 'momY2', 'momZ2', 'ener2'};
     else
         flu2vars = {'mass2', 'velX2', 'velY2', 'velZ2', 'eint2'};
