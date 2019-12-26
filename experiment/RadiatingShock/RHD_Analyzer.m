@@ -15,7 +15,10 @@ classdef RHD_Analyzer < handle
         ctrlButtons;
         msgBox;
         dynrngButtons;
+        toolsPanel, statusTab, queryTab, statusTxt;
         infoPanel; infoText;
+        queryButtons;
+        pltGamma;
         
         F; % the data (F)rame, with a nice short variable name :)
         
@@ -23,6 +26,7 @@ classdef RHD_Analyzer < handle
         
         xNormalization, xVec;
         tNormalization, timeVec;
+        radNormalization;
         shockPos; coldPos;
         fallbackBoost, vfallback;
         
@@ -182,23 +186,42 @@ classdef RHD_Analyzer < handle
             self.ctrlButtons{1} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','RUN','tag','runbutton','position',[8,      8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbRunButton);
             
             self.ctrlButtons{2} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','LOAD','tag','loadbutton','position',[8+7*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
-            self.ctrlButtons{3} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','BASICS','tag','basicsbutton','position',[8+14*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
+            self.ctrlButtons{3} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','BASIC','tag','basicsbutton','position',[8+14*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
             self.ctrlButtons{4} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','OSCIL','tag','oscilbutton','position',[8+21*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
             self.ctrlButtons{5} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','RANGE','tag','rangebutton','position',[8+28*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
             self.ctrlButtons{6} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','FFT','tag','fftbutton','position',[8+35*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
             self.ctrlButtons{7} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','WRITE','tag','writebutton','position',[8+42*dx, 8, 6*dx, 1.5*self.pCharH], 'callback', @self.cbSequenceBtns);
-            self.ctrlButtons{8} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','STATUS','tag','statusbutton','position',[8, 8+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbShowStatus);
+            self.ctrlButtons{8} = uicontrol(self.ctrlPanel, 'Style','togglebutton','String','TOOLS','tag','statusbutton','position',[8, 8+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbShowStatus);
             self.msgBox         = uicontrol(self.ctrlPanel, 'Style','text','String','info', 'position',[8+7*dx, 8+2*self.pCharH, 42*dx, 1.2*self.pCharH]);
             
-            self.dynrngButtons{1} = uicontrol(self.figWindow, 'Style','pushbutton','String','Dynrng  x 5','tag','dynrngbtn','position',[8, 250+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngPlus);
-            self.dynrngButtons{2} = uicontrol(self.figWindow, 'Style','pushbutton','String','Dyn Rng / 5','tag','dynrngbtn','position',[8, 250, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngMinus);
+            self.dynrngButtons{1} = uicontrol(self.figWindow, 'Style','pushbutton','String','Rng x5','tag','dynrngbtn','position',[8, 250+2*self.pCharH, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngPlus);
+            self.dynrngButtons{2} = uicontrol(self.figWindow, 'Style','pushbutton','String','Rng /5','tag','dynrngbtn','position',[8, 250, 6*dx, 1.5*self.pCharH], 'callback', @self.cbDynrngMinus);
             
             for q = 1:2; self.dynrngButtons{q}.Visible = 0; end
             
-            self.infoPanel = uipanel(self.figWindow,'Title','STATUS', 'units', 'pixels', 'position', [8 16+4*self.pLineH, 320, 384], 'visible', 'off');
+            self.toolsPanel = uitabgroup(self.figWindow,'units', 'pixels', 'position', [8 16+4*self.pLineH, 320, 384], 'visible', 'off');
+            
+            self.statusTab = uitab(self.toolsPanel,'Title','Status');
+            %self.statusTxt = uicontrol('Style','text','Position',[8 8 304 372]);
+            self.queryTab  = uitab(self.toolsPanel,'Title','Query');
+            self.infoPanel = uipanel(self.statusTab, 'units', 'pixels', 'position', [8 16+4*self.pLineH, 320, 384]);
+            %self.infoTab = 
             
             % 16 lines text output
-            self.infoText = uicontrol(self.infoPanel,'Style','text', 'position', [8 8 306 354], 'string', cell([16 1]),'HorizontalAlignment','left');
+            self.infoText = uicontrol(self.statusTab,'Style','text', 'position', [8 8 306 334], 'string', cell([16 1]),'HorizontalAlignment','left');
+            
+            self.queryButtons{1} = uicontrol(self.queryTab, 'Style','pushbutton','String','freq','tag','plotfreq','position',   [8, 8              , 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            self.queryButtons{2} = uicontrol(self.queryTab, 'Style','pushbutton','String','\delta x','tag','plotdx','position', [8, 8+2*self.pCharH, 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            self.queryButtons{3} = uicontrol(self.queryTab, 'Style','pushbutton','String','\delta L','tag','plotlum','position',[8, 8+4*self.pCharH, 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            
+            self.pltGamma = '53';
+            self.queryButtons{4} = uicontrol(self.queryTab, 'Style','pushbutton','String','gam=5/3','tag','gam53','position', [8 + 9*self.pCharW, 8              , 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            self.queryButtons{5} = uicontrol(self.queryTab, 'Style','pushbutton','String','gam=7/5','tag','gam75','position', [8 + 9*self.pCharW, 8+2*self.pCharH, 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            self.queryButtons{6} = uicontrol(self.queryTab, 'Style','pushbutton','String','gam=9/7','tag','gam97','position', [8 + 9*self.pCharW, 8+4*self.pCharH, 8*dx, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            
+            self.queryButtons{7} = uicontrol(self.queryTab, 'Style','togglebutton','String','Enable point query','tag','ptquery','position',[8, 6*self.pCharH, 17*self.pCharW, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            self.queryButtons{8} = uicontrol(self.queryTab, 'Style','togglebutton','String','Enable plist gen','tag','plistgen','position',[8, 8*self.pCharH, 17*self.pCharW, 1.5*self.pCharH], 'callback',@self.queryPlotCallback);
+            
         end
         
         function updateInfoPanel(self)
@@ -300,16 +323,16 @@ classdef RHD_Analyzer < handle
             hold on;
             
             try
-                load('autovars.mat','autovars');
+                av = load('autovars.mat','autovars');
                 
-                self.autovars = double(autovars); %#ok<CPROP> % wtf? true, but this somehow ended up as a single one
+                self.autovars = double(av.autovars); % wtf? true, but this somehow ended up as a single one
                 
                 %pts = autovars(1:2);
                 %pointspace = autovars(3);
                 %nlpoint = autovars(4);
                 %endpt = autovars(5);
                 if self.disableAutoOscil
-                    self.autovars(1:2) = autovars(1:2) + (size(F.mass,2) - autovars(2) + 100);
+                    self.autovars(1:2) = av.autovars(1:2) + (size(F.mass,2) - av.autovars(2) + 100); %#ok<PROP>
                 end
                 
                 self.pHaveAutovars = 1;
@@ -359,7 +382,7 @@ classdef RHD_Analyzer < handle
                 end
                 trunc = inputdlg('Save', 'Save truncated dataset to disk?', [1 10], {'1'});
                 if str2num(trunc{1})
-                    F = self.F;
+                    F = self.F; %#ok<PROP>
                     save('4D_XYZT.mat','F','-v7.3');
                     clear F;
                 end
@@ -596,7 +619,7 @@ classdef RHD_Analyzer < handle
             self.print(sprintf('Vfallback (equil rest frame) = %.6f\n', self.vfallback));
 
             % take and rescale the FFT
-            xfourier = 2*abs(fft(oscil))/numel(oscil);
+            xfourier = 2*abs(fft(oscil / self.xNormalization))/numel(oscil);
             xi = numel(xfourier(2:round(end/2)));
 
             rth = self.runParameters.theta;
@@ -609,11 +632,11 @@ classdef RHD_Analyzer < handle
             
             % Throw up fft of shock position
             hold off;
-            plot(freqAxis, xfourier(2:round(end/2))/self.xNormalization,'b-');
+            plot(freqAxis, xfourier(2:round(end/2)),'b-');
             hold on
 
             % Compute the luminosity on the given interval and normalize it by L(t=0) and fft it
-            rr = RHD_utils.computeRelativeLuminosity(self.F, rth);
+            [rr, self.radNormalization] = RHD_utils.computeRelativeLuminosity(self.F, rth);
             rft = 2*fft(rr(self.fftPoints(1):self.fftPoints(2)))' / numel(oscil);
 
             plot(freqAxis,abs(rft(2:round(end/2))), 'r-');
@@ -651,6 +674,15 @@ classdef RHD_Analyzer < handle
             end
             
             numprops = [conq, self.vfallback, round(self.xNormalization / self.F.dGrid{1}), self.fftFundamentalFreq];
+            
+            % These have been normalized by the analyzers, using comparatively crude numeric
+            % normalizations computed from frame 0; The FMHandler assumes they are unnormalized
+            % and applies its own precision-calculated normalizations
+            self.datablock(:,2) = self.datablock(:,2) * self.xNormalization;
+            
+            % don't do this until we're ready to do a complete re-analysis because all currently
+            % stored values are numerically normalized.
+            %self.datablock(:,3) = self.datablock(:,3) * self.radNormalization;
                         
             % Go through this rigamarole to access the next frame up and insert the data myself
             proto = 'f%i.insertPointNew(%f, %f, %s, %s);';
@@ -738,7 +770,7 @@ classdef RHD_Analyzer < handle
             raddot(:,[1 3]) = raddot(:,[1 3]) * self.fftFundamentalFreq;
             
             % Drop the detected peaks onto the graph and print about them
-            plot(fatdot(:,1), fatdot(:,2)/self.xNormalization, 'kv', 'MarkerSize', 8);
+            plot(fatdot(:,1), fatdot(:,2), 'kv', 'MarkerSize', 8);
             xlim([0 min(10, 2*max(fatdot(:,1)))]);
             
             runpar = self.runParameters;
@@ -831,8 +863,7 @@ classdef RHD_Analyzer < handle
                 if (self.fftPoints(2) < .95*size(self.F.mass,2)) || any(self.fftPoints > size(self.F.mass,2))
                     self.runAnalysisPhase = 4;
                 end
-            end
-                
+            end 
             
             self.runAnalysisPhase = 5; % fft 
             
@@ -876,12 +907,60 @@ classdef RHD_Analyzer < handle
         
         function cbShowStatus(self, src, data)
             if data.Source.Value == 1 % pushed
-                self.infoPanel.Visible = 'on';
+                self.toolsPanel.Visible = 'on';
             else
-                self.infoPanel.Visible = 'off';
+                self.toolsPanel.Visible = 'off';
             end
         end
 
+        function queryPlotCallback(self, src, data)
+            
+            if strcmp(src.Tag, 'plotfreq'); evalin('base',sprintf('f%s.emitDominantFreqPlot(1, 0, 2)',self.pltGamma)); end
+            if strcmp(src.Tag, 'plotdx'); evalin('base',sprintf('f%s.emitDominantFreqPlot(2, 0, 2)',self.pltGamma)); end
+            if strcmp(src.Tag, 'plotlum'); evalin('base',sprintf('f%s.emitDominantFreqPlot(3, 0, 2)',self.pltGamma)); end
+            
+            if strcmp(src.Tag, 'gam53'); self.pltGamma = '53'; end
+            if strcmp(src.Tag, 'gam75'); self.pltGamma = '75'; end
+            if strcmp(src.Tag, 'gam97'); self.pltGamma = '97'; end
+            
+            if strcmp(src.Tag, 'ptquery')
+                if src.Value == 1
+                    self.graphAxes.Children(2).ButtonDownFcn = @self.pointQueries;
+                else
+                    self.graphAxes.Children(2).ButtonDownFcn = '';
+                end
+            end 
+            if strcmp(src.Tag, 'plistgen')
+                if src.Value == 1
+                    self.graphAxes.Children(2).ButtonDownFcn = @self.pointQueries;
+                else
+                    self.graphAxes.Children(2).ButtonDownFcn = '';
+                end
+            end 
+        end
+        
+        function pointQueries(self, src, data)
+            ip = data.IntersectionPoint;
+            
+            ip(2) = .25 * round(ip(2)/.25);
+            ip(1) = .05 * round(ip(1)/.05);
+            % point query
+            if self.queryButtons{7}.Value; evalin('base', sprintf('f%s.searchMode(%f, %f)', self.pltGamma, ip(2), ip(1))); end
+            if self.queryButtons{8}.Value % plist generator
+                p = evalin('base',sprintf('f%s.findPoint(%f,%f)', self.pltGamma, ip(2), ip(1)));
+                if strcmp(self.pltGamma,'53'); thermt = 1; end
+                if strcmp(self.pltGamma,'75'); thermt = 2; end
+                if strcmp(self.pltGamma,'97'); thermt = 3; end 
+                fprintf('%.4g, %.4g, %f, %i; ', ip(2), ip(1), evalin('base',sprintf('f%s.fallbackRate(%i)',self.pltGamma,int32(p))),thermt);
+            end
+        end
+        
+        function testCallback(self, src, data)
+            disp('Test callback hit:');
+            disp(src);
+            src.get
+        end
+        
         function handleAnalyzerResize(self, src, data)
             rez = src.Position;
 

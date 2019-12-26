@@ -128,15 +128,16 @@ classdef RHD_utils < handle
             plot(rr ./ rr(1));
         end
         
-        function rr = computeRelativeLuminosity(F, radTheta)
+        function [rr, rnormalization] = computeRelativeLuminosity(F, radTheta)
             % Computes the column integrated luminosity of F assuming
             % radiation parameter theta and normalizes by the integrated
             % luminosity of frame 1 (assumed equilibrium).
-             rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
+            rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
             rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
             
             rr = sum(rr,1);
             rr = rr / rr(1);
+            rnormalization = rr(1);
         end
         
         function p = parseDirectoryName(x)
@@ -189,7 +190,7 @@ classdef RHD_utils < handle
             yi = y((bin-q):(bin+q));
             
             try
-                thefit = fit(xi, yi, 'gauss1','StartPoint',[.1 0 1], 'Lower', [-1 -7 0], 'Upper', [25 7 5]);
+                thefit = fit(xi, yi, 'gauss1','StartPoint',[.1 0 1], 'Lower', [-1 -7 0], 'Upper', [2 7 5]);
             catch derp
                 thefit.a1 = 0; thefit.b1 = 0; thefit.c1 = 9999; 
             end
