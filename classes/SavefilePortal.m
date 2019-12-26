@@ -304,6 +304,13 @@ classdef SavefilePortal < handle
             n = self.standardNamePrefixes{self.typeToLoad};
         end
         
+        function tf = iterWasSaved(self, n)
+            L = self.savefileList.(self.strnames{self.typeToLoad});
+            
+            tf = find(L == n);
+            
+        end
+        
     end%PUBLIC
     
     %===================================================================================================
