@@ -305,7 +305,7 @@ classdef DataFrame < handle
             t0 = mean(tau(round(end/2):end));
     
             % assuming at least 50 timesteps per saveframe - safe
-            b = find(tau < t0/50)';
+            b = find((tau < t0/50) & (tau > 0))';
     
             if numel(b) > 10
                 fprintf('F.chopOutAnomalousTimestep: Apparently found %i anomalous frames... doing nothing, I am probably wrong.\n', numel(b));
