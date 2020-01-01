@@ -26,9 +26,9 @@ try
     
     haveplist = qq.plist;
     % world's worst hash
-    haveplist(:,5) = 100*haveplist(:,1) + haveplist(:,2);
+    haveplist(:,5) = 1000*haveplist(:,1) + haveplist(:,2);
 catch
-    haveplist = [];
+    haveplist = [-1 -1 -1 -1 -1];
 end
 cd(owd)
 

@@ -268,16 +268,17 @@ classdef FMHandler2 < handle
                 m = other.machPts(N);
                 t = other.thetaPts(N);
                 data = [other.peakFreqs(N,:)' other.peakMassAmps(N,:)' other.peakLumAmps(N,:)'];
+                np = [other.convergenceLevel(N), other.fallbackRate(N), other.nShockCells(N), other.spectralResolution(N)];
                 
                 p = self.findPoint(m, t);
-                if p > 0
+                if p > 0 %[conv level, fallback rate, n shock cells, spec resoln]
                     if self.convergenceLevel(p) > other.convergenceLevel(N)
                         fprintf('For point (%f, %f), existing point with conv lvl %i > new %i. Ignoring new.\n', m, t, self.convergenceLevel(p), other.convergenceLevel(N));
                         continue;
                     end
                 end
                 
-                self.insertPointNew(m, t, data, other.convergenceLevel(N));
+                self.insertPointNew(m, t, data, np);
             end
         end
 
@@ -462,12 +463,13 @@ classdef FMHandler2 < handle
         function emitDominantFreqPlot(self, qty, logScale, colorBy)
             % .emitDominantFreqPlot(self, qty, logScale, colorBy)
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
-            %        4 = rms delta-luminosity;5 = fallback rate; 6 = # shock cells;
+            %        4 = rms delta-luminosity; 5 = fallback rate; 6 = # shock cells;
             %        7 = spectral resolution
             %   logScale: If true, rendered in log scale. Otherwise, linear (default)
             %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp,
-            %            5 = convergence quality
-            
+            %            5 = convergence quality; 6 = fallback speed; 7 = # shock cells; 
+            %            8 = spectral resolution
+
             if nargin < 4; colorBy = 1; end
             if nargin < 3; logScale = 0; end
             if nargin < 2; qty = 1; end
@@ -533,8 +535,20 @@ classdef FMHandler2 < handle
                     c = self.convergenceLevel';
                     zl = [0 5];
                     titlestring = [titlestring 'color: convergence lvl'];
+                case 6
+                    c = self.fallbackRate';
+                    zl = [0 .03];
+                    titlestring = [titlestring 'color: fallback speed'];
+                case 7
+                    c = self.nShockCells';
+                    titlestring = [titlestring 'color: # shock cells'];
+                    zl = [0 max(c)];
+                case 8
+                    c = self.spectralResolution';
+                    titlestring = [titlestring 'color: Spectral resolution'];
+                    zl = [0 max(c)];
                 otherwise
-                    error('colorBy is not one of 1, 2, 3, or 4.');
+                    error('colorBy is not one of 1-8.');
             end
                 
             dohaveit = (z ~= 0);
@@ -581,7 +595,8 @@ classdef FMHandler2 < handle
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
             %   logScale: If true, rendered in log scale. Otherwise, linear (default)
             %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x
-            %   amp; 4 = lum amp, 5 = convergence level
+            %   amp; 4 = lum amp, 5 = convergence level, 6 = fallback rate, 7 = # shock cells,
+            %        8 = spectral resolution
             
             if nargin < 5; colorBy = 1; end
             if nargin < 4; logScale = 0; end
@@ -621,6 +636,12 @@ classdef FMHandler2 < handle
                         c = self.peakLumAmps(:, q);
                     case 5
                         c = self.convergenceLevel';
+                    case 6
+                        c = self.fallbackRate';
+                    case 7
+                        c = self.nShockCells';
+                    case 8
+                        c = self.spectralResolution';
                     otherwise
                         error('colorBy is not one of 1, 2, 3, or 4.');
                 end
@@ -683,11 +704,22 @@ classdef FMHandler2 < handle
             colorbar;
         end        
         
-        function searchForDuplicateRuns(self)
-           
+        function searchForDuplicateRuns(self, directs)
+            % FMHandler2.searchForDuplicateRuns(directories) searches all radiative shock runs
+            % in these directories with my gamma for any that have the same M and same theta. If
+            % directories is empty, uses pwd() only. Otherwise provide a {'/list', '/of', '/dirs'}
+            
+            if nargin < 1; directs = {pwd()}; end
+            
             r = zeros(size(self.machPts));
             
-            d = dir(sprintf('RAD*gam%i', int32(round(100*self.gamma))));
+            d0 = pwd();
+            d=[];
+            for N = 1:numel(directs)
+                cd(d0);
+                cd(directs{N});
+                d = [d; dir(sprintf('RAD*gam%i', int32(round(100*self.gamma))))];
+            end
             
             for n = 1:numel(d)
                 x = RHD_utils.parseDirectoryName(d(n).name);
@@ -702,7 +734,15 @@ classdef FMHandler2 < handle
             for n = 1:numel(r)
                 if r(n) > 1
                     fprintf('For parameters M=%f theta=%f found %i runs:\n', self.machPts(n), self.thetaPts(n), r(n));
-                    self.searchMode(self.machPts(n), self.thetaPts(n));
+                    
+                    for N = 1:numel(directs)
+                        cd(d0);
+                        cd(directs{N});
+                        fprintf(directs{N}); fprintf('  ');
+                        self.searchMode(self.machPts(n), self.thetaPts(n));
+                        
+                    end
+                    %self.searchMode(self.machPts(n), self.thetaPts(n));
                     np = np + 1;
                     if np == 10
                         fprintf('10 shown: continue printing? ', numel(r));
@@ -711,6 +751,8 @@ classdef FMHandler2 < handle
                     end
                 end
             end
+            
+            cd(d0);
         end
         
         function searchMode(self, M, th)
