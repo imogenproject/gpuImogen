@@ -557,18 +557,20 @@ classdef FMHandler2 < handle
    
             u = self.MachRange; v = self.thetaRange;
             [m, t] = ndgrid(u(1):u(2):u(3), v(1):v(2):v(3));
+            
+            rangefactor = (self.MachRange(3)-self.MachRange(1))/(self.thetaRange(3)-self.thetaRange(1));
                      
-            ff = scatteredInterpolant(self.machPts(dohaveit)', self.thetaPts(dohaveit)', z(dohaveit));
+            ff = scatteredInterpolant(self.machPts(dohaveit)', rangefactor*self.thetaPts(dohaveit)', z(dohaveit));
             ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
             
-            zsmooth = ff(m, t);
+            zsmooth = ff(m, rangefactor*t);
             
-            fmode = scatteredInterpolant(self.machPts(dohaveit)', self.thetaPts(dohaveit)', c(dohaveit));
+            fmode = scatteredInterpolant(self.machPts(dohaveit)', rangefactor*self.thetaPts(dohaveit)', c(dohaveit));
             fmode.Method = 'linear';
             fmode.ExtrapolationMethod = 'none';
             
-            csmooth = fmode(m, t);
+            csmooth = fmode(m, rangefactor*t);
             
             surf(v(1):v(2):v(3), u(1):u(2):u(3), zsmooth, csmooth);
             hold on;
