@@ -102,7 +102,7 @@ classdef RHD_Analyzer < handle
     
         function set.automaticMode(self, m)
             if m
-                self.pAutomaticMode = 1;
+                self.pAutomaticMode = m;
                 warndlg({'RHD_Analyzer automatic mode is being enabled','All analyses will be automatically inserted','CONVERGENCE LEVEL 5 WILL BE ASSUMED','THIS CAN POTENTIALLY CORRUPT DATA','There will be no further warnings.'}, 'Automatic mode warning');
             else
                 self.pAutomaticMode = 0;
@@ -864,7 +864,7 @@ classdef RHD_Analyzer < handle
             self.runAnalysisPhase = 3; % run oscil (it skips input itself if possible)
             self.pTryAutoOscil = 0;
                         
-            if (self.pAutomaticMode == 0) || (self.pHaveAutovars == 0)
+            if ( bitand(self.pAutomaticMode,1) == 0) || (self.pHaveAutovars == 0)
                 self.runAnalysisPhase = 4; % pick fft range
             else % this is curious, interrupt for manual input
                 if (self.fftPoints(2) < .95*size(self.F.mass,2)) || any(self.fftPoints > size(self.F.mass,2))
@@ -874,7 +874,7 @@ classdef RHD_Analyzer < handle
             
             self.runAnalysisPhase = 5; % fft 
             
-            if self.pAutomaticMode
+            if bitand(self.pAutomaticMode,2)
                 self.runAnalysisPhase = 6; % save     
             end
         end
