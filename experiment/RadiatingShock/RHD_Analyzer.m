@@ -562,12 +562,19 @@ classdef RHD_Analyzer < handle
             hold on;
             
             xmax = max(self.xVec);
-            if max(self.coldPos) > .9*xmax
+            if max(self.coldPos) > .7*xmax
                 plot([0 numel(self.coldPos)], [xmax xmax] - .9*self.xNormalization, 'b-x');
             end
-            if min(self.shockPos) < .05*xmax
+            if min(self.shockPos) < .3*xmax
                 plot([0 numel(self.coldPos)], self.xVec(4)*[1 1], 'r-x');
             end
+            
+            yrng = [min(self.shockPos) max(self.coldPos)];
+            [rr, ~] = RHD_utils.computeRelativeLuminosity(self.F, self.runParameters.theta);
+            rdyn = max(rr) - min(rr);
+            rr = (rr - mean(rr))*.3*diff(yrng) / rdyn + sum(yrng)/2; % center on middle of plot
+            plot(rr, 'g-.');
+            
             
             if self.pHaveAutovars
                 %???1
