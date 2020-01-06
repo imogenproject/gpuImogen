@@ -349,9 +349,8 @@ classdef DataFrame < handle
                tau = self.time.time(ohno+1)-self.time.time(ohno);
                
                for j = 1:(ohno-1)
-                   if self.time.time(j) > e0 - tau/2; break; end
+                   if self.time.time(j) > e0 - 3*tau/2; break; end
                end
-               j=j-2;
                
                if nargin < 2
                    fprintf('Proposed juncture times:\n');
