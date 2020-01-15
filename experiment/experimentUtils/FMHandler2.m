@@ -160,9 +160,6 @@ classdef FMHandler2 < handle
                     self.peakMassAmps = self.peakMassAmps(s,:);
                     self.peakLumAmps = self.peakLumAmps(s,:);
                     
-                    self.freqPts = self.freqPts(s);
-                    self.modePts = self.modePts(s);
-                    
                     self.fnormPts = self.fnormPts(s);
                     self.xnormPts = self.xnormPts(s);
                     self.radnormPts = self.radnormPts(s);
@@ -204,7 +201,6 @@ classdef FMHandler2 < handle
                     self.peakMassAmps(p, :) = data(:, 2)';
                     self.peakLumAmps(p, :) = data(:, 3)';
                     
-                    
                     self.convergenceLevel(p) = numprops(1);
                     self.fallbackRate(p) = numprops(2);
                     self.nShockCells(p) = numprops(3);
@@ -238,7 +234,7 @@ classdef FMHandler2 < handle
         end
         
         function printPoint(self, idx)
-            fprintf('Mach = %f, theta=%f ||| freq=%f, mode=%i\n', self.machPts(idx), self.thetaPts(idx), self.freqPts(idx), self.modePts(idx));
+	    fprintf('Mach = %f, theta=%f ||| freq=%f, mode=%i\n', self.machPts(idx), self.thetaPts(idx), 0, 0);
         end
         
         function importAnotherFMHandler(self, other)
