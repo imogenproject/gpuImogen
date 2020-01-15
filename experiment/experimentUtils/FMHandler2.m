@@ -707,7 +707,7 @@ classdef FMHandler2 < handle
             % in these directories with my gamma for any that have the same M and same theta. If
             % directories is empty, uses pwd() only. Otherwise provide a {'/list', '/of', '/dirs'}
             
-            if nargin < 1; directs = {pwd()}; end
+            if nargin < 2; directs = {pwd()}; end
             
             r = zeros(size(self.machPts));
             
