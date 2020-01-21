@@ -234,7 +234,7 @@ classdef FMHandler2 < handle
         end
         
         function printPoint(self, idx)
-	    fprintf('Mach = %f, theta=%f ||| freq=%f, mode=%i\n', self.machPts(idx), self.thetaPts(idx), 0, 0);
+            fprintf('Mach = %f, theta=%f ||| freq=%f, mode=%i\n', self.machPts(idx), self.thetaPts(idx), 0, 0);
         end
         
         function importAnotherFMHandler(self, other)
@@ -337,19 +337,31 @@ classdef FMHandler2 < handle
             % S = queryAt(Mach, theta)
             % Returns data for the input (M, t) point. Data is linearly
             % extrapolated inside of known data points
-            ff = scatteredInterpolant(self.machPts, self.thetaPts, 2*pi*self.freqPts ./ self.fnormPts);
+            % S = queryAt([machColumn, thetaColumn]) does the same with an Nx2 input argument
+            
+            if nargin < 3; t = m(:,2); m = m(:,1); end
+
+            n = size(self.peakMassAmps,1);
+            [~, idx] = max(self.peakMassAmps, [], 2);
+            q = (1:n)' + n*(idx-1);
+
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', 2*pi*self.peakFreqs(q) ./ self.fnormPts');
             ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
-            
             freq = ff(m, t);
             
-            ff = scatteredInterpolant(self.machPts, self.thetaPts, self.modePts);
-            ff.Method = 'nearest';
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakMassAmps(q) ./ self.xnormPts');
+            ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
+            dx = ff(m, t);
+
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakLumAmps(q) ./ self.radnormPts');
+            ff.Method = 'linear';
+            ff.ExtrapolationMethod = 'none';
+            dlum = ff(m, t);
+
             
-            modes = ff(m, t);
-            
-            S = struct('freq', freq, 'mode', modes);
+            S = struct('freq', freq,'xamp',dx,'lumamp',dlum);
         end
         
         function p = findPoint(self, m, t)
@@ -438,6 +450,18 @@ classdef FMHandler2 < handle
             falls = zeros(size(machs));
             
             plist = [machs' thets' falls'];
+        end
+
+        function params = dirsToParams(self, dirs)
+            if nargin < 2; dirs = dir(sprintf('RAD*%i',round(100*self.gamma))); end
+
+            params = [];
+
+            for k = 1:numel(dirs)
+                dn = dirs(k).name;
+                props = RHD_utils.parseDirectoryName(dn);
+                params(k,:) = [props.m, props.theta];
+            end
         end
         
         function outlist = pruneParamlistByConvergenceLvl(self, plist, critLevel)
