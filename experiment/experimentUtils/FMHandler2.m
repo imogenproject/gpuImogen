@@ -480,8 +480,8 @@ classdef FMHandler2 < handle
             outlist = plist(find(xlist), :);
         end
 
-        function emitDominantFreqPlot(self, qty, logScale, colorBy)
-            % .emitDominantFreqPlot(self, qty, logScale, colorBy)
+        function emitDominantFreqPlot(self, qty, logScale, colorBy, pltType)
+            % .emitDominantFreqPlot(self, qty, logScale, colorBy, pltType)
             %   qty: 1 = frequency, default;  2 = x amplitude; 3 = luminance amplitude
             %        4 = rms delta-luminosity; 5 = fallback rate; 6 = # shock cells;
             %        7 = spectral resolution
@@ -489,7 +489,9 @@ classdef FMHandler2 < handle
             %   colorBy: 1 = dominant mode (default); 2 = frequency; 3 = x amp; 4 = lum amp,
             %            5 = convergence quality; 6 = fallback speed; 7 = # shock cells; 
             %            8 = spectral resolution
+            %   pltType: 1 = surf(), 2 = contour()
 
+            if nargin < 5; pltType = 1; end
             if nargin < 4; colorBy = 1; end
             if nargin < 3; logScale = 0; end
             if nargin < 2; qty = 1; end
@@ -592,21 +594,32 @@ classdef FMHandler2 < handle
             
             csmooth = fmode(m, rangefactor*t);
             
-            surf(v(1):v(2):v(3), u(1):u(2):u(3), zsmooth, csmooth);
-            hold on;
-            scatter3(self.thetaPts(dohaveit)', self.machPts(dohaveit)', z(dohaveit), 'r*');
+            if pltType == 1
+                surf(v(1):v(2):v(3), u(1):u(2):u(3), zsmooth, csmooth);
+                hold on;
+                scatter3(self.thetaPts(dohaveit)', self.machPts(dohaveit)', z(dohaveit), 'r*');
+            end
+            if pltType == 2
+                contour( v(1):v(2):v(3), u(1):u(2):u(3), zsmooth);
+                ylim([u(1) u(3)]);
+                xlim([v(1) v(3)]);
+            end
             
             xlabel('\theta');
             ylabel('Mach');
-            zlabel(zstring);
+            if pltType == 1
+                zlabel(zstring);
+                view([-123 32]);
+                colormap('jet');
+                ca = gca();
+                ca.CLim = zl;
+                colorbar;
+            end
             title(titlestring);
             hold off;
-            view([-123 32]);
             
-            colormap('jet');
-            ca = gca();
-            ca.CLim = zl;
-            colorbar;
+            
+            
         end
         
         function generate3DPlot(self, drawOverlaid, qty, logScale, colorBy)
