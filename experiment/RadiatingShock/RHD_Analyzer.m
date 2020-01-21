@@ -626,7 +626,12 @@ classdef RHD_Analyzer < handle
             self.print(sprintf('Vfallback (equil rest frame) = %.6f\n', self.vfallback));
 
             % take and rescale the FFT
-            xfourier = 2*abs(fft(oscil / self.xNormalization))/numel(oscil);
+            npt = numel(oscil);
+            ttot = (timepts(end)-timepts(1))*self.tNormalization;
+            tuni = (0:npt-1) * ttot / npt + timepts(1)*self.tNormalization;
+            oscil_uni = interp1(timepts * self.tNormalization, oscil, tuni, 'pchip')';
+            
+            xfourier = 2*abs(fft(oscil_uni / self.xNormalization))/npt;
             xi = numel(xfourier(2:round(end/2)));
 
             rth = self.runParameters.theta;
@@ -644,7 +649,9 @@ classdef RHD_Analyzer < handle
 
             % Compute the luminosity on the given interval and normalize it by L(t=0) and fft it
             [rr, self.radNormalization] = RHD_utils.computeRelativeLuminosity(self.F, rth);
-            rft = 2*fft(rr(self.fftPoints(1):self.fftPoints(2)))' / numel(oscil);
+            
+            rad_uni = interp1(timepts * self.tNormalization, rr(self.fftPoints(1):self.fftPoints(2)),  tuni, 'pchip');
+            rft = 2*fft(rad_uni)' / npt;
 
             plot(freqAxis,abs(rft(2:round(end/2))), 'r-');
 
