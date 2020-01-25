@@ -21,21 +21,13 @@ f = S.nextFrame();
 
 IC = S.returnInitializer();
 
-% Replicate the initializer code that does this same job
-md = IC.ini.mirrordims;
-
-boxSize = [1 1 1];
-boxSize(md == 1) = 0.5;
+bm = IC.ini.bcMode{1};
 
 rez = f.parallel.globalDims;
 
 geom = GeometryManager(rez);
-geom.makeBoxSize(boxSize);
-
-orcrd = floor(geom.globalDomainRez/2 + 0.5);
-orcrd(md == 1) = 5;
-
-geom.makeBoxOriginCoord(orcrd);
+geom.makeBoxSize([1 1 1]);
+geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
 
 result.N = rez;
 

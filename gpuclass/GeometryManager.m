@@ -200,7 +200,8 @@ classdef GeometryManager < handle
         function makeBoxSize(obj, newsize)
             % geo.makeBoxSize([s])
             % If geometry is square, geo.makeBoxSize([a b c]) sets grid spacing to [a/nx, b/ny, c/nz].
-            % If given other than a 3-element vector, [nx ny nz]*s(1)/nx is used
+            % If given other than a 3-element vector, [nx ny nz]*s(1)/nx is used (i.e. a box of
+            % length s(1) and with square cells)
             % If ny or nz = 1, the respective spacing is set to 1.
             %
             % If geometry is cylindrical,

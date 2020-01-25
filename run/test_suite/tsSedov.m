@@ -12,7 +12,15 @@ run         = SedovTaylorBlastWaveInitializer(grid);
 
 run.autoEndtime = 1; % Automatically run until Rblast = 0.45
 
-run.depositRadiusCells(sqrt(2.5));
+if grid(3) > 1
+    run.mirrordims = [1 1 1];
+    run.depositRadiusCells(1.5);
+else
+    run.mirrordims = [1 1 0];
+    run.depositRadiusCells(sqrt(2.5));
+end
+
+
 
 run.alias   = 'SEDOV_ts';
 run.info    = 'Sedov-Taylor blast wave convergence test.';
@@ -67,7 +75,7 @@ for N = 1:numel(multiples)
     result.paths{end+1} = outdir;
 
     % Take times from the first run
-    if N == 1;
+    if N == 1
         result.times = status.time;
         ydim = numel(status.rhoL1);
     end

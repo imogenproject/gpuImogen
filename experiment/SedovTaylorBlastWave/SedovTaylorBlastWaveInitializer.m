@@ -14,6 +14,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
         backgroundDensity;
         sedovAlphaValue;
         sedovExplosionEnergy;
+        mirrordims;
     end %PUBLIC
 
 %===================================================================================================
@@ -59,6 +60,8 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             obj.autoEndtime = 1;
 
             obj.operateOnInput(input, [64 64 64]);
+            
+            obj.mirrordims = [0 0 0];
         end
                
         
@@ -83,8 +86,25 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
         function [fluids, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
 
             geom = obj.geomgr;
-            geom.makeBoxSize([1 1 1]);
-            geom.makeBoxOriginCoord(floor(geom.globalDomainRez/2 + 0.5));
+            
+            bsize = [1 1 1];
+            bsize(obj.mirrordims == 1) = 0.5;
+            
+            geom.makeBoxSize(bsize);
+            
+            orcrd = floor(geom.globalDomainRez/2 + 0.5);
+            orcrd(obj.mirrordims == 1) = geom.haloAmt + 1;
+            
+            geom.makeBoxOriginCoord(orcrd);
+            
+            for d = 1:3; geom.makeDimNotCircular(d); end
+            
+            % This happens if run repeatedly by e.g. the ST test suite
+            if iscell(obj.bcMode); obj.bcMode = obj.bcMode{1}; end
+            
+            if obj.mirrordims(1); obj.bcMode.x = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT}; end
+            if obj.mirrordims(2); obj.bcMode.y = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT}; end
+            if obj.mirrordims(3); obj.bcMode.z = {ENUM.BCMODE_MIRROR, ENUM.BCMODE_CONSTANT}; end
             
             %--- Initialization ---%
             statics         = [];

@@ -31,14 +31,14 @@ doSodTubeTests        = 0;
 doEinfeldtTests       = 0;
 doDoubleBlastTests    = 0;
 doNohTubeTests        = 0;
-doDustyBoxes          = 1;
+doDustyBoxes          = 0;
 
 % 2D tests
 doCentrifugeTests     = 0;
 doSedov2DTests        = 0;
 
 % 3D tests
-doSedov3DTests        = 0;
+doSedov3DTests        = 1;
 
 % Apply the "do ALL the things" overrides to the individual run/dontrun variables above
 % without cluttering this file up
@@ -67,7 +67,8 @@ centrifugeDoublings = 3;
 sedov2D_scales      = [1 2 4];
 
 % And in 3D
-sedov3D_scales      = [1 2];
+sedovBase = 24;
+sedov3D_scales      = [1 2 3];
 
 fm = FlipMethod();
   fm.iniMethod = ENUM.CFD_HLL;
@@ -310,7 +311,7 @@ if doSedov2DTests
     if ~isempty(sedov2D_scales)
     SaveManager.logPrint('Testing 2D Sedov-Taylor explosion.\n');
         try
-            x = tsSedov([baseResolution baseResolution 1], sedov2D_scales, realtimePictures, fm);
+            x = tsSedov([sedovBase sedovBase 1], sedov2D_scales, realtimePictures, fm);
         catch ME
             prettyprintException(ME, 0, '2D Sedov-Taylor test has failed.');
             x = 'FAILED';
@@ -325,7 +326,7 @@ if doSedov3DTests
     if ~isempty(sedov3D_scales)
         SaveManager.logPrint('Testing 3D Sedov-Taylor explosion.\n');
         try
-            x = tsSedov([baseResolution baseResolution baseResolution], sedov3D_scales, realtimePictures, fm);
+            x = tsSedov([sedovBase sedovBase sedovBase], sedov3D_scales, realtimePictures, fm);
         catch ME
             prettyprintException(ME, 0, '3D Sedov-Taylor test has failed.');
             x = 'FAILED';
