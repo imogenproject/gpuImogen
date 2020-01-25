@@ -112,11 +112,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     int numBlocks[fluid->nGPUs];
 
     for(i = 0; i < fluid->nGPUs; i++) {
+    	cudaSetDevice(fluid->deviceID[i]);
+    	CHECK_CUDA_ERROR("cudaSetDevice()");
     	// This DOES grow the allocation "dumbly" however it is extremely unlikely that reallocation will be necessary more than once, if that
 #ifdef USE_STATIC_CHALLOC
     	if(hblockElements > hostptrLength[i]) {
-    		cudaSetDevice(fluid->deviceID[i]);
-    		CHECK_CUDA_ERROR("cudaSetDevice()");
     		if(hostptrLength[i] > 0) {
     			cudaFreeHost(hostptrs[i]);
     			CHECK_CUDA_ERROR("cudaFreeHost()");
@@ -127,8 +127,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     	}
     	blkA[i] = hostptrs[i];
 #else
-    	cudaSetDevice(fluid->deviceID[i]);
-    	CHECK_CUDA_ERROR("cudaSetDevice()");
     	cudaMallocHost((void **)&blkA[i], hblockElements * sizeof(double));
     	CHECK_CUDA_ERROR("CFL malloc doubles");
 #endif
