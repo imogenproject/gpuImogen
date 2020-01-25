@@ -86,6 +86,14 @@ if isfield(FTR,'centrifuge')
     stylizePlot(gca());
 end
 
+if isfield(FTR, 'sedov2d')
+    % Plot Sedov-Taylor metric results
+    plotno = prepNextPlot(maxplot, plotno);
+    plotSedov(FTR.sedov2d);
+    title('2D Sedov-Taylor density errors');
+    stylizePlot(gca());
+end
+
 if isfield(FTR, 'sedov3d')
     % Plot Sedov-Taylor metric results
     plotno = prepNextPlot(maxplot, plotno);

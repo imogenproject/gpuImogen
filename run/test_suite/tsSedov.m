@@ -20,19 +20,21 @@ else
     run.depositRadiusCells(sqrt(2.5));
 end
 
-
-
 run.alias   = 'SEDOV_ts';
 run.info    = 'Sedov-Taylor blast wave convergence test.';
 run.notes   = 'Eblast=1, box diameter = [1 1 1], Rend = 0.45';
 
 run.activeSlices.xy = false;
-run.ppSave.xyz      = 10;
+run.ppSave.dim3      = 2;
 
 result.paths = {};
 result.times = [];
 result.rhoL1 = [];
 result.rhoL2 = [];
+result.velL1 = [];
+result.velL2 = [];
+result.pressL1 = [];
+result.pressL2 = [];
 
 ydim = [];
 
@@ -80,9 +82,6 @@ for N = 1:numel(multiples)
         ydim = numel(status.rhoL1);
     end
     
-    if numel(status.rhoL1) > ydim
-        warning('\nCurrent ST convergence test run stored at %s was expected to save %i 3D data frames.\nDirectory actually contains %i\nLikely cause: Insufficient run.iterMax\nRow has been truncated to fit.', outdir, int32(ydim), int32(numel(status.rhoL1)) );
-    end
     if numel(status.rhoL1) < ydim
         warning('\nCurrent ST convergence test run stored at %s was expected to save %I 3D data frames.\nDirectory actually contains %i\nLikely cause unknown; Run crashed? Extreme low resolution?\nRow padded with zeros to fit.\n', outdir, int32(ydim), int32(numel(status.rhoL1)) );
         status.rhoL1((end+1):ydim) = 0;
@@ -91,6 +90,12 @@ for N = 1:numel(multiples)
 
     result.rhoL1(end+1,:) = status.rhoL1(1:ydim);
     result.rhoL2(end+1,:) = status.rhoL2(1:ydim);
+    
+    result.velL1(end+1,:) = status.velL1(1:ydim);
+    result.velL2(end+1,:) = status.velL2(1:ydim);
+    
+    result.pressL1(end+1,:) = status.pressL1(1:ydim);
+    result.pressL2(end+1,:) = status.pressL2(1:ydim);
 end
 
 end
