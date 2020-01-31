@@ -84,7 +84,7 @@ classdef FMHandler2 < handle
             if nargin < 3; A = RHD_Analyzer(); end
             
             a0 = A.automaticMode;
-            A.automaticMode = 1;
+            A.automaticMode = 3;
             
             q0 = self.dangerous_autoOverwrite;
             self.dangerous_autoOverwrite = 1;
@@ -205,6 +205,14 @@ classdef FMHandler2 < handle
                     self.fallbackRate(p) = numprops(2);
                     self.nShockCells(p) = numprops(3);
                     self.spectralResolution(p) = numprops(4);
+                    
+                    % Recompute this anyway because I switched rad norm calculations
+                    h = HDJumpSolver(self.machPts(p), 0, self.gamma);
+                    R = RadiatingFlowSolver(h.rho(2), h.v(1,2), 0, 0, 0, h.Pgas(2), self.gamma, 1, self.thetaPts(end), 1.05);
+                    xshock = R.calculateFlowTable();
+                    self.fnormPts(p) = h.v(1,1) / xshock;
+                    self.xnormPts(p) = xshock;
+                    self.radnormPts(p) = R.luminance;
                 end
             else
                 self.machPts(end+1) = M;
@@ -335,11 +343,20 @@ classdef FMHandler2 < handle
         
         function S = queryAt(self, m, t)
             % S = queryAt(Mach, theta)
-            % Returns data for the input (M, t) point. Data is linearly
-            % extrapolated inside of known data points
-            % S = queryAt([machColumn, thetaColumn]) does the same with an Nx2 input argument
+            %   Returns data for the input (M, t) point. Data is linearly
+            %   extrapolated inside of known data points.
+            % S = queryAt([machColumn, thetaColumn])
+            %   does the same with an Nx2 input argument
+            % S = queryAt(m0, [theta:range]) and queryAt(Mach:range, theta0)
+            %   expand the scalar m0 or theta0 to match the non-scalar argument
+            % S is a struct('freq', 'xamp', 'lumamp', 'fallrate').
             
             if nargin < 3; t = m(:,2); m = m(:,1); end
+            
+            if numel(m) ~= numel(t)
+                if numel(m) == 1; m = m*ones(size(t)); end
+                if numel(t) == 1; t = t*ones(size(m)); end
+            end
 
             n = size(self.peakMassAmps,1);
             [~, idx] = max(self.peakMassAmps, [], 2);
@@ -355,13 +372,17 @@ classdef FMHandler2 < handle
             ff.ExtrapolationMethod = 'none';
             dx = ff(m, t);
 
-            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakLumAmps(q) ./ self.radnormPts');
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakLumAmps(q));%./ self.radnormPts');
             ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
             dlum = ff(m, t);
-
             
-            S = struct('freq', freq,'xamp',dx,'lumamp',dlum);
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.fallbackRate');
+            ff.Method = 'linear';
+            ff.ExtrapolationMethod = 'none';
+            fbr = ff(m, t);
+
+            S = struct('freq', freq,'xamp',dx,'lumamp',dlum, 'fallrate',fbr);
         end
         
         function p = findPoint(self, m, t)
@@ -512,7 +533,7 @@ classdef FMHandler2 < handle
                     titlestring = 'z: \delta x; ';
                     zstring = '\delta x / x_{shock}';
                 case 3
-                    z = self.peakLumAmps(q);% ./ self.radnormPts(:);
+                    z = self.peakLumAmps(q) ./ self.radnormPts(:);
                     titlestring = 'z: \delta L; ';
                     zstring = '\delta L / L_{eq}';
                 case 4
@@ -539,7 +560,7 @@ classdef FMHandler2 < handle
                 case 1 % dominant position modulation's mode #
                     [~, c] = max(self.peakMassAmps, [], 2);
                     c = c - 1;
-                    zl = [0 8];
+                    zl = [0 6];
                     titlestring = [titlestring 'color: mode #'];
                 case 2
                     c = 2*pi*self.peakFreqs(q)./ self.fnormPts(:);
@@ -802,14 +823,6 @@ classdef FMHandler2 < handle
                 eval(str);
             end
         end
-        
-        
-        function fbr = queryFallback(self, m, theta)
-            fsi = scatteredInterpolant(self.machPts', self.thetaPts', self.fallbackRate');
-            fbr = fsi(m, theta);
-        end
-        
-        
         
     end%PUBLIC
     

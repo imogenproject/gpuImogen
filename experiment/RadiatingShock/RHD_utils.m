@@ -133,11 +133,11 @@ classdef RHD_utils < handle
             % radiation parameter theta and normalizes by the integrated
             % luminosity of frame 1 (assumed equilibrium).
             rr = F.mass.^(2-radTheta) .* F.pressure.^radTheta;
-            rr = squeeze(rr .* (F.pressure > 1.051*F.mass));
+            rr = squeeze(rr .* (F.pressure > 1.0501*F.mass));
             
             rr = sum(rr,1);
+            rnormalization = rr(1) * F.dGrid{1};
             rr = rr / rr(1);
-            rnormalization = rr(1);
         end
         
         function p = parseDirectoryName(x)

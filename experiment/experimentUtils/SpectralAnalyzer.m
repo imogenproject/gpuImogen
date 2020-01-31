@@ -62,7 +62,7 @@ classdef SpectralAnalyzer < handle
                 if n == m0; continue; end
                 if self.table(n).m ~= -2; continue; end
                 
-                fUnc = rms([df0 self.table(n).fsigma]);
+                fUnc = self.rms([df0 self.table(n).fsigma]);
                 
                 if abs( (self.table(n).f / f0) - round(self.table(n).f / f0) ) < 2*fUnc
                     self.table(n).m = self.table(m0).m;
@@ -226,7 +226,7 @@ classdef SpectralAnalyzer < handle
                         poffset = abs(tones - btones(c,1));
                         
                         % check for those closer than the frequency difference vs the a priori tag
-                        [row, col] = find(abs(poffset) < rms([tlist(a,2) tlist(b,2) btones(c,2)]));
+                        [row, col] = find(abs(poffset) < self.rms([tlist(a,2) tlist(b,2) btones(c,2)]));
                         if numel(row) > 0
 %                            fprintf('Found %i low-order intermodulations close to unknown tone F=%f\n', numel(row), btones(c,1));
                             
@@ -292,6 +292,10 @@ classdef SpectralAnalyzer < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
+        function y = rms(x)
+             y = sqrt(sum(x.^2)) / numel(x);
+        end
+        
     end%PROTECTED
     
 end%CLASS

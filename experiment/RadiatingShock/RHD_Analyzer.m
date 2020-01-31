@@ -101,6 +101,11 @@ classdef RHD_Analyzer < handle
         end
     
         function set.automaticMode(self, m)
+            % if(automaticMode & 1), automatically uses existing oscil points & fft range
+            % if(automaticMode & 2), automatically chooses convlvl = 5 & inserts
+            %
+            % thus automaticMode = 3 will attempt to run a completely automated analysis & is thus
+            % useful if the procedure changes and there are hundreds of points to process.
             if m
                 self.pAutomaticMode = m;
                 warndlg({'RHD_Analyzer automatic mode is being enabled','All analyses will be automatically inserted','CONVERGENCE LEVEL 5 WILL BE ASSUMED','THIS CAN POTENTIALLY CORRUPT DATA','There will be no further warnings.'}, 'Automatic mode warning');
@@ -403,10 +408,12 @@ classdef RHD_Analyzer < handle
             imagesc(dlrdt);
             hold on;
             
-            lp = max(self.shockPos((end-500):end));
-            up = min(self.coldPos((end-500):end));
+            xi = 500; if size(self.F.mass,2) < 500; xi = size(self.F.mass,2)-2; end
+            
+            lp = max(self.shockPos((end-xi):end));
+            up = min(self.coldPos((end-xi):end));
             vv = round(sort([lp, up])/self.F.dGrid{1});
-            q = dlrdt(vv(1):vv(2), (end-500):end);
+            q = dlrdt(vv(1):vv(2), (end-xi):end);
             q = max(abs(q(:)));
             self.graphAxes.CLim = [-q/2, q/2];
 
@@ -676,7 +683,7 @@ classdef RHD_Analyzer < handle
             save('autovars.mat','autovars');
             
             % get convergence level estimate from user
-            if self.pAutomaticMode
+            if bitand(self.pAutomaticMode,2) == 2
                 conq = 5;
             else
                 conq = inputdlg('Convergence quality (1-5)?','figure selection', [1 10], {'0'});
@@ -693,6 +700,7 @@ classdef RHD_Analyzer < handle
             % normalizations computed from frame 0; The FMHandler assumes they are unnormalized
             % and applies its own precision-calculated normalizations
             self.datablock(:,2) = self.datablock(:,2) * self.xNormalization;
+            self.datablock(:,3) = self.datablock(:,3) * self.radNormalization;
             
             % don't do this until we're ready to do a complete re-analysis because all currently
             % stored values are numerically normalized.
