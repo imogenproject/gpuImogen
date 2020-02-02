@@ -871,6 +871,10 @@ classdef RHD_Analyzer < handle
             % Iterates through all the run phases in sequence
             if self.pCurrentAnalysisPhase ~= 0; return; end
             
+            % Avoid storing a (potentially huge) self.F while loading a new
+            % one
+            self.dumpContents();
+            
             self.runAnalysisPhase = 1; % load
             
             self.runAnalysisPhase = 2; % basics
