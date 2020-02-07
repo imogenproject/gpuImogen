@@ -150,7 +150,7 @@ classdef FMHandler2 < handle
                 end
                 
                 if really == 314
-                    n = size(self.machPts,1);
+                    n = numel(self.machPts);
                     s = [1:(p-1) (p+1):n];
                     
                     self.machPts = self.machPts(s);
@@ -372,7 +372,7 @@ classdef FMHandler2 < handle
             ff.ExtrapolationMethod = 'none';
             dx = ff(m, t);
 
-            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakLumAmps(q));%./ self.radnormPts');
+            ff = scatteredInterpolant(self.machPts', self.thetaPts', self.peakLumAmps(q) ./ self.radnormPts');
             ff.Method = 'linear';
             ff.ExtrapolationMethod = 'none';
             dlum = ff(m, t);

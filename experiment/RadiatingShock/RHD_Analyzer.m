@@ -739,14 +739,54 @@ classdef RHD_Analyzer < handle
             end
 
             od = pwd();
-            cd ..;
-            if (conq == 5) && (self.automaticMode == 0)
-                xd = pwd();
-                if strcmp(xd((end-8):end), 'radshocks') == 0
+            if strcmp(od((end-8):end), 'radshocks') == 0
+                cd ..;
+                if (conq == 5) && (self.automaticMode == 0)
                     eval(sprintf('!mv %s ../radshocks', od));
+                    self.print('Automatically moved conv lvl = 5 run to ../radshocks');
                 end
-                self.print('Automatically moved conv lvl = 5 run to ../radshocks');
             end
+            if self.automaticMode == 0
+                killit = util_inputNumberBulletproof('1 to attempt to delete from run_plist, 2 to update fallback, 0 for neither: ', 0);
+                
+                if killit == 1
+                    d0 = pwd();
+                    cd('~/gpuimogen/run');
+                    if exist('~/gpuimogen/run/run_plist.mat','file')
+                        load('run_plist.mat');
+                        u = find( (plist(:,1) == self.runParameters.m) & (plist(:,2) == self.runParameters.theta) );
+                        if numel(u) > 0
+                            plist = delrow(plist, u);
+                            if numel(u) > 1
+                                warning('Odd, total of %i matches for these parameters. Confused plist?', numel(u));
+                            end
+                        end
+                        save('run_plist.mat','runners','plist');
+                    else
+                        disp('No ~/gpuimogen/run/run_plist.mat, ignoring');
+                    end
+                    cd(d0);
+                end
+                if killit == 2
+                    d0 = pwd();
+                    cd('~/gpuimogen/run');
+                    if exist('~/gpuimogen/run/run_plist.mat','file')
+                        load('run_plist.mat');
+                        u = find( (plist(:,1) == self.runParameters.m) & (plist(:,2) == self.runParameters.theta) );
+                        if numel(u) > 0
+                            plist(u,3) = self.vfallback;
+                            if numel(u) > 1
+                                warning('Odd, total of %i matches for these parameters. Confused plist?', numel(u));
+                            end
+                        end
+                        save('run_plist.mat','runners','plist');
+                    else
+                        disp('No ~/gpuimogen/run/run_plist.mat, ignoring');
+                    end
+                    cd(d0);
+                end
+            end
+            
             
         end
         
