@@ -192,7 +192,7 @@ classdef RadiatingFlowSolver < handle
                 self.vxTerminal = self.thermalCutoffV(value);
             end
 
-            SaveManager.logPrint('Terminal velocity set by %s to %.10g.\n',type,self.vxTerminal);
+            %SaveManager.logPrint('Terminal velocity set by %s to %.10g.\n',type,self.vxTerminal);
         end
 
 

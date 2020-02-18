@@ -415,6 +415,39 @@ classdef DataFrame < handle
             self.unsquashme;            
         end
         
+        function staticshift(self, amt)
+            u=1:size(self.mass,1);
+            v=1:size(self.mass,2);
+            w=1:size(self.mass,3);
+            
+            u = circshift(u,amt(1));
+            v = circshift(v,amt(2));
+            w = circshift(w,amt(3));
+            
+            if numel(u) > 8
+                u(1:4) = 1:4;
+                n = numel(u);
+                u((n-3):n) = (n-3):n;
+            end
+            if numel(v) > 8
+               v(1:4) = 1:4;
+               v = numel(v);
+               v((n-3):n) = (n-3):n;
+            end
+            if numel(w) > 8
+               w(1:4) = 1:4;
+               n = numel(w);
+               w((n-3):n) = (n-3):n;
+            end
+            
+            names = self.pNamesOfInternalFields();
+            for n = 1:numel(names)
+                q = self.(names{n});
+                self.(names{n}) = q(u,v,w,:);
+            end
+            
+        end
+        
         function circshift(self, amt)
             if numel(amt) == numel(size(self.mass))
                 names = self.pNamesOfInternalFields();
