@@ -29,6 +29,8 @@ classdef TimeManager < handle
         stepsSinceIncident;
 
         firstWallclockValue;
+
+	iterOffset;
     end%PUBLIC
     
     %==============================================================================================
@@ -85,6 +87,7 @@ classdef TimeManager < handle
             obj.stepsSinceIncident = inf;
             
             obj.pKahanTimeC = 0;
+	    obj.iterOffset = 0;
         end
         
         function nProblems = parseIni(self, ini)
@@ -189,8 +192,8 @@ classdef TimeManager < handle
             %--- Clock first loops ---%
             %           Clocks the first loop of execution and uses that to determine an estimated
             %           time to complete that is displayed in the UI and log files.
-            if obj.iteration < 12
-                switch obj.iteration
+            if obj.iteration - obj.iterOffset < 26
+                switch obj.iteration - obj.iterOffset
                     
                     case 0        %Activate clock timer for the first loop
                         % NOTE - if this is changed update code for resumption below as well!
@@ -199,12 +202,12 @@ classdef TimeManager < handle
                         obj.pLogString = '[[ %0ni/%0ni | %3.5g/%3.5g | avg %.3g iter/s | by %s at %s ]]\n';
                         obj.pLogString(6) = sprintf('%i',obj.pItersDigits);
                         obj.pLogString(11) = sprintf('%i',obj.pItersDigits);
-                    case 10        %Stop clock timer and use the elapsed time to predict total run time
-                        tPerStep = toc(obj.startSecs)/10;
-                        save.logPrint('\tFirst 10 timesteps averaged %0.4g secs ea.\n', tPerStep);
+                    case 25        %Stop clock timer and use the elapsed time to predict total run time
+                        tPerStep = toc(obj.startSecs)/25;
+                        save.logPrint('\tFirst 25 timesteps averaged %0.4g secs ea.\n', tPerStep);
                         
                         if (obj.iterPercent > obj.timePercent)
-                            secsRemaining = tPerStep*(obj.ITERMAX-10);
+                            secsRemaining = tPerStep*(obj.ITERMAX-25);
                         else
                             secsRemaining = tPerStep*ceil(obj.TIMEMAX/obj.time);
                         end
@@ -323,6 +326,7 @@ classdef TimeManager < handle
             %newlimit.frame = 8;
             
             obj.time       = elapsed.time;
+	    obj.iterOffset = elapsed.iteration;
             if isfield(newlimit, 'addframes')
                 newlimit.itermax = obj.ITERMAX + newlimit.addframes;
             end
