@@ -324,7 +324,7 @@ int deserializeTagToMGArray(int64_t *tag, MGArray *mg)
 
     mg->vectorComponent = tag[GPU_TAG_VECTOR_COMPONENT];
 
-    mg->circularBoundaryBits = tag[GPU_TAG_CIRCULARBITS];
+    mg->mpiCircularBoundaryBits = tag[GPU_TAG_CIRCULARBITS];
 
 	int sub[6];
 
@@ -359,7 +359,7 @@ void serializeMGArrayToTag(MGArray *mg, int64_t *tag)
 	tag[GPU_TAG_NGPUS]   = mg->nGPUs;
 	tag[GPU_TAG_EXTERIORHALO]    = mg->addExteriorHalo;
 	tag[GPU_TAG_DIMPERMUTATION]  = mg->permtag;
-	tag[GPU_TAG_CIRCULARBITS]    = mg->circularBoundaryBits;
+	tag[GPU_TAG_CIRCULARBITS]    = mg->mpiCircularBoundaryBits;
 	tag[GPU_TAG_VECTOR_COMPONENT]= mg->vectorComponent;
 
 	int i;
@@ -2749,7 +2749,7 @@ void MGA_debugPrintAboutArray(MGArray *x)
 	printf("Halo added to exterior? : %c\n", x->addExteriorHalo ? 'y' : 'n');
 	printf("Permutation tag value   : %i\n", x->permtag);
 	printf("Which represents        : [%i %i %i] stride ordering\n", x->currentPermutation[0], x->currentPermutation[1], x->currentPermutation[2]);
-	printf("circularBoundaryBits    : %i\n", x->circularBoundaryBits);
+	printf("mpiCircularBoundaryBits    : %i\n", x->mpiCircularBoundaryBits);
 	printf("Matlab source class idx : %i\n", x->mlClassHandleIndex);
 	printf("==========\n");
 
@@ -2764,7 +2764,7 @@ void MGA_debugPrintAboutArrayBrief(MGArray *x)
         int j;
         for(j = 0; j < n; j++) { printf("%lx ", (unsigned long)x->devicePtr[j]); }
         printf("RANK %i Array's host-side extent = [%i %i %i]; ", rank, x->dim[0], x->dim[1], x->dim[2]);
-        printf("RANK %i Halo size = %i; partition dir = %i, exteriorHalo=%i, boundary bits=%i\n", rank, x->haloSize, x->partitionDir, x->addExteriorHalo, x->circularBoundaryBits);
+        printf("RANK %i Halo size = %i; partition dir = %i, exteriorHalo=%i, boundary bits=%i\n", rank, x->haloSize, x->partitionDir, x->addExteriorHalo, x->mpiCircularBoundaryBits);
 }
 
 /* This should be polled after CUDA API calls. In the event of a problem, it provides detailed

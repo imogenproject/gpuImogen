@@ -99,7 +99,14 @@ typedef struct {
 #define GPU_TAG_VECTOR_COMPONENT 10
 #define GPU_TAG_MAXLEN (GPU_TAG_LENGTH + 2*MAX_GPUS_USED)
 
-        // These mask the bits in the MGArray.circularBoundaryBits field
+// These mask the bits in the MGArray.mpiCircularBoundaryBits field
+// These bits apply to MPI halo exchanges only:
+//   All inter-partition boundaries are always circular (MGA_exchangeHalos())
+//   All node-to-node partition edges interior to the global grid are always circular
+//     (These are masked so by BCManager.m:134)
+//   The only cases which are not marked circular are:
+//     Global grid boundaries, with simulation BCs other than circular
+//     Global grid boundaries, in directions with only one MPI rank in that direction
 #define MGA_BOUNDARY_XMINUS 1
 #define MGA_BOUNDARY_XPLUS 2
 #define MGA_BOUNDARY_YMINUS 4
@@ -156,7 +163,7 @@ typedef struct {
     int partNumel[MAX_GPUS_USED]; // Number of elements allocated per devicePtr (i.e. includes halo).
 
     // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
-    int circularBoundaryBits;
+    int mpiCircularBoundaryBits;
 
     // Continuing my long tradition of bad boundary condition handling,
     // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.

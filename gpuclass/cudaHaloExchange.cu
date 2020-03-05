@@ -140,17 +140,17 @@ int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int 
 		int leftCircular, rightCircular;
 		switch(xchgDir) {
 		case 0:
-			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_XMINUS) ? 1 : 0;
-			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_XPLUS) ? 1 : 0;
+			leftCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_XMINUS) ? 1 : 0;
+			rightCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_XPLUS) ? 1 : 0;
 			break;
 		case 1:
-			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
-			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
+			leftCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
+			rightCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
 			break;
 
 		case 2:
-			leftCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
-			rightCircular = (phi->circularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
+			leftCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_YMINUS) ? 1 : 0;
+			rightCircular = (phi->mpiCircularBoundaryBits & MGA_BOUNDARY_YPLUS) ? 1 : 0;
 			break;
 		default:
 			PRINT_FAULT_HEADER;
