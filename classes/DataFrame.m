@@ -431,7 +431,7 @@ classdef DataFrame < handle
             end
             if numel(v) > 8
                v(1:4) = 1:4;
-               v = numel(v);
+               n = numel(v);
                v((n-3):n) = (n-3):n;
             end
             if numel(w) > 8
