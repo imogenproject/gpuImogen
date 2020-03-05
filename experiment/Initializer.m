@@ -274,49 +274,6 @@ classdef Initializer < handle
             
             iniSettings = obj.getRunSettings();
 
-            % One more act: The geometric settings and partitioning are now fixed,
-            % so we need to set the useExternalHalo flag. If we have one rank (no mpi),
-            % multiple GPUs, and a circular BC in the direction we are partitioned in,
-            % then the GPU partitioner needs to add a halo to the *outside* of the grid in
-            % the partition direction.
-            % In every other case this is not necessary:
-            %   not circular - the BC is set visibly on the grid
-            %   one gpu - any halos are handled by the CPU level parallel manager
-            gm = GPUManager.getInstance();
-            pm = ParallelGlobals();
-
-            if numel(gm.deviceList) > 1
-                % FIXME: this also depends on MPI partitioning
-                rez = obj.geomgr.globalDomainRez;
-
-                % Oh my
-                if rez(gm.partitionDir) < 6
-                    SaveManager.logPrint('NOTE: Partition direction had to be changed due to incompatibility with domain resolution.\n');
-                    % Z partition? Try y then x
-                    if gm.partitionDir == 3
-                        if rez(2) < 6; gm.partitionDir = 1; else; gm.partitionDir = 2; end
-                    else
-                    % Y partition? Try z then x
-                        if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
-                    end
-                else
-                    SaveManager.logPrint('NOTE: Initializer checked partition direction & was OK.\n');
-                end
-            end
-
-            % Checks if MGA needs to add its own halo to the outside of the partitioned direction
-            % (only if we have a circular BC, one processor in the MPI grid in that direction, and multiple GPUs in use)
-            % We sent it {1} because complex BCs have been flipped on now if they weren't on before
-            bcmodes = BCManager.expandBCStruct(obj.bcMode{1});
-            bcIsCircular = strcmp(bcmodes{1,gm.partitionDir}, 'circ');
-
-            if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
-                extHalo = 1;
-            else
-                extHalo = 0;
-            end
-
-            gm.useExteriorHalo = extHalo;
         end
 
         % These either dump ICs to a file or return them as a structure.

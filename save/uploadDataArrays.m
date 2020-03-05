@@ -1,9 +1,51 @@
-function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
+function [fluid, mag] = uploadDataArrays(FieldSource, run, statics, upscaleFactor)
 % Utility function uploads input data arrays on CPU to GPU
 
     SaveManager.logPrint('---------- Transferring arrays to GPU(s)\n');
 
     gm = GPUManager.getInstance();
+    pm = ParallelGlobals();
+    
+    % Automatically check and fix partitioning.
+    if numel(gm.deviceList) > 1
+        % FIXME: this also depends on MPI partitioning
+        rez = obj.geomgr.globalDomainRez;
+        
+        if rez(gm.partitionDir) < 6
+            SaveManager.logPrint('    NOTICE: Partition direction had to be changed due to incompatibility with domain resolution.\n');
+            % Z partition? Try y then x
+            if gm.partitionDir == 3
+                if rez(2) < 6; gm.partitionDir = 1; else; gm.partitionDir = 2; end
+            else
+                % Y partition? Try z then x
+                if rez(3) > 6; gm.partitionDir = 3; else; gm.partitionDir = 1; end
+            end
+        else
+            if gm.partitionDir == 1; pdc = 'X'; end
+            if gm.partitionDir == 2; pdc = 'Y'; end
+            if gm.partitionDir == 3; pdc = 'Z'; end
+            SaveManager.logPrint('    NOTICE: Checked partition direction (%c) & was OK.\n', pdc);
+        end
+    end
+    
+    % The geometric settings and partitioning are now known and it is now time to set the
+    % useExternalHalo flag. The Matlab/MPI level partition handler will not add array-edge halos in
+    % a direction with only one rank (e.g. single node), but if there are multiple GPUs and
+    % partitioning is in that direction, and we are doing circular differencing, a halo at the
+    % outer edges is required.
+    %
+    % The useExteriorHalo flag does this. In all other cases this is not necessary and is zero.
+    bcmodes = run.bc.expandBCStruct(run.bc.modes{1});
+    bcIsCircular = strcmp(bcmodes{1,gm.partitionDir}, 'circ');
+    
+    if (numel(gm.deviceList) > 1) && (pm.topology.nproc(gm.partitionDir) == 1) && bcIsCircular
+        extHalo = 1;
+    else
+        extHalo = 0;
+    end
+    
+    gm.useExteriorHalo = extHalo;
+    
     iniGPUMem = GPU_ctrl('memory'); iniGPUMem = iniGPUMem(gm.deviceList+1,1);
 
     % create two sets of cuda event streams
@@ -36,8 +78,8 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
     hasNoCFL = 1;
 
     % Handle each fluid
-    %for F = 1:numel(FieldSource.fluids)
-    for F = 1
+    for F = 1:numel(FieldSource.fluids)
+    %for F = 1
         SaveManager.logPrint('    Fluid %i: ', int32(F));
         fluid(F) = FluidManager(F);
 
@@ -70,9 +112,9 @@ function [fluid, mag] = uploadDataArrays(FieldSource, run, statics)
 
         SaveManager.logPrint('Processing thermodynamic details; ');
         % Garbage hack
-        if ~isfield(FluidData(F), 'details')
-	    run.Save.logPrint('    -->>> WARNING <<<-- This SimInitializer.mat dumped the original FluidData.details struct: replacing with warm_molecular_hydrogen!!!!\n');
-	    FluidData(F).details = fluidDetailModel('warm_molecular_hydrogen');
+        if ~isfield(FluidData, 'details')
+	    run.Save.logPrint('    -->>> WARNING <<<-- This SimInitializer.mat dumped the original FluidData(%i).details struct: replacing with warm_molecular_hydrogen!!!!\n',F);
+	    FluidData.details = fluidDetailModel('warm_molecular_hydrogen');
         end
 
         fluid(F).processFluidDetails(FluidData.details);
