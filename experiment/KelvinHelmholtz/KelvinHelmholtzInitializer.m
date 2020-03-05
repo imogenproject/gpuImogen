@@ -15,8 +15,7 @@ classdef KelvinHelmholtzInitializer < Initializer
     properties (SetAccess = public, GetAccess = public) %                           P U B L I C  [P]
         mach;
         waveHeight;
-        numWave;
-        randAmp;
+        nx;
         massRatio;      % ratio of (low mass)/(high mass) for the flow regions.     double
     end %PUBLIC
 
@@ -32,31 +31,30 @@ classdef KelvinHelmholtzInitializer < Initializer
     methods %                                                                     G E T / S E T  [M]
         
 %___________________________________________________________________________________________________ KelvinHelmholtzInitializer
-        function obj = KelvinHelmholtzInitializer(input)
-            obj = obj@Initializer();
-            obj.gamma            = 5/3;
-            obj.runCode          = 'KelHelm';
-            obj.info             = 'Kelvin-Helmholtz instability test';
-            obj.pureHydro        = true;
-            obj.mode.fluid       = true;
-            obj.mode.magnet      = false;
-            obj.mode.gravity     = false;
-            obj.cfl              = 0.85;
-            obj.iterMax          = 1500;
-            obj.mach             = 0.25;
-            obj.activeSlices.xy  = true;
-            obj.ppSave.dim2      = 25;
+        function self = KelvinHelmholtzInitializer(input)
+            self = self@Initializer();
+            self.gamma            = 5/3;
+            self.runCode          = 'KelHelm';
+            self.info             = 'Kelvin-Helmholtz instability test';
+            self.pureHydro        = true;
+            self.mode.fluid       = true;
+            self.mode.magnet      = false;
+            self.mode.gravity     = false;
+            self.cfl              = 0.85;
+            self.iterMax          = 1500;
+            self.mach             = 0.25;
+            self.activeSlices.xy  = true;
+            self.ppSave.dim2      = 25;
 
-            obj.waveHeight         = 0;
-            obj.numWave                 = 10;
-            obj.randAmp                 = .1;
+            self.waveHeight       = .01;
+            self.nx               = 1;
 
-            obj.bcMode.x = 'circ';
-            obj.bcMode.y = 'circ';
-            obj.bcMode.z = 'mirror';
+            self.bcMode.x         = 'circ';
+            self.bcMode.y         = 'circ';
+            self.bcMode.z         = 'mirror';
             
-            obj.massRatio        = 8;
-            obj.operateOnInput(input, [512 512 1]);
+            self.massRatio        = 2;
+            self.operateOnInput(input, [512 512 1]);
 
         end
         
@@ -70,52 +68,69 @@ classdef KelvinHelmholtzInitializer < Initializer
     methods (Access = protected) %                                          P R O T E C T E D    [M]
         
 %___________________________________________________________________________________________________ calculateInitialConditions
-        function [fluid, mag, statics, potentialField, selfGravity] = calculateInitialConditions(obj)
-        
+        function [fluid, mag, statics, potentialField, selfGravity] = calculateInitialConditions(self)
+            
             %--- Initialization ---%
             statics             = [];
             potentialField      = [];
             selfGravity         = [];
-            geo                 = obj.geomgr;
+            geo                 = self.geomgr;
             
             gdr = geo.globalDomainRez;
-            if gdr(3) == 1; obj.bcMode.z = 'circ'; end
-
-            geo.makeBoxSize([1 1 1]);
-
-            % Set various variables
-            speed               = speedFromMach(obj.mach, obj.gamma, 1, 1/(obj.gamma-1), 0); % Gives the speed of the fluid in both directions
-
+            if gdr(3) == 1; self.bcMode.z = 'circ'; end
+            
+            geo.makeBoxSize([1]);
+            
+            kx = 2*pi*self.nx;
+            
+            % The fluid shears at a rate of 2xSpeed,
+            % with supper and slower computed to place us in the zero-momentum frame
+            speed               = speedFromMach(self.mach, self.gamma, 1, 1/(self.gamma-1), 0);
+            supper              =  speed - (self.massRatio-1)*speed/(self.massRatio+1);
+            slower              = -speed - (self.massRatio-1)*speed/(self.massRatio+1);
+            
+            omega = -kx*sqrt(self.massRatio*(supper - slower)^2 / (1+self.massRatio)^2);
+            
             % Initialize Arrays
             [mass, mom, mag, ener] = geo.basicFluidXYZ();
-
+            
             % Initialize parallelized vectors
             [X, Y, Z]           = geo.ndgridSetIJK('pos');
-
-            % Define the wave contact in parallel
-            topwave             = .33 + obj.waveHeight*sin(obj.numWave*2*pi*X);
-            bottomwave          = .66 + obj.waveHeight*sin(obj.numWave*2*pi*X);
-            heavy               = (Y > topwave) & (Y < bottomwave);
-
-            % Define properties of the various regions. The high-density region in the middle moves in positive X, while the low-density regions move in negative X.
-            mom(1,:,:,:)        = -speed;
-            mom(1,heavy)        = speed;
-            mass(heavy)         = obj.massRatio;
-
-            % Give the grid a random velocity component in both X and Y of a size 'randamp', then multiply by the mass array to give momentum.
-            mom(1,:,:,:)        = mom(1,:,:,:) + obj.randAmp*(2*rand(size(mom(1,:,:,:)))-1);
-            mom(2,:,:,:)        = mom(2,:,:,:) + obj.randAmp*(2*rand(size(mom(2,:,:,:)))-1);
-            mom(1,:,:,:)        = squish(mom(1,:,:,:)).*mass;
-            mom(2,:,:,:)        = squish(mom(2,:,:,:)).*mass;
-
+            
+            yctr = .5*gdr(2)/gdr(1);
+            
+            % Define the wave contact
+            topwave             = yctr - self.waveHeight*cos(kx*X);
+            heavy               = (Y > topwave);
+            
+            eta       = yctr + self.waveHeight * cos(kx*X);
+            mass      = 1 + (self.massRatio - 1)*(Y > eta);
+            
+            vxupper   = supper + self.waveHeight*real(-(kx*supper - omega)*exp(1i*kx*X - kx*(Y-yctr)));
+            vyupper   = self.waveHeight*real(1i*(kx*supper - omega)*exp(1i*kx*X - kx*(Y-yctr)));
+            
+            vx        = slower + self.waveHeight*real(-(kx*slower - omega)*exp(1i*kx*X + kx*(Y-yctr)));
+            vy        = self.waveHeight*real(-1i*(kx*slower - omega)*exp(1i*kx*X + kx*(Y-yctr)));
+            
+            vx(heavy) = vxupper(heavy);
+            vy(heavy) = vyupper(heavy);
+            
+            
+            % Define properties of the slabs
+            mass(heavy)  = self.massRatio;
+            
+            mom(1,:,:,:) = vx .* mass;
+            mom(2,:,:,:) = vy .* mass;
+            
             % Calculate energy density array
-            ener = (maxFinderND(mass).^obj.gamma)/(obj.gamma - 1) ...             % internal
-            + 0.5*squish(sum(mom.*mom,1))./mass ...                             % kinetic
-            + 0.5*squish(sum(mag.*mag,1));                                      % magnetic
-
-            fluid = obj.rhoMomEtotToFluid(mass, mom, ener);
-            end
-        end%PROTECTED       
+            ener = (maxFinderND(mass).^self.gamma)/(self.gamma - 1) ...             % internal
+                + 0.5*squish(sum(mom.*mom,1))./mass ...                             % kinetic
+                + 0.5*squish(sum(mag.*mag,1));                                      % magnetic
+            
+            fluid = self.rhoMomEtotToFluid(mass, mom, ener);
+        end
+    end%PROTECTED
+    
 %===================================================================================================    
     methods (Static = true) %                                                     S T A T I C    [M]
     end
