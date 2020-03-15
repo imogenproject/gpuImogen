@@ -1747,6 +1747,7 @@ __device__ SpeedBounds computeEinfeldtBounds_isothermal(double rhoL, double vL, 
     return sb;
 }
 
+#define FULL_MASK 0xffffffff
 
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
@@ -1852,6 +1853,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Dre = Dle;
 			Ere = Ele;
 #else
+
+#ifdef NO_WARP_SHUFFLES
 			// SSPRK methods requires that every time derivative calculation be equally spatially accurate
 			// So we must use slope limited reconstruction here
 			shblk[IC + BOS0] = Ale;
@@ -1862,6 +1865,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			__syncthreads();
 
 			/*************** BEGIN SECTION 2 compute backward differences */
+			// f_bd = f - f_left
+
 			Are = Ale - shblk[IL + BOS0];
 			Bre = Ble - shblk[IL + BOS1];
 			Cre = Cle - shblk[IL + BOS2];
@@ -1895,6 +1900,35 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Dle -= Fa;
 
 			Fa = SLOPEFUNC(Ere, shblk[IR + BOS4]);
+			Ere = Ele + Fa;
+			Ele -= Fa;
+
+#else
+
+			Are = Ale - __shfl_up_sync(FULL_MASK, Ale, 1);
+			Bre = Ble - __shfl_up_sync(FULL_MASK, Ble, 1);
+			Cre = Cle - __shfl_up_sync(FULL_MASK, Cle, 1);
+			Dre = Dle - __shfl_up_sync(FULL_MASK, Dle, 1);
+			Ere = Ele - __shfl_up_sync(FULL_MASK, Ele, 1);
+
+			/*************** BEGIN SECTION 4 compute slope using my BD & right's BD */
+			Fa = SLOPEFUNC(Are, __shfl_down_sync(FULL_MASK, Are, 1));
+			Are = Ale + Fa;
+			Ale -= Fa;
+
+			Fa = SLOPEFUNC(Bre, __shfl_down_sync(FULL_MASK, Bre, 1));
+			Bre = Ble + Fa;
+			Ble -= Fa;
+
+			Fa = SLOPEFUNC(Cre, __shfl_down_sync(FULL_MASK, Cre, 1));
+			Cre = Cle + Fa;
+			Cle -= Fa;
+
+			Fa = SLOPEFUNC(Dre, __shfl_down_sync(FULL_MASK, Dre, 1));
+			Dre = Dle + Fa;
+			Dle -= Fa;
+
+			Fa = SLOPEFUNC(Ere, __shfl_down_sync(FULL_MASK, Ere, 1));
 			Ere = Ele + Fa;
 			Ele -= Fa;
 #endif
@@ -1927,12 +1961,14 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Dle = Dre / Ale;
 			Ele = Ere / Ale;
 
+#ifdef NO_WARP_SHUFFLES
 			shblk[IC + BOS0] = Ale;
 			shblk[IC + BOS1] = Ble;
 			shblk[IC + BOS2] = Cle;
 			shblk[IC + BOS3] = Dle;
 			shblk[IC + BOS4] = Ele;
 			__syncthreads();
+
 
 			/*************** BEGIN SECTION 2 compute backward differences */
 			Are = Ale - shblk[IL + BOS0];
@@ -1942,6 +1978,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Ere = Ele - shblk[IL + BOS4];
 			__syncthreads();
 
+
+
 			/*************** BEGIN SECTION 3 upload backward differences */
 			shblk[IC + BOS0] = Are;
 			shblk[IC + BOS1] = Bre;
@@ -1950,7 +1988,6 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			shblk[IC + BOS4] = Ere;
 			__syncthreads();
 
-			/*************** BEGIN SECTION 4 compute slope using my BD & right's BD */
 			Fa = SLOPEFUNC(Are, shblk[IR + BOS0]);
 			Are = Ale + Fa;
 			Ale -= Fa;
@@ -1970,12 +2007,45 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Fa = SLOPEFUNC(Ere, shblk[IR + BOS4]);
 			Ere = Ele + Fa;
 			Ele -= Fa;
+
+#else
+			// Compute backward differences using synchronous shuffle up
+			Are = Ale - __shfl_up_sync(FULL_MASK, Ale, 1);
+			Bre = Ble - __shfl_up_sync(FULL_MASK, Ble, 1);
+			Cre = Cle - __shfl_up_sync(FULL_MASK, Cle, 1);
+			Dre = Dle - __shfl_up_sync(FULL_MASK, Dle, 1);
+			Ere = Ele - __shfl_up_sync(FULL_MASK, Ele, 1);
+
+			// Compute limiter function using synchronous shuffle down
+			Fa = SLOPEFUNC(Are, __shfl_down_sync(FULL_MASK, Are, 1));
+			Are = Ale + Fa;
+			Ale -= Fa;
+
+			Fa = SLOPEFUNC(Bre, __shfl_down_sync(FULL_MASK, Bre, 1));
+			Bre = Ble + Fa;
+			Ble -= Fa;
+
+			Fa = SLOPEFUNC(Cre, __shfl_down_sync(FULL_MASK, Cre, 1));
+			Cre = Cle + Fa;
+			Cle -= Fa;
+
+			Fa = SLOPEFUNC(Dre, __shfl_down_sync(FULL_MASK, Dre, 1));
+			Dre = Dle + Fa;
+			Dle -= Fa;
+
+			Fa = SLOPEFUNC(Ere, __shfl_down_sync(FULL_MASK, Ere, 1));
+			Ere = Ele + Fa;
+			Ele -= Fa;
+#endif
 		}
 
 		__syncthreads();
 		/* Rotate the [le_i-1 re_i-1][le_i re_i][le_i+1 re_i+1] variables one left
 		 * so that each cell stores [re_i le_i+1]
 		 * and thus each thread deals with F_i+1/2 */
+
+
+#ifdef NO_WARP_SHUFFLES
 		shblk[IC + BOS0] = Ale;
 		shblk[IC + BOS1] = Ble;
 		shblk[IC + BOS2] = Cle;
@@ -1990,6 +2060,14 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 		Cle = Cre; Cre = shblk[IR + BOS2];
 		Dle = Dre; Dre = shblk[IR + BOS3];
 		Ele = Ere; Ere = shblk[IR + BOS4];
+#else
+		Fa = Ale; Ale = Are; Are = __shfl_down_sync(FULL_MASK, Fa, 1);
+		shblk[IC + BOS5] = Ale;
+		Fa = Ble; Ble = Bre; Bre = __shfl_down_sync(FULL_MASK, Fa, 1);
+		Fa = Cle; Cle = Cre; Cre = __shfl_down_sync(FULL_MASK, Fa, 1);
+		Fa = Dle; Dle = Dre; Dre = __shfl_down_sync(FULL_MASK, Fa, 1);
+		Fa = Ele; Ele = Ere; Ere = __shfl_down_sync(FULL_MASK, Fa, 1);
+#endif
 
 		/* Get  velocity jump speeds */
 		Utilde = (Bre-Ble);
