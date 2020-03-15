@@ -1932,6 +1932,8 @@ __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)
 			Ere = Ele + Fa;
 			Ele -= Fa;
 #endif
+
+#endif
 		} else {
 			/* If making correction, perform linear MUSCL reconstruction */
 			Ale = Qstore[0*DEV_SLABSIZE]; /* load rho */
