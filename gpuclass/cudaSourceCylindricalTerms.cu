@@ -33,6 +33,7 @@ __device__ __constant__ int arrayparams[4];
 template <geometryType_t coords>
 __global__ void cukern_SourceCylindricalTerms(double *base, double dt);
 
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
@@ -61,6 +62,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) DROP_MEX_ERROR("cylindrical term source dumping: failed to apply source terms.");
 	}
 }
+#endif
 
 int sourcefunction_CylindricalTerms(MGArray *fluid, double dt, double *d3x, double Rinner)
 {

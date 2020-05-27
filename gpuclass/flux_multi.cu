@@ -22,7 +22,12 @@
 #include "cudaCommon.h"
 #include "cudaFluidStep.h"
 #include "cudaFreeRadiation.h"
+#include "cudaSoundspeed.h"
+#include "cflTimestep.h"
+
+#include "sourceStep.h"
 #include "flux.h"
+
 
 // Only uncomment this if you plan to debug this file.
 // This will cause it to require output arguments to return data in,
@@ -30,66 +35,146 @@
 //#define DEBUGMODE
 
 FluidMethods mlmethodToEnum(int mlmethod);
+int fetchMinDensity(mxArray *mxFluids, int fluidNum, double *rhoMin);
+
+int calculateMaxTimestep(GridFluid *fluids, int nFluids, FluidStepParams *fsp, ParallelTopology *topo, MGArray *tempStorage, double *timestep);
+int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType);
 
 #ifdef DEBUGMODE
     #include "debug_inserts.h"
 #endif
+
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	int wanted_nlhs = 0;
 #ifdef DEBUGMODE
 	wanted_nlhs = 1;
 #endif
-	if ((nrhs!= 6) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need flux_ML_iface(fluid, bx, by, bz, [dt, purehydro?, order, step #, step method, rad exponent, rad beta, mintemp], run.geometry)\n");
+	if ((nrhs!= 7) || (nlhs != wanted_nlhs)) mexErrMsgTxt("Wrong number of arguments: need sourceStep(run, fluid, bx, by, bz, xyvector, [order, step #, step method, tFraction])\n");
 
-	MGArray fluid[5];
+	//MGArray fluid[5];
 
 #ifdef USE_NVTX
 	nvtxRangePush("flux_multi step");
 #endif
 
-	/* Access bx/by/bz cell-centered arrays if magnetic!!!! */
-	/* ... */
+	double *scalars = mxGetPr(prhs[6]);
 
-    int idxpost = 4; // 8 for the old way
-
-	double *scalars = mxGetPr(prhs[idxpost]);
-
-	if(mxGetNumberOfElements(prhs[idxpost]) != 8) {
-		DROP_MEX_ERROR("Must rx 8 parameters in params vector: [dt, purehydro?, order, step #, step method, radiation exponent, radiation beta, radiation min temperature]");
+	if(mxGetNumberOfElements(prhs[6]) != 4) {
+		DROP_MEX_ERROR("Must rx 4 parameters in params vector: [ order, step #, step method, tFraction]");
 	}
 
-	
-	double dt       = scalars[0]; /* Access lambda (dt / dx) */
-	int ishydro     = scalars[1]; /* determine if purely hydrodynamic */
-	int sweepDirect = (int)scalars[2]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
-	int stepNum     = (int)scalars[3]; /* step number (used to pick the permutation of the fluid propagators) */
-	int stepMethod  = (int)scalars[4]; /* 1=HLL, 2=HLLC, 3=Xin/Jin */
-	
-	double radExp   = scalars[5];
-	double radBeta  = scalars[6];
-	double radMintemp=scalars[7];
+	int worked = SUCCESSFUL;
 
-	/* Access topology structure */
-	ParallelTopology topo;
+	const mxArray* theImogenManager = prhs[0];
+
+	double dt = derefXdotAdotB_scalar(theImogenManager, "time", "dTime");
+	int ishydro = (int)derefXdotAdotB_scalar(theImogenManager, "pureHydro", (const char *)NULL);
+
+	// Load up the FluidStepParameters structure
+	int sweepDirect = (int)scalars[0]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
+	int stepNum     = (int)scalars[1]; /* step number (used to pick the permutation of the fluid propagators) */
+	int stepMethod  = (int)scalars[2]; /* 1=HLL, 2=HLLC, 3=Xin/Jin */
+
 	FluidStepParams fsp;
+	fsp.dt            = dt;
+	fsp.onlyHydro     = ishydro;
+	fsp.stepDirection = sweepDirect;
+	fsp.stepMethod    = mlmethodToEnum(stepMethod);
+	fsp.stepNumber    = stepNum;
+	fsp.cflPrefactor  = derefXdotAdotB_scalar(theImogenManager, "time","CFL");
 
-	fsp.geometry = accessMatlabGeometryClass(prhs[idxpost+1]);
+	// Load up the radiation structure
+	ParametricRadiation prad;
+	int isRadiating = derefXdotAdotB_scalar(theImogenManager, "radiation", "type");
 
-	const mxArray *mxtopo = mxGetProperty(prhs[idxpost+1], 0, "topology");
+	if(isRadiating) {
+		prad.exponent = derefXdotAdotB_scalar(theImogenManager, "radiation", "exponent");
+		// FIXME NASTY HACK min temperature set by hard code (this copied from ./fluid/Radiation.m:124)
+		prad.minTemperature = 1.05;
+		prad.prefactor = derefXdotAdotB_scalar(theImogenManager, "radiation", "strength") * dt;
+	} else {
+		prad.prefactor = 0;
+	}
+
+	const mxArray *geo = mxGetProperty(prhs[0], 0, "geometry");
+
+	// Load up the topology structure
+	ParallelTopology topo;
+	const mxArray *mxtopo = mxGetProperty(geo, 0, "topology");
 	topoStructureToC(mxtopo, &topo);
 
-	fsp.dt = dt;
+	// Load up the geometry structure inside the FluidStepParams
+	fsp.geometry = accessMatlabGeometryClass(geo);
+	int numFluids     = mxGetNumberOfElements(prhs[1]);
 
-	fsp.onlyHydro = ishydro;
-	fsp.stepDirection = sweepDirect;
-	fsp.stepMethod = mlmethodToEnum(stepMethod);
+	if(numFluids > 1) {
+		fsp.multifluidDragMethod = (int)derefXdotAdotB_scalar(theImogenManager, "multifluidDragMethod", (const char *)NULL);
+	} else {
+		fsp.multifluidDragMethod = 0;
+	}
 
-	int numFluids = mxGetNumberOfElements(prhs[0]);
+	// Access the potential field, if relevant
+	GravityData gravdat;
+	MGArray gravphi;
+	int haveg = derefXdotAdotB_scalar(theImogenManager, "potentialField", "ACTIVE");
+	if(haveg) {
+		const mxArray *gravfield;
+		gravfield =  derefXdotAdotB(theImogenManager, "potentialField", "field");
+		worked = MGA_accessMatlabArrays(&gravfield, 0, 0, &gravphi);
+		gravdat.phi = &gravphi;
+		double orderstmp[2];
+		derefXdotAdotB_vector(theImogenManager, "compositeSrcOrders", (const char *)NULL, &orderstmp[0], 2);
+		gravdat.spaceOrder = (int)orderstmp[0];
+		gravdat.timeOrder = (int)orderstmp[1];
+	} else {
+		gravdat.spaceOrder = 0;
+		gravdat.timeOrder = 0;
+	}
+
+	if(worked != SUCCESSFUL) { DROP_MEX_ERROR("performCompleteTimestep crashing because of failure to fetch run.potentialField.field"); }
+
+	// Access the fluids themselves
+	GridFluid fluids[numFluids];
 	int fluidct;
-	CHECK_CUDA_ERROR("entering compiled fluid step");
+	for(fluidct = 0; fluidct < numFluids; fluidct++) {
+		MGA_accessFluidCanister(prhs[1], fluidct, &fluids[fluidct].data[0]);
+		fluids[fluidct].thermo = accessMatlabThermoDetails(mxGetProperty(prhs[1], fluidct, "thermoDetails"));
+		worked = fetchMinDensity((mxArray *)prhs[1], fluidct, &fluids[fluidct].rhoMin);
+	}
 
-	int status;
+	// Fetch the XY vectors
+	MGArray XYvectors;
+	worked = MGA_accessMatlabArrays(&prhs[5], 0, 0, &XYvectors);
+	if(worked != SUCCESSFUL) { DROP_MEX_ERROR("performCompleteTimestep crashing because of failure to fetch input xyVectors (arg 6)"); }
+
+	fsp.geometry.XYVector = &XYvectors;
+
+	// Get the global domain rez for doing cfl
+	double *globrez = mxGetPr(derefXdotAdotB(theImogenManager, "geometry", "globalDomainRez"));
+	int i;
+	for(i = 0; i < 3; i++) {
+		fsp.geometry.globalRez[i] = globrez[i];
+	}
+
+	// Determine what kind of source type we're going to do
+	int cylcoords = (fsp.geometry.shape == CYLINDRICAL) || (fsp.geometry.shape == RZCYLINDRICAL);
+	// sourcerFunction = (fsp.geometry. useCyl + 2*useRF + 4*usePhi + 8*use2F;
+	int srcType = 1*(cylcoords == 1) + 2*(fsp.geometry.frameOmega != 0) + 4*(haveg) + 8*(numFluids > 1);
+
+	double resultingTimestep;
+
+	worked = CHECK_IMOGEN_ERROR(performCompleteTimestep(fluids, numFluids, fsp, topo, &gravdat, &prad, srcType));
+	if(worked != SUCCESSFUL) {
+		DROP_MEX_ERROR("Big problem: performCompleteTimestep crashed! See compiled backtrace generated above.");
+	}
+
+}
+
+int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType)
+{
+	int status = SUCCESSFUL;
+	int fluidct;
 
 	MGArray tempStorage;
 	tempStorage.nGPUs = -1; // not allocated
@@ -104,124 +189,66 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 #endif
 #endif
 
-	// TAKE RADIATION HALF STEP 
-	// FIXME - this only does bremsstrahlung from the gas, if that is a problem.
-	status = MGA_accessFluidCanister(prhs[0], 0, &fluid[0]);
-	MGArray fluidReorder[5];
-	// the radiation function requires arrays in [rho px py pz E] order for some reason.
-	fluidReorder[0] = fluid[0];
-	fluidReorder[1] = fluid[2];
-	fluidReorder[2] = fluid[3];
-	fluidReorder[3] = fluid[4];
-	fluidReorder[4] = fluid[1]; 
+	if(tempStorage.nGPUs == -1) {
+		nvtxMark("flux_multi.cu:131 large malloc 6 arrays");
+		status = MGA_allocSlab(&fluids[0].data[0], &tempStorage, numarrays);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	}
+
+	//double propdt;
+	//status = calculateMaxTimestep(fluids, numFluids, &fsp, &topo, &tempStorage, &propdt);
+	//printf("Input dt = %le, proposed dt = %le, diff = %le\n", fsp.dt, propdt, propdt - fsp.dt);
+
+// TAKE SOURCE HALF STEP
+	fsp.dt *= 0.5;
+	status = performSourceFunctions(srcType, fluids, numFluids, fsp, &topo, gravdata, rad, &tempStorage);
+	fsp.dt *= 2;
+
+	//rad->prefactor *= .5;
+	//status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], NULL, fsp.onlyHydro, fluids[0].thermo.gamma, rad);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	
-	ThermoDetails therm;
-	therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], 0, "thermoDetails"));
-	
-	status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], NULL, fsp.onlyHydro, therm.gamma, radExp, .5*dt*radBeta, radMintemp);
-	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Oh dear: merged step crashed after first radiation half-step!"); }
-	
-	
+	fsp.stepDirection = 1;
 // INITIATE FORWARD-ORDERED TRANSPORT STEP 
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
-		// If multiple fluids, only have to do this if after first since first was accessed above
-		if(fluidct > 0) {
-			therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
-			status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
-			if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
-		}
-
-		if(tempStorage.nGPUs == -1) {
-			nvtxMark("flux_ML_iface.cu:107 large malloc 6 arrays");
-			status = MGA_allocSlab(fluid, &tempStorage, numarrays);
-			if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
-		}
-
-		double rhoMin;
-		mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
-		if(flprop != NULL) {
-			rhoMin = *((double *)mxGetPr(flprop));
-		} else {
-			PRINT_FAULT_HEADER;
-			printf("Unable to access fluid(%i).MINMASS property.\n", fluidct);
-			PRINT_FAULT_FOOTER;
-			status = ERROR_NULL_POINTER;
-			break;
-		}
-
-		fsp.thermoGamma = therm.gamma;
-		fsp.Cisothermal = therm.Cisothermal;
-		if(therm.Cisothermal != -1) {
+		fsp.minimumRho = fluids[fluidct].rhoMin;
+		fsp.thermoGamma = fluids[fluidct].thermo.gamma;
+		fsp.Cisothermal = fluids[fluidct].thermo.Cisothermal;
+		if(fluids[fluidct].thermo.Cisothermal != -1) {
 			fsp.thermoGamma = 2;
 			// This makes the hydro pressure solver return internal energy when it multiplies eint by (gamma-1)
 		}
 
-		fsp.minimumRho = rhoMin;
-
-		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
-
+		status = performFluidUpdate_3D(&fluids[fluidct].data[0], &topo, fsp, &tempStorage);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
+	if(status != SUCCESSFUL) { return status; }
 	
-// TAKE FULL RADIATION STEP 
-	if(numFluids > 1) { 
-		therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], 0, "thermoDetails"));
-	}
-	
-	status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], NULL, fsp.onlyHydro, therm.gamma, radExp, dt*radBeta, radMintemp);
-	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Oh dear: merged step crashed after first radiation half-step!"); }
+// TAKE FULL SOURCE STEP
+	status = performSourceFunctions(srcType, fluids, numFluids, fsp, &topo, gravdata, rad, &tempStorage);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	
 // INITIATE BACKWARD-ORDERED TRANSPORT STEP 
-	sweepDirect = -1;
-	fsp.stepDirection = sweepDirect;
+	fsp.stepDirection = -1;
 
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
-		ThermoDetails therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
-
-		status = MGA_accessFluidCanister(prhs[0], fluidct, &fluid[0]);
-		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
-
-		if(tempStorage.nGPUs == -1) {
-			nvtxMark("flux_ML_iface.cu:107 large malloc 6 arrays");
-			status = MGA_allocSlab(fluid, &tempStorage, numarrays);
-			if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
-		}
-
-		double rhoMin;
-		mxArray *flprop = mxGetProperty(prhs[0], fluidct, "MINMASS");
-		if(flprop != NULL) {
-			rhoMin = *((double *)mxGetPr(flprop));
-		} else {
-			PRINT_FAULT_HEADER;
-			printf("Unable to access fluid(%i).MINMASS property.\n", fluidct);
-			PRINT_FAULT_FOOTER;
-			status = ERROR_NULL_POINTER;
-			break;
-		}
-
-		fsp.thermoGamma = therm.gamma;
-		fsp.Cisothermal = therm.Cisothermal;
-		if(therm.Cisothermal != -1) {
+		fsp.minimumRho = fluids[fluidct].rhoMin;
+		fsp.thermoGamma = fluids[fluidct].thermo.gamma;
+		fsp.Cisothermal = fluids[fluidct].thermo.Cisothermal;
+		if(fluids[fluidct].thermo.Cisothermal != -1) {
 			fsp.thermoGamma = 2;
-			// This makes the hydro pressure solver return internal energy when it multiplies eint by (gamma-1)
 		}
 
-		fsp.minimumRho = rhoMin;
-
-		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
-
-
+		status = performFluidUpdate_3D(&fluids[fluidct].data[0], &topo, fsp, &tempStorage);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
+	if(status != SUCCESSFUL) { return status; }
 
-	// TAKE FINAL RADIATION HALF-STEP
-	if(numFluids > 1) { 
-		therm = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
-	}
-	
-	status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], NULL, fsp.onlyHydro, therm.gamma, radExp, .5*dt*radBeta, radMintemp);
-	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Oh dear: merged step crashed after first radiation half-step!"); }
-
+	// TAKE FINAL SOURCE HALF STEP
+	fsp.dt *= 0.5;
+	status = performSourceFunctions(srcType, fluids, numFluids, fsp, &topo, gravdata, rad, &tempStorage);
+	fsp.dt *= 2;
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	// CLEANUP
 	// This was allocated & re-used many times in performFluidUpdate_3D
@@ -229,21 +256,71 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		#ifdef USE_NVTX
 		nvtxMark("Large free flux_ML_iface.cu:144");
 		#endif
-		status = MGA_delete(&tempStorage);
+		status = CHECK_IMOGEN_ERROR(MGA_delete(&tempStorage));
+		if(status != SUCCESSFUL) { return status; }
 	}
 
-	if(status != SUCCESSFUL) {
-		DROP_MEX_ERROR("Fluid update code returned unsuccessfully!");
-	}
-
-	#ifdef SYNCMEX
-		MGA_sledgehammerSequentialize(&fluid[0]);
-	#endif
+#ifdef SYNCMEX
+	MGA_sledgehammerSequentialize(&fluid[0]);
+#endif
 
 #ifdef USE_NVTX
-		nvtxRangePop();
+	nvtxRangePop();
 #endif
+
+	return SUCCESSFUL;
 }
+
+/* Computes the maximum permitted timestep allowed by the CFL constraint on the fluid method */
+int calculateMaxTimestep(GridFluid *fluids, int nFluids, FluidStepParams *fsp, ParallelTopology *topo, MGArray *tempStorage, double *timestep)
+{
+	int status = SUCCESSFUL;
+    double dt = 1e38;
+
+    double currentdt = dt;
+    double tau;
+
+    int i, j;
+    // compute each fluid's min timestep on this node
+    for(i = 0; i < nFluids; i++) {
+    	status = CHECK_IMOGEN_ERROR(calculateSoundspeed(&fluids[i].data[0], (MGArray *)NULL, tempStorage, fluids[i].thermo.gamma));
+
+    	double globrez[3];
+    	for(j = 0; j < 3; j++) { globrez[j] = fsp->geometry.globalRez[j]; }
+
+    	status = computeLocalCFLTimestep(&fluids[i].data[0], tempStorage, &fsp->geometry, fsp->stepMethod, &globrez[0], &tau);
+    	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { break; }
+
+    	// crash on invalid timesteps
+    	if(isnan(tau)) {
+    		PRINT_SIMPLE_FAULT("Calculated a timestep that is either infinity or NaN. Crashing\n!");
+    		return ERROR_CRASH;
+    	}
+
+    	// This is computed globally by computeLocalCFLTimestep
+    	currentdt = (currentdt < tau) ? currentdt : tau;
+    }
+
+    *timestep = currentdt * fsp->cflPrefactor;
+	return SUCCESSFUL;
+}
+
+int fetchMinDensity(mxArray *mxFluids, int fluidNum, double *rhoMin)
+{
+	int status = SUCCESSFUL;
+	mxArray *flprop = mxGetProperty(mxFluids, fluidNum, "MINMASS");
+	if(flprop != NULL) {
+		rhoMin[0] = *((double *)mxGetPr(flprop));
+	} else {
+		PRINT_FAULT_HEADER;
+		printf("Unable to access fluid(%i).MINMASS property.\n", fluidNum);
+		PRINT_FAULT_FOOTER;
+		status = ERROR_NULL_POINTER;
+	}
+
+	return status;
+}
+
 
 FluidMethods mlmethodToEnum(int mlmethod)
 {

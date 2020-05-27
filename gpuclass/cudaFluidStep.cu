@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <unistd.h>
 #endif
+#ifndef NOMATLAB
 #include "mex.h"
+#endif
 
 // CUDA
 #include "cuda.h"
@@ -17,12 +19,23 @@
 #include "mpi.h"
 #include "mpi_common.h"
 
+/* cudaFluidSTep.cu responds to the following -D options:
+ * DEBUGMODE: See debug_inserts.h for details. This alters the expected function call!
+ * FLOATFLUX: If set, causes the fluxes to be computed in float32 precision
+ * USE_SSPRK: If set, uses explicit trapezoid as the 2nd order timestep method
+ * USE_RK3: If set, uses RK3 as the 3rd time order timestep method
+ * RECONSTRUCT_VELOCITY: If set, performs MUSCL reconstruction of v instead of momentum
+ * NO_WARP_SHUFFLES: If set, uses arch 2.0 compatible code (shmem) and no warp shuffles
+ */
+
 // Only uncomment this if you plan to debug this file.
 // Causes fluid solvers to emit arrays of debug variables back to Matlab
 //#define DEBUGMODE
 
 // Local defs
 #include "cudaCommon.h"
+#include "limiter_functions.h"
+
 #include "cudaStatics.h"
 #include "cudaFluidStep.h"
 #ifdef DEBUGMODE
@@ -246,6 +259,8 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 	double gamma = params.thermoGamma;
 	double rhomin= params.minimumRho;
 
+	int returnCode = SUCCESSFUL;
+
 	// We let the callers just tell us X/Y/Z (~ directions 1/2/3),
 	// At this point we know enough to map these to different templates
 	// (e.g. the two Theta direction fluxes depend on current array orientation)
@@ -255,11 +270,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 		if(stepdirect == FLUX_Y) {
 			if(fluid->currentPermutation[1] == 1) stepdirect = FLUX_THETA_213;
 			if(fluid->currentPermutation[1] == 3) stepdirect = FLUX_THETA_231;
-			if(fluid->currentPermutation[1] == 2) DROP_MEX_ERROR("Fatal: Misordered coordinates! Cannot flux theta (Y) if theta (Y) is not linear in mem.");
+			if(fluid->currentPermutation[1] == 2) {
+				PRINT_SIMPLE_FAULT("Fatal: Misordered coordinates! Cannot flux theta (Y) if theta (Y) is not linear in mem.");
+				returnCode = ERROR_INVALID_ARGS;
+			}
 		}
 	}
 
-	int returnCode = SUCCESSFUL;
+	if(returnCode != SUCCESSFUL) { return returnCode; }
 
 	/* Precalculate thermodynamic values which we'll dump to __constant__ mem
 	 */
@@ -358,8 +376,9 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			MGArray ref = fluid[0];
 			ref.dim[0] = ref.nGPUs;
 			ref.haloSize = 0;
-			MGArray *cfreeze[2];
-			returnCode = MGA_allocArrays(&cfreeze[0], 1, &ref);
+			MGArray cfreeze[2];
+			MGArray *cfptr = &cfreeze[0];
+			returnCode = MGA_allocArrays(&cfptr, 1, &ref);
 			if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
 
 			// Compute pressure & local freezing speed
@@ -371,14 +390,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				dim3 cfgrid = makeDim3(ROUNDUPTO(arraysize.y,4)/4, arraysize.z, 1);
 
 				cudaSetDevice(fluid->deviceID[i]);
-				cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(fluid->devicePtr[i], wStepValues[i] + (5*fluid->slabPitch[i])/8, cfreeze[0]->devicePtr[i]);
+				cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(fluid->devicePtr[i], wStepValues[i] + (5*fluid->slabPitch[i])/8, cfreeze[0].devicePtr[i]);
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
 			// Compute global freezing speeds
-			cfreeze[1] = NULL;
-			MGA_globalReduceDimension(cfreeze[0], &cfreeze[1], MGA_OP_MAX, 1, 0, 1, topo);
+			cfptr = NULL;
+			MGA_globalReduceDimension(&cfreeze[0], &cfptr, MGA_OP_MAX, 1, 0, 1, topo);
 
 			gridsize.x = ROUNDUPTO(arraysize.x, blocksize.x) / blocksize.x;
 
@@ -392,12 +411,12 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 // FIXME: This will apparently dump if the arraysize.x < 28? Wat???
 				cudaSetDevice(fluid->deviceID[i]);
 				switch(stepdirect) {
-				case FLUX_X: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_Y: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_Z: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
-				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.25*lambda); break;
+				case FLUX_X: cukern_XinJinHydro_step<0+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
+				case FLUX_Y: cukern_XinJinHydro_step<2+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
+				case FLUX_Z: cukern_XinJinHydro_step<4+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
+				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
+				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
+				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_PREDICT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.25*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
@@ -423,12 +442,12 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				dim3 cfgrid = makeDim3(ROUNDUPTO(arraysize.y,4)/4, arraysize.z, 1);
 
 				cudaSetDevice(fluid->deviceID[i]);
-				cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[i], wStepValues[i] + (5*fluid->slabPitch[i])/8, cfreeze[0]->devicePtr[i]);
+				cukern_PressureFreezeSolverHydro<<<cfgrid, cfblk>>>(wStepValues[i], wStepValues[i] + (5*fluid->slabPitch[i])/8, cfreeze[0].devicePtr[i]);
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(cfblk, cfgrid, fluid, hydroOnly, "In cudaFluidStep: cukern_PressureFreezeSolverHydro");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 
-			MGA_globalReduceDimension(cfreeze[0], &cfreeze[1], MGA_OP_MAX, 1, 0, 1, topo);
+			MGA_globalReduceDimension(&cfreeze[0], &cfptr, MGA_OP_MAX, 1, 0, 1, topo);
 
 			for(i = 0; i < fluid->nGPUs; i++) {
 				calcPartitionExtent(fluid, i, &sub[0]);
@@ -440,19 +459,20 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 				cudaSetDevice(fluid->deviceID[i]);
 
 				switch(stepdirect) {
-				case FLUX_X: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_Y: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_Z: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
-				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfreeze[1]->devicePtr[i], 0.5*lambda); break;
+				case FLUX_X: cukern_XinJinHydro_step<0+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
+				case FLUX_Y: cukern_XinJinHydro_step<2+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
+				case FLUX_Z: cukern_XinJinHydro_step<4+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
+				case FLUX_RADIAL: cukern_XinJinHydro_step<6+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
+				case FLUX_THETA_213: cukern_XinJinHydro_step<8+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
+				case FLUX_THETA_231: cukern_XinJinHydro_step<10+RK_CORRECT><<<gridsize, blocksize>>>(fluid->devicePtr[i], wStepValues[i], cfptr->devicePtr[i], 0.5*lambda); break;
 				}
 				returnCode = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, fluid, hydroOnly, "In cudaFluidStep: cukern_XinJinHydro_step prediction step");
 				if(returnCode != SUCCESSFUL) return returnCode;
 			}
 #endif // still have to avoid memory leak regardless of order we ran at
-			MGA_delete(cfreeze[0]);
-			MGA_delete(cfreeze[1]);
+			MGA_delete(&cfreeze[0]);
+			MGA_delete(cfptr);
+			free(cfptr);
 
 			if(localTmpStorage.nGPUs != -1) {
 				returnCode = MGA_delete(&localTmpStorage);
@@ -543,14 +563,14 @@ int performFluidUpdate_1D(MGArray *fluid, FluidStepParams params, ParallelTopolo
 			}
 
 			//
-			MGArray fluidB[5];
+			/*MGArray fluidB[5];
 			int qwer;
 			for(i = 0; i < fluid->nGPUs; i++) {
 				for(qwer = 0; qwer < 5; qwer++) {
 					fluidB[qwer] = fluid[qwer];
 					fluidB[qwer].devicePtr[i] = wStepValues[i] + fluid->slabPitch[i]*qwer/sizeof(double);
 				}
-			}
+			}*/
 
 			//returnCode = setFluidBoundary(&fluidB[0], fluid->matlabClassHandle, &params.geometry, params.stepDirection);
 			//if(CHECK_IMOGEN_ERROR(returnCode) != SUCCESSFUL) return returnCode;
@@ -751,6 +771,8 @@ cudaError_t invokeFluidKernel(FluidMethods algo, int stepdirect, int order, dim3
 	}
 	return cudaSuccess;
 }
+
+#define FULL_MASK 0xffffffff
 
 #ifdef FLOATFLUX
 #define SQRTFUNC sqrtf
@@ -1210,6 +1232,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		E *= F;
 #endif
 
+#ifdef NO_WARP_SHUFFLES
 		shptr[BOS0] = A; /* Upload to shmem: rho, epsilon, vx, vy, vz */
 		shptr[BOS2] = B;
 		shptr[BOS4] = C; // store one of v or mom
@@ -1227,7 +1250,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		shptr[BOS0] = A-F;	     // apply left/right corrections
 		shptr[BOS1] = A+F;
 
-		F = B - shblk[IL+BOS2]; 
+		F = B - shblk[IL+BOS2];
 		shptr[BOS3] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS3]);
@@ -1243,7 +1266,7 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		shptr[BOS4] = C-F;
 		shptr[BOS5] = C+F;
 
-		F = D - shblk[IL+BOS6]; 
+		F = D - shblk[IL+BOS6];
 		shptr[BOS7] = F;
 		__syncthreads();
 		F = SLOPEFUNC(F, shblk[IR+BOS7]);
@@ -1259,6 +1282,34 @@ __global__ void cukern_HLLC_2ndorder(double *Qin, double *Qout, double lambda)
 		shptr[BOS8] = E-F;
 		shptr[BOS9] = E+F;
 		__syncthreads();
+
+#else
+		F = A - __shfl_up_sync(FULL_MASK, A, 1);
+		F = SLOPEFUNC(F, __shfl_down_sync(FULL_MASK, F, 1));
+		shptr[BOS0] = A-F;	     // apply left/right corrections
+		shptr[BOS1] = A+F;
+
+		F = B - __shfl_up_sync(FULL_MASK, B, 1);
+		F = SLOPEFUNC(F, __shfl_down_sync(FULL_MASK, F, 1));
+		shptr[BOS2] = FLUID_GM1*(B-F); // store PRESSURE, not epsilon
+		shptr[BOS3] = FLUID_GM1*(B+F);
+
+		F = C - __shfl_up_sync(FULL_MASK, C, 1);
+		F = SLOPEFUNC(F, __shfl_down_sync(FULL_MASK, F, 1));
+		shptr[BOS4] = C-F;
+		shptr[BOS5] = C+F;
+
+		F = D - __shfl_up_sync(FULL_MASK, D, 1);
+		F = SLOPEFUNC(F, __shfl_down_sync(FULL_MASK, F, 1));
+		shptr[BOS6] = D-F;
+		shptr[BOS7] = D+F;
+
+		F = E - __shfl_up_sync(FULL_MASK, E, 1);
+		F = SLOPEFUNC(F, __shfl_down_sync(FULL_MASK, F, 1));
+		shptr[BOS8] = E-F;
+		shptr[BOS9] = E+F;
+		__syncthreads();
+#endif
 
 #ifdef RECONSTRUCT_VELOCITY
 		// Nothing more to do, the approximate RP solver expects v here
@@ -1746,8 +1797,6 @@ __device__ SpeedBounds computeEinfeldtBounds_isothermal(double rhoL, double vL, 
     sb.Vright = (cs > sb.Vright) ? cs : sb.Vright;
     return sb;
 }
-
-#define FULL_MASK 0xffffffff
 
 template <unsigned int PCswitch>
 __global__ void cukern_HLL_step(double *Qin, double *Qstore, double lambda)

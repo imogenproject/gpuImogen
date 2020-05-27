@@ -13,8 +13,9 @@
 #include "cublas.h"
 
 #include "cudaCommon.h"
-#include "cudaSourceRotatingFrame.h"
+#include "cudaUtilities.h"
 
+#include "cudaSourceRotatingFrame.h"
 
 #define BLOCKDIMX 16
 #define BLOCKDIMY 16
@@ -34,6 +35,7 @@ __constant__ __device__ int devIntParams[3];
 
 __global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
 
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
@@ -68,8 +70,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		status = sourcefunction_RotatingFrame(&fluid[0], &xyvec, omega, dt);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { DROP_MEX_ERROR("Failed to apply rotating frame source terms."); }
 	}
-
 }
+#endif
+
 
 int sourcefunction_RotatingFrame(MGArray *fluidXY, MGArray *XYVectors, double omega, double dt)
 {
@@ -246,20 +249,3 @@ __global__ void  cukern_sourceRotatingFrame(double *rho, double *E, double *px, 
 	}
 }
 
-/* Simple kernel:
- * Given in[0 ... (nodeN-1)], copies the segment in[partX0 ... (partX0 + partNX -1)] to out[0 ... (partNX-1)]
- * and helpfully wraps addresses circularly
- * invoke with gridDim.x * blockDim.x >= partNX
- */
-__global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX)
-{
-// calculate output address
-int addrOut = threadIdx.x + blockDim.x * blockIdx.x;
-if(addrOut >= partNX) return;
-
-// Affine map back to input address
-int addrIn = addrOut + partX0;
-if(addrIn < 0) addrIn += partNX;
-
-out[addrOut] = in[addrIn];
-}

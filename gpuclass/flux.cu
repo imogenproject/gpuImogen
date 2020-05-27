@@ -11,14 +11,24 @@
 
 #include "flux.h"
 
-//int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod, int geomType, double Rinner)
-int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order, MGArray *tempStorage)
+#ifdef NOMATLAB
+int getGPUTypeStreams(void *inputArray, cudaStream_t **streams, int *numel)
+{
+	ParallelTopology *p = (ParallelTopology *)inputArray;
+
+	numel[0] = 2;
+	streams[0] = &p->cudaStreamPtrs[0];
+}
+#endif
+
+
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, MGArray *tempStorage)
 {
 int sweep, flag_1D = 0;
 
 // Choose our sweep number depending on whether we are 1- or 2-dimensional
 //if(fluid[0].dim[2] > 1) { // if nz > 1, three-dimensional
-	sweep = (stepNumber + 3*(order > 0)) % 6;
+	sweep = (fsp.stepNumber + 3*(fsp.stepDirection > 0)) % 6;
 
 if((fluid->dim[1] == 1) && (fluid->dim[2] == 1)) {
 	flag_1D = 1;
@@ -47,9 +57,9 @@ if(flag_1D) {
 	nowDir = 1;
 	stepParameters.stepDirection = nowDir;
 
-	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, NULL);
+	returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, (MGArray *)NULL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-	returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
+	returnCode = setFluidBoundary(fluid, &fsp.geometry, nowDir);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 	return CHECK_IMOGEN_ERROR(returnCode);
@@ -69,16 +79,20 @@ if(tempStorage == NULL) {
 	tempStorage = &localTempStorage;
 }
 
+cudaStream_t *cudaStreams;
+int nstreams;
 
-if(order > 0) { /* If we are doing forward sweep */
-	cudaStream_t *streams = NULL;
-	int nstreams;
-	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
+#ifdef NOMATLAB
+int s = getGPUTypeStreams((void *)parallelTopo, &cudaStreams, &nstreams);
+#else
+int s = getGPUTypeStreams(fluid->boundaryConditions.externalData, &cudaStreams, &nstreams);
+#endif
 
+if(fsp.stepDirection > 0) { /* If we are doing forward sweep */
 	// If we already have a buffer it's large, use it. Otherwise we actually /lose/ beause
-	// performFluidUpdate below will have to actually free and alloc
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams,
-		usingLocalTemp ? NULL : tempStorage) : SUCCESSFUL);
+	// performFluidUpdate below will have to cudaMalloc and free
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, preperm[sweep], cudaStreams,
+		usingLocalTemp ? (MGArray *)NULL : tempStorage) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
@@ -87,24 +101,22 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.stepDirection = nowDir;
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
+			returnCode = setFluidBoundary(fluid, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 		/* FIXME: INSERT MAGNETIC FLUX ROUTINES HERE */
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, tempStorage) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, permcall[n][sweep], cudaStreams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 
 } else { /* If we are doing backwards sweep */
-	cudaStream_t *streams = NULL;
-	int nstreams;
-	int s = getGPUTypeStreams(fluid->matlabClassHandle, &streams, &nstreams);
-
-	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, preperm[sweep], streams,
-		usingLocalTemp ? NULL : tempStorage) : SUCCESSFUL);
+	// If we already have a buffer it's large, use it. Otherwise we actually /lose/ beause
+	// performFluidUpdate below will have to cudaMalloc and free
+	returnCode = (preperm[sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, preperm[sweep], cudaStreams,
+		usingLocalTemp ? (MGArray *)NULL : tempStorage) : SUCCESSFUL);
 	if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 
 	for(n = 0; n < 3; n++) {
@@ -115,13 +127,13 @@ if(order > 0) { /* If we are doing forward sweep */
 			stepParameters.stepDirection = nowDir;
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
-			returnCode = setFluidBoundary(fluid, fluid->matlabClassHandle, &fsp.geometry, nowDir);
+			returnCode = setFluidBoundary(fluid, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
 
-		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, NULL, 5, permcall[n][sweep], streams, tempStorage) : SUCCESSFUL );
+		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, permcall[n][sweep], cudaStreams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
 

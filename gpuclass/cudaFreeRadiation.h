@@ -8,6 +8,12 @@
 #ifndef CUDAFREERADIATION__H_
 #define CUDAFREERADIATION__H_
 
-int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, double exponent, double prefactor, double minimumTemperature);
+typedef struct __ParametricRadiation {
+	double exponent;
+	double prefactor;
+	double minTemperature;
+} ParametricRadiation;
+
+int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, ParametricRadiation *rad);
 
 #endif /* CUDAFREERADIATION__H_ */

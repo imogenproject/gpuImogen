@@ -8,16 +8,21 @@ typedef enum FluidMethods {
 } FluidMethods;
 
 typedef struct __FluidStepParams {
-	double dt;      // = dt / dx;
-	int onlyHydro;   // true if B == zero
-	double thermoGamma; // Gas adiabatic index
-	double minimumRho; // Smallest density, enforced for non-positivity-preserving methods
-	double Cisothermal; // isothermal soundspeed, if not equal to -1; C << 1 -> dust-like (pressureless)
+	double dt;           // = dt / dx;
+	double cflPrefactor; // factor to scale max permitted dt by when computing dt
+	int onlyHydro;       // true if B == zero
+	double thermoGamma;  // Gas adiabatic index
+	// FIXME: this is a per-fluid property, not appropriate here...
+	double minimumRho;   // Smallest density, enforced for non-positivity-preserving methods
+	double Cisothermal;  // isothermal soundspeed, if not equal to -1; C << 1 -> dust-like (pressureless)
 	
 	FluidMethods stepMethod;
-	int stepDirection;
+	int stepDirection; // 1 for forward order, 2 for bkwd order (reverse sweep of Strang symmetrization)
+	int stepNumber; // for picking among the 2 or 6 possible orderings
 
 	GeometryParams geometry;
+
+	int multifluidDragMethod;
 } FluidStepParams;
 
 #include "fluidMethod.h"

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 #ifdef UNIX
 #include <stdint.h>
 #include <unistd.h>
@@ -35,7 +34,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	  MGArray skel = thetag;
 	  skel.dim[dir-1] = depth;
 
-	  MGArray *haloinfo;
+	  MGArray *haloinfo = NULL;
 	  returnCode = MGA_allocArrays(&haloinfo, 1, &skel);
 
 	  returnCode = MGA_wholeFaceToLinear(&thetag, dir, side, 0, depth, &haloinfo->devicePtr[0]);

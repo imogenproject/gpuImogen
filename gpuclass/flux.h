@@ -9,7 +9,8 @@
 
 #ifndef FLUX_H_
 #define FLUX_H_
-int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order, MGArray *tempStorage);
+// old argument order (fwd or bkwd) is encoded in fsp.sweepDirection
+int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, MGArray *tempStorage);
 //int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, FluidStepParams fsp, int stepNumber, int order);
 //int performFluidUpdate_3D(MGArray *fluid, ParallelTopology* parallelTopo, int order, int stepNumber, double *lambda, double gamma, double minRho, double stepMethod);
 

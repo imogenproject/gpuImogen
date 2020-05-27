@@ -117,7 +117,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 		dest = MGA_createReturnedArrays(plhs, 1, &f[0]);
 	}
 
-	worked = sourcefunction_OpticallyThinPowerLawRadiation(&f[0], dest, isHydro, gam, exponent, strength, minTemp);
+	ParametricRadiation r;
+	r.exponent = exponent;
+	r.prefactor = strength;
+	r.minTemperature = minTemp;
+
+	worked = sourcefunction_OpticallyThinPowerLawRadiation(&f[0], dest, isHydro, gam, &r);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { DROP_MEX_ERROR("Calculation of radiation failed!"); }
 
 	if(nlhs == 1) free(dest);
@@ -132,8 +137,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 }
 #endif
 
-int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, double exponent, double prefactor, double minimumTemperature)
+int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, ParametricRadiation *rad)
 {
+
+	double prefactor = rad->prefactor;
+	double exponent  = rad->exponent;
+	double minTemp   = rad->minTemperature;
 
 	int returnCode = SUCCESSFUL;
 	double hostRP[8];
@@ -141,7 +150,7 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
 	hostRP[1] = prefactor;
 	hostRP[2] = exponent;
 	hostRP[3] = 2.0 - exponent;
-	hostRP[4] = minimumTemperature;
+	hostRP[4] = minTemp;
 	hostRP[5] = (exponent-1.0)*prefactor*(gamma-1);
 	hostRP[6] = 1.0-exponent;
 	hostRP[7] = 1.0/(1.0-exponent);
@@ -153,8 +162,8 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
 		returnCode = CHECK_CUDA_ERROR("cudaMemcpyToSymbol");
 		if(returnCode != SUCCESSFUL) break;
 	}
-	if(returnCode != SUCCESSFUL) return returnCode;
 
+	if(returnCode != SUCCESSFUL) return returnCode;
 
 	int sub[6];
 	int kernNumber;
@@ -162,7 +171,8 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
 	for(j = 0; j < fluid->nGPUs; j++) {
 		calcPartitionExtent(fluid, j, sub);
 		cudaSetDevice(fluid->deviceID[j]);
-		CHECK_CUDA_ERROR("cudaSetDevice");
+		returnCode = CHECK_CUDA_ERROR("cudaSetDevice");
+		if(returnCode != SUCCESSFUL) break;
 
 		double *ptrs[8];
 		for(k = 0; k < 8; k++) { ptrs[k] = fluid[k].devicePtr[j]; }
@@ -210,7 +220,6 @@ int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRa
 	}
 
 	return returnCode;
-
 }
 
 /* NOTE: This uses an explicit algorithm to perform radiation,

@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 #ifdef UNIX
 #include <stdint.h>
 #include <unistd.h>
 #endif
 // Matlab
+#ifndef NOMATLAB
 #include "mex.h"
+#endif
 
 // CUDA
 #include "cuda.h"

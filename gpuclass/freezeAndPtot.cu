@@ -76,7 +76,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	clone.haloSize = 0;
 
 	POut = MGA_createReturnedArrays(plhs, 1, fluid);
-	MGArray *cfLocal;
+	MGArray localFreezingSpeed;
+	MGArray *cfLocal = &localFreezingSpeed;
 	int itworked = MGA_allocArrays(&cfLocal, 1, &clone);
 
 	double hostgf[6];
@@ -134,7 +135,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 
 	cfOut = NULL;
-
 	MGA_globalReduceDimension(cfLocal, &cfOut, MGA_OP_MAX, 1, 0, 1, &topology);
 
 	MGA_delete(cfLocal);
@@ -142,7 +142,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGA_returnOneArray(plhs+1, cfOut);
 
 	free(POut);
-	free(cfLocal);
 	free(cfOut);
 
 }

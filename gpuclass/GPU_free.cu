@@ -15,7 +15,6 @@
 #include "cudaCommon.h"
 #include "mpi_common.h"
 
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// wrapper for cudaFree().
 	if((nlhs != 0) || (nrhs == 0)) mexErrMsgTxt((const char *)"GPU_free: syntax is GPU_free(arbitrarily many GPU_Types, gpu tags, or ImogenArrays)");

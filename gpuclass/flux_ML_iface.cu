@@ -35,6 +35,7 @@ FluidMethods mlmethodToEnum(int mlmethod);
 #endif
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
 	int wanted_nlhs = 0;
 #ifdef DEBUGMODE
 	wanted_nlhs = 1;
@@ -50,7 +51,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	/* Access bx/by/bz cell-centered arrays if magnetic!!!! */
 	/* ... */
 
-    int idxpost = 4; // 8 for the old way
+	int idxpost = 4; // 8 for the old way
 
 	double *scalars = mxGetPr(prhs[idxpost]);
 
@@ -58,7 +59,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		DROP_MEX_ERROR("Must rx 5 parameters in params vector: [dt, purehydro?, order, step #, step method]");
 	}
 
-	
+
 	double dt     = scalars[0]; /* Access lambda (dt / dx) */
 	int ishydro   = scalars[1]; /* determine if purely hydrodynamic */
 	int sweepDirect = (int)scalars[2]; /* Identify if forwards (sweepDirect = 1) or backwards (-1) */
@@ -77,6 +78,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	fsp.dt = dt;
 
 	fsp.onlyHydro = ishydro;
+	fsp.stepNumber = stepNum;
 	fsp.stepDirection = sweepDirect;
 	fsp.stepMethod = mlmethodToEnum(stepMethod);
 
@@ -90,12 +92,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	tempStorage.nGPUs = -1; // not allocated
 	int numarrays;
 #ifdef DEBUGMODE
-			numarrays = 6 + DBG_NUMARRAYS;
+	numarrays = 6 + DBG_NUMARRAYS;
 #else
 #ifdef USE_RK3
-			numarrays = 11;
+	numarrays = 11;
 #else
-			numarrays = 6;
+	numarrays = 6;
 #endif
 #endif
 
@@ -106,7 +108,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 
 		if(tempStorage.nGPUs == -1) {
-			nvtxMark("flux_ML_iface.cu:107 large malloc 6 arrays");
+			nvtxMark("flux_ML_iface.cu:109 large malloc 6 arrays");
 			status = MGA_allocSlab(fluid, &tempStorage, numarrays);
 			if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 		}
@@ -132,19 +134,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 		fsp.minimumRho = rhoMin;
 
-		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, stepNum, sweepDirect, &tempStorage);
-
+		status = performFluidUpdate_3D(&fluid[0], &topo, fsp, &tempStorage);
 
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) break;
 	}
 
 
-
 	// This was allocated & re-used many times in performFluidUpdate_3D
 	if((tempStorage.nGPUs != -1) && (status == SUCCESSFUL)) {
-		#ifdef USE_NVTX
+#ifdef USE_NVTX
 		nvtxMark("Large free flux_ML_iface.cu:144");
-		#endif
+#endif
 		status = MGA_delete(&tempStorage);
 	}
 
@@ -152,9 +152,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		DROP_MEX_ERROR("Fluid update code returned unsuccessfully!");
 	}
 
-	#ifdef SYNCMEX
-		MGA_sledgehammerSequentialize(&fluid[0]);
-	#endif
+#ifdef SYNCMEX
+			MGA_sledgehammerSequentialize(&fluid[0]);
+#endif
 
 #ifdef USE_NVTX
 		nvtxRangePop();

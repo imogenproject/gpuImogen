@@ -41,8 +41,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   printf("| |-numel = %li\n", thetag.numel);
   printf("| |-permtag = %i\n", thetag.permtag);
   printf("|-Internal parameters\n");
-  printf("| |-matlabClassHandle=%#lx\n", (unsigned long int)(thetag.matlabClassHandle));
-  printf("| |-mlClassHandleIndex=%i\n", thetag.mlClassHandleIndex);
+  printf("| |-bcExternalDataPtr=%#lx\n", (unsigned long int)(thetag.boundaryConditions.externalData));
+  printf("| |-bcExternalIndex=%i\n", thetag.boundaryConditions.extIndex);
   printf("|-Parallel parameters\n");
   printf("| |-This system configured to use max of %i GPUs\n", MAX_GPUS_USED);
   printf("| |-partitionDir = %i\n", thetag.partitionDir);

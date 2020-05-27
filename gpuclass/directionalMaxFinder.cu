@@ -106,7 +106,7 @@ switch(nrhs) {
 
     // FIXME: This lacks the proper topology to pass to the global reducer so we "fake" it here
     double maxval;
-    int returnCode = MGA_globalReduceScalar(&a, &maxval, MGA_OP_MAX, NULL);
+    int returnCode = MGA_globalReduceScalar(&a, &maxval, MGA_OP_MAX, (ParallelTopology*)NULL);
 
     mwSize dims[2];
     dims[0] = 1;

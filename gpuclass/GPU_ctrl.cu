@@ -189,7 +189,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 			d[i] = freemem; d[i+nDevices] = totalmem;
 		}
 	}
-	if(strcmp(c,"createStreams") == 0) { /* FIXME lines 186-217 are new/untested and are about as safe as letting grandma drive your your Shelby GTX */
+	if(strcmp(c,"createStreams") == 0) {
 		if(nrhs < 2) { printf("Must receive list of devices to get new streams: streams = GPU_ctrl('createStreams',[0 1]) e.g."); return; }
 		if(nlhs < 1) { printf("Must be able to return cudaStream_t *: streams = GPU_ctrl('createStreams',[0 1]) e.g."); return; }
 		double *d = mxGetPr(prhs[1]);

@@ -1,6 +1,10 @@
 #ifndef CUDACOMMONH_
 #define CUDACOMMONH_
 
+#ifndef NOMATLAB
+#include "mex.h"
+#endif
+
 #include "driver_types.h"
 #include "cuda_runtime_api.h"
 
@@ -27,6 +31,82 @@
 //                      = [g*(g-1)*(E-T) + (1-.5*g*(g-1))B^2] / rho
 #define CSQ_MHD(E, Psq, rho, Bsq, gg1fact, alcoef)   ( (gg1fact)*((E)-.5*((Psq)/(rho)) + ALFVEN_CSQ_FACTOR*(alcoef)*(bsq) )/(rho)  )
 
+/* The enumerated types of boundary conditions for the BCSettings structure
+ * circular   - periodic boundary condition with opposing side
+ * mirror     - all quantities have F(-x) = parity * F(x), where parity for normal momentum is odd & otherwise even
+ * wall       - scalar and transverse vectors behave as mirror, normal vectors are zero
+ * stationary - boundary cells are overwritten with fixed data
+ * extrapConstant - F(-x) = F(0)
+ * extrapLinear   - F(-x) = F(0) - x(F(1)-F(0)) [ WARNING this method is unstable except for supersonic inflow ]
+ * outflow        - Scalar and transverse properties are constant extrap. Normal momentum is constant (outward) or zero (inward)
+ * freebalance    - designed for the disk simulations, attempts to solve vertical or radial balance equations */
+enum BCModeTypes { circular, mirror, wall, stationary, extrapConstant, extrapLinear, outflow, freebalance};
+
+typedef struct __BCSettings {
+	BCModeTypes mode[6]; // [-X, +X, -Y, +Y, -Z, +Z]
+	void *externalData;
+	int extIndex; // c.f. mlClassHandleIndex
+} BCSettings;
+
+#define MAX_GPUS_USED 4
+/* The MGArray is the basic data unit for GPU arrays
+ * This is interfaced with Matlab through the serializer/deserializer functions
+ * that return/decipher opaque blobs of uint64_t's.
+ */
+typedef struct __MGArray {
+    int dim[3];    // The size of the array that the CPU downloader will return
+                   // This does not include halos of any kind
+    int64_t numel; // = nx ny nz of the global array, not # allocated
+    int numSlabs; // = dim[4] if positive, identifies which zero-indexed slab # if <= 0
+    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition]*sizeof(double) (BYTES ALLOCATED PER SLAB), rounded up to nearest 256
+
+    int haloSize; // Gives the depth of the halo region on interfacial boundaries
+                  // NOTE that this applies only to inter-gpu partitions created
+                  // by MGA partitioning onto multiple devices: The MPI-level scheme
+                  // can and usually does have inter-node halos
+    int partitionDir;
+                  // Indicates which direction data is split across GPUs in
+                  // Should equal one of PARTITION_X, PARTITION_Y, PARTITION_Z
+
+    /* MGArrays don't concern themselves with the cluster-wide partitioning scheme. While we always
+     * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
+     * at the exterior interfaces:
+     *
+     * When there is only 1 node in our partitioning direction, GeometryManager will NOT supply halo cells and it is
+     * necessary that we do. When there is more than 1, the higher-level partitioning will supply
+     * halo cells at the outside boundaries so we should not add them.
+     *
+     * Ergo, THIS SHOULD BE TRUE IFF THERE IS EXACTLY ONE RANK IN THE PARTITION DIRECTION AND NGPUS > 1
+     * As mentioned at haloSize: This indicates whether MGA needs to add an exterior
+     * halo if true (typical of mpi-serial operation) or not (typical of mpi-parallel
+     * where the MPI partitioning has already added it)*/
+    int addExteriorHalo;
+
+    // Unique integer that compactly represents the 6 possible tuple->linear mappings
+    // of a 3D array
+    int permtag;
+
+    // Marks which memory stride is associated with each physical direction
+    int currentPermutation[3];
+
+    int nGPUs; // Number of devices this MGA lives on: \elem [1, MAX_GPUS_USED].
+    int deviceID[MAX_GPUS_USED]; // for indexes [0, ..., MAX_GPUS_USED-1], appropriate value for cudaSetDevice() etc
+    double *devicePtr[MAX_GPUS_USED]; // for indices [0, ..., MAX_GPUS_USED-1], device data pointers allocated on the matching device.
+    int partNumel[MAX_GPUS_USED]; // Number of elements allocated per devicePtr (i.e. includes halo).
+
+    // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
+    int mpiCircularBoundaryBits;
+    BCSettings boundaryConditions;
+
+    // Continuing my long tradition of bad boundary condition handling,
+    // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
+    //const mxArray *matlabClassHandle;
+    //int mlClassHandleIndex;
+
+    // zero = scalar, 1/2/3 = x/y/z or r/theta/z: Used in BCs mainly
+    int vectorComponent;
+} MGArray;
+
 enum geometryType_t { SQUARE, CYLINDRICAL, RZSQUARE, RZCYLINDRICAL };
 
 typedef struct __GeometryParams {
@@ -44,6 +124,9 @@ typedef struct __GeometryParams {
 	double frameRotateCenter[3];
 	double frameOmega;
 
+	int globalRez[3];
+
+	MGArray *XYVector;
 	// TODO: add allocatable vectors here for variable spacing in the future
 } GeometryParams;
 
@@ -74,7 +157,6 @@ typedef struct {
 #define ROUNDUPTO(x, y) ( x + ((x % y == 0) ? 0 : (y - x % y)) )
 
 // warning: reduceClonedMGArray is hardcoded with the reduction algo for a max of 4 devices because lazy
-#define MAX_GPUS_USED 4
 #define PARTITION_X 1
 #define PARTITION_Y 2
 #define PARTITION_Z 3
@@ -84,6 +166,7 @@ typedef struct {
         // sanityCheckTag
         // deserializeTagToMGArray
         // serializeMGArrayToTag
+        // gpuclass/GPU_tag2struct.m utility function
 
 #define GPU_TAG_LENGTH 11
 #define GPU_TAG_DIM0 0
@@ -117,62 +200,25 @@ typedef struct {
 /* These enumerate the reduction operators which we accelerate on the GPU */
 enum MGAReductionOperator { MGA_OP_SUM, MGA_OP_PROD, MGA_OP_MAX, MGA_OP_MIN };
 
-/* The MGArray is the basic data unit for GPU arrays
- * This is interfaced with Matlab through the serializer/deserializer functions
- * that return/decipher opaque blobs of uint64_t's.
- */
-typedef struct {
-    int dim[3];    // The size of the array that the CPU downloader will return
-                   // This does not include halos of any kind
-    int64_t numel; // = nx ny nz of the global array, not # allocated
-    int numSlabs; // = dim[4] if positive, identifies which zero-indexed slab # if <= 0
-    int64_t slabPitch[MAX_GPUS_USED]; // numel[partition]*sizeof(double) (BYTES ALLOCATED PER SLAB), rounded up to nearest 256
+typedef struct __GravityData {
+	MGArray *phi; // gravity potential array
 
-    int haloSize; // Gives the depth of the halo region on interfacial boundaries
-                  // NOTE that this applies only to inter-gpu partitions created
-                  // by MGA partitioning onto multiple devices: The MPI-level scheme
-                  // can and usually does have inter-node halos
-    int partitionDir;
-                  // Indicates which direction data is split across GPUs in
-                  // Should equal one of PARTITION_X, PARTITION_Y, PARTITION_Z
+	int spaceOrder, timeOrder; // spaceOrder for computing gradPhi, timeOrder for the grav or composite solvers
+	// NOTE: other data pertaining to solving for phi, if that is ever to be done, would go here
+	// NOTE: e.g. the gravity constant G for solving del2(phi) = 4 pi G rho
+} GravityData;
 
-    /* MGArrays don't concern themselves with the cluster-wide partitioning scheme. While we always
-     * have to add halo cells to the interior interfaces for nGPUs > 1, it may or may not be necessary
-     * at the exterior interfaces:
-     *
-     * When there is only 1 node in our partitioning direction, GeometryManager will NOT supply halo cells and it is
-     * necessary that we do. When there is more than 1, the higher-level partitioning will supply
-     * halo cells at the outside boundaries so we should not add them.
-     *
-     * Ergo, THIS IS TRUE IFF THERE IS EXACTLY ONE RANK IN THE PARTITION DIRECTION
-     * As mentioned at haloSize: This indicates whether MGA needs to add an exterior
-     * halo if true (typical of mpi-serial operation) or not (typical of mpi-parallel
-     * where the MPI partitioning has already added it)*/
-    int addExteriorHalo;
+typedef struct __GridFluid {
+	// This is intended to be the "root" of the slab that holds the alloc so we don't need special behaviors for the below data[] slab pointers
+	MGArray DataHolder;
 
-    // Unique integer that compactly represents the 6 possible tuple->linear mappings
-    // of a 3D array
-    int permtag;
+	// [rho E px py pz] data pointers as from MGA_AccessFluidCanister(prhs[0], 0, &self.data[0], ...)
+	MGArray data[5];
+	ThermoDetails thermo;
 
-    // Marks which memory stride is associated with each physical direction
-    int currentPermutation[3];
-
-    int nGPUs; // Number of devices this MGA lives on: \elem [1, MAX_GPUS_USED].
-    int deviceID[MAX_GPUS_USED]; // for indexes [0, ..., MAX_GPUS_USED-1], appropriate value for cudaSetDevice() etc
-    double *devicePtr[MAX_GPUS_USED]; // for indices [0, ..., MAX_GPUS_USED-1], device data pointers allocated on the matching device.
-    int partNumel[MAX_GPUS_USED]; // Number of elements allocated per devicePtr (i.e. includes halo).
-
-    // Use MGA_BOUNDARY_{XYZ}{MINUS | PLUS} defines to select
-    int mpiCircularBoundaryBits;
-
-    // Continuing my long tradition of bad boundary condition handling,
-    // attach the original mxArray pointer so that cudaStatics can be re-used w/o substantial alteration.
-    const mxArray *matlabClassHandle;
-    int mlClassHandleIndex;
-
-    // zero = scalar, 1/2/3 = x/y/z or r/theta/z: Used in BCs mainly
-    int vectorComponent;
-    } MGArray;
+	BCSettings bcond[5];
+	double rhoMin;
+} GridFluid;
 
 /* An in-place overwrite of an MGArray is a nontrivial thing. The following explains how to do it successfully:
  *
@@ -195,27 +241,6 @@ typedef struct {
  *
  */
 
-/* getGPUTypeTag(mxArray *gputype, int64_t **tagpointer)
- *     gputype must be a Matlab array that is one of
- *       - an Nx1 vector of uint64_ts as created by MGA
- *       - a Matlab GPU_Type class
- *       - an Imogen fluid array which has a public .gpuptr property
- */
-int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer);
-/* getGPUTypeTagIndexed(mxArray *gputype, int64_t **tagPointer, int idx)
- *     behaves as getGPUTypeTag, but accepts an index as well such that given
- *     matlabFoo({tag0, tag1, ..., tagN})
- *     getGPUTypeTagIndexed(..., M) fetches the Mth element of the cell array
- */
-int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex);
-int getGPUTypeStreams(const mxArray *fluidarray, cudaStream_t **streams, int *numel);
-//cudaStream_t *getGPUTypeStreams(const mxArray *gputype);
-
-/* Not meant for user calls: Checks basic properties of the input
- * tag; Returns FALSE if they clearly violate basic properties a
- * valid gpu tag must have */
-bool     sanityCheckTag(const mxArray *tag);     // sanity
-
 void     calcPartitionExtent(MGArray *m, int P, int *sub);
 
 int MGA_dir2memdir(int *perm, int dir);
@@ -225,23 +250,18 @@ int MGA_numsToPermtag(int *nums);
 int      deserializeTagToMGArray(int64_t *tag, MGArray *mg); // array -> struct
 void     serializeMGArrayToTag(MGArray *mg, int64_t *tag);   // struct -> array
 
-/* MultiGPU Array allocation stuff */
-int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // Extracts a series of Matlab handles into MGArrays
-int      MGA_accessMatlabArrayVector(const mxArray *m, int idxFrom, int idxTo, MGArray *mg);
+
 // FIXME this should return a status & take a ** to the value to return..
 int      MGA_allocArrays(MGArray **ret, int N, MGArray *skeleton);
 int      MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs);
 int      MGA_duplicateArray(MGArray **dst, MGArray *src);
-MGArray *MGA_createReturnedArrays(mxArray *plhs[], int N, MGArray *skeleton); // clone existing MG array'
-void     MGA_returnOneArray(mxArray *plhs[], MGArray *m);
 int     MGA_delete(MGArray *victim);
 
 void MGA_sledgehammerSequentialize(MGArray *q);
 
 /* MultiGPU reduction calculators */
-
 int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator operate, int dir, int partition);
-int  MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute);
+int MGA_reduceAcrossDevices(MGArray *a, MGAReductionOperator operate, int redistribute);
 
 int MGA_localReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute);
 int MGA_globalReduceDimension(MGArray *in, MGArray **out, MGAReductionOperator operate, int dir, int partitionOnto, int redistribute, ParallelTopology * topology);
@@ -254,7 +274,6 @@ void pullMGAPointers( MGArray *m, int N, int i, double **dst);
 
 /* MultiGPU Array I/O */
 int  MGA_downloadArrayToCPU(MGArray *g, double **p, int partitionFrom);
-int  MGA_uploadMatlabArrayToGPU(const mxArray *m, MGArray *g, int partitionTo);
 
 int  MGA_uploadArrayToGPU(double *p, MGArray *g, int partitionTo);
 int  MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
@@ -312,11 +331,6 @@ typedef struct {
     } ArrayMetadata;
 
 void arrayMetadataToTag(ArrayMetadata *meta, int64_t *tag); 
-void getTagFromGPUType(const mxArray *gputype, int64_t *tag);
-
-double **getGPUSourcePointers(const mxArray *prhs[], ArrayMetadata *metaReturn, int fromarg, int toarg);
-double **makeGPUDestinationArrays(ArrayMetadata *amdRef, mxArray *retArray[], int howmany);
-double *replaceGPUArray(const mxArray *prhs[], int target, int *newdims);
 
 int3 makeInt3(int x, int y, int z);
 int3 makeInt3(int *b);
@@ -324,22 +338,7 @@ dim3 makeDim3(unsigned int x, unsigned int y, unsigned int z);
 dim3 makeDim3(unsigned int *b);
 dim3 makeDim3(int *b);
 
-int MGA_localElmentwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute);
-int MGA_localPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute);
-int MGA_globalElementwiseReduce(MGArray *in, int dir, int partitionOnto, int redistribute, const mxArray *topo);
-int MGA_globalPancakeReduce(MGArray *in, MGArray *out, int dir, int partitionOnto, int redistribute, const mxArray *topo);
 int MGA_distributeArrayClones(MGArray *cloned, int partitionFrom);
-
-// FIXME: This should go in a different file because it has nothing to do with CUDA per se...
-int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *fluid);
-GeometryParams accessMatlabGeometryClass(const mxArray *geoclass);
-
-ThermoDetails accessMatlabThermoDetails(const mxArray *thermstruct);
-
-mxArray *derefXatNdotAdotB(const mxArray *in, int idx, const char *fieldA, const char *fieldB);
-mxArray *derefXdotAdotB(const mxArray *in, const char *fieldA, const char *fieldB);
-double derefXdotAdotB_scalar(const mxArray *in, const char *fieldA, const char *fieldB);
-void derefXdotAdotB_vector(const mxArray *in, const char *fieldA, const char *fieldB, double *x, int N);
 
 void getTiledLaunchDims(int *dims, dim3 *tileDim, dim3 *halo, dim3 *blockdim, dim3 *griddim);
 
@@ -348,161 +347,8 @@ const char *errorName(cudaError_t E);
 void printdim3(char *name, dim3 dim);
 void printgputag(char *name, int64_t *tag);
 
-__device__ __inline__ double fluxLimiter_VanLeer(double derivL, double derivR)
-{
-double r;
-
-r = 2.0 * derivL * derivR;
-if(r > 0.0) { return r /(derivL+derivR); }
-
-return 0;
-}
-
-__device__ __inline__ double fluxLimiter_minmod(double derivL, double derivR)
-{
-if(derivL * derivR < 0) return 0.0;
-
-if(fabs(derivL) > fabs(derivR)) { return derivR; } else { return derivL; }
-}
-
-__device__ __inline__ double fluxLimiter_superbee(double derivL, double derivR)
-{
-if(derivL * derivR < 0) return 0.0;
-
-if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
-return fluxLimiter_minmod(2*derivL, derivR);
-}
-
-__device__ __inline__ double fluxLimiter_Ospre(double A, double B)
-{
-double r = A*B;
-if(r <= 0.0) return 0.0;
-
-return 1.5*r*(A+B)/(A*A+r+B*B);
-}
-
-__device__ __inline__ double fluxLimiter_Zero(double A, double B) { return 0.0; }
-
-/* These differ in that they return _HALF_ of the (limited) difference,
- * i.e. the projection from i to i+1/2 assuming uniform widths of cells i and i+1
- */
-
-// 0.5 * van Leer slope limiter fcn = AB/(A+B)
-__device__ __inline__ double slopeLimiter_VanLeer(double derivL, double derivR)
-{
-double r;
-
-r = derivL * derivR;
-if(r > 0.0) { return r /(derivL+derivR); }
-
-return 0;
-}
-
-#ifdef FLOATFLUX
-__device__ __inline__ float slopeLimiter_minmod(float derivL, float derivR)
-{
-if(derivL * derivR < 0) return 0.0;
-
-if(fabsf(derivL) > fabsf(derivR)) { return .5*derivR; } else { return .5*derivL; }
-}
-#else
-// .5 * minmod slope limiter fcn = min(A/2,B/2)
-__device__ __inline__ float slopeLimiter_minmod(double derivL, double derivR)
-{
-if(derivL * derivR < 0) return 0.0;
-
-if(fabs(derivL) > fabs(derivR)) { return .5*derivR; } else { return .5*derivL; }
-}
+#ifndef NOMATLAB
+#include "cudaCommonML.h"
 #endif
-
-// .5 * superbee slope limiter fcn = ...
-__device__ __inline__ double slopeLimiter_superbee(double derivL, double derivR)
-{
-if(derivL * derivR < 0) return 0.0;
-
-if(derivR < derivL) return fluxLimiter_minmod(derivL, 2*derivR);
-return .5*fluxLimiter_minmod(2*derivL, derivR);
-}
-
-// 0.5 * ospre slope limiter fcn = .75*A*B*(A+B)/(A^2+AB+B^2)
-__device__ __inline__ double slopeLimiter_Ospre(double A, double B)
-{
-double R = A*B;
-if(R > 0) {
-	double S = A+B;
-	return .75*R*S/(S*S-R);
-	}
-return 0.0;
-}
-
-// 0.5 * van albada limiter fcn = .5*A*B*(A+B)/(A^2+B^2)
-__device__ __inline__ double slopeLimiter_vanAlbada(double A, double B)
-{
-double R = A*B;
-if(R < 0) return 0;
-return .5*R*(A+B)/(A*A+B*B);
-}
-
-// 0.5 * monotized central limiter fcn = min(A, B, (A+B)/4)
-__device__ __inline__ double slopeLimiter_MC(double A, double B)
-{
-	if(A*B <= 0) return 0;
-	double R = B/A;
-    double S = .25+.25*R;
-	//max(0, min(b, .25(a+b), a))
-
-	S = (S < R) ? S : R;
-	S = (S < 1) ? S : 1.0;
-	return S*A;
-}
-
-__device__ __inline__ double slopeLimiter_Zero(double A, double B) { return 0.0; }
-
-
-#define FINITEDIFFX_PREAMBLE \
-/* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\
-int addrX = (threadIdx.x - DIFFEDGE) + blockIdx.x * (TILEDIM_X - 2*DIFFEDGE);\
-int addrY = threadIdx.y + blockIdx.y * TILEDIM_Y;\
-\
-addrX += (addrX < 0)*FD_DIMENSION;\
-\
-/* Nuke the threads hanging out past the end of the X extent of the array */\
-/* addrX is zero indexed, mind */\
-if(addrX >= FD_DIMENSION - 1 + DIFFEDGE) return;\
-if(addrY >= OTHER_DIMENSION) return;\
-\
-/* Mask out threads who are near the edges to prevent seg violation upon differencing */\
-bool ITakeDerivative = (threadIdx.x >= DIFFEDGE) && (threadIdx.x < (TILEDIM_X - DIFFEDGE)) && (addrX < FD_DIMENSION);\
-\
-addrX %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */\
-\
-/* NOTE: This chooses which direction we "actually" take derivatives in\
- *          along with the conditional add a few lines up */\
-int globAddr = FD_MEMSTEP * addrX + OTHER_MEMSTEP * addrY;\
-\
-int tileAddr = threadIdx.x + TILEDIM_X * threadIdx.y + 1;\
-
-#define FINITEDIFFY_PREAMBLE \
-/* Our assumption implicitly is that differencing occurs in the X direction in the local tile */\
-int addrX = threadIdx.x + blockIdx.x * TILEDIM_X;\
-int addrY = (threadIdx.y - DIFFEDGE) + blockIdx.y * (TILEDIM_Y - 2*DIFFEDGE);\
-\
-addrY += (addrY < 0)*FD_DIMENSION;\
-\
-/* Nuke the threads hanging out past the end of the X extent of the array */\
-/* addrX is zero indexed, mind */\
-if(addrY >= FD_DIMENSION - 1 + DIFFEDGE) return;\
-if(addrX >= OTHER_DIMENSION) return;\
-\
-/* Mask out threads who are near the edges to prevent seg violation upon differencing */\
-bool ITakeDerivative = (threadIdx.y >= DIFFEDGE) && (threadIdx.y < (TILEDIM_Y - DIFFEDGE)) && (addrY < FD_DIMENSION);\
-\
-addrY %= FD_DIMENSION; /* Wraparound (circular boundary conditions) */\
-\
-/* NOTE: This chooses which direction we "actually" take derivatives in\
- *          along with the conditional add a few lines up */\
-int globAddr = FD_MEMSTEP * addrY + OTHER_MEMSTEP * addrX;\
-\
-int tileAddr = threadIdx.y + TILEDIM_Y * threadIdx.x + 1;\
 
 #endif

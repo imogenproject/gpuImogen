@@ -60,6 +60,24 @@ __constant__ __device__ double devLambda[9];
 
 __constant__ __device__ unsigned int devSlabdim[3];
 
+#ifdef STANDALONE_MEX_FUNCTION
+int fetchMinDensity(mxArray *mxFluids, int fluidNum, double *rhoMin)
+{
+	int status = SUCCESSFUL;
+	mxArray *flprop = mxGetProperty(mxFluids, fluidNum, "MINMASS");
+	if(flprop != NULL) {
+		rhoMin[0] = *((double *)mxGetPr(flprop));
+	} else {
+		PRINT_FAULT_HEADER;
+		printf("Unable to access fluid(%i).MINMASS property.\n", fluidNum);
+		PRINT_FAULT_FOOTER;
+		status = ERROR_NULL_POINTER;
+	}
+
+	return status;
+}
+
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 
@@ -107,9 +125,18 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
     }
 
+    GridFluid fluids[numFluids];
+    	for(fluidct = 0; fluidct < numFluids; fluidct++) {
+    		worked = MGA_accessFluidCanister(prhs[0], fluidct, &fluids[fluidct].data[0]);
+    		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
+    		//fluids[fluidct].thermo = accessMatlabThermoDetails(mxGetProperty(prhs[0], fluidct, "thermoDetails"));
+    		worked = fetchMinDensity((mxArray *)prhs[0], fluidct, &fluids[fluidct].rhoMin);
+    	}
+
     if(worked != SUCCESSFUL) { DROP_MEX_ERROR("cudaSourceScalarPotential failed"); }
 
 }
+#endif
 
 int sourcefunction_ScalarPotential(MGArray *fluid, MGArray *phi, double dt, GeometryParams geom, double minRho, double rhoFullGravity)
 {

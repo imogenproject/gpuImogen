@@ -10,6 +10,8 @@
 #include "cuda.h"
 #include "nvToolsExt.h"
 
+#include "cudaUtilities.h"
+
 __constant__ int devFluidParams[4];
 #define FLUID_NX devFluidParams[0]
 #define FLUID_NY devFluidParams[1]
@@ -63,9 +65,6 @@ __constant__ double devLambda[16]; // for gradient calculator kernels
 // for a speedup.
 typedef enum ViscosityModel { HARD_SPHERES, PCOF } ViscosityModel;
 
-//int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, GeometryParams geo, double gam, double sigmaGas, double muGas, double sigmaDust, double muDust, double dt, int method);
-int sourcefunction_2FluidDrag(MGArray *fluidA, MGArray *fluidB, GeometryParams *geo, ThermoDetails *thermogas, ThermoDetails *thermodust, double dt, int method);
-
 int solveDragEMP(MGArray *gas, MGArray *dust, double dt);
 int solveDragRK4(MGArray *gas, MGArray *dust, double dt);
 int solveDragETDRK1(MGArray *gas, MGArray *dust, GeometryParams *geo, double fluidGamma, double dt);
@@ -118,6 +117,8 @@ __global__ void cukern_LogTrapSolve(double *gas, double *dust, double t, double 
 // Drag force is positive in the direction of delta-V,
 // i.e. d/dt(dust momentum) = F_drag and d/dt(gas momentum) = -F_drag
 // ergo d/dt(delta_V) ~ -F_drag / mass
+
+#ifdef STANDALONE_MEX_FUNCTION
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
@@ -175,6 +176,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 	return;
 }
+#endif
+
 
 /* Calculates the drag between fluids A and B where B is presumed to be dust.
  * geo describes the physical geometry of the grids, to which fluidA an fluidB must conform.
@@ -1865,16 +1868,6 @@ int prepareForExpMethod(MGArray *gas, MGArray *dust, MGArray *tempMem, GeometryP
 
 }
 
-// Needed with the gradient calculators in 2D because they leave the empty directions uninitialized
-// Vomits the value f into array x, from x[0] to x[numel-1]
-__global__ void writeScalarToVector(double *x, long numel, double f)
-{
-	long a = threadIdx.x + blockDim.x*blockIdx.x;
-
-	for(; a < numel; a+= blockDim.x*gridDim.x) {
-		x[a] = f;
-	}
-}
 
 __device__ double gas2press(double *g)
 {

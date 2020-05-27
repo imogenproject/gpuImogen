@@ -5,8 +5,9 @@
 #include <stdint.h>
 #include <unistd.h>
 #endif
+#ifdef STANDALONE_MEX_FUNCTION
 #include "mex.h"
-#include "mpi.h"
+#endif
 
 // CUDA
 #include "cuda.h"
@@ -110,7 +111,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 int exchange_MPI_Halos(MGArray *theta, int nArrays, ParallelTopology* topo, int xchgDir)
 {
 	if(amRegistered == 0) {
+#ifdef NOMATLAB
+		atexit(&exitFreeFunction);
+#else
 		mexAtExit(&exitFreeFunction);
+#endif
 		amRegistered = 1; 
 	}
 

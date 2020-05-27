@@ -8,3 +8,13 @@
 //#define USE_RK3
 
 // If neither is defined the code uses explicit midpoint for the fluid step.
+
+#ifdef USE_SSPRK
+#define FLUID_METHOD_HALO_SIZE 4;
+#else
+#ifdef USE_RK3
+#define FLUID_METHOD_HALO_SIZE 6;
+#else
+#define FLUID_METHOD_HALO_SIZE 3;
+#endif
+#endif

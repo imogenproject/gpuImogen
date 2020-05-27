@@ -15,12 +15,12 @@
 #include "cudaSourceScalarPotential.h"
 #include "cudaGradientKernels.h"
 
+#include "cudaTestSourceComposite.h"
+
 #define SRCBLOCKX 16
 #define SRCBLOCKY 16
 
-int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int temporalOrder, MGArray *storageBuffer);
-
-__global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX);
+__global__ void cukern_FetchPartitionSubset1DExtrap(double *in, int nodeN, double *out, int partX0, int partNX);
 
 template <geometryType_t coords>
 __global__ void  cukern_sourceComposite_IMP(double *fluidIn, double *Rvector, double *gravgrad, long pitch);
@@ -73,8 +73,7 @@ __constant__ __device__ double devLambda[12];
 
 __constant__ __device__ int devIntParams[3];
 
-
-
+#ifdef STANDALONE_MEX_FUNCTION
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	// At least 2 arguments expected
 	// Input and result
@@ -139,7 +138,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 	MGA_delete(&tempSlab);
 
 }
-
+#endif
 
 int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, GeometryParams geom, double rhoNoG, double rhoFullGravity, double dt, int spaceOrder, int timeOrder, MGArray *storageBuffer)
 {
@@ -234,13 +233,13 @@ int sourcefunction_Composite(MGArray *fluid, MGArray *phi, MGArray *XYVectors, G
         blocksize = makeDim3(128, 1, 1);
         gridsize.x = ROUNDUPTO(sub[3], 128) / 128;
         gridsize.y = gridsize.z = 1;
-        cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
-        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, X");
+        cukern_FetchPartitionSubset1DExtrap<<<gridsize, blocksize>>>(XYVectors->devicePtr[i], fluid->dim[0], devXYset[i], sub[0], sub[3]);
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1DExtrap, X");
         if(worked != SUCCESSFUL) break;
 
         gridsize.x = ROUNDUPTO(sub[4], 128) / 128;
-        cukern_FetchPartitionSubset1D<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
-        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1D, Y");
+        cukern_FetchPartitionSubset1DExtrap<<<gridsize, blocksize>>>(XYVectors->devicePtr[i] + fluid->dim[0], fluid->dim[1], devXYset[i]+sub[3], sub[1], sub[4]);
+        worked = CHECK_CUDA_LAUNCH_ERROR(blocksize, gridsize, XYVectors, i, "cukern_FetchPartitionSubset1DExtrap, Y");
         if(worked != SUCCESSFUL) break;
 
         // Prepare to launch the solver itself!
@@ -1067,7 +1066,7 @@ __global__ void  cukern_sourceComposite_RK4(double *fluidIn, double *Rvector, do
  * and helpfully wraps addresses circularly
  * invoke with gridDim.x * blockDim.x >= partNX
  */
-__global__ void cukern_FetchPartitionSubset1D(double *in, int nodeN, double *out, int partX0, int partNX)
+__global__ void cukern_FetchPartitionSubset1DExtrap(double *in, int nodeN, double *out, int partX0, int partNX)
 {
 // calculate output address
 int addrOut = threadIdx.x + blockDim.x * blockIdx.x;
