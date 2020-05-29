@@ -37,11 +37,11 @@ classdef PotentialFieldManager < handle
         function initialize(self, initialConds)
             run = self.parent;
             if isempty(initialConds.field)
-                self.ACTIVE      = false;
+                self.ACTIVE      = 0;
                 self.currentCoefficient = 1;
                 self.field.array = 0;
             else
-                self.ACTIVE = true;
+                self.ACTIVE = 1;
                 self.currentCoefficient = initialConds.constant;
                 self.field = GPU_Type(initialConds.field * self.currentCoefficient);
                 run.save.logPrint('    Static potential field ACTIVE.\n');

@@ -1,8 +1,8 @@
 
 %--- Initialize bow shock ---%
-grid = [128 256 256];
+grid = [96 96 96];
 run                 = BowShockInitializer(grid);
-run.iterMax         = 8000;
+run.iterMax         = 400;
 %run.bcMode.z            = 'circ';
 
 run.bcMode.x = {ENUM.BCMODE_STATIC, ENUM.BCMODE_CONSTANT};
@@ -10,6 +10,9 @@ run.bcMode.y = ENUM.BCMODE_CONSTANT;
 run.bcMode.z = ENUM.BCMODE_CONSTANT;
 
 run.cfl = .85;
+
+run.ymirrorsym = 1;
+run.zmirrorsym = 1;
 
 %--- Adjustable simulation parameters ---%
 
@@ -22,9 +25,9 @@ run.radBeta = 1;
 
 % Sets the temperature dependence of the cooling equation
 % theta = 0.5 matches the classical free-free Bremsstrahlung 
-run.radTheta = .5;
+run.radTheta = -.5;
 
-run.radCoollen=.7;
+run.radCoollen=.3;
 
 % Determine the part of the grid occupied by the obstacle
 run.ballXRadius = 1;
@@ -57,12 +60,12 @@ run.ballLock = true;
 %run.image.magX      = true;
 %run.image.magY = true;
 
-run.activeSlices.xy  = true;
+run.activeSlices.xy  = false;
 %run.activeSlices.yz  = true;
-%run.activeSlices.xyz = true;
+run.activeSlices.xyz = true;
 
 run.ppSave.dim2     = 100;
-%run.ppSave.dim3     = 20;
+run.ppSave.dim3     = 10;
 
 rp = RealtimePlotter();
   rp.plotmode = 1;
@@ -74,7 +77,7 @@ rp = RealtimePlotter();
   rp.spawnGUI = 1;
 
   rp.plotmode = 1;
-rp.cut = [64 128 128];
+rp.cut = round(grid/2);
 rp.indSubs = [1 1 128;1 1 256;1 1 256];
 rp.movieProps(0, 0, 'RTP_');
 rp.vectorToPlotprops(1, [1  10   0   4   1   0   0   0   0   1  10   1   8   1   0   0   0]);

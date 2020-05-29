@@ -1,9 +1,9 @@
 % Run the implosion symmetry test.
 
 %--- Initialize test ---%
-grid = [512 512 1];
+grid = [768 768 1];
 run                 = ImplosionInitializer(grid);
-run.iterMax         = 2500;
+run.iterMax         = 100000;
 
 obj.Mcorner         = 0.125;
 obj.Pcorner         = 0.14;
@@ -23,7 +23,7 @@ rp = RealtimePlotter();
   rp.spawnGUI = 1;
   rp.iterationsPerCall = 20;
   rp.firstCallIteration = 1;
-%run.peripherals{end+1} = rp;
+run.peripherals{end+1} = rp;
 ma = MassConservationAnalyzer();
   ma.stepsPerCheck = 1;
   ma.plotResult = 1;

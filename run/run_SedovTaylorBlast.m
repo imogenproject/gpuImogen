@@ -3,11 +3,14 @@
 % with our uniform background case
 
 %--- Initialize test ---%
-grid = [256 256 1];
+grid = [128 256 1];
 run         = SedovTaylorBlastWaveInitializer(grid);
 % There is a nominally easy way to calculate what this should be
 % but I don't have it on hand. Just put in a large number...
 run.iterMax = 50000;
+
+% mirrordims controls whether to mirror the x/y/z axes
+run.mirrordims(1) = 1;
 
 % If set to 1, this sets run.timeMax such that the explosion will
 % span 90% of the grid's diameter
@@ -33,7 +36,7 @@ rp = RealtimePlotter();
   rp.firstCallIteration = 1;
   rp.forceRedraw = 1;
   rp.spawnGUI = 1;
-%run.peripherals{end+1} = rp;
+run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
 fm.iniMethod = ENUM.CFD_HLLC;

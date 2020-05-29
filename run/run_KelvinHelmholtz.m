@@ -1,15 +1,15 @@
 % Run a test of the Kelvin-Helmholtz instability.
 
 %--- Initialize test ---%
-grid = [512 512 1];
+grid = [384 768 1];
 run                 = KelvinHelmholtzInitializer(grid);
-run.iterMax         = 1000;
+run.iterMax         = 100000;
 
-run.waveHeight      = .01;       % Creates sine waves at the boundaries of this amplitude (as fraction of total grid)
-run.numWave         = 1;         % Sine waves have this many peaks
-run.randAmp         = .01;       % X and Y velocity is given random components of this amplitude
+run.waveHeight      = .05;       % Creates sine waves at the boundaries of this amplitude (as fraction of total grid)
+run.nx         = 1;         % Sine waves have this many peaks
 run.mach            = .20;       % Each region is given this speed, so total velocity jump at the boundary is twice as large as this.
-run.timeMax         = (sqrt(5/3)/run.mach)*20;
+run.massRatio = 1;
+run.timeMax         = (sqrt(5/3)/run.mach)*200;
 
 run.image.interval  = 50;
 run.image.mass      = true;

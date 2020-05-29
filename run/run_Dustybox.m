@@ -1,7 +1,7 @@
 % Wave advection simulation
 
 %grid = [512 512 1];
-grid = [8 1 1];
+grid = [16 1 1];
 
 %--- Initialize test ---%
 run             = AdvectionInitializer(grid);
@@ -63,7 +63,7 @@ fm = FlipMethod();
 %  fm.atstep = -1;
 run.peripherals{end+1} = fm;
 
-run.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP;
+run.multifluidDragMethod = ENUM.MULTIFLUID_LOGTRAP3;
 %run.multifluidDragMethod = ENUM.MULTIFLUID_ETDRK1;
 
 run.waveLinearity(0);

@@ -1,11 +1,11 @@
 %  Run a fluid jet test.
 
 %--- Initialize test ---%
-grid = 2*[128 64 64];
+grid = [128 64 64];
 run                 = JetInitializer(grid);
 run.iterMax         = 5;
 run.injectorSize    = [12 4];
-run.injectorOffset          = [20 64 64];
+run.injectorOffset          = [20 32 32];
 run.bcMode.x        = 'const';
 run.bcMode.y        = 'const';
 run.bcMode.z        = 'const'; % just for some variety
@@ -39,7 +39,7 @@ rp = RealtimePlotter();
 %run.peripherals{end+1} = rp;
 
 fm = FlipMethod();
-fm.iniMethod = ENUM.CFD_HLLC;
+fm.iniMethod = ENUM.CFD_HLL;
 run.peripherals{end+1} = fm;
 
 %--- Run tests ---%

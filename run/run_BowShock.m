@@ -1,15 +1,15 @@
 
 %--- Initialize bow shock ---%
-grid = [512 512 1];
+grid = [1024 1024 1];
 run                 = BowShockInitializer(grid);
-run.iterMax         = 2000;
+run.iterMax         = 200000;
 %run.bcMode.z            = 'circ';
 
 run.bcMode.x = 'const';
 run.bcMode.y = 'circ';
 run.bcMode.z = 'circ';
 
-run.cfl = .4;
+run.cfl = .85;
 
 %--- Adjustable simulation parameters ---%
 
@@ -27,7 +27,7 @@ run.magY = 0;
 run.preshockRho = 1;
 run.preshockP   = 1;
 % And the mach of the incoming blastwave
-run.blastMach   = 2;
+run.blastMach   = 5;
 
 % Set the parameters of the ball itself
 run.ballRho = 1;
