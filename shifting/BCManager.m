@@ -199,5 +199,18 @@ classdef BCManager < handle
 
         end
 
+        function n = bcModeToNumber(str)
+            switch(str)
+                case ENUM.BCMODE_CIRCULAR; n = 1;
+                case ENUM.BCMODE_MIRROR; n = 2;
+                case ENUM.BCMODE_WALL; n = 3;
+                case ENUM.BCMODE_STATIC; n = 4;
+                case ENUM.BCMODE_CONSTANT; n = 5;
+                case ENUM.BCMODE_LINEAR; n = 6;
+                case ENUM.BCMODE_OUTFLOW; n = 7;
+                case ENUM.BCMODE_FREEBALANCE; n = 8;
+            end
+        end
+
     end%STATIC
 end%CLASS
