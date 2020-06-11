@@ -43,8 +43,6 @@ for i = 1:5
     h5writeatt(hname, '/timehist', timeatts{i}, frame.time.(timeatts{i}));
 end
 
-h5writeatt(hname, '/', 'iter', frame.iter);
-
 paratts = {'geometry', 'globalDims', 'myOffset', 'haloBits', 'haloAmt'};
 
 for i = 1:5

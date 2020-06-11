@@ -15,7 +15,6 @@ ts = netcdf.getVar(ncid, v);
   frame.time.timeMax = ts(3);
   frame.time.wallMax = ts(4);
   frame.time.iteration = ts(5);
-  frame.iter = frame.time.iteration;
 
 v = netcdf.inqVarID(ncid, 'timeinfo_tstart');
 frame.time.started = netcdf.getVar(ncid, v)';

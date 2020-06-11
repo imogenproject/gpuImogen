@@ -13,7 +13,6 @@ classdef DataFrame < handle
     %===================================================================================================
     properties (SetAccess = public, GetAccess = public) %                       P U B L I C  [P]
         time;
-        iter;
         parallel;
         gamma;
         about;
@@ -205,7 +204,7 @@ classdef DataFrame < handle
            % this process is lossless.
            
            f = struct();
-           fields = {'time','iter','parallel','gamma','about','ver','dGrid'};
+           fields = {'time','parallel','gamma','about','ver','dGrid'};
            
            for q = 1:numel(fields)
                f.(fields{q}) = self.(fields{q});
@@ -523,7 +522,6 @@ classdef DataFrame < handle
         
         function pPopulateAttributeFields(self, frame)
             self.time  = frame.time;
-            self.iter  = frame.iter;
             self.parallel = frame.parallel;
             self.gamma = frame.gamma;
             self.about = frame.about;

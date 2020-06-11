@@ -40,7 +40,6 @@ function resultsHandler(saveEvent, run, fluids, mag)
         sl.time   = run.time.toStruct();
         sl.about  = run.about;
         sl.ver    = run.version;
-        sl.iter   = iteration;
             
         for i = find(run.save.ACTIVE)
             switch (i)
