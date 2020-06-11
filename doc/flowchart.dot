@@ -36,10 +36,10 @@ THERUNFILE -> IMOGENCALL [label=" (5) imogen(icStruct)\limogen(icFile)\l"];
 
 IMOGENCALL [label="imogen(srcdata, resumeInfo):\l	(1) Initialize simulation\l	(2) Iterate\l	(3) Finalize\l"];
 
-IMOGENCALL -> RUNINIT [label=" (1a) run = initialize(IC.ini)\l"];
+IMOGENCALL -> RUNINIT [label=" (1a) run = ImogenManager(IC.ini)\l"];
 IMOGENCALL -> RESULTPATHS [label=" (1b) initializeResultPaths(run, IC)\l"];
 
-RUNINIT [label=<This dumpster fire does most of what<br/>the class initializer ought to do<br/>	(1) Create ImogenManager<br/>	(2) Setup GeometryManager from pickled IC state<br/>	(3) set the # of FluidManagers<br/>	<font color="red">(4) Set the run.bcModes struct</font>>];
+RUNINIT [label=<(1) Create ImogenManager class and subsidiary classes<br/>	(2) Setup GeometryManager from pickled IC state<br/>	(3) set the # of FluidManagers<br/>	<font color="red">(4) Set the run.bcModes struct</font>>];
 
 RESULTPATHS [label="create dir..."];
 
