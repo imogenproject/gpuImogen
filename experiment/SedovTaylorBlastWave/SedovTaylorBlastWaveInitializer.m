@@ -96,6 +96,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             orcrd(obj.mirrordims == 1) = geom.haloAmt + 1;
             
             geom.makeBoxOriginCoord(orcrd);
+         
             
             for d = 1:3; geom.makeDimNotCircular(d); end
             
@@ -139,15 +140,19 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
             % not the actual amount of energy - that is exactly correct and is most important for
             % Seeing to it that the 
             % WARNING: This works because we know from above that the coordinate zero is integer...
+            setblast = 0;
+            
             if obj.geomgr.globalDomainRez(3) == 1 % 2D
                 if obj.pDepositRadius == 0
                     ener(distance == 0) = obj.pBlastEnergy / prod(obj.geomgr.d3h);
+                    setblast = 1;
                 end
                 % In the center & 4 cells adjacent
                 if obj.pDepositRadius == sqrt(2)/2
                     edens = obj.pBlastEnergy / (prod(obj.geomgr.d3h)*pi/2);
                     ener(abs(distance) < 1e-10 )   = edens * 1;
                     ener(abs(distance -1) < 1e-10) = edens * 0.142699081698724;
+                    setblast = 1;
                 end
                 % into a 3x3 square
                 if obj.pDepositRadius == 1.5
@@ -155,6 +160,7 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
                     ener(abs(distance) < 1e-10)           = edens * 1;
                     ener(abs(distance - 1) < 1e-10)       = edens * 0.971739827458322;
                     ener(abs(distance - sqrt(2)) < 1e-10) = edens * 0.545406040185937;
+                    setblast = 1;
                 end
                 % 3x3 square + 4 tips
                 if obj.pDepositRadius == sqrt(2.5)
@@ -163,17 +169,20 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
                     ener(abs(distance - 1) < 1e-10)       = edens * 1;
                     ener(abs(distance - sqrt(2)) < 1e-10) = edens * 0.6591190225020152;
                     ener(abs(distance - 2) < 1e-10)       = edens * 0.0543763859916054;
+                    setblast = 1;
                 end
             else
                  % into one cell
                  if obj.pDepositRadius == 0
                      ener(abs(distance) < 1e-10) = obj.pBlastEnergy / prod(obj.geomgr.d3h);
+                     setblast = 1;
                  end
                  % into 7 cells
                  if(obj.pDepositRadius == sqrt(2))/2
                      edens = obj.pBlastEnergy / ( 1.480960979386122 * prod(obj.geomgr.d3h) );
                      ener(abs(distance) < 1e-10)     = edens * 0.96506885821499755;
                      ener(abs(distance - 1) < 1e-10) = edens * 0.08598202019518745;
+                     setblast = 1;
                  end
                  % into 27 cells
                  if(obj.pDepositRadius == 1.5)
@@ -182,7 +191,12 @@ classdef SedovTaylorBlastWaveInitializer < Initializer
                      ener(abs(distance - 1) < 1e-10)       = 0.942907515183537 * edens;
                      ener(abs(distance - sqrt(2)) < 1e-10) = 0.508788505510933 * edens;
                      ener(abs(distance - sqrt(3)) < 1e-10) = 0.171782472990205 * edens;
+                     setblast = 1;
                  end
+            end
+            
+            if setblast == 0
+                error('Fatal: energy blast was not set! Please check run.depositRadiusCells in runfile.');
             end
             
             if 0
