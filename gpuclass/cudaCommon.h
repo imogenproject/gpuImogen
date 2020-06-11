@@ -40,7 +40,7 @@
  * extrapLinear   - F(-x) = F(0) - x(F(1)-F(0)) [ WARNING this method is unstable except for supersonic inflow ]
  * outflow        - Scalar and transverse properties are constant extrap. Normal momentum is constant (outward) or zero (inward)
  * freebalance    - designed for the disk simulations, attempts to solve vertical or radial balance equations */
-enum BCModeTypes { circular, mirror, wall, stationary, extrapConstant, extrapLinear, outflow, freebalance};
+enum BCModeTypes { circular, mirror, wall, stationary, extrapConstant, extrapLinear, outflow, freebalance };
 
 typedef struct __BCSettings {
 	BCModeTypes mode[6]; // [-X, +X, -Y, +Y, -Z, +Z]
@@ -124,7 +124,11 @@ typedef struct __GeometryParams {
 	double frameRotateCenter[3];
 	double frameOmega;
 
-	int globalRez[3];
+	int globalRez[3];  // The global grid resolution (halos excluded)
+
+	// These are not used in gpu-Imogen but are used in the compiled core
+	int localRez[3];   // The local grid resolution (halos included)
+	int gridAffine[3]; //
 
 	MGArray *XYVector;
 	// TODO: add allocatable vectors here for variable spacing in the future

@@ -18,7 +18,8 @@ int getGPUTypeTag (const mxArray *gputype, int64_t **tagPointer);
  *     getGPUTypeTagIndexed(..., M) fetches the Mth element of the cell array
  */
 int getGPUTypeTagIndexed(const mxArray *gputype, int64_t **tagPointer, int mxarrayIndex);
-int getGPUTypeStreams(const mxArray *fluidarray, cudaStream_t **streams, int *numel);
+int getGPUTypeStreams(void *inputArray, cudaStream_t **streams, int *numel);
+
 
 /* MultiGPU Array allocation stuff */
 int      MGA_accessMatlabArrays(const mxArray *prhs[], int idxFrom, int idxTo, MGArray *mg); // Extracts a series of Matlab handles into MGArrays

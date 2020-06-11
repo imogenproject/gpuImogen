@@ -25,8 +25,11 @@
 #include "sourceStep.h"
 #include "flux.h"
 
+#include "core_glue.hpp"
+
 #include "gpuimogen_core.h"
 
+using namespace std;
 // Only uncomment this if you plan to debug this file.
 // This will cause it to require output arguments to return data in,
 // and perturb code behavior by generating writes to the output debug arrays
@@ -45,7 +48,20 @@ int main(int argc, char **argv)
 	// Step 1 - initialize MPI
 	int status = MPI_Init(&argc, &argv);
 
-	ParallelTopology topo = acquireParallelTopology((int *)NULL); // FIXME acquires a fake single-node topology
+	// Step 2 - access initializer file
+	// The initializer file is an .h5 file, autotranslated by the Matlab GPU-Imogen code,
+	// of the (relevant) parts of the IC.ini structure
+	ImogenH5IO *conf = new ImogenH5IO("testout.h5");
+
+	int globalResolution[3];
+	status = conf->getInt32Attr("/", "globalResolution", &globalResolution[0], 3);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
+
+
+
+	// Step 3 - Setup MPI topology
+	ParallelTopology topo = acquireParallelTopology(&globalResolution[0]);
 
 	// Step 2 - initialize CUDA
 
@@ -57,13 +73,12 @@ int main(int argc, char **argv)
 	// Set this to make the API run its startup magic
 	cudaSetDevice(0);
 
-	cudaStream_t pstream;
-	int i;
+	int i, j;
 	// Default to default stream
 	for(i = 0; i < 2*MAX_GPUS_USED; i++) { topo.cudaStreamPtrs[i] = 0; }
 
 	// Create two streams on every device we plan to use
-	for(i = 0; i < 1; i++) {
+	for(i = 0; i < nCudaDevices; i++) {
 		cudaSetDevice(0);
 		cudaStreamCreate(&topo.cudaStreamPtrs[i]);
 		cudaStreamCreate(&topo.cudaStreamPtrs[nCudaDevices + i]);
@@ -84,14 +99,36 @@ int main(int argc, char **argv)
 	fsp.stepDirection = 1;
 	fsp.stepMethod    = METHOD_HLL; // FIXME HARDCODED
 	fsp.stepNumber    = 0;
-	fsp.cflPrefactor  = 0.85;
+	status = conf->getDblAttr("/","cfl", &fsp.cflPrefactor);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	// Acquire simulation geometry
-	fsp.geometry = acquireSimulationGeometry(); // FIXME generates a fake dummy geometry
+	int circularity = 0; // [1 2 4] = [
+	fsp.geometry = acquireSimulationGeometry(&globalResolution[0], &topo, circularity);
+
+	status = conf->getDblAttr("/", "d3h", &fsp.geometry.h[0], 3);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
+	if(0) { // TESTING
+		int myrank;
+		MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+		//printf("RANK %i:\n", myrank);
+		//describeTopology(&topo);
+		//describeGeometry(&fsp.geometry);
+		//MPI_Finalize();
+		//return 0; */
+	}
+
+	ImogenTimeManager *timeManager = new ImogenTimeManager();
+
+	timeManager->readConfigParams(conf);
+	// FIXME...
+	timeManager->savePerSteps(10);
 
 	// Choose # of fluids [ default to 1 for now ]
 	int numFluids = 1;
-	fsp.multifluidDragMethod = 0; // see cudaSource2FluidDrag.cu ~ 250
+	status = conf->getInt32Attr("/", "multifluidDragMethod", &fsp.multifluidDragMethod); // see cudaSource2FluidDrag.cu ~ 250
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	// Define the gravity field if it exists [ testing default - it doesn't ]
 	GravityData gravdat;
@@ -106,6 +143,7 @@ int main(int argc, char **argv)
 
 	int fluidct;
 	for(fluidct = 0; fluidct < numFluids; fluidct++) {
+		int bcnumbers[6];
 		// Set the halo buffer size, device count & list of devices
 		// These will be duplicated into all generated arrays from the fluid creator
 		dataholder[fluidct].haloSize = FLUID_METHOD_HALO_SIZE;
@@ -113,8 +151,25 @@ int main(int argc, char **argv)
 		for(i = 0; i < nCudaDevices; i++) dataholder[fluidct].deviceID[i] = deviceList[i];
 
 		// This to be replaced with a call to a real parameter loader one day
-		status = generateDummyFluid(&fluids[fluidct], &dataholder[fluidct], &fsp.geometry.globalRez[0]);
+		status = readImogenICs(&fluids[fluidct], &dataholder[fluidct], &fsp.geometry, "serial2dbarf");
+		//status = generateDummyFluid(&fluids[fluidct], &dataholder[fluidct], &fsp.geometry);
+		if(status != SUCCESSFUL) break;
+
+		// FIXME this attaches boundary conditions most naively
+		status = conf->getInt32Attr("/fluidDetail1", "/bcmodes", &bcnumbers[0], 6);
+		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+		for(j = 0; j < 5; j ++ ) {
+			for(i = 0; i < 6; i++) { fluids[fluidct].data[j].boundaryConditions.mode[i] = num2BCModeType(bcnumbers[i]); }
+		}
+
 	}
+
+	if(status != SUCCESSFUL) {
+		CHECK_IMOGEN_ERROR(status);
+		MPI_Finalize();
+		return -1;
+	}
+
 
 	// Fetch the XY vectors
 	//MGArray XYvectors;
@@ -133,40 +188,112 @@ int main(int argc, char **argv)
 	// sourcerFunction = (fsp.geometry. useCyl + 2*useRF + 4*usePhi + 8*use2F;
 	int srcType = 1*(cylcoords == 1) + 2*(fsp.geometry.frameOmega != 0) + 4*(haveg) + 8*(numFluids > 1);
 
-	double resultingTimestep;
+	// Done reading configuration by now one would hope
+	delete conf;
 
-	status = CHECK_IMOGEN_ERROR(performCompleteTimestep(fluids, numFluids, fsp, topo, &gravdat, &prad, srcType));
+	//=================================
+
+	while(1) {
+		// This computes the CFL time & also does timeManager->registerTimestep()
+		status = performCompleteTimestep(fluids, numFluids, fsp, topo, &gravdat, &prad, srcType, timeManager);
+		status = CHECK_IMOGEN_ERROR(status);
+
+		timeManager->applyTimestep();
+		if(timeManager->saveThisStep()) {
+			std::cout << "TM says to save step " << timeManager->iter() << "." << endl;
+
+		}
+
+		if((status != SUCCESSFUL) | timeManager->terminateSimulation()) break;
+	}
+
+	std::cout << "Took " << timeManager->iter() << "steps, Ttotal = " << timeManager->time() << " elapsed." << endl;
+
+	ImogenH5IO frmw("testframe", H5F_ACC_TRUNC);
+	frmw.writeImogenSaveframe(fluids, numFluids, &fsp.geometry, &topo);
+	frmw.closeOutFile();
+
+	// Tear down Imogen
+	delete timeManager;
 
 
+	// Tear down CUDA
+
+	// Tear down MPI
+	topoDestroyDimensionalCommunicators(&topo);
+
+	MPI_Finalize();
 }
 
-// Returns a dummy topology for a single rank
-ParallelTopology generateDummyTopology(void)
+// Given the global domain resolution (which must point to 3 integers, [Nx Ny Nz],
+// assigns available MPI ranks into a cartesian grouping described by the returned
+// ParallelTopology.
+ParallelTopology acquireParallelTopology(int *globalDomainResolution)
 {
 	ParallelTopology p;
 
+	// confirm # of space dimensions
 	p.ndim = 3;
+	if(globalDomainResolution[2] == 1) p.ndim = 2;
+	if(globalDomainResolution[1] == 1) p.ndim = 1;
+
+	int nproc, myrank;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+	// Compute prime factorization of the # of ranks in world
+	int *factors; int nfactors;
+	factorizeInteger(nproc, &factors, &nfactors);
+
+	int nRanks[3] = {1, 1, 1};
+
+	// Apply prime factors to build the most square/cube like domains we can
+	// optimization objective, maximize volume over surface area
+	int i, t, j;
+	for(i = 0; i < nfactors; i++) {
+		t = nfactors - 1 - i;
+		int nextfact = factors[t];
+
+		j = 0;
+		if(globalDomainResolution[1] / nRanks[1] > globalDomainResolution[0] / nRanks[0]) j = 1;
+		if(globalDomainResolution[2] / nRanks[2] > globalDomainResolution[1] / nRanks[1]) j = 2;
+
+		nRanks[j] *= nextfact;
+	}
+
 	p.comm = MPI_Comm_c2f(MPI_COMM_WORLD);
 
-	int i;
+	// Compute this rank's linear position within the cartesian group
+	p.coord[2] = myrank / (nRanks[0]*nRanks[1]);
+	int rem = myrank - p.coord[2] * nRanks[0]*nRanks[1];
+	p.coord[1] = rem / nRanks[0];
+	rem = rem - p.coord[1] * nRanks[0];
+	p.coord[0] = rem;
+
+	int neigh[3];
 	for(i = 0; i < 3; i++) {
-		p.nproc[i] = 1;
-		p.coord[i] = 0;
-		p.neighbor_left[i] = 0;
-		p.neighbor_right[i] = 0;
-		p.dimcomm[i] = MPI_Comm_c2f(MPI_COMM_WORLD);
+		p.nproc[i] = nRanks[i];
+
+		neigh[0] = p.coord[0]; neigh[1] = p.coord[1]; neigh[2] = p.coord[2];
+		neigh[i] = (p.coord[i] - 1 + p.nproc[i]) % p.nproc[i];
+		p.neighbor_left[i] = topoNodeToRank(&p, &neigh[0]);
+
+		neigh[i] = (p.coord[i] + 1 + p.nproc[i]) % p.nproc[i];
+		p.neighbor_right[i] = topoNodeToRank(&p, &neigh[0]);
 	}
+
+	// This return is currently irrelevant
+	// FIXME make this return detect errors (file is mpi_common.cpp)
+	sleep(myrank);
+	int status = topoCreateDimensionalCommunicators(&p);
 
 	return p;
 }
 
-ParallelTopology acquireParallelTopology(int *globalDomainResolution)
-{
-	return generateDummyTopology();
-}
-
-// Returns a dummy square grid of size 256x256x1 with unit spacing
-GeometryParams generateDummyGeometry(void)
+// Sets up a basic square grid, filling in correctly the globalRez, localRez and gridAffine components
+// but leaving all others defaulted
+GeometryParams generateGridGeometry(int *globalResolution, ParallelTopology *topo, int circular)
 {
 GeometryParams g;
 
@@ -177,26 +304,68 @@ g.frameOmega = 0;
 g.frameRotateCenter[0] = 0.0;
 g.frameRotateCenter[1] = 0.0;
 g.frameRotateCenter[2] = 0.0;
-g.globalRez[0] = g.globalRez[1] = 256;
-g.globalRez[2] = 1;
+
 g.h[0] = g.h[1] = g.h[2] = 1.0;
 g.shape = SQUARE;
 g.x0 = 0;
 g.y0 = 0;
 g.z0 = 0;
 
+// HACK FIXME HACK
+int circularBdy = 1;
+
+int i;
+int subsize;
+int halo = FLUID_METHOD_HALO_SIZE;
+int deficit;
+for(i = 0; i < 3; i++) {
+	if(globalResolution[i] != 1) {
+		circularBdy = (circular & (1 << i)) != 0 ? 1 : 0;
+
+
+		g.globalRez[i] = globalResolution[i];
+		subsize = globalResolution[i] / topo->nproc[i];
+		deficit = globalResolution[i] - subsize*topo->nproc[i];
+
+		g.gridAffine[i] = subsize * topo->coord[i];
+
+		// extend to add the left halo only if in parallel
+		if(topo->nproc[i] > 1) {
+			subsize         += halo * ((topo->coord[i] > 0) || (circularBdy) );
+			g.gridAffine[i] -= halo * ((topo->coord[i] > 0) || (circularBdy) );
+		}
+
+		// extend to add the right halo only if in parallel
+		if(topo->nproc[i] > 1) {
+			subsize += halo * ((topo->coord[i] < (topo->nproc[i]-1)) || (circularBdy) );
+		}
+
+		// Any missing resolution is added to the last set of ranks in the direction
+		// So if rez = [5] and nproc = 3, we have sizes [1, 1, 3] for ranks [0, 1, 2] respectively
+		if(topo->coord[i] == (topo->nproc[i]-1)) {
+			subsize += deficit;
+		}
+		g.localRez[i] = subsize;
+	} else { // size of one: trivial special behavior in this case
+		g.globalRez[i] = globalResolution[i];
+		g.localRez[i] = globalResolution[i];
+		g.gridAffine[i] = 0;
+	}
+}
+
 return g;
 }
 
-GeometryParams acquireSimulationGeometry(void)
+// this will need to be passed the input parameters data to fill in the rest of the geometry fields
+GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology *topo, int circ)
 {
-return generateDummyGeometry();
+return generateGridGeometry(globalResolution, topo, circ);
 }
 
-int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
+int generateDummyFluid(GridFluid *g, MGArray *holder, GeometryParams *geo)
 {
 
-	double *q = (double *)malloc((unsigned long)(sizeof(double)*localResolution[0]*localResolution[1]*localResolution[2]));
+	double *q = (double *)malloc((unsigned long)(sizeof(double)*geo->localRez[0] * geo->localRez[1] * geo->localRez[2]));
 
 	MGArray m;
 	int halosize = holder->haloSize;
@@ -208,12 +377,12 @@ int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
 	int i;
 
 	long j, ne;
-	ne = localResolution[0]*localResolution[1]*localResolution[2];
+	ne = geo->localRez[0] * geo->localRez[1] * geo->localRez[2];
 
 	for(j = 0; j < ne; j++) { q[j] = 1.0; }
 	// upload rho to create first array, m
 
-	int status = uploadHostArray(&m, q, localResolution, halosize, partDir, exteriorHalo, 0, nDevices, deviceList);
+	int status = uploadHostArray(&m, q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, nDevices, deviceList);
 
 	// acquire a slab of 5 such arrays stored at the holder
 	status = MGA_allocSlab(&m, &holder[0], 5);
@@ -234,7 +403,7 @@ int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
 	g->data[1].numSlabs = -1;
 	for(i = 0; i < g->data[0].nGPUs; i++) { g->data[1].devicePtr[i] += g->data[0].slabPitch[i]; }
 	// upload
-	status = uploadHostArray(&g->data[1], q, localResolution, halosize, partDir, exteriorHalo, 0, 1, deviceList);
+	status = uploadHostArray(&g->data[1], q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, 1, deviceList);
 	for(j = 0; j < 6; j++) { g->data[1].boundaryConditions.mode[j] = circular; }
 
 	// (fake px here)
@@ -245,7 +414,7 @@ int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
 	g->data[2].numSlabs = -2;
 	for(i = 0; i < g->data[0].nGPUs; i++) { g->data[2].devicePtr[i] += 2*g->data[0].slabPitch[i]; }
 	// upload
-	status = uploadHostArray(&g->data[2], q, localResolution, halosize, partDir, exteriorHalo, 0, 1, deviceList);
+	status = uploadHostArray(&g->data[2], q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, 1, deviceList);
 	for(j = 0; j < 6; j++) { g->data[2].boundaryConditions.mode[j] = circular; }
 
 	// (fake py here)
@@ -256,7 +425,7 @@ int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
 	g->data[3].numSlabs = -3;
 	for(i = 0; i < g->data[0].nGPUs; i++) { g->data[3].devicePtr[i] += 3*g->data[0].slabPitch[i]; }
 	// upload
-	status = uploadHostArray(&g->data[3], q, localResolution, halosize, partDir, exteriorHalo, 0, 1, deviceList);
+	status = uploadHostArray(&g->data[3], q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, 1, deviceList);
 	for(j = 0; j < 6; j++) { g->data[3].boundaryConditions.mode[j] = circular; }
 
 	// (fake pz here)
@@ -267,11 +436,135 @@ int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution)
 	g->data[4].numSlabs = -4;
 	for(i = 0; i < g->data[0].nGPUs; i++) { g->data[4].devicePtr[i] += 4*g->data[0].slabPitch[i]; }
 	// upload
-	status = uploadHostArray(&g->data[4], q, localResolution, halosize, partDir, exteriorHalo, 0, 1, deviceList);
+	status = uploadHostArray(&g->data[4], q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, 1, deviceList);
 	for(j = 0; j < 6; j++) { g->data[4].boundaryConditions.mode[j] = circular; }
 
 	g->rhoMin = 1e-7;
 	g->thermo = generateDefaultThermo();
+
+	free(q);
+
+	return status;
+}
+
+int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase)
+{
+
+	double *q = (double *)malloc((unsigned long)(sizeof(double)*geo->localRez[0] * geo->localRez[1] * geo->localRez[2]));
+
+	MGArray m;
+	int halosize = holder->haloSize;
+	int partDir = 1; // FIXME HACK
+	int exteriorHalo = 0; // FIXME HACK AND SOMETIMES WRONG
+	int nDevices = holder->nGPUs;
+	int *deviceList = &holder->deviceID[0];
+
+	int i;
+
+	long j;
+
+	int myrank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+	char *hfile = (char *)malloc(strlen(h5dfilebase) + 16);
+	sprintf(hfile,"%s_rank%03i.h5", h5dfilebase, myrank);
+	ImogenH5IO IHR(hfile);
+	free(hfile);
+
+	// Check data that the initializer stored in the H5 output frames to confirm that this is correct and loadable!!!
+	double chkHalo;
+	IHR.getDblAttr("/","par_ haloAmt", &chkHalo);
+	if((int)chkHalo != holder->haloSize) {
+		PRINT_FAULT_HEADER;
+		std::cout << "Upon check, it has been found that input file halo size = " << (int)chkHalo << "is not equal to mgarray halo amount of " << holder->haloSize << " and this represents a fatal error." << endl;
+		PRINT_FAULT_FOOTER;
+		return ERROR_INVALID_ARGS;
+	}
+
+	double chkGlobalDims[3];
+	IHR.getDblAttr("/", "par_ globalDims", &chkGlobalDims[0], 3);
+	for(i = 0; i < 3; i++) {
+		if((int)chkGlobalDims[i] != geo->globalRez[i]) {
+			PRINT_FAULT_HEADER;
+			std::cout << "Upon check, it has been found that input file and mgarray global resolutions differ:\n";
+			std::cout << "   file=[" << (int)chkGlobalDims[0] << " " << (int)chkGlobalDims[1] << " " << (int)chkGlobalDims[2] << " vs mgarray [";
+			std::cout << geo->globalRez[0] << " " << geo->globalRez[1] << " " << geo->globalRez[2] << "]" << endl;
+			PRINT_FAULT_FOOTER;
+			return ERROR_INVALID_ARGS;
+		}
+	}
+
+	/* this appears to differ in meaning, ignore temporarily
+	double chkOffset[3];
+	IHR.getDblAttr("/", "par_ myOffset", &chkOffset[0], 3);
+	for(i = 0; i < 3; i++) {
+		if((int)chkOffset[i] != geo->gridAffine[i]) {
+			PRINT_FAULT_HEADER;
+			std::cout << "Upon check, it has been found that input file and mgarray grid offsets for this rank differ:\n";
+			std::cout << "   file=[" << (int)chkOffset[0] << " " << (int)chkOffset[1] << " " << (int)chkOffset[2] << " vs mgarray [";
+			std::cout << geo->gridAffine[0] << " " << geo->gridAffine[1] << " " << geo->gridAffine[2] << "]" << endl;
+			PRINT_FAULT_FOOTER;
+			return ERROR_INVALID_ARGS;
+		}
+	} */
+
+	hsize_t fasize[3] = {1, 1, 1};
+	IHR.getArraySize("/fluid1/mass", &fasize[0]);
+
+	for(i = 0; i < 3; i++) {
+		if(fasize[i] != geo->localRez[i]) {
+			PRINT_FAULT_HEADER;
+			std::cout << "Upon check, it has been found that input file fluid array size and the mgarray size differ:\n";
+			std::cout << "   file=[" << fasize[0] << " " << fasize[1] << " " << fasize[2] << " vs mgarray [";
+			std::cout << geo->localRez[0] << " " << geo->localRez[1] << " " << geo->localRez[2] << "]" << endl;
+			PRINT_FAULT_FOOTER;
+			return ERROR_INVALID_ARGS;
+		}
+	}
+
+	// Read rho
+	IHR.readDoubleArray("/fluid1/mass", &q);
+	int status = uploadHostArray(&m, q, &geo->localRez[0], halosize, partDir, exteriorHalo, 0, nDevices, deviceList);
+
+	// acquire a slab of 5 such arrays stored at the holder
+	status = MGA_allocSlab(&m, &holder[0], 5);
+
+	// memcopy rho to holder aka slab 0
+	MGA_duplicateArray(&holder, &m);
+	// Adjust numSlabs and device pointers on all 5 slab references
+	int vecComps[5] = {0,0,1,2,3};
+
+	for(i = 0; i < 5; i++) {
+		g->data[i] = holder[0];
+		g->data[i].numSlabs = -i;
+
+		for(j = 0; j < holder->nGPUs; j++) { g->data[i].devicePtr[j] += i*holder->slabPitch[j]/sizeof(double); }
+		for(j = 0; j < 6; j++) { g->data[i].boundaryConditions.mode[j] = circular; }
+
+		g->data[i].vectorComponent = vecComps[i];
+	}
+
+	MGA_delete(&m);
+
+	// read ener
+	IHR.readDoubleArray("/fluid1/ener", &q);
+	status = MGA_uploadArrayToGPU(q, &g->data[1], -1);
+
+	// read mom X
+	IHR.readDoubleArray("/fluid1/momX", &q);
+	status = MGA_uploadArrayToGPU(q, &g->data[2], -1);
+
+	// read mom Y
+	IHR.readDoubleArray("/fluid1/momY", &q);
+	status = MGA_uploadArrayToGPU(q, &g->data[3], -1);
+
+	// read mom Z
+	IHR.readDoubleArray("/fluid1/momZ", &q);
+	status = MGA_uploadArrayToGPU(q, &g->data[4], -1);
+
+	g->rhoMin = 1e-7;
+	g->thermo = generateDefaultThermo();
+
+	free(q);
 
 	return status;
 }
@@ -296,7 +589,7 @@ ThermoDetails generateDefaultThermo(void)
 	return t;
 }
 
-int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType)
+int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType, ImogenTimeManager *itm)
 {
 	int status = SUCCESSFUL;
 	int fluidct;
@@ -322,7 +615,10 @@ int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fs
 
 	double propdt;
 	status = calculateMaxTimestep(fluids, numFluids, &fsp, &topo, &tempStorage, &propdt);
-	fsp.dt = propdt;
+
+	// This may reduce dt if a frame save or end-of-simulation time is less than dt away.
+	fsp.dt = itm->registerTimestep(propdt);
+	fsp.stepNumber = itm->iter();
 
 // TAKE SOURCE HALF STEP
 	fsp.dt *= 0.5;

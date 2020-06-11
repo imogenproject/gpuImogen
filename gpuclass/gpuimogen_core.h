@@ -8,17 +8,23 @@
 #ifndef GPUIMOGEN_CORE_H_
 #define GPUIMOGEN_CORE_H_
 
-ParallelTopology generateDummyTopology(void);
+// Sets up a cartesian topology for the simulation
 ParallelTopology acquireParallelTopology(int *globalDomainResolution);
 
-GeometryParams generateDummyGeometry(void);
-GeometryParams acquireSimulationGeometry(void);
+// Does the basic setup of assigning grid index coordinates
+GeometryParams generateGridGeometry(int *globalResolution, ParallelTopology *topo, int circ);
 
-int generateDummyFluid(GridFluid *g, MGArray *holder, int *localResolution);
+// Gets the grid coordinates then sets up the physical coordinates
+GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology *topo, int circ);
+
+int generateDummyFluid(GridFluid *g, MGArray *holder, GeometryParams *geo);
+int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase);
+
 ThermoDetails generateDefaultThermo(void);
 
 int calculateMaxTimestep(GridFluid *fluids, int nFluids, FluidStepParams *fsp, ParallelTopology *topo, MGArray *tempStorage, double *timestep);
-int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType);
+int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType, ImogenTimeManager *itm);
+//int performCompleteTimestep(GridFluid *fluids, int numFluids, FluidStepParams fsp, ParallelTopology topo, GravityData *gravdata, ParametricRadiation *rad, int srcType);
 
 int uploadHostArray(MGArray *gpuArray, double *hostArray, int *dims, int haloSize, int partDir, int exteriorHalo, int forceClone, int nDevices, int *deviceList);
 

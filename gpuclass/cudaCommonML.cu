@@ -434,33 +434,35 @@ int MGA_accessFluidCanister(const mxArray *canister, int fluidIdx, MGArray *flui
 ThermoDetails accessMatlabThermoDetails(const mxArray *thermstruct)
 {
 	ThermoDetails thermo;
-	thermo.gamma = derefXdotAdotB_scalar(thermstruct, "gamma", NULL);
+	const char *n = (const char *)NULL;
+	thermo.gamma = derefXdotAdotB_scalar(thermstruct, "gamma", n);
 
-	thermo.m     = derefXdotAdotB_scalar(thermstruct, "mass", NULL);
+	thermo.m     = derefXdotAdotB_scalar(thermstruct, "mass", n);
 
-	thermo.mu0   = derefXdotAdotB_scalar(thermstruct, "dynViscosity", NULL);
-	thermo.muTindex = derefXdotAdotB_scalar(thermstruct, "viscTindex", NULL);
-	thermo.sigma0 = derefXdotAdotB_scalar(thermstruct, "sigma", NULL);
-	thermo.sigmaTindex= derefXdotAdotB_scalar(thermstruct, "sigmaTindex", NULL);
+	thermo.mu0   = derefXdotAdotB_scalar(thermstruct, "dynViscosity", n);
+	thermo.muTindex = derefXdotAdotB_scalar(thermstruct, "viscTindex", n);
+	thermo.sigma0 = derefXdotAdotB_scalar(thermstruct, "sigma", n);
+	thermo.sigmaTindex= derefXdotAdotB_scalar(thermstruct, "sigmaTindex", n);
 
-	thermo.kBolt = derefXdotAdotB_scalar(thermstruct, "kBolt", NULL);
-	thermo.Cisothermal = derefXdotAdotB_scalar(thermstruct, "Cisothermal", NULL);
+	thermo.kBolt = derefXdotAdotB_scalar(thermstruct, "kBolt", n);
+	thermo.Cisothermal = derefXdotAdotB_scalar(thermstruct, "Cisothermal", n);
 
 	return thermo;
 }
 
 GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 {
+	const char *n = (const char *)NULL;
 	GeometryParams g;
 	double v[3];
 
-	g.Rinner = derefXdotAdotB_scalar(geoclass, "pInnerRadius", NULL);
-	derefXdotAdotB_vector(geoclass, "d3h", NULL, &g.h[0], 3);
+	g.Rinner = derefXdotAdotB_scalar(geoclass, "pInnerRadius", n);
+	derefXdotAdotB_vector(geoclass, "d3h", n, &g.h[0], 3);
 
-	derefXdotAdotB_vector(geoclass, "frameRotationCenter", NULL, &g.frameRotateCenter[0], 3);
-	g.frameOmega = derefXdotAdotB_scalar(geoclass, "frameRotationOmega", NULL);
+	derefXdotAdotB_vector(geoclass, "frameRotationCenter", n, &g.frameRotateCenter[0], 3);
+	g.frameOmega = derefXdotAdotB_scalar(geoclass, "frameRotationOmega", n);
 
-	int shapenum = derefXdotAdotB_scalar(geoclass, "pGeometryType", NULL);
+	int shapenum = derefXdotAdotB_scalar(geoclass, "pGeometryType", n);
 
 	switch(shapenum) {
 	case 1: g.shape = SQUARE; break;
@@ -468,7 +470,7 @@ GeometryParams accessMatlabGeometryClass(const mxArray *geoclass)
 	// default: ?
 	}
 
-	derefXdotAdotB_vector(geoclass, "affine", NULL, &v[0], 3);
+	derefXdotAdotB_vector(geoclass, "affine", n, &v[0], 3);
 	g.x0 = v[0];
 	g.y0 = v[1];
 	g.z0 = v[2];

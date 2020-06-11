@@ -89,7 +89,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 	GeometryParams geom = accessMatlabGeometryClass(prhs[2]);
 
-	int worked = setArrayBoundaryConditions(NULL, prhs[0], &geom, (int)*mxGetPr(prhs[3]));
+	int worked;
+	MGArray phi;
+	worked = MGA_accessMatlabArrays(prhs, 0, 0, &phi);
+	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+		DROP_MEX_ERROR("Access array dumped.");
+	}
+
+	worked = setArrayBoundaryConditions(&phi, &geom, (int)*mxGetPr(prhs[3]));
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		DROP_MEX_ERROR("setBoundaryCondition called from standalone has crashed: Crashing interpreter. If this happens on entry and before any iterations, check for valid BC mode settings\n");
 	}
@@ -101,7 +108,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
  *
  * direction is 123 for XYZ; This is the case regardless of memory orientation.
  */
-int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams *geo, int direction)
+int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction)
 {
 #ifdef USE_NVTX
 	nvtxRangePush(__FUNCTION__);
@@ -109,40 +116,19 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 
 	CHECK_CUDA_ERROR("entering setFluidBoundary");
 
-	MGArray phi;
 	int worked;
 
 	// On rereading this seems dumb but there was DEFINITELY a good reason involving
 	// c++-level updates magically failing to manifest in ML
 	if(fluid == NULL) {
-		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
-		BAIL_ON_FAIL(worked)
-	} else {
-		worked = (fluid->matlabClassHandle == matlabhandle) ? SUCCESSFUL : ERROR_CRASH;
-		if(worked != SUCCESSFUL) {
-			PRINT_FAULT_HEADER;
-			printf("setBoundaryConditions was passed both an MGarray x and a matlabClassHandle h, but x->class handle != h.\nIt permits both to be passed because the MGA may have been internally modified without the handle\nhaving been, but the MGArray must name that Matlab handle as its originator.\n");
-			PRINT_FAULT_FOOTER;
-			BAIL_ON_FAIL(worked);
-		}
-		phi = fluid[0];
+		return ERROR_NULL_POINTER;
 	}
 
-	worked = setArrayStaticCells(&phi, matlabhandle);
+	worked = setArrayStaticCells(fluid);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) { return worked; }
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
-	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
-	if(boundaryData == NULL) {
-		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
-		return ERROR_INVALID_ARGS;
-	}
-
-	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
-	if(bcModes == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: bcModes structure not present. Not an ImogenArray? Not initialized?\n");
-		return ERROR_INVALID_ARGS;
-	}
+	mxArray *boundaryData = (mxArray *)fluid->boundaryConditions.externalData;
 
 	if((direction < 1) || (direction > 3)) {
 		PRINT_FAULT_HEADER;
@@ -151,37 +137,28 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 		return ERROR_INVALID_ARGS;
 	}
 
-	/* So this is utterly stupid, but the boundary condition modes are stored in the form
-       { 'type minus x', 'type minus y', 'type minus z';
-	 'type plus  x', 'type plus y',  'type plus z'};
-       Yes, strings in a cell array. No I'm not fixing it, because I'm not diving into that pile of burning garbage. */
-
-	mxArray *bcstr; char *bs;
-
 	// FIXME: okay here's the shitty way we're doing this,
 	// FIXME: If the density array says 'outflow', we call setOutflowCondition once.
 	// FIXME: If not, we loop
 
-	int d; // coordinate face: 0 = negative, 1 = positive
-	for(d = 0; d < 2; d++) {
-		bcstr = mxGetCell(bcModes, 2*(direction-1) + d);
-		bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
-		mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
+	int sideNum; // coordinate face: 0 = negative, 1 = positive
+	for(sideNum = 0; sideNum < 2; sideNum++) {
+		BCModeTypes bt = fluid->boundaryConditions.mode[2*(direction-1) + sideNum];
 
-		if(strcmp(bs,"outflow") == 0) {
+		if(bt == outflow) {
 			int i;
 			// make sure we go through and set statics
 			for(i = 0; i < 5; i++) {
-				worked = setArrayStaticCells(fluid+i, fluid[i].matlabClassHandle);
+				worked = setArrayStaticCells(fluid+i);
 				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 			// Then set the outflow
-			worked = setOutflowCondition(&phi, geo, d, direction);
-		} else if(strcmp(bs, "freebalance") == 0) {
+			worked = setOutflowCondition(fluid, geo, sideNum, direction);
+		} else if(bt == freebalance) {
 			int i;
 			// make sure statics are set
 			for(i = 0; i < 5; i++) {
-				worked = setArrayStaticCells(fluid+i, fluid[i].matlabClassHandle);
+				worked = setArrayStaticCells(fluid+i);
 				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 
@@ -194,19 +171,18 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 				return worked;
 			}
 
-			double fluidGamma = derefXdotAdotB_scalar(matlabhandle, "gamma", NULL);
+			double fluidGamma = derefXdotAdotB_scalar((mxArray *)boundaryData, "gamma", NULL);
 
 			// Then set the free balance condition
-			worked = setFreeBalanceCondition(&phi, geo, d, direction, &gravpot, fluidGamma);
+			worked = setFreeBalanceCondition(fluid, geo, sideNum, direction, &gravpot, fluidGamma);
 		} else {
 			int i;
 			// iterate through the 5 fluid arrays. setA.B.C. sets statics for the array it's passed automatically.
 			for(i = 0; i < 5; i++) {
-				worked = setArrayBoundaryConditions(fluid+i, fluid[i].matlabClassHandle, geo, direction);
+				worked = setArrayBoundaryConditions(fluid+i, geo, direction);
 				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 		}
-		free(bs);
 		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 	}
 
@@ -220,38 +196,28 @@ int setFluidBoundary(MGArray *fluid, const mxArray *matlabhandle, GeometryParams
 /* Accept a pointer to an MGArray, its matlab handle, geometry information, and the physical direction to set the
  * boundary conditions on.
  * */
-int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, GeometryParams *geo, int direction)
+int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
-	MGArray phi;
 	int worked;
-	if(array == NULL) {
-		worked = MGA_accessMatlabArrays((const mxArray **)&matlabhandle, 0, 0, &phi);
-		BAIL_ON_FAIL(worked)
-	} else {
-		worked = (array->matlabClassHandle == matlabhandle) ? SUCCESSFUL : ERROR_CRASH;
-		if(worked != SUCCESSFUL) {
-			PRINT_FAULT_HEADER;
-			printf("setBoundaryConditions permits both the MGArray and its Matlab handle to be passed because the MGA may have been internally modified without the handle having been, but the MGArray must name that Matlab handle as its originator.\n");
-			PRINT_FAULT_FOOTER;
-			BAIL_ON_FAIL(worked);
-		}
-		phi = array[0];
+	if(phi == NULL) {
+		return ERROR_NULL_POINTER;
 	}
 
-	worked = setArrayStaticCells(&phi, matlabhandle);
+	worked = setArrayStaticCells(phi);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
+	if(direction == 0) return SUCCESSFUL; /* Skips edge BCs if desired. */
+
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
-	mxArray *boundaryData = mxGetProperty(matlabhandle, phi.mlClassHandleIndex, "boundaryData");
+	mxArray *boundaryData = (mxArray *)phi->boundaryConditions.externalData;
 	if(boundaryData == NULL) {
 		PRINT_SIMPLE_FAULT("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
 		return ERROR_INVALID_ARGS;
 	}
 
-	int vectorComponent = phi.vectorComponent;
-	int numDirections = 1;
+	int vectorComponent = phi->vectorComponent;
 
 	mxArray *bcModes = mxGetField(boundaryData, 0, "bcModes");
 	if(bcModes == NULL) {
@@ -259,93 +225,76 @@ int setArrayBoundaryConditions(MGArray *array, const mxArray *matlabhandle, Geom
 		return ERROR_INVALID_ARGS;
 	}
 
-	int *perm = &phi.currentPermutation[0];
+	int *perm = &phi->currentPermutation[0];
 
-	int j;
-	for(j = 0; j < numDirections; j++) {
-		if(direction == 0) continue; /* Skips edge BCs if desired. */
-		int memoryDirection = MGA_dir2memdir(perm, direction);
+	int memoryDirection = MGA_dir2memdir(perm, direction);
 
-		/* So this is kinda brain-damaged, but the boundary condition modes are stored in the form
-       { 'type minus x', 'type minus y', 'type minus z';
-	     'type plus  x', 'type plus y',  'type plus z'};
-       Yes, strings in a cell array. */
-		/* Okay, that's not kinda, it's straight-up stupid. */
+	int d; for(d = 0; d < 2; d++) {
+		BCModeTypes bm = phi->boundaryConditions.mode[2*(direction-1)+d];
+		// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
+		if(bm == mirror)
+			worked = setBoundarySAS(phi, d, memoryDirection, vectorComponent == direction);
 
-		mxArray *bcstr; char *bs;
-
-		int d; for(d = 0; d < 2; d++) {
-			bcstr = mxGetCell(bcModes, 2*(direction-1) + d);
-			bs = (char *)malloc(sizeof(char) * (mxGetNumberOfElements(bcstr)+1));
-			mxGetString(bcstr, bs, mxGetNumberOfElements(bcstr)+1);
-
-			// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
-			if(strcmp(bs, "mirror") == 0)
-				worked = setBoundarySAS(&phi, d, memoryDirection, vectorComponent == direction);
-
-			// Extrapolates f(b+x) = f(b)
-			if(strcmp(bs, "const") == 0) {
-				worked = setBoundarySAS(&phi, d, memoryDirection, 2);
-			}
-
-			// Extrapolates f(b+x) = f(b) + x f'(b)
-			// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
-			if(strcmp(bs, "linear") == 0) {
-				worked = setBoundarySAS(&phi, d, memoryDirection, 3);
-			}
-
-			if(strcmp(bs, "wall") == 0) {
-				PRINT_FAULT_HEADER;
-				printf("Wall BC is not implemented!\n");
-				PRINT_FAULT_FOOTER;
-				worked = ERROR_INVALID_ARGS;
-			}
-
-			if(strcmp(bs, "outflow") == 0) {
-				if(phi.numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
-					worked = setOutflowCondition(&phi, geo, d, direction);
-				}
-			}
-
-			if(strcmp(bs, "freebalance") == 0) {
-				if(phi.numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
-					// Now we need to grab the gravitational potential array
-					MGArray gravpot;
-					mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
-					if(q != NULL) {
-						worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
-						if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
-							printf("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n");
-							return worked;
-						}
-
-						double fluidGamma = derefXdotAdotB_scalar(matlabhandle, "gamma", NULL);
-
-						// Then set the free balance condition
-						worked = setFreeBalanceCondition(&phi, geo, d, direction, &gravpot, fluidGamma);
-					}
-				}
-			}
-
-			free(bs);
-
-			// whatever we just did, check...
-			if(worked != SUCCESSFUL) break;
-
+		// Extrapolates f(b+x) = f(b)
+		if(bm == extrapConstant) {
+			worked = setBoundarySAS(phi, d, memoryDirection, 2);
 		}
-		if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
+
+		// Extrapolates f(b+x) = f(b) + x f'(b)
+		// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
+		if(bm == extrapLinear) {
+			worked = setBoundarySAS(phi, d, memoryDirection, 3);
+		}
+
+		if(bm == wall) {
+			PRINT_FAULT_HEADER;
+			printf("Wall BC is not implemented!\n");
+			PRINT_FAULT_FOOTER;
+			worked = ERROR_INVALID_ARGS;
+		}
+
+		if(bm == outflow) {
+			if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+				worked = setOutflowCondition(phi, geo, d, direction);
+			}
+		}
+
+		if(bm == freebalance) {
+			if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+				// Now we need to grab the gravitational potential array
+				MGArray gravpot;
+				mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
+				if(q != NULL) {
+					worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
+					if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+						printf("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n");
+						return worked;
+					}
+
+					double fluidGamma = derefXdotAdotB_scalar((mxArray *)phi->boundaryConditions.externalData, "gamma", NULL);
+
+					// Then set the free balance condition
+					worked = setFreeBalanceCondition(phi, geo, d, direction, &gravpot, fluidGamma);
+				}
+			}
+		}
+
+
+		// whatever we just did, check...
+		if(worked != SUCCESSFUL) break;
+
 	}
 
 	return SUCCESSFUL;
 }
 
-int setArrayStaticCells(MGArray *phi, const mxArray *matlabhandle)
+int setArrayStaticCells(MGArray *phi)
 {
 	int worked;
 	MGArray statics;
 
 	/* Grabs the whole boundaryData struct from the ImogenArray class */
-	mxArray *boundaryData = mxGetProperty(matlabhandle, phi->mlClassHandleIndex, "boundaryData");
+	mxArray *boundaryData = (mxArray *)phi->boundaryConditions.externalData;
 	if(boundaryData == NULL) {
 		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
 		return ERROR_INVALID_ARGS;
