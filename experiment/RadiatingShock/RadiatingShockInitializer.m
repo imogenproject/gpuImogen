@@ -168,61 +168,82 @@ classdef RadiatingShockInitializer < Initializer
             
             geom.makeBoxSize(flowEndpoint / fracFlow); % Box length
             
-            
-            % obj.dGrid = ones(1,3) * flowEndpoint / (fracFlow*obj.grid(1));
-            
             [vecX, vecY, vecZ] = geom.ndgridVecs();
             
             rez = geom.globalDomainRez;
-            % Identify the preshock, radiating and cold gas layers.
-            preshock =  (vecX < rez(1)*obj.fractionPreshock);
-            postshock = (vecX >= rez(1)*obj.fractionPreshock);
-            postshock = postshock & (vecX < rez(1)*(1-obj.fractionCold));
-            coldlayer = (vecX >= rez(1)*(1-obj.fractionCold));
             
-            numPre = rez(1)*obj.fractionPreshock;
-            Xshock = geom.d3h(1)*numPre;
+            if 1 % if initializing analytically
+                % Identify the preshock, radiating and cold gas layers.
+                preshock =  (vecX < rez(1)*obj.fractionPreshock);
+                postshock = (vecX >= rez(1)*obj.fractionPreshock);
+                postshock = postshock & (vecX < rez(1)*(1-obj.fractionCold));
+                coldlayer = (vecX >= rez(1)*(1-obj.fractionCold));
+                
+                numPre = rez(1)*obj.fractionPreshock;
+                Xshock = geom.d3h(1)*numPre;
+                
+                % Generate blank slates
+                [mass, mom, mag, ener] = geom.basicFluidXYZ();
+                
+                % Fill in preshock values of uniform flow
+                mass(preshock,:,:) = jump.rho(1);
+                ener(preshock,:,:) = jump.Pgas(1);
+                mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
+                mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
+                mag(1,:,:,:) = jump.B(1,1);
+                mag(2,preshock,:,:) = jump.B(2,1);
+                
+                
+                % Get interpolated values for the flow
+                flowValues(:,1) = flowValues(:,1) + Xshock;
+                xinterps = (vecX-.5)*geom.d3h(1);
+                
+                meth = 'spline';
+                minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps, meth);
+                %px is a preserved invariant
+                pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps, meth);
+                %bx is a preserved invariant
+                byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps, meth);
+                Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps, meth);
+                
+                for xp = find(postshock)
+                    mass(xp,:,:) = minterp(xp);
+                    mom(2,xp,:,:) = pyinterp(xp);
+                    mag(2,xp,:,:) = byinterp(xp);
+                    ener(xp,:,:)  = Pinterp(xp);
+                end
+                
+                % Fill in cold gas layer adiabatic values again
+                endstate = flowValues(end,:);
+                
+                mass(coldlayer,:,:) = endstate(2);
+                % px is constant
+                mom(2,coldlayer,:,:) = endstate(2)*endstate(4);
+                % bx is constant
+                mag(2,coldlayer,:,:) = endstate(6);
+                ener(coldlayer,:,:) = endstate(7);
             
-            % Generate blank slates
-            [mass, mom, mag, ener] = geom.basicFluidXYZ();
-            
-            % Fill in preshock values of uniform flow
-            mass(preshock,:,:) = jump.rho(1);
-            ener(preshock,:,:) = jump.Pgas(1);
-            mom(1,:,:,:) = jump.rho(1)*jump.v(1,1);
-            mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
-            mag(1,:,:,:) = jump.B(1,1);
-            mag(2,preshock,:,:) = jump.B(2,1);
-            
-            
-            % Get interpolated values for the flow
-            flowValues(:,1) = flowValues(:,1) + Xshock;
-            xinterps = (vecX-.5)*geom.d3h(1);
+            else
+                % load the file
+                %F = DataFrame( . );
+                
+                xinput = (1:size(F.mass,1)) * F.dGrid{1};
+                dx = F.dGrid{1};
 
-            meth = 'spline';
-            minterp = interp1(flowValues(:,1), flowValues(:,2), xinterps, meth);
-            %px is a preserved invariant
-            pyinterp= interp1(flowValues(:,1), flowValues(:,2).*flowValues(:,4), xinterps, meth);
-            %bx is a preserved invariant
-            byinterp= interp1(flowValues(:,1), flowValues(:,6), xinterps, meth);
-            Pinterp = interp1(flowValues(:,1), flowValues(:,7), xinterps, meth);
-            
-            for xp = find(postshock)
-                mass(xp,:,:) = minterp(xp);
-                mom(2,xp,:,:) = pyinterp(xp);
-                mag(2,xp,:,:) = byinterp(xp);
-                ener(xp,:,:)  = Pinterp(xp);
+                % These return physical positions
+                topcell = trackFront2(F.mass, xinput, 2);
+                botcell = RHD_utils.trackColdBoundary(F);
+                
+                ra = round(topcell / dx - 10);
+                rb = round(botcell / dx + 10);
+                
+                origBoost = F.velX(1,1) - jump.v(1,1);
+                
+                
+                
+                
             end
             
-            % Fill in cold gas layer adiabatic values again
-            endstate = flowValues(end,:);
-            
-            mass(coldlayer,:,:) = endstate(2);
-            % px is constant
-            mom(2,coldlayer,:,:) = endstate(2)*endstate(4);
-            % bx is constant
-            mag(2,coldlayer,:,:) = endstate(6);
-            ener(coldlayer,:,:) = endstate(7);
             
             %----------- BOOST TRANSFORM ---------%
             dvy = jump.v(1,1)*obj.machY_boost/obj.sonicMach;
