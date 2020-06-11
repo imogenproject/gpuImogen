@@ -23,6 +23,9 @@
 \usepackage{graphicx}
 \usepackage{color}
 
+% seriously?
+\definecolor{orange}{rgb}{1.0, .5, 0}
+
 \author{Erik Keever}
 \title{Imogen User's Manual}
 
@@ -51,12 +54,13 @@ To download it into directory \textit{./gpuimogen} from the public repo,
 
 Imogen runs in Matlab and so obviously Matlab is a prerequisite to have. A standard
 Matlab installation will have everything you need - the parallel computing toolkit
-is not needed.
+is not needed (because why would pay THAT much for a wrapper around MPI?)
 
 The \textit{MATLAB\_DIR} variable in Make.config must be set to the root of
-the Matlab installation (e.g. /opt/Matlab/R2013b). Running Imogen in a different
-Matlab version than used here to compile the binary modules is less likely than
-might be imagined to cause problems.
+the Matlab installation (e.g. /opt/Matlab/R2017b). It is generally possible to use
+a \textit{later} Matlab version with modules compiled using a previous version
+(forward compartibility) however the reverse is not true (lack of reverse compatibility)
+and will likely result in crashes caused by unresolvable symbols.
 
 \subsection{MPI}
 
@@ -84,15 +88,35 @@ Other variables to be set are
 
 NVARCH and NVCODE are further explained by the nvcc manual page.
 
-\subsection{Compiling}
+\subsection{Compiling, linking and paths}
 
-Once all the above variables are set, run \textit{make} in both the mpi/ and gpuclass/
-directories. Both build in parallel so feel free to use -j. 
+Once all the above variables are set, run \textit{make} in first the mpi/ and then the gpuclass/
+directories. Both build in parallel so feel free to use -j to compile faster. mpi/
+must be built first because GPU routines link to MPI ones.
+
+\textbf{WARNING}: This compilation process involves two compilers (for C and for CUDA)
+and two wrappers (nVidia's NVCC and Matlab's MEX). All of the following conditions
+must be true for compilation to succeed:
+\begin{itemize}
+\item The compiler used to compile the MPI,
+\item Must be the compiler used by Matlab's MEX (\textbf{mex -setup is mandatory}, loading the module or putting it first in \$PATH is not enough)
+\item Must be the host compiler used by NVCC (first in \$PATH is sufficient)
+\end{itemize}
+
+There are no particular additional constraints for execution:
+\begin{itemize}
+\item In general, the environment which successfully builds will work for execution. Note the loaded modules at build time!
+\item This includes the compiler used (An older libstdc++ will likely cause unresolved symbol errors)
+\item Executing CUDA toolkit runtime must be at least as new as compilation CUDA toolkit
+\item All nodes must use the exact same MPI version and compiler library (i.e. libstdc++) the code was built with, or abandon all hope ye who enter
+\end{itemize}
+
 
 \subsection{Filesystem}
 
-Imogen will open/create the directory ~/Results. It is not required that this
-be a shared filesystem.
+Imogen will open/create the directory ~/Results. This must be a shared filesystem.
+The code uses rank zero for file creation, followed by all ranks waiting for a
+consistent filesystem view (meaning all ranks see the exact same files and sizes)
 
 \subsection{Cluster access}
 
@@ -105,12 +129,8 @@ names to values appropriate to your cluster system.
 
 \subsection{Troubleshooting}
 
-It is very important that PGW, MPI and the CUDA modules all be compiled
-using the same compiler. PGW in particular is insistent about the version
-of libfortran it accesses.
-
-Unfortunately this is growing progressively more difficult as CUDA requires
-newer GCCs and Mathworks' MEX compiler-wrapper lags.
+It is very important that MPI and the CUDA modules all be compiled
+using the same compiler.
 
 If Imogen fails because Matlab complains about being unable to resolve an MPI
 symbol, the problem is that Matlab defaults to lazy symbol resolution when
@@ -132,6 +152,7 @@ There are three separate general types of run, all of which invoke "matlab -r":
 \item serial - One process uses the given set of GPUs; 'imogen' calls Matlab.
 \item parallel - N processes use the given set of GPUs; 'imogen' calls mpirun calls Matlab
 \item cluster - 'imogen' submits a script calling itself to qsub
+\item talapas - specialized cluster invoke aimed at running on UO RACS system
 \end{itemize}
 
 Serial and parallel are for small size simulations that work on a single system,
@@ -145,9 +166,13 @@ The invocation syntaxes (also available through ./imogen -help) are as follows:
 \item ./imogen parallel runfile.m [stream\#] [NP]
 \end{itemize}
 
+The magic number -1 for the set of GPUs is for when the code is invoked using the SLURM 
+scheduler with SLURM GPU control. This instructs the code the code to determine its GPUs
+by doing \begin{tt}getenv('GPU\_DEVICE\_ORDINAL')\end{tt}.
+
 \section{Selftest}
 
-\textbf{This is not yet complete -- Erik}
+\begin{textbf}This is not yet complete -- Erik \end{textbf}
 
 Imogen comes with two test suites, \begin{tt}run\_tortureTest\end{tt} and \begin{tt}run\_FullTestSuite\end{tt}.
 
@@ -165,68 +190,103 @@ degree of refinement, this suite may be expected to take hours to execute.
 \section{Physics solved by the Imogen simulation engine}
 
 \subsection{Full Equation Set}
+% red - conservative ideal transport
+% orn - gravitational
+% grn - radiative
+% blu - gas/dust
+% vio - geometric
+% cya - frame rotation
+% mag - magnetic?
 
 The broadest writing of the equations Imogen is capable of solving:
 \begin{align*}
-\frac{\partial \rho}{\partial t} &+ \nabla (\rho v) &= 0 & & \\
-\frac{\partial \rho \vec{v}}{\partial t} &+ \nabla_i \left( \rho \vec{v} v_i + \mathbb{I} P \right) &= 
-- \textcolor{red}{\rho \nabla \phi_g } & & - 
+\textcolor{red}{\frac{\partial \rho}{\partial t}} & \textcolor{red}{ + \nabla (\rho v)} &= 0 & &  \\
+\textcolor{red}{\frac{\partial \rho \vec{v}}{\partial t} } & \textcolor{red}{+ \nabla_i \left( \rho \vec{v} v_i + \mathbb{I} P \right)} &= 
+- \textcolor{orange}{\rho \nabla \phi_g } & & - 
 \textcolor{blue}{ \sum_k n_{d,k} F_{drag,k}  }\\
 \frac{\partial E_{tot}}{\partial t} &+ \nabla v (E_{tot} + P) &= 
-\textcolor{red}{\rho v \cdot \nabla \phi_g} & 
+\textcolor{orange}{\rho v \cdot \nabla \phi_g} & 
 - \textcolor{green}{\Gamma_0 \rho^2 T^\theta } &
 - \textcolor{blue}{\sum_k n_{d,k} v_{d,k} \cdot F_{drag,k}} \\
-\frac{\partial \rho_{d,k}}{\partial t} &+ \nabla (\rho_{d,k} v_{d,k}) &= 0 & & \\
-\frac{\partial \rho_{d,k} v_{d,k}}{\partial t} &+ \nabla (\rho_{d,k} v_{d,k} v_{d,k}) &= n_{d,k} F_{drag,k}  & & \\
+\textcolor{red}{\frac{\partial \rho_{d,k}}{\partial t}} & \textcolor{red}{+ \nabla (\rho_{d,k} v_{d,k})} &= 0 & & \\
+\textcolor{red}{\frac{\partial \rho_{d,k} v_{d,k}}{\partial t}} &+ \textcolor{red}{\nabla (\rho_{d,k} \vec{v}_{d,k} v_{d,k})}
+&= \textcolor{blue}{n_{d,k} F_{drag,k}}  & & \\
 \frac{\partial T_{d,k}}{\partial_t} &+ \nabla (v_{d,k} T_{d,k} ) &= & & heat+radi
 \end{align*}
-Where here $k$ denotes an arbitrary number of dust fluids.
+Where here $k$ denotes an arbitrary number of dust `fluids.' Currently the number of fluids is restricted to one.
 
-With auxiliary equations
+\subsection{Auxiliary equations for closure, gravitation and dust drag}
+
+The transport equations are given closure by the pressure equation and its associated contribution to the energy flux,
 \begin{align*}
-\textcolor{red}{\nabla^2 \phi_{self} = 4 \pi G \rho} \\
-\textcolor{red}{\phi_g = \phi_{self} + \phi_{static} + \sum_{i} \frac{-G M_i}{|x - x_i|} } \\
-\textcolor{blue}{F_{drag} = \frac{s_0^2 F_{epstein} + s^2 F_{stokes}}{s_0^2 + s^2}} \\
-\textcolor{blue}{F_{epstein} \approx \frac{-4 \pi}{3} \rho_{gas} s^2 \sqrt{\frac{8}{\gamma \pi}} \sqrt{c_s^2 + 9 \pi |dv|^2 / 128}  \vec{dv} } \\
-\textcolor{blue}{F_{stokes} = -.5 C_d \pi s^2 \rho_{gas} |dv| \vec{dv} }
+P = fcn(\epsilon_{int}) = (\gamma-1) \epsilon \\
+E_{tot} = \frac{\rho \vec{v} \cdot \vec{v}}{2} + \epsilon_{int}
 \end{align*}
-In the above, G is the gravitational coupling constant and $\phi_{static}$ represents a stationary
-potential field defined at simulation start time.
-$F_{drag}$ generates a smooth interpolation between the rarefied gasdynamics regime experienced
-by a particle much smaller than the mean free path, $F_{epstein}$, and the viscous drag 
-on a particle in the continuum limit given by $F_{stokes}$.
-$F_{epstein}$ as given represents the approximation
-given by Kwok (1975) for the exact Epstein drag, due to the high cost of evaluating multiple
-transcendental functions occurring in it.
 
-
-The Euler equations, unadorned, are self-similar and lack any characteristic scale. Activating
-any of the non-ideal physics in Imogen introduces scales and requires choosing appropriate scaling
-constants.
-
-Conservative transport terms are in black. Gravitation related terms are in red.
-Optically thin radiation terms are in green. Dust terms are in blue.
-
+The secondary equations for gravity,
+\begin{align*}
+\textcolor{orange}{\nabla^2 \phi_{self} = 4 \pi G \rho} \\
+\textcolor{orange}{\phi_g = \phi_{self} + \phi_{static} + \sum_{i} \frac{-G M_i}{|x - x_i|} }
+\end{align*}
+where $M_i$ is a (discrete) compact point mass at position $x_i$.
 Self gravity, stationary potential, and compact objects are enableable separately.
 Activating any of them requires choosing a gravitational coupling constant G.
 
-Activating radiative emission requires choosing a radiation scaling constant $\Gamma_0$.
-The code computes as written, using the square of \textit{mass density}. Because we assume an
-ideal gas law, we are actually considering
+The secondary equations for fluid drag are defined as a dimensionless coefficient $C_d$ times the 
+ram force on a spherical particle of area $\sigma$, $\frac{1}{2} \rho v_{rel}^2 \sigma$.
+The drag coefficient is a function of three other dimensionless measures, the Reynolds, Knudsen number
+and Mach. The equation given below provides accurate drag computation for any Knudsen number,
+any Reynolds number below roughly 250000 and any Mach below roughly 0.25, and are asymptotically
+exact for $Kn \rightarrow 0$ and $Re \rightarrow 0$ (Stokes flow) and for $Kn \rightarrow \infty$ (Epstein flow).
+Accuracy loss will be incurred if gas compressibility is relevant ($M > \approx 0.25)$ or for large $Re$
+at which the drag curve cannot realistically be modelled by a single equation.
+
+The calculation of $Re$ requires the viscosity $\nu$ and calculation of the Knudsen number requires the
+molecular mean free path $\lambda_{mfp}$ which requires the gas particle scattering cross section.
+This in turn requires a model for the gas' fine thermodynamic details and parameters. These are stored 
+by Imogen in the \begin{tt}fluidDetailModel.m\end{tt} file which contains a variety of relevant parameter
+sets selected by names.
+
+The adopted four parameter formula for soft spheres is appropriate for small gaseous molecules over a wide
+range of temperatures. In the limit of hard spherical particles, the temperature dependence of viscosity
+reduces to $\xi=1/2$ and of cross section reduces to $\theta=0$. Imogen's tables of molecular cross sections
+are derived by requiring that they agree with published values of mean free paths.
+For details, the reader is referred to the
+classic monograph of Chapman and Enskog on gas kinetic theory, ch. 12.
 \begin{align*}
-\Gamma' n^2 (P/\rho)^{\theta}
+\nu(T) = \nu_0 (T/T_0)^\xi \\
+Re = \rho_g dv \sqrt{\sigma_d / \pi} / \nu(T) \\
+\lambda_{mfp} = \frac{\mu_g}{\sigma_g \sqrt{2}} (T/T_0)^\theta \frac{1}{\rho_g} \\
+Kn = \sqrt{\frac{4 \pi}{\sigma_d}} \lambda_{mfp} \\
+C_d = \frac{\left[ 24 / Re + 3.6 Re^{-.319} + \frac{.4072 Re}{8710 + Re} \right]}{\left[1 + Kn(1.142 + .558 e^{-.999/Kn} \right] } \\
+F_{drag} = C_d (\frac{1}{2}\rho_g dv^2)\frac{\rho_d}{\mu_d}
 \end{align*}
-with $\Gamma' = \Gamma_0 \mu^{\theta-2} K_b^{-\theta}$.
+The numerator in the drag coefficient equation is an empirical fit to the well known `standard drag curve'
+for spherical particles in infinite fluid. The first term of the numerator is the Stokes coefficient, which is the
+only one derivable analytically. The second empirical term is often given as ``$4 Re^{1/3}$''. The given coefficients
+and the third term, as well as the denominator (called the Cunningham Coefficient), are given in Allen \& Raabe 1985,
+who performed an extremely detailed analysis of hundreds of measurements, accounting for numerous systematic shifts 
+and providing the above named coefficients via a numeric residual minimization.
+
+The equation for $F_{drag}$ then computes the force on a single dust particle and multiplies by the dust particle
+number density.
+
+Activating radiative emission requires a dimensionful radiation scaling constant $\Gamma_0$.
+The code computes as written, using the square of \textit{mass density}. When units are rescaled
+the result is shuffled off onto $\Gamma_0$ with the result that
+\begin{equation}
+\Gamma' = \Gamma_0 \mu^{\theta-2} K_b^{-\theta}
+\end{equation}
 
 Imogen contains the following unitful objects which must be defined if the relevant
 physics are in use.
 \begin{itemize}
 \item G - Gravitational coupling constant
 \item $K_b$ - Boltzmann constant
-\item $\mu$ - Gas mean molecular weight
-\item $m_k$ - Mass of dust particles of type k
-\item $s_k$ - Size of dust particles of type k
+\item $\mu$ - Gas or particle mean mass
+\item $\sigma$ - Gas kinetic cross section or dust particle cross sectio
 \end{itemize}
+All initializers inherit the function 
 
 There are four fundamental unitful quantities in Imogen: mass, length, time, and temperature.
 
