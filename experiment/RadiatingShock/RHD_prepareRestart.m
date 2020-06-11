@@ -172,7 +172,7 @@ for Q = start:max
         
         % there -SHOULDN'T- be a restart Xmillion + 1 'glitch' frame at the end, but
         % stupider crap has happened
-        if abs(J.iter - F.time.iteration) > 1
+        if abs(J.time.iteration - F.time.iteration) > 1
             stuff = load('SimInitializer_rank0.mat');
             spf = stuff.IC.ini.iterMax * stuff.IC.ini.ppSave.dim3 / 100;
             stepsFromFramect = spf * (size(F.mass,4)-1);
@@ -185,13 +185,13 @@ for Q = start:max
             warning('dbstop in RHD_prepareRestart.m at 181 - to access the screwup at the detect point & fix it')
         end
         
-        if abs(J.iter - F.time.iteration) < 2
+        if abs(J.time.iteration - F.time.iteration) < 2
         
-            spf = round(J.iter / (size(F.mass, 4)-1));
+            spf = round(J.time.iteration / (size(F.mass, 4)-1));
             
             s1 = sprintf('%s''%s'', ', s1, dirlist{Q});
             s2 = sprintf('%s%i, ', s2, int32(F.time.iteration));
-            s3 = sprintf('%s%i, ', s3, int32(J.iter + spf * nadd));
+            s3 = sprintf('%s%i, ', s3, int32(J.time.iteration + spf * nadd));
             
             inidt = diff(F.time.time(2:20));
             if std(inidt) > mean(inidt)
