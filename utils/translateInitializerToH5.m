@@ -1,31 +1,35 @@
-function translateInitializerToH5(ini, fname)
+function translateInitializerToH5(ini, outfile, savefilePrefix, saveByTime)
 
-h5create(fname,'/placeholder',1,'Datatype','single');
+h5create(outfile,'/placeholder',1,'Datatype','single');
 
+h5writeatt(outfile, '/', 'savefilePrefix', savefilePrefix);
 
-h5writeatt(fname, '/', 'cfl', ini.cfl);
-h5writeatt(fname, '/', 'd3h', ini.geometry.d3h);
-h5writeatt(fname, '/', 'globalResolution', int32(ini.geometry.globalDomainRez));
-h5writeatt(fname, '/', 'iterMax', int32(ini.iterMax));
-h5writeatt(fname, '/', 'multifluidDragMethod', int32(ini.multifluidDragMethod));
-h5writeatt(fname, '/', 'timeMax', int32(ini.timeMax));
+h5writeatt(outfile, '/', 'cfl', ini.cfl);
+h5writeatt(outfile, '/', 'd3h', ini.geometry.d3h);
+h5writeatt(outfile, '/', 'globalResolution', int32(ini.geometry.globalDomainRez));
+h5writeatt(outfile, '/', 'iterMax', int32(ini.iterMax));
+h5writeatt(outfile, '/', 'multifluidDragMethod', int32(ini.multifluidDragMethod));
+h5writeatt(outfile, '/', 'timeMax', ini.timeMax);
 %h5writeatt(fname, '/', );
 
-writeSimpleStruct(fname, '/frameParameters', ini.frameParameters);
+s = struct('slice', ini.slice, 'percent', ini.ppSave, 'bytime', int32(saveByTime ~= 0));
+writeSimpleStruct(outfile, '/save', s);
 
-writeSimpleStruct(fname, '/fluidDetail1', ini.fluidDetails(1));
+writeSimpleStruct(outfile, '/frameParameters', ini.frameParameters);
+
+writeSimpleStruct(outfile, '/fluidDetail1', ini.fluidDetails(1));
 B = BCManager();
 bs = B.expandBCStruct(ini.bcMode{1});
 
 q = @B.bcModeToNumber;
 bc1 = [q(bs{1,1}) q(bs{2,1})  q(bs{1,2}) q(bs{2,2})   q(bs{1,3}) q(bs{2,3})];
-h5writeatt(fname, '/fluidDetail1', 'bcmodes', int32(bc1));
+h5writeatt(outfile, '/fluidDetail1', 'bcmodes', int32(bc1));
 
 if ini.numFluids > 1
-    writeSimpleStruct(fname, '/fluidDetail2', ini.fluidDetails(2));
+    writeSimpleStruct(outfile, '/fluidDetail2', ini.fluidDetails(2));
     bs = B.expandBCStruct(ini.bcMode{2});
     bc1 = [q(bs{1,1}) q(bs{2,1})  q(bs{1,2}) q(bs{2,2})   q(bs{1,3}) q(bs{2,3})];
-    h5writeatt(fname, '/fluidDetail2', 'bcmodes', int32(bc1));
+    h5writeatt(outfile, '/fluidDetail2', 'bcmodes', int32(bc1));
 end
 
 

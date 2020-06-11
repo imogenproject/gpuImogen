@@ -276,36 +276,71 @@ classdef Initializer < handle
 
         end
 
+        function saveParallelInitialConditions(obj, nprocs, basename)
+            
+            % tuple to rank
+            ttr = @(c) c(1) + nprocs(1)*(c(2)+nprocs(2)*c(3));
+
+            obj.geomgr.topology.nproc = nprocs;
+            obj.geomgr.context.size = prod(nprocs);
+            
+            for i = 1:nprocs(1)
+                for j = 1:nprocs(2)
+                    for k = 1:nprocs(3)
+                        crd = [i j k] - 1;
+                        obj.geomgr.topology.coord = crd;
+
+                        myleft  = mod(crd - 1 + nprocs, nprocs);
+                        myright = mod(crd + 1,         nprocs);
+
+                        myleft(1) = ttr([myleft(1) crd(2) crd(3)]);
+                        myleft(2) = ttr([crd(1) myleft(2) crd(3)]);
+                        myleft(3) = ttr([crd(1) crd(2) myleft(3)]);
+
+                        myright(1) = ttr([myright(1) crd(2) crd(3)]);
+                        myright(2) = ttr([crd(1) myright(2) crd(3)]);
+                        myright(3) = ttr([crd(1) crd(2) myright(3)]);
+
+                        myrank = ttr(crd);
+                        
+                        obj.geomgr.context.rank = myrank;
+                        obj.geomgr.topology.neighbor_left = myleft;
+                        obj.geomgr.topology.neighbor_right= myright;
+
+                        eyesee = obj.saveInitialCondsToStructure();
+                        f = translateICStructToFrame(eyesee);
+                        if myrank == 0 % first go, write out the initializer too
+                            % Certain additions are required here:
+                            bytime = 1;
+                            translateInitializerToH5(eyesee.ini, "testout.h5", basename, bytime);
+                        end
+                        
+                        clear eyesee;
+                        util_Frame2HDF(sprintf('%s_rank%03i.h5', basename, myrank), f);
+                    end
+                end
+            end
+        end
+
         % These either dump ICs to a file or return them as a structure.
         function icfile = saveInitialCondsToFile(obj)
-             [fluids, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
-             IC.fluids = fluids;
-             IC.magX = squish(mag(1,:,:,:));
-             IC.magY = squish(mag(2,:,:,:));
-             IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+            IC = obj.saveInitialCondsToStructure();
 
-             % Transfer the initial conds struct & pickle the geometry manager
-             IC.ini = ini;
-             IC.ini.geometry = obj.geomgr.serialize();
-
-             icfile = [tempname '.mat'];
-             save(icfile, 'IC','-v7.3');
+            icfile = [tempname '.mat'];
+            save(icfile, 'IC','-v7.3');
         end
 
         function IC = saveInitialCondsToStructure(obj)
-             [fluids, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
-             IC.fluids = fluids;
-             IC.magX = squish(mag(1,:,:,:));
-             IC.magY = squish(mag(2,:,:,:));
-             IC.magZ = squish(mag(3,:,:,:));
-             if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
-             if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
-             if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
-             IC.ini = ini;
-             IC.ini.geometry = obj.geomgr.serialize(); % FIXME: this ought to perhaps happen elsewhere?
+            [fluids, mag, statics, potentialField, selfGravity, ini] = obj.getInitialConditions();
+            IC.fluids = fluids;
+            IC.magX = squish(mag(1,:,:,:));
+            IC.magY = squish(mag(2,:,:,:));
+            IC.magZ = squish(mag(3,:,:,:));
+            if isempty(statics); IC.statics = StaticsInitializer(obj.geomgr); else; IC.statics = statics; end
+            if isempty(potentialField); IC.potentialField = PotentialFieldInitializer(); else; IC.potentialField = potentialField; end
+            if isempty(selfGravity); IC.selfGravity = SelfGravityInitializer(); else; IC.selfGravity = selfGravity; end
+            IC.ini = ini;
+            IC.ini.geometry = obj.geomgr.serialize(); % FIXME: this ought to perhaps happen elsewhere?
         end
 
         function y = locatePeripheral(obj, name)
@@ -318,11 +353,11 @@ classdef Initializer < handle
         function activateComplexBoundaryConditions(self, N)
         % Multifluid BCs: It we are using multiple fluids but not using complex BCs,
         % stamp out copies of the .bcMode structure into a {cell array}
-             if isa(self.bcMode, 'cell') == 0
+            if isa(self.bcMode, 'cell') == 0
                 q = cell([N 1]);
                 for j = 1:N; q{j} = self.bcMode; end
                 self.bcMode = q;
-             end
+            end
             
         end
         

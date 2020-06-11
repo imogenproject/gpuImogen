@@ -20,15 +20,21 @@ basicfiles = numel(dir('ini_settings.mat'));
 basicfiles = basicfiles + numel(dir('SimInitializer_rank0.mat'));
 if basicfiles ~= 2
     disp('Not seeing @ least 1 of ini_settings.mat or SimInitializer_rank0.mat. This can''t be a valid Imogen run directory.');
-    dex = [];
-    return;
+    disp('Will attempt to proceed anyway. Please input 1 2 or 3 for MAT, NC and HDF5 format: ');
+    f0 = input('');
+    switch f0
+        case 1; format = ENUM.FORMAT_MAT;
+        case 2; format = ENUM.FORMAT_NC;
+        case 3; format = ENUM.FORMAT_HDF;
+        otherwise; error('invalid format. aborting.');
+    end
+else
+    % Scrape some info out of this...
+    load('ini_settings.mat','ini');
+    format = ini.saveFormat;
 end
 
 dex = struct('X',[],'Y',[],'Z',[],'XY',[],'XZ',[],'YZ',[],'XYZ',[],'misc',[]);
-
-% Scrape some info out of this...
-load('ini_settings.mat','ini');
-format = ini.saveFormat;
 
 % All the savefiles that Imogen generates
 fieldlist={'X','Y','Z','XY','XZ','YZ','XYZ'};
