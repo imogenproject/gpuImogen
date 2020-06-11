@@ -621,7 +621,7 @@ classdef FMHandler2 < handle
                 scatter3(self.thetaPts(dohaveit)', self.machPts(dohaveit)', z(dohaveit), 'r*');
             end
             if pltType == 2
-                contour( v(1):v(2):v(3), u(1):u(2):u(3), zsmooth);
+                contour( v(1):v(2):v(3), u(1):u(2):u(3), zsmooth, [.05 .1:.1:.7]);
                 ylim([u(1) u(3)]);
                 xlim([v(1) v(3)]);
             end
@@ -833,7 +833,16 @@ classdef FMHandler2 < handle
     
     %===================================================================================================
     methods (Static = true) %                                                 S T A T I C    [M]
-        
+        function help()
+            disp('Brief help for interactive use of the FMHandler2 class to access dissertation data:');
+            disp('  x.havePoint(mach, theta) -> true or false if these parameters are stored');
+            disp('  x.findPoint(mach, theta) -> return index if exists, -1 if not');
+            disp('  x.queryAt(mach, theta)   -> return structure of data (linear interp''d; see fcn help)');
+            disp('  x.generate3DPlot()       -> overlay per-mode data in 3D output (see fcn help)');
+            disp('  x.emitDominantFreqPlot() -> plot 1 3D surface using dominant mode (see fcn help)');
+            disp('  x.rebuildFnorms(1 | 2)   -> 1 = standard, 2 = high frequency flatness (see fcn help)');
+        end
+
     end%PROTECTED
     
 end%CLASS
