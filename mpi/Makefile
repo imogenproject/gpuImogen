@@ -46,6 +46,9 @@ debugSpin: debugSpin.cpp
 mpi_common.o: mpi_common.cpp
 	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(PAR_INCL) -c mpi_common.cpp
 
+mpi_common_noml: mpi_common.cpp
+	g++ -I/usr/local/cuda/include -O1 -g -DNOMATLAB -c mpi_common.cpp -o mpi_common_noml.o
+
 mpi_min: mpi_allreduce.cpp mpi_common.o
 	mex $(MEX_OPTS) $(MEX_INCL) $(MEX_LDIR) $(MEX_LIBS) $(PAR_INCL) $(PAR_LDIR) $(PAR_LIBS) -DMPIOPERATION=MPI_MIN mpi_allreduce.cpp mpi_common.o -output mpi_min
 
