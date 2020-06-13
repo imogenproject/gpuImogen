@@ -315,8 +315,9 @@ classdef Initializer < handle
                             translateInitializerToH5(eyesee.ini, "testout.h5", basename, bytime);
                         end
                         
+                        p = ceil(log10(eyesee.ini.iterMax));
                         clear eyesee;
-                        util_Frame2HDF(sprintf('%s_rank%03i.h5', basename, myrank), f);
+                        util_Frame2HDF(sprintf('%s_3D_XYZ_rank%03i_%0*i.h5', basename, myrank, int32(p), 0), f);
                     end
                 end
             end

@@ -12,9 +12,6 @@ for i = 1:5
     frame.time.(timeatts{i}) = h5readatt(hname, '/timehist', timeatts{i});
 end
 
-% this shouldn't be here, but it was before so it still is.
-frame.iter = h5readatt(hname, '/', 'iter');
-
 % Grab the parallel struct info.
 % This is dumped into the global directory as attributes because these are all small scalars... okay whatever.
 frame.parallel = struct('geometry', [], 'globalDims', [], 'myOffset', [], 'haloBits', [], 'haloAmt', []);
@@ -29,8 +26,8 @@ frame.parallel.myOffset = transpose(frame.parallel.myOffset);
 
 frame.gamma = h5readatt(hname, '/', 'gamma');
 
-frame.about = h5readatt(hname, '/', 'about');
-frame.ver   = h5readatt(hname, '/', 'ver');
+%frame.about = h5readatt(hname, '/', 'about');
+%frame.ver   = h5readatt(hname, '/', 'ver');
 
 frame.dGrid = cell([1 3]);
 frame.dGrid{1} = h5read(hname, '/dgridx');

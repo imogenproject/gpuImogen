@@ -10,9 +10,10 @@ h5writeatt(outfile, '/', 'globalResolution', int32(ini.geometry.globalDomainRez)
 h5writeatt(outfile, '/', 'iterMax', int32(ini.iterMax));
 h5writeatt(outfile, '/', 'multifluidDragMethod', int32(ini.multifluidDragMethod));
 h5writeatt(outfile, '/', 'timeMax', ini.timeMax);
-%h5writeatt(fname, '/', );
+h5writeatt(outfile, '/', 'iniFrame', int32(0));
 
-s = struct('slice', ini.slice, 'percent', ini.ppSave, 'bytime', int32(saveByTime ~= 0));
+
+s = struct('slice', ini.slice, 'percent', [ini.ppSave.dim1 ini.ppSave.dim2 ini.ppSave.dim3], 'bytime', int32(saveByTime ~= 0));
 writeSimpleStruct(outfile, '/save', s);
 
 writeSimpleStruct(outfile, '/frameParameters', ini.frameParameters);
