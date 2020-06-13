@@ -18,7 +18,7 @@ GeometryParams generateGridGeometry(int *globalResolution, ParallelTopology *top
 GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology *topo, int circ);
 
 int generateDummyFluid(GridFluid *g, MGArray *holder, GeometryParams *geo);
-int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase);
+int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase, int frameNo = -1);
 
 ThermoDetails generateDefaultThermo(void);
 

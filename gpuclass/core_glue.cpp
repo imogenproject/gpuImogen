@@ -12,6 +12,62 @@
 
 #include "core_glue.hpp"
 
+bool imRankZero(void)
+{
+int myrank;
+MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+if(myrank == 0) { return true; } else { return false; }
+}
+
+int lookForArgument(int argc, char **argv, const char *argument)
+{
+int i;
+for(i = 0; i < argc; i++) {
+	if(strcmp(argv[i], argument) == 0) return i;
+}
+
+return -1;
+}
+
+int argReadKeyValueDbl(int argc, char **argv, const char *key, double *val)
+{
+	int q = lookForArgument(argc, argv, key);
+	if((q > 0) && (q < (argc-1))) { *val = atof(argv[q+1]); return 0; }
+	return -1; // arg not found or invalid
+}
+
+int argReadKeyValueInt(int argc, char **argv, const char *key, int *val)
+{
+	int q = lookForArgument(argc, argv, key);
+	if((q > 0) && (q < (argc-1))) { *val = atoi(argv[q+1]); return 0; }
+
+	return -1; // arg not found or invalid
+}
+
+void printHelpScreed(void)
+{
+	std::cout << "================================================================================\n";
+	std::cout << "This is the imogenCore help screed\n";
+	std::cout << "================================================================================\n";
+	std::cout << "imogenCore is the all-compiled matlab-dependency-free core of the Imogen\n";
+	std::cout << "GPU-Accelerated 3D multiphysics gridded fluid dynamic code. It executes the\n";
+	std::cout << "exact same algorithm as GPU-Imogen does, but has no Matlab dependency (and no\n";
+	std::cout << "Matlab flexibility, either). It interacts with the world through HDF-5 files.\n";
+	std::cout << "\nArguments:\n";
+	std::cout << "--help           Prints this and exits\n";
+	std::cout << "--initfile foo   Uses the run configuration file foo.h5. This is normally\n";
+	std::cout << "                 written by the translateInitializerToH5.m function.\n";
+	std::cout << "--frame foo      If restarting, attempts to read frame foo instead of what the\n";
+	std::cout << "                 initfile's /iniFrame parameter says (which is usually zero)\n";
+	std::cout << "--show-time      Prints the initfile's current time and iteration limits & exits\n";
+	std::cout << "--set-time I T   Resets the the maximum # of iterations to I and time limit to T\n";
+	std::cout << "                 and adjusts the save rates to maintain constant iterations or \n";
+	std::cout << "                 elapsed time per frame, depending on the save mode, & exits\n";
+	std::cout << "                 If I or T < 0, the value is not altered.\n";
+	std::cout << "================================================================================" << std::endl;
+}
+
+
 /* Given integer X, computes the prime factorization (sorted ascending), into factors[0] and
  * reports the number of factors in nfactors. factors[0] is alloc'd and must be free'd. */
 void factorizeInteger(int X, int **factors, int *nfactors)
@@ -91,6 +147,24 @@ int readFluidDetailModel(ImogenH5IO *cfg, ThermoDetails *td)
 	td->Cisothermal = -1;
 //ATTRIBUTE "minMass" {
 
+	return SUCCESSFUL; // FIXME
+}
+
+BCModeTypes num2BCModeType(int x)
+{
+	switch(x) {
+	case 1: return circular;
+	case 2: return mirror;
+	case 3: return wall;
+	case 4: return stationary;
+	case 5: return extrapConstant;
+	case 6: return extrapLinear;
+	case 7: return outflow;
+	case 8: return freebalance;
+	default:
+		std::cout << "ERROR: bc mode corresponding to integer " << x << " is unknown. See gpuImogen:BCManager.m:200\nReturning circular" << std::endl;
+		return circular;
+	}
 }
 
 // ================================================================================================
@@ -98,19 +172,21 @@ int readFluidDetailModel(ImogenH5IO *cfg, ThermoDetails *td)
 // H5 files, both as a means of structured grid input/output and for the parameter file, which is
 // just a bunch of attributes strapped into an H5 bundle
 
-ImogenH5IO::ImogenH5IO(char *filename, unsigned int flags)
+ImogenH5IO::ImogenH5IO(const char *filename, unsigned int flags)
 {
 	openUpFile(filename, flags);
 	attrhid = -1; spacehid = -1; sethid = -1;
 	attrTarg = -1; grouphid = -1;
+	attrOverwrite = true;
 	attrTargetRoot();
 }
 
-ImogenH5IO::ImogenH5IO(char *filename)
+ImogenH5IO::ImogenH5IO(const char *filename)
 {
 	openUpFile(filename, H5F_ACC_RDONLY);
 	attrhid = -1; spacehid = -1; sethid = -1;
 	attrTarg = -1; grouphid = -1;
+	attrOverwrite = true;
 	attrTargetRoot();
 }
 
@@ -119,6 +195,7 @@ ImogenH5IO::ImogenH5IO(void)
 	filehid = -1;
 	attrhid = -1; spacehid = -1; sethid = -1;
 	attrTarg = -1; grouphid = -1;
+	attrOverwrite = true;
 	attrTargetRoot();
 }
 
@@ -127,18 +204,54 @@ ImogenH5IO::~ImogenH5IO(void)
 	if(haveOpenedFile()) closeOutFile();
 }
 
-int ImogenH5IO::openUpFile(char *filename, unsigned int flags)
+/* Closes any open savefile and opens either basename_frametype_rankXXX_frameno.h5 if
+ * basename != NULL, or frametype_rankXXX_frameno.h5 (the original imogen format) if it is */
+int ImogenH5IO::openImogenSavefile(const char *namePrefix, int frameno, int pad, SaveFrameTypes s)
 {
-	// read
-	if(flags == H5F_ACC_RDONLY) {
-		filehid = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-		return 0;
-	} else { // write
-		int myrank;
-		MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-		char myfile[strlen(filename) + 32];
-		sprintf(&myfile[0], "%s_rank%03i.h5", filename, myrank);
-		filehid = H5Fcreate(&myfile[0], flags, H5P_DEFAULT, H5P_DEFAULT);
+	char *x;
+	if(namePrefix != NULL) {
+		x = (char *)malloc(strlen(namePrefix) + 64);
+	} else {
+		x = (char *)malloc(128);
+	}
+
+	const char *y;
+	switch(s) {
+	case X: y = "1D_X"; break;
+	case Y: y = "1D_Y"; break;
+	case Z: y = "1D_Z"; break;
+	case XY: y = "2D_XY"; break;
+	case XZ: y = "2D_XZ"; break;
+	case YZ: y = "2D_YZ"; break;
+	case XYZ: y = "3D_XYZ"; break;
+	}
+
+	int myrank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+	if(namePrefix != NULL) {
+		sprintf(x, "%s_%s_rank%03i_%0*i.h5", namePrefix, y, myrank, pad, frameno);
+	} else {
+		sprintf(x, "%s_rank%03i_%0*i.h5", y, myrank, pad, frameno);
+	}
+
+	if(ImogenH5IO::haveOpenedFile()) { ImogenH5IO::closeOutFile(); };
+
+	return CHECK_IMOGEN_ERROR(openUpFile(x, H5F_ACC_TRUNC));
+}
+
+/* This call opens up the filename indicated by 'filename'. if flags == H5F_ACC_RDONLY
+ * it opens for read, if not it uses H5F_Create with the given flags.
+ * NOTE: This function does NOT check for concurrent open-for-write!!! */
+int ImogenH5IO::openUpFile(const char *filename, unsigned int flags)
+{
+
+	FILE *tst = fopen(filename, "r");
+	if(tst != NULL) {
+		fclose(tst);
+		filehid = H5Fopen(filename, flags, H5P_DEFAULT);
+	} else {
+		filehid = H5Fcreate(filename, flags, H5P_DEFAULT, H5P_DEFAULT);
 	}
 
 	attrTarg = filehid;
@@ -146,10 +259,8 @@ int ImogenH5IO::openUpFile(char *filename, unsigned int flags)
 	if(filehid > 0) return 0; else; return ERROR_CRASH;
 }
 
-bool ImogenH5IO::haveOpenedFile()
+bool ImogenH5IO::haveOpenedFile(void)
 { return (filehid >= 0); }
-
-
 
 void ImogenH5IO::closeOutFile(void)
 {
@@ -182,36 +293,6 @@ int ImogenH5IO::getArraySize(const char *name, hsize_t *dims)
 	return foo;
 }
 
-int ImogenH5IO::readDoubleArray(char *arrName, double **dataOut)
-{
-	sethid = H5Dopen(filehid, arrName, H5P_DEFAULT);
-	spacehid = H5Dget_space(sethid);
-
-	int ndims = H5Sget_simple_extent_ndims(spacehid);
-
-	//printf("/fluid1/mass has %i dimensions\n", ndims);
-
-	hsize_t dimvals[ndims];
-	hsize_t maxvals[ndims];
-
-	H5Sget_simple_extent_dims(spacehid, &dimvals[0], &maxvals[0]);
-
-	//printf("dimensions are: ");
-	int i; int numel = 1;
-	for(i = 0; i < ndims; i++) {
-		//	printf("%i ", (int)dimvals[i]);
-		numel *= dimvals[i];
-	}
-	//printf("\n");
-
-	//herr_t H5Dread( hid_t dataset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_id, hid_t xfer_plist_id, void * buf )
-	if(dataOut[0] == NULL) {
-		dataOut[0] = (double *)malloc(sizeof(double) * numel);
-	}
-
-	return H5Dread (sethid, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dataOut[0]);
-}
-
 int ImogenH5IO::getAttrInfo(const char *location, const char *attrName, hsize_t *dimensions, H5T_class_t *type)
 {
 	size_t foo;
@@ -242,6 +323,9 @@ int ImogenH5IO::chkAttrNumel(const char *location, const char *attrName, int *nu
 
 	return SUCCESSFUL;
 }
+
+//==============================================================================
+// Attribute getters
 
 // Fetches the indicated double attribute into *data. Assumes that *data can store at least
 // 'nmax' elements (default is 1 & may be ignored for scalar attributes)
@@ -295,18 +379,34 @@ int ImogenH5IO::getInt64Attr(const char *location, const char *attrName, long in
 	if(foo < 0) { return ERROR_CRASH; } else { return SUCCESSFUL; }
 }
 
-int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, double *array)
+int ImogenH5IO::getStrAttr(const char *location, const char *attrName, char **data, int nmax)
 {
-	hid_t fid = H5Screate(H5S_SIMPLE);
-	hsize_t hd[ndims];
-	int i;
-	for(i = 0; i < ndims; i++ ) { hd[i] = dims[i]; }
-	reverseVector(hd, ndims);
+	int numel;
+	int status = chkAttrNumel(location, attrName, &numel);
+	if(*data == NULL) {
+		nmax = numel;
+		*data = (char *)malloc(numel + 1);
+	}
+	if((numel > nmax) || (*data == (char *)NULL)) { return ERROR_NOMEM; }
 
-	hid_t ret = H5Sset_extent_simple(fid, ndims, hd, NULL);
+	herr_t foo = H5LTget_attribute_string(filehid, location, attrName, data[0]);
+	if(foo < 0) { return ERROR_CRASH; } else { return SUCCESSFUL; }
+}
 
-	sethid = H5Dcreate2(filehid, varname, H5T_IEEE_F64LE, fid, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-	H5Dwrite(sethid, H5T_IEEE_F64LE, H5S_ALL , H5S_ALL, H5P_DEFAULT, (const void *)array);
+//==============================================================================
+// Attribute writers
+
+int ImogenH5IO::checkOverwrite(const char *name)
+{
+	if(H5Aexists(attrTarg, name)) {
+			if(attrOverwrite) {
+				H5Adelete_by_name(attrTarg, "/", name, H5P_DEFAULT);
+				return SUCCESSFUL;
+			} else {
+				return ERROR_CRASH;
+			}
+		}
+	return SUCCESSFUL;
 }
 
 int ImogenH5IO::writeDblAttribute(const char *name, int ndims, int *dimensions, double *x)
@@ -315,6 +415,8 @@ int ImogenH5IO::writeDblAttribute(const char *name, int ndims, int *dimensions, 
 	hsize_t foo[ndims];
 	int i;
 	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+
+	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
 
 	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F64LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
@@ -329,6 +431,8 @@ int ImogenH5IO::writeFltAttribute(const char *name, int ndims, int *dimensions, 
 	int i;
 	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
 
+	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
+
 	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F32LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_IEEE_F32LE, x);
@@ -341,6 +445,8 @@ int ImogenH5IO::writeInt32Attribute(const char *name, int ndims, int *dimensions
 	hsize_t foo[ndims];
 	int i;
 	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+
+	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
 
 	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I32LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
@@ -355,13 +461,65 @@ int ImogenH5IO::writeInt64Attribute(const char *name, int ndims, int *dimensions
 	int i;
 	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
 
+	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
+
 	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I64LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_STD_I64LE, x);
 	return 0;
 }
 
-int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *geo, ParallelTopology *pt)
+//==============================================================================
+// Array readers
+
+int ImogenH5IO::readDoubleArray(const char *arrName, double **dataOut)
+{
+	sethid = H5Dopen(filehid, arrName, H5P_DEFAULT);
+	spacehid = H5Dget_space(sethid);
+
+	int ndims = H5Sget_simple_extent_ndims(spacehid);
+
+	//printf("/fluid1/mass has %i dimensions\n", ndims);
+
+	hsize_t dimvals[ndims];
+	hsize_t maxvals[ndims];
+
+	H5Sget_simple_extent_dims(spacehid, &dimvals[0], &maxvals[0]);
+
+	//printf("dimensions are: ");
+	int i; int numel = 1;
+	for(i = 0; i < ndims; i++) {
+		//	printf("%i ", (int)dimvals[i]);
+		numel *= dimvals[i];
+	}
+	//printf("\n");
+
+	//herr_t H5Dread( hid_t dataset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_id, hid_t xfer_plist_id, void * buf )
+	if(dataOut[0] == NULL) {
+		dataOut[0] = (double *)malloc(sizeof(double) * numel);
+	}
+
+	return H5Dread (sethid, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dataOut[0]);
+}
+
+//==============================================================================
+// Array writers
+
+int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, double *array)
+{
+	hid_t fid = H5Screate(H5S_SIMPLE);
+	hsize_t hd[ndims];
+	int i;
+	for(i = 0; i < ndims; i++ ) { hd[i] = dims[i]; }
+	reverseVector(hd, ndims);
+
+	hid_t ret = H5Sset_extent_simple(fid, ndims, hd, NULL);
+
+	sethid = H5Dcreate2(filehid, varname, H5T_IEEE_F64LE, fid, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+	H5Dwrite(sethid, H5T_IEEE_F64LE, H5S_ALL , H5S_ALL, H5P_DEFAULT, (const void *)array);
+}
+
+int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *geo, ParallelTopology *pt, ImogenTimeManager *timeManager)
 {
 	int status = SUCCESSFUL;
 
@@ -472,17 +630,23 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	attrTargetDataset();
 
+	pa[0] = (double)timeManager->iterMax();
 	status = writeDblAttribute("iterMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	pa[0] = (double)timeManager->iter();
 	status = writeDblAttribute("iteration", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	pa[0] = (double)timeManager->time();
 	status = writeDblAttribute("time", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	pa[0] = (double)timeManager->timeMax();
 	status = writeDblAttribute("timeMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	pa[0] = 999999;
 	status = writeDblAttribute("wallMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
+	return SUCCESSFUL;
 	/* missing:
 	 * about (string)
 	 * ver (string)
@@ -498,9 +662,17 @@ ImogenTimeManager::ImogenTimeManager(void)
 	pIterDigits = 4;
 	pTimeMax = 1e9;
 	pIterMax = 10;
-	pSaveBy = iterations;
-	pTimePerSave = 1;
-	pStepsPerSave = 10;
+	int i;
+	for(i = 0; i < 3; i++) {
+		pTimePerSave[i] = -1;
+		pStepsPerSave[i] = -1;
+		pSlice[i] = 0;
+	}
+	pTimePerSave[2] = 1;
+	pStepsPerSave[2] = 10;
+
+	pNumPadDigits = 1;
+	pIniIterations = 0;
 
 	resetTime();
 }
@@ -518,23 +690,47 @@ int ImogenTimeManager::readConfigParams(ImogenH5IO *conf)
 
 	setLimits(d0[0], i0[0]);
 
+	status = conf->getDblAttr("/save", "percent", &d0[0], 3);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	status = conf->getInt32Attr("/save", "slice", &i0[0], 3);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+	int n;
+	for(n = 0; n < 3; n++) {
+		pTimePerSave[n]  = pTimeMax * d0[n] / 100.0;
+		pStepsPerSave[n] = pIterMax * d0[n] / 100.0;
+		pSlice[n] = i0[n];
+	}
+
+	status = conf->getInt32Attr("/save", "bytime", &i0[0]);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
+	if(i0[0]) {
+		pSaveBy = elapsedTime;
+	} else {
+		pSaveBy = iterations;
+	}
+
 	return status;
 }
 
 /* Sets the save mode to time (saves a frame per given time elapsed), and sets this time equal
  * to t */
-void ImogenTimeManager::savePerTime(double t)
+void ImogenTimeManager::savePerTime(double t, int dim)
 {
+	if((dim < 1) || (dim  > 3)) return;
+
 	pSaveBy = elapsedTime;
-	pTimePerSave = t;
+	pTimePerSave[dim-1] = t;
 }
 
 /* Sets the save mode to steps (saves a frame per given #steps elapsed), and sets the number
  * of steps to s */
-void ImogenTimeManager::savePerSteps(int s)
+void ImogenTimeManager::savePerSteps(int s, int dim)
 {
+	if((dim < 1) || (dim  > 3)) return;
+
 	pSaveBy = iterations;
-	pStepsPerSave = s;
+	pStepsPerSave[dim-1] = s;
 }
 
 /* Dumps existing chronometric information, resetting time and iterations to zero */
@@ -545,13 +741,53 @@ void ImogenTimeManager::resetTime(void)
 	pKahanTimeC = 0;
 
 	pIterations = 0;
+	pIniIterations = 0;
 }
+
+int ImogenTimeManager::resumeTime(char *prefix, int frameno)
+{
+	char *fname = (char *)malloc(strlen(prefix) + 64);
+	int pad;
+	for(pad = 1; pad < 10; pad++) {
+		sprintf(fname, "%s_3D_XYZ_rank000_%0*i.h5", prefix, pad, frameno);
+		FILE *ftest = fopen(fname, "r");
+		if(ftest != NULL) {
+			fclose(ftest);
+			break;
+		}
+	}
+	if(pad == 10) {
+		PRINT_FAULT_HEADER;
+		std::cout << "Attempted to resume time from frame, but accessing file '" << fname << "' failed.\nThis really shouldn't happen since by this point I've successfully read the dataframe...\n";
+		PRINT_FAULT_FOOTER;
+		return ERROR_CRASH;
+	}
+
+	ImogenH5IO reader(fname);
+
+	int status = reader.getDblAttr("/timehist", "time", &pTime);
+	status = reader.getInt32Attr("/timehist", "iteration", &pIterations);
+
+	int myrank;
+
+	if(imRankZero()) {
+		std::cout << "Resuming from frame " << frameno << " with time=" << pTime << " and iteration=" << pIterations << "." << std::endl; }
+
+	pIniIterations = frameno;
+
+	free(fname);
+	return 0;
+}
+
 
 /* Sets the maximum time for the simulation to run & number of iterations to take */
 void ImogenTimeManager::setLimits(double timeMax, int iterMax)
 {
-	pTimeMax = timeMax;
-	pIterMax = iterMax;
+	if(timeMax > 0) pTimeMax = timeMax;
+	if(iterMax > 0) {
+		pIterMax = iterMax;
+		pNumPadDigits = (int)ceil(log10((double)pIterMax));
+	}
 }
 
 /* Requests the time manager to "check out" the suggested timestep dt
@@ -564,10 +800,10 @@ double ImogenTimeManager::registerTimestep(double dt)
 		dt = (pTimeMax - pTime) / 2;
 	}
 	if(pSaveBy == elapsedTime) {
-		double persNow = floor(pTime / pTimePerSave);
-		double persNext= floor(tNext / pTimePerSave);
+		double persNow = floor(pTime / pTimePerSave[2]);
+		double persNext= floor(tNext / pTimePerSave[2]);
 		if(persNext > persNow) {
-			dt = (persNext * pTimePerSave - pTime) / 2;
+			dt = (persNext * pTimePerSave[2] - pTime) / 2;
 		}
 	}
 
@@ -581,11 +817,11 @@ double ImogenTimeManager::registerTimestep(double dt)
 bool ImogenTimeManager::saveThisStep(void)
 {
 	if(pSaveBy == elapsedTime) {
-		double pers = floor(pTime / pTimePerSave);
-		if( abs( pers * pTimePerSave - pTime ) < 1e-7 ) return true;
+		double pers = floor(pTime / pTimePerSave[2]);
+		if( fabs( pers * pTimePerSave[2] - pTime ) < 1e-7 ) return true;
 	}
 	if(pSaveBy == iterations) {
-		if(pIterations % pStepsPerSave == 0) return true;
+		if(pIterations % pStepsPerSave[2] == 0) return true;
 	}
 	return false;
 }
@@ -608,7 +844,7 @@ void ImogenTimeManager::applyTimestep(void)
 bool ImogenTimeManager::terminateSimulation(void)
 {
 if(pIterations >= pIterMax) return true;
-if(pTime - pTimeMax > 1e-8) return true;
+if(pTime - pTimeMax > -1e-8) return true;
 
 return false;
 }
