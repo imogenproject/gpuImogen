@@ -46,7 +46,9 @@ __constant__ double devLambda[16]; // for gradient calculator kernels
 #define EPSILON    dragparams[6]
 #define GAMMAM1    dragparams[8]
 
+#ifndef NOMATLAB
 #include "mex.h"
+#endif
 
 #include "cudaCommon.h"
 #include "cudaSource2FluidDrag.h"

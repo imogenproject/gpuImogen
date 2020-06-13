@@ -5,7 +5,10 @@
 #include <stdint.h>
 #include <unistd.h>
 #endif
+
+#ifndef NOMATLAB
 #include "mex.h"
+#endif
 
 // CUDA
 #include "cuda.h"

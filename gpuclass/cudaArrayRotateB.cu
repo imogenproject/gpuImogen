@@ -137,7 +137,8 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 		reallocatePerArray = 1; // definitely should do this if they're being returned!
 	}
 
-	MGArray *nuClone;
+	MGArray nuVar;
+	MGArray *nuClone = &nuVar;
 	for(j = 0; j < nArrays; j++) {
 
 		if(actuallyNeedToReorder(&phi->dim[0], exchangeCode) == 0) {
@@ -277,8 +278,6 @@ int flipArrayIndices(MGArray *phi, MGArray **newArrays, int nArrays, int exchang
 					returnCode = MGA_delete(nuClone); // Before deleting new pointer
 				}
 			}
-			if((j == (nArrays-1)) || reallocatePerArray) { free(nuClone); }
-
 		} else { // Otherwise, simply write the new MGArray to the output pointer.
 			psi[0] = *nuClone;
 		}

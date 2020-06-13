@@ -1,12 +1,10 @@
 
 #include "cuda.h"
 #include "cudaCommon.h"
+#include "cudaUtilities.h"
 #include "cudaGradientKernels.h"
 
 __constant__ double devLambda[12];
-
-
-__global__ void writeScalarToVector(double *x, long numel, double f);
 
 // compute grad(phi) in XYZ or R-Theta-Z with 2nd or 4th order accuracy
 template <geometryType_t coords>
@@ -184,19 +182,6 @@ int computeCentralGradient(MGArray *phi, MGArray *gradient, GeometryParams geom,
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) return worked;
 
 	return CHECK_IMOGEN_ERROR(worked);
-
-}
-
-// Needed with the gradient calculators in 2D because they leave the empty directions uninitialized
-// Vomits the value f into array x, from x[0] to x[numel-1]
-__global__ void writeScalarToVector(double *x, long numel, double f)
-{
-	long a = threadIdx.x + blockDim.x*blockIdx.x;
-
-	for(; a < numel; a+= blockDim.x*gridDim.x) {
-		x[a] = f;
-
-	}
 
 }
 

@@ -1,5 +1,7 @@
 
+#ifndef NOMATLAB
 #include "mex.h"
+#endif
 
 #include "nvToolsExt.h"
 #include "cudaCommon.h"
