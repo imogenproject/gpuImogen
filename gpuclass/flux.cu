@@ -103,8 +103,10 @@ if(fsp.stepDirection > 0) { /* If we are doing forward sweep */
 			stepParameters.stepDirection = nowDir;
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+
 			returnCode = setFluidBoundary(fluid, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
@@ -113,7 +115,6 @@ if(fsp.stepDirection > 0) { /* If we are doing forward sweep */
 		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, permcall[n][sweep], cudaStreams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
-
 } else { /* If we are doing backwards sweep */
 	// If we already have a buffer it's large, use it. Otherwise we actually /lose/ beause
 	// performFluidUpdate below will have to cudaMalloc and free
@@ -129,8 +130,10 @@ if(fsp.stepDirection > 0) { /* If we are doing forward sweep */
 			stepParameters.stepDirection = nowDir;
 			returnCode = performFluidUpdate_1D(fluid, stepParameters, parallelTopo, tempStorage);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+
 			returnCode = setFluidBoundary(fluid, &fsp.geometry, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
+
 			returnCode = exchange_MPI_Halos(fluid, 5, parallelTopo, nowDir);
 			if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 		}
@@ -138,8 +141,6 @@ if(fsp.stepDirection > 0) { /* If we are doing forward sweep */
 		returnCode = (permcall[n][sweep] != 0 ? flipArrayIndices(fluid, (MGArray **)NULL, 5, permcall[n][sweep], cudaStreams, tempStorage) : SUCCESSFUL );
 		if(returnCode != SUCCESSFUL) return CHECK_IMOGEN_ERROR(returnCode);
 	}
-
-
 }
 	
 if(usingLocalTemp) {

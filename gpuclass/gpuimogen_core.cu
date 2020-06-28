@@ -182,16 +182,18 @@ int main(int argc, char **argv)
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	// Acquire simulation geometry
-	int circularity = 0; // [1 2 4] = [
+	int circularity = 0; // [1 2 4] = [x y z] circularity, summate
 	fsp.geometry = acquireSimulationGeometry(&globalResolution[0], &topo, circularity);
 
 	status = conf->getDblAttr("/", "d3h", &fsp.geometry.h[0], 3);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	if(0) { // TESTING
-		//printf("RANK %i:\n", myrank);
-		//describeTopology(&topo);
-		//describeGeometry(&fsp.geometry);
+		usleep(100000*myrank);
+		printf("RANK %i:\n", myrank);
+		describeTopology(&topo);
+		describeGeometry(&fsp.geometry);
+
 		//MPI_Finalize();
 		//return 0; */
 	}
@@ -236,17 +238,28 @@ int main(int argc, char **argv)
 		fluids[fluidct].DataHolder.nGPUs = nCudaDevices;
 		for(i = 0; i < nCudaDevices; i++) fluids[fluidct].DataHolder.deviceID[i] = deviceList[i];
 
-		// FIXME get the ic struct name from the initializer!!!
 		status = readImogenICs(&fluids[fluidct], &fluids[fluidct].DataHolder, &fsp.geometry, inputDatafilePrefix, specifiedFrame);
 		if(status != SUCCESSFUL) break;
 
-		// FIXME this attaches boundary conditions most naively
 		status = conf->getInt32Attr("/fluidDetail1", "bcmodes", &bcnumbers[0], 6);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 		for(j = 0; j < 5; j ++ ) {
+			// Sets -all- ranks' BCs to those indicated, computes which are interior (MPI-circular), then sets interior edges back to circular.
 			for(i = 0; i < 6; i++) { fluids[fluidct].data[j].boundaryConditions.mode[i] = num2BCModeType(bcnumbers[i]); }
+			identifyInternalBoundaries(&fluids[fluidct].data[j], &topo);
+			for(i = 0; i < 6; i++) {
+				if(fluids[fluidct].data[j].mpiCircularBoundaryBits & (1 << i)) {
+					fluids[fluidct].data[j].boundaryConditions.mode[i] = circular; }
+			}
 		}
 
+	}
+
+	if(0) {
+		MPI_Barrier(MPI_COMM_WORLD);
+		usleep(100000*myrank);
+		std::cout << "ARRAY FOR RANK " << myrank << std::endl;
+		MGA_debugPrintAboutArray(&fluids[0].data[0]);
 	}
 
 	if(specifiedFrame > 0) {
@@ -315,6 +328,23 @@ int main(int argc, char **argv)
 	topoDestroyDimensionalCommunicators(&topo);
 
 	MPI_Finalize();
+}
+
+/* This function utilizes our topology to assign meaningful values to the phi->mpiCircularBoundaryBits */
+void identifyInternalBoundaries(MGArray *phi, ParallelTopology *topo)
+{
+	int cbb = 0;
+	int i = 0;
+
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	for(i = 0; i < 3; i++) {
+		if(topo->nproc[i] > 1) {
+			if((topo->coord[i] > 0) || (phi->boundaryConditions.mode[2*i+0] == circular) ) { cbb |= 1 << (2*i); }
+			if((topo->coord[i] < (topo->nproc[i]-1)) || (phi->boundaryConditions.mode[2*i+1] == circular) ) { cbb |= 2 << (2*i); }
+		}
+	}
+	phi->mpiCircularBoundaryBits = cbb;
 }
 
 // Given the global domain resolution (which must point to 3 integers, [Nx Ny Nz],
@@ -403,8 +433,7 @@ g.x0 = 0;
 g.y0 = 0;
 g.z0 = 0;
 
-// HACK FIXME HACK
-int circularBdy = 1;
+int circularBdy;
 
 int i;
 int subsize;
@@ -424,7 +453,8 @@ for(i = 0; i < 3; i++) {
 		// extend to add the left halo only if in parallel
 		if(topo->nproc[i] > 1) {
 			subsize         += halo * ((topo->coord[i] > 0) || (circularBdy) );
-			g.gridAffine[i] -= halo * ((topo->coord[i] > 0) || (circularBdy) );
+			// This disagrees with the previous understanding of the grid affine setup...
+			//g.gridAffine[i] -= halo * ((topo->coord[i] > 0) || (circularBdy) );
 		}
 
 		// extend to add the right halo only if in parallel
@@ -615,7 +645,6 @@ int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5df
 		}
 	}
 
-	/* this appears to differ in meaning, ignore temporarily
 	double chkOffset[3];
 	IHR.getDblAttr("/", "par_ myOffset", &chkOffset[0], 3);
 	for(i = 0; i < 3; i++) {
@@ -627,7 +656,7 @@ int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5df
 			PRINT_FAULT_FOOTER;
 			return ERROR_INVALID_ARGS;
 		}
-	} */
+	}
 
 	hsize_t fasize[3] = {1, 1, 1};
 	IHR.getArraySize("/fluid1/mass", &fasize[0]);

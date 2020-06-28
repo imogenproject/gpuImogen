@@ -483,6 +483,14 @@ void MGA_sledgehammerSequentialize(MGArray *q)
 	}
 }
 
+/* A serialization function even more vicious than MGA_sledgehammerSequentialize,
+ * imposes that then forces all ranks to pass MPI_Barrier(). */
+void MGA_parallelSledgehammerSequentialize(MGArray *q)
+{
+	MGA_sledgehammerSequentialize(q);
+	MPI_Barrier(MPI_COMM_WORLD);
+}
+
 double cpu_reduceInitValue(MGAReductionOperator op)
 {
 	switch(op) {

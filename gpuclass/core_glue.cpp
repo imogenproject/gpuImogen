@@ -315,11 +315,14 @@ int ImogenH5IO::chkAttrNumel(const char *location, const char *attrName, int *nu
 	foo = H5LTget_attribute_info(attrTarg, location, attrName, dimensions, &type, &nocurr);
 	if(foo < 0) { return ERROR_LIBFAILED; }
 
-	int i;
-	int ne = 1;
-	for(i = 0; i < ndims; i++) { ne *= dimensions[i]; }
-
-	*numel = ne;
+	if(type == H5T_STRING) {
+		*numel = nocurr; // some1curr after all
+	} else {
+		int i;
+		int ne = 1;
+		for(i = 0; i < ndims; i++) { ne *= dimensions[i]; }
+		*numel = ne;
+	}
 
 	return SUCCESSFUL;
 }
@@ -390,6 +393,8 @@ int ImogenH5IO::getStrAttr(const char *location, const char *attrName, char **da
 	if((numel > nmax) || (*data == (char *)NULL)) { return ERROR_NOMEM; }
 
 	herr_t foo = H5LTget_attribute_string(filehid, location, attrName, data[0]);
+	data[0][numel] = 0;
+
 	if(foo < 0) { return ERROR_CRASH; } else { return SUCCESSFUL; }
 }
 
@@ -409,62 +414,62 @@ int ImogenH5IO::checkOverwrite(const char *name)
 	return SUCCESSFUL;
 }
 
-int ImogenH5IO::writeDblAttribute(const char *name, int ndims, int *dimensions, double *x)
+// Private - Does the setup work for writing an attribute, other than the actual create/write
+int ImogenH5IO::prepareAttribute(const char *name, int ndims, int *dimensions, hid_t *attout)
 {
 	hid_t atttype = H5Screate(H5S_SIMPLE);
 	hsize_t foo[ndims];
 	int i;
-	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+	// We must reverse
+	for(i = 0; i < ndims; i++) { foo[ndims-1-i] = (hsize_t)dimensions[i]; }
 
 	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
 
-	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
-	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F64LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
+	hid_t ret  = H5Sset_extent_simple(atttype, ndims, &foo[0], NULL);
+	*attout = atttype;
+	return 0;
+}
+
+int ImogenH5IO::writeDblAttribute(const char *name, int ndims, int *dimensions, double *x)
+{
+	hid_t attType;
+	int ret = prepareAttribute(name, ndims, dimensions, &attType);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ret);
+
+	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F64LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_IEEE_F64LE, x);
 	return 0;
 }
 
 int ImogenH5IO::writeFltAttribute(const char *name, int ndims, int *dimensions, float *x)
 {
-	hid_t atttype = H5Screate(H5S_SIMPLE);
-	hsize_t foo[ndims];
-	int i;
-	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+	hid_t attType;
+	int ret = prepareAttribute(name, ndims, dimensions, &attType);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ret);
 
-	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
-
-	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
-	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F32LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
+	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F32LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_IEEE_F32LE, x);
 	return 0;
 }
 
 int ImogenH5IO::writeInt32Attribute(const char *name, int ndims, int *dimensions, int32_t *x)
 {
-	hid_t atttype = H5Screate(H5S_SIMPLE);
-	hsize_t foo[ndims];
-	int i;
-	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+	hid_t attType;
+	int ret = prepareAttribute(name, ndims, dimensions, &attType);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ret);
 
-	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
-
-	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
-	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I32LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
+	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I32LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_STD_I32LE, x);
 	return 0;
 }
 
 int ImogenH5IO::writeInt64Attribute(const char *name, int ndims, int *dimensions, int64_t *x)
 {
-	hid_t atttype = H5Screate(H5S_SIMPLE);
-	hsize_t foo[ndims];
-	int i;
-	for(i = 0; i < ndims; i++) { foo[i] = (hsize_t)dimensions[i]; }
+	hid_t attType;
+	int ret = prepareAttribute(name, ndims, dimensions, &attType);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ret);
 
-	if(checkOverwrite(name) < 0) { PRINT_SIMPLE_FAULT("Unable to overwrite attribute!\n"); return ERROR_CRASH; }
-
-	hid_t ret  = H5Sset_extent_simple(atttype, 1, &foo[0], NULL);
-	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I64LE, atttype, H5P_DEFAULT, H5P_DEFAULT);
+	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I64LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_STD_I64LE, x);
 	return 0;
 }
@@ -594,15 +599,24 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	status = writeDoubleArray("/mag/Z", 1, &vecsize, &bee);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
+	// output arrangement of ranks inside our geometry
 	double pa[3];
 	pa[0] = (double) geo->shape;
-	status = writeDblAttribute("par_ geometry", 1, &vecsize, &pa[0]);
+	int nranks;
+	MPI_Comm_size(MPI_COMM_WORLD, &nranks);
+	double procranks[nranks];
+	int qq;
+	for(qq = 0; qq < nranks; qq++) { procranks[qq] = qq; }
+	status = writeDblAttribute("par_ geometry", 3, &pt->nproc[0], &procranks[0]);
+
+	// output global resolution
 	pa[0] = geo->globalRez[0];
 	pa[1] = geo->globalRez[1];
 	pa[2] = geo->globalRez[2];
 	vecsize = 3;
 	status = writeDblAttribute("par_ globalDims", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
 	pa[0] = f->DataHolder.haloSize;
 	vecsize = 1;
 	int64_t hb = f->data[0].mpiCircularBoundaryBits;
@@ -642,7 +656,7 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	pa[0] = (double)timeManager->timeMax();
 	status = writeDblAttribute("timeMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	pa[0] = 999999;
+	pa[0] = 1e5;
 	status = writeDblAttribute("wallMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 

@@ -262,6 +262,7 @@ int      MGA_duplicateArray(MGArray **dst, MGArray *src);
 int     MGA_delete(MGArray *victim);
 
 void MGA_sledgehammerSequentialize(MGArray *q);
+void MGA_parallelSledgehammerSequentialize(MGArray *q);
 
 /* MultiGPU reduction calculators */
 int MGA_partitionReduceDimension(MGArray *in, MGArray *out, MGAReductionOperator operate, int dir, int partition);

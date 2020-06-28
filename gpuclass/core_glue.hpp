@@ -69,6 +69,8 @@ private:
 	hid_t attrTarg;
 	bool attrOverwrite;
 
+	int prepareAttribute(const char *location, int ndims, int *dimensions, hid_t *attout);
+
 	/* if the elements of vector x are labelled [1...n],
 	 * reorders x in place so that they are now [n...1] */
 	template <class V> void reverseVector(V *x, int n)

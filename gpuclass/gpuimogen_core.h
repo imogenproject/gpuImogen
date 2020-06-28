@@ -10,6 +10,7 @@
 
 // Sets up a cartesian topology for the simulation
 ParallelTopology acquireParallelTopology(int *globalDomainResolution);
+void identifyInternalBoundaries(MGArray *phi, ParallelTopology *topo);
 
 // Does the basic setup of assigning grid index coordinates
 GeometryParams generateGridGeometry(int *globalResolution, ParallelTopology *topo, int circ);
