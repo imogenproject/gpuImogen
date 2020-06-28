@@ -8,7 +8,7 @@
 #ifndef CUDASTATICS_H_
 #define CUDASTATICS_H_
 int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction);
-int setArrayBoundaryConditions(MGArray *array, GeometryParams *geo, int direction);
+int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction, int side);
 
 int setArrayStaticCells(MGArray *phi);
 

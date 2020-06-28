@@ -96,7 +96,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 		DROP_MEX_ERROR("Access array dumped.");
 	}
 
-	worked = setArrayBoundaryConditions(&phi, &geom, (int)*mxGetPr(prhs[3]));
+	worked = setArrayBoundaryConditions(&phi, &geom, (int)*mxGetPr(prhs[3]), 0);
+	worked = setArrayBoundaryConditions(&phi, &geom, (int)*mxGetPr(prhs[3]), 1);
 	if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
 		DROP_MEX_ERROR("setBoundaryCondition called from standalone has crashed: Crashing interpreter. If this happens on entry and before any iterations, check for valid BC mode settings\n");
 	}
@@ -179,7 +180,7 @@ int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction)
 			int i;
 			// iterate through the 5 fluid arrays. setA.B.C. sets statics for the array it's passed automatically.
 			for(i = 0; i < 5; i++) {
-				worked = setArrayBoundaryConditions(fluid+i, geo, direction);
+				worked = setArrayBoundaryConditions(fluid+i, geo, direction, sideNum);
 				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 		}
@@ -193,10 +194,9 @@ int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction)
 	return CHECK_IMOGEN_ERROR(worked);
 }
 
-/* Accept a pointer to an MGArray, its matlab handle, geometry information, and the physical direction to set the
- * boundary conditions on.
- * */
-int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction)
+/* Accept a pointer to an MGArray, its matlab handle, geometry information, the physical direction to set the
+ * boundary conditions on, and the side (0 = negative coord side, 1 = positive coord side) */
+int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction, int side)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
@@ -229,61 +229,58 @@ int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction)
 
 	int memoryDirection = MGA_dir2memdir(perm, direction);
 
-	int d; for(d = 0; d < 2; d++) {
-		BCModeTypes bm = phi->boundaryConditions.mode[2*(direction-1)+d];
-		// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
-		if(bm == mirror)
-			worked = setBoundarySAS(phi, d, memoryDirection, vectorComponent == direction);
+	BCModeTypes bm = phi->boundaryConditions.mode[2*(direction-1)+side];
+	// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
+	if(bm == mirror)
+		worked = setBoundarySAS(phi, side, memoryDirection, vectorComponent == direction);
 
-		// Extrapolates f(b+x) = f(b)
-		if(bm == extrapConstant) {
-			worked = setBoundarySAS(phi, d, memoryDirection, 2);
+	// Extrapolates f(b+x) = f(b)
+	if(bm == extrapConstant) {
+		worked = setBoundarySAS(phi, side, memoryDirection, 2);
+	}
+
+	// Extrapolates f(b+x) = f(b) + x f'(b)
+	// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
+	if(bm == extrapLinear) {
+		worked = setBoundarySAS(phi, side, memoryDirection, 3);
+	}
+
+	if(bm == wall) {
+		PRINT_FAULT_HEADER;
+		printf("Wall BC is not implemented!\n");
+		PRINT_FAULT_FOOTER;
+		worked = ERROR_INVALID_ARGS;
+	}
+
+	if(bm == outflow) {
+		if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+			worked = setOutflowCondition(phi, geo, side, direction);
 		}
+	}
 
-		// Extrapolates f(b+x) = f(b) + x f'(b)
-		// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
-		if(bm == extrapLinear) {
-			worked = setBoundarySAS(phi, d, memoryDirection, 3);
-		}
-
-		if(bm == wall) {
-			PRINT_FAULT_HEADER;
-			printf("Wall BC is not implemented!\n");
-			PRINT_FAULT_FOOTER;
-			worked = ERROR_INVALID_ARGS;
-		}
-
-		if(bm == outflow) {
-			if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
-				worked = setOutflowCondition(phi, geo, d, direction);
-			}
-		}
-
-		if(bm == freebalance) {
-			if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
-				// Now we need to grab the gravitational potential array
-				MGArray gravpot;
-				mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
-				if(q != NULL) {
-					worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
-					if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
-						printf("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n");
-						return worked;
-					}
-
-					double fluidGamma = derefXdotAdotB_scalar((mxArray *)phi->boundaryConditions.externalData, "gamma", NULL);
-
-					// Then set the free balance condition
-					worked = setFreeBalanceCondition(phi, geo, d, direction, &gravpot, fluidGamma);
+	if(bm == freebalance) {
+		if(phi->numSlabs == 0) { // primitive check that this in fact the rho array setOutflowCondition needs...
+			// Now we need to grab the gravitational potential array
+			MGArray gravpot;
+			mxArray *q = derefXdotAdotB(boundaryData, "gravpot", "field");
+			if(q != NULL) {
+				worked = MGA_accessMatlabArrays((const mxArray **)&q, 0, 0, &gravpot);
+				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) {
+					printf("Failure: Attempted to access fluid[0] (which should be mass) .boundaryData.gravpot and was unsuccessful.\nThe freebalance boundary condition requires that a gravity potential array be set.\n");
+					return worked;
 				}
+
+				double fluidGamma = derefXdotAdotB_scalar((mxArray *)phi->boundaryConditions.externalData, "gamma", NULL);
+
+				// Then set the free balance condition
+				worked = setFreeBalanceCondition(phi, geo, side, direction, &gravpot, fluidGamma);
 			}
 		}
+	}
 
 
 		// whatever we just did, check...
 		if(worked != SUCCESSFUL) break;
-
-	}
 
 	return SUCCESSFUL;
 }

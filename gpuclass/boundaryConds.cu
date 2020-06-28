@@ -154,7 +154,7 @@ int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction)
 			int i;
 			// iterate through the 5 fluid arrays. setA.B.C. sets statics for the array it's passed automatically.
 			for(i = 0; i < 5; i++) {
-				worked = setArrayBoundaryConditions(fluid+i, geo, direction);
+				worked = setArrayBoundaryConditions(fluid+i, geo, direction, sideNum);
 				if(CHECK_IMOGEN_ERROR(worked) != SUCCESSFUL) break;
 			}
 		}
@@ -171,7 +171,7 @@ int setFluidBoundary(MGArray *fluid, GeometryParams *geo, int direction)
 /* Accept a pointer to an MGArray, its matlab handle, geometry information, and the physical direction to set the
  * boundary conditions on.
  * */
-int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction)
+int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction, int side)
 {
 	CHECK_CUDA_ERROR("entering setBoundaryConditions");
 
@@ -191,36 +191,30 @@ int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction)
 
 	int memoryDirection = MGA_dir2memdir(perm, direction);
 
-	int d; for(d = 0; d < 2; d++) {
-		BCModeTypes bm = phi->boundaryConditions.mode[2*(direction-1)+d];
-		// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
-		if(bm == mirror)
-			worked = setBoundarySAS(phi, d, memoryDirection, vectorComponent == direction);
+	BCModeTypes bm = phi->boundaryConditions.mode[2*(direction-1)+side];
+	// Sets a mirror BC: scalar, vector_perp f(b+x) = f(b-x), vector normal f(b+x) = -f(b-x)
+	if(bm == mirror)
+		worked = setBoundarySAS(phi, side, memoryDirection, vectorComponent == direction);
 
-		// Extrapolates f(b+x) = f(b)
-		if(bm == extrapConstant) {
-			worked = setBoundarySAS(phi, d, memoryDirection, 2);
-		}
-
-		// Extrapolates f(b+x) = f(b) + x f'(b)
-		// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
-		if(bm == extrapLinear) {
-			worked = setBoundarySAS(phi, d, memoryDirection, 3);
-		}
-
-		if(bm == wall) {
-			PRINT_FAULT_HEADER;
-			printf("Wall BC is not implemented!\n");
-			PRINT_FAULT_FOOTER;
-			worked = ERROR_INVALID_ARGS;
-		}
-
-		// whatever we just did, check...
-		if(worked != SUCCESSFUL) break;
-
+	// Extrapolates f(b+x) = f(b)
+	if(bm == extrapConstant) {
+		worked = setBoundarySAS(phi, side, memoryDirection, 2);
 	}
 
-	return SUCCESSFUL;
+	// Extrapolates f(b+x) = f(b) + x f'(b)
+	// WARNING: This is unconditionally unstable unless normal flow rate is supersonic
+	if(bm == extrapLinear) {
+		worked = setBoundarySAS(phi, side, memoryDirection, 3);
+	}
+
+	if(bm == wall) {
+		PRINT_FAULT_HEADER;
+		printf("Wall BC is not implemented!\n");
+		PRINT_FAULT_FOOTER;
+		worked = ERROR_INVALID_ARGS;
+	}
+
+	return CHECK_IMOGEN_ERROR(worked);
 }
 
 /* FIXME - the entire boundary conditions implementation for nontrivial BCs needs to be rewritten
