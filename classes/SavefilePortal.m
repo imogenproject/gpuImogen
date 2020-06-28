@@ -30,6 +30,8 @@ classdef SavefilePortal < handle
         pMetamode;
         
         pReadonlyMode;
+        
+        pPrefix;
     end %PROTECTED
     
     %===================================================================================================
@@ -51,14 +53,21 @@ classdef SavefilePortal < handle
                 self.typeToLoad = 7;
             end
             
-            self.changeDirectory(wd);
-            self.rescanDirectory();
+            self.pPrefix = '';
             
             self.setParallelMode(0);
             self.setMetamode(0);
             self.setVarFormat('default');
             
             self.pReadonlyMode = 1;
+            
+            self.changeDirectory(wd);
+            self.rescanDirectory();
+        end
+        
+        function prefix(self, p)
+            self.pPrefix = p;
+            self.rescanDirectory();
         end
 
         function setParallelMode(self, enable)
@@ -224,13 +233,13 @@ classdef SavefilePortal < handle
             self.pushdir(self.savefileDirectory);
             if (r >= 0) || mo
                 if r < 0; r = 0; end
-		if mo
-                    F = util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode);
-		else
-                    F = DataFrame(util_LoadFrameSegment(self.typeToLoad, r, b(f), self.pMetamode));
-		end
+                if mo
+                    F = util_LoadFrameSegment(self.pPrefix, self.typeToLoad, r, b(f), self.pMetamode);
+                else
+                    F = DataFrame(util_LoadFrameSegment(self.pPrefix, self.typeToLoad, r, b(f), self.pMetamode));
+                end
             else
-                F = DataFrame(util_LoadWholeFrame(self.typeToLoad, b(f)));
+                F = DataFrame(util_LoadWholeFrame(self.pPrefix, self.typeToLoad, b(f)));
             end
             
             self.popdir();
@@ -278,7 +287,7 @@ classdef SavefilePortal < handle
 
         function rescanDirectory(self)
             self.pushdir(self.savefileDirectory);
-            self.savefileList = enumerateSavefiles();
+            self.savefileList = enumerateSavefiles(self.pPrefix);
             
             self.updatePublicState();
             

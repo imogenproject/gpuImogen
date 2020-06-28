@@ -1,9 +1,9 @@
-function dex = enumerateSavefiles(indir)
-% enumerateSavefiles(indir) returns an index of Imogen runfiles saved in
+function dex = enumerateSavefiles(filePrefix, indir)
+% enumerateSavefiles(filePrefix, indir) returns an index of Imogen runfiles saved in
 % 'indir'. If no indir is given, the pwd is used.
 
 d0 = pwd(); % Avoid corrupting global state
-if nargin > 0; cd(indir); end
+if nargin > 1; cd(indir); end
 
 if numel(dir('savefileIndex.mat')) == 1
     load('savefileIndex.mat','dex');
@@ -13,6 +13,9 @@ if numel(dir('savefileIndex.mat')) == 1
     end
 end
 
+if (strlength(filePrefix) > 0) && (filePrefix(end) ~= '_')
+    filePrefix = [filePrefix '_'];
+end
 
 % Check if this resembles an Imogen savefile directory at all
 % If these don't exist, emit warning
@@ -39,43 +42,38 @@ dex = struct('X',[],'Y',[],'Z',[],'XY',[],'XZ',[],'YZ',[],'XYZ',[],'misc',[]);
 % All the savefiles that Imogen generates
 fieldlist={'X','Y','Z','XY','XZ','YZ','XYZ'};
 typelist = {'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
-prefixlen=[12, 12, 12, 13, 13, 13, 14];
+prefixlen=[12, 12, 12, 13, 13, 13, 14] + strlength(filePrefix);
 
 runComplete = 0;
 padLen = 0;
 
 for N = 1:numel(typelist)
+    
     % Per type, list all the files of that type written by rank 0
     if format == ENUM.FORMAT_MAT
-        f = dir([typelist{N} '_rank0_*mat']);
+        f = dir([filePrefix typelist{N} '_rank*_*mat']);
     elseif format == ENUM.FORMAT_NC
-        f = dir([typelist{N} '_rank0_*nc']);
+        f = dir([filePrefix typelist{N} '_rank*_*nc']);
     elseif format == ENUM.FORMAT_HDF
-        f = dir([typelist{N} '_rank0_*h5']);
+        f = dir([filePrefix typelist{N} '_rank*_*h5']);
     end
 
     flist = [];
     for u = 1:numel(f)
-        if f(u).name(prefixlen(N)) == 'S'
-            a = 0;
-        elseif f(u).name(prefixlen(N)) == 'F'
-            X = util_LoadFrameSegment(typelist{N}, 0, 999999, 'metaonly'); % Load last frame
-            a = X.iter;
-            runComplete = 1; % if a _FINAL exists, the run's done and this index can be saved
-            % in order to not waste time on future directory enumerations, which may be slow.
+        c = analyzeSavefileName(f(u).name);
+        
+        a = sscanf(f(u).name(c.framepos:end),'%d');
+        
+        X = util_LoadFrameSegment(filePrefix, typelist{N}, 0, a, 'metaonly'); % l
+        
+        if a == X.time.iterMax; runComplete = 1; end
+        
+        if format == ENUM.FORMAT_MAT
+            padLen = numel(f(u).name) - prefixlen(N) - 3;
         else
-            a = sscanf(f(u).name(prefixlen(N):end),'%d');
-
-            X = util_LoadFrameSegment(typelist{N}, 0, a, 'metaonly'); % l
-
-            if a == X.time.iterMax; runComplete = 1; end
-
-            if format == ENUM.FORMAT_MAT
-                padLen = numel(f(u).name) - prefixlen(N) - 3;
-            else
-                padLen = numel(f(u).name) - prefixlen(N) - 2;
-            end
+            padLen = numel(f(u).name) - prefixlen(N) - 2;
         end
+
         flist(end+1) = a;
     end
     
@@ -97,5 +95,63 @@ else
 end
 
 cd(d0);
+
+end
+
+function c = analyzeSavefileName(f)
+% need:
+% prefix
+% type
+% rank digits
+% frame digits
+% extension type
+
+% The generic format is prefix_TYPE_rankXXX_YYY.ext
+
+% find the 1/2/3 of the type
+for j = 1:numel(f)
+    if any(f(j) == ['1' '2' '3']); break; end
+end
+
+if j > 2
+    p = f(1:(j-2));
+    f = f(j:end);
+    x = j;
+else
+    p = '';
+    x = 0;
+end
+
+t = -1;
+typelist = {'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
+for n = 1:7
+    if strcmp(f(1:numel(typelist{n})), typelist{n}) == 1
+        t = n;
+        f = f((numel(typelist{n})+ 6):end);
+        x = x + numel(typelist{n}) + 5;
+        break
+    end
+end
+
+rankpos = x;
+
+for r = 1:numel(f)
+    if f(r) == '_'; break; end
+end
+r=r-1;
+f=f((r+2):end);
+framepos = x + r + 1;
+
+for d = 1:numel(f)
+    if f(d) == '.'; break; end
+end
+d=d-1;
+f = f((d+2):end);
+
+if strcmp(f, 'mat') == 1; e = 1; end
+if strcmp(f, 'nc') == 1; e = 2; end
+if strcmp(f, 'h5') == 1; e = 3; end
+
+c = struct('prefix', p, 'type', t, 'rankdig', r, 'rankpos', rankpos, 'framedig', d, 'framepos', framepos, 'ext', e);
 
 end

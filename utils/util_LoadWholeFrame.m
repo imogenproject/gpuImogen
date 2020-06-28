@@ -1,9 +1,9 @@
-function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
+function bigFrame = util_LoadWholeFrame(prefix, basename, framenum, precise)
 % bigFrame = util_LoadWholeFrame(basename, framenum, precise)
 % > basename : One of the strings '1D_X', '1D_Y', '1D_Z', '2D_XY', '2D_XZ',
 % '2D_XZ', or '3D_XYZ', or an integer from 1 to 7 referring to them in that
 % order
-    if (nargin < 3) | (precise == 1); precise = 'double'; else; precise = 'single'; end
+    if (nargin < 4) | (precise == 1); precise = 'double'; else; precise = 'single'; end
 
     if isa(basename,'double')
         strnames={'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
@@ -16,7 +16,7 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
         end
     end
 
-    frame = util_LoadFrameSegment(basename, 0, framenum); % We need one for reference
+    frame = util_LoadFrameSegment(prefix, basename, 0, framenum); % We need one for reference
 
     bigFrame = frame;
     globalRes = frame.parallel.globalDims;
@@ -62,6 +62,7 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
     end
 
     ranks = frame.parallel.geometry;
+    %ranks = [0 2;1 3];
     bset     = {'magX','magY','magZ'};
 
     u = 1;
@@ -97,7 +98,7 @@ function bigFrame = util_LoadWholeFrame(basename, framenum, precise)
         
         if u == numel(ranks); break; end
         u=u+1;
-        frame = util_LoadFrameSegment(basename, ranks(u), framenum);
+        frame = util_LoadFrameSegment(prefix, basename, ranks(u), framenum);
     end
 
 end % function

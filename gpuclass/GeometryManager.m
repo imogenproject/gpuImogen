@@ -191,7 +191,7 @@ classdef GeometryManager < handle
 
         function makeDimNotCircular(obj, dim)
             % makeDimNotCircular(1 <= dim <= 3) declares a noncircular BC on dim
-            % Effect: Outer edge does not have a halo.
+            % Effect: Outer e:qdge does not have a halo.
             if (dim < 1) || (dim > 3); error('Dimension must be between 1 and 3\n'); end
             obj.circularBCs(dim) = 0;
             obj.updateGridVecs();

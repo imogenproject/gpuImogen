@@ -8,7 +8,7 @@ function F = util_LoadEntireSpacetime(fields, prefix, hugeStructIsOkay, progress
 % hugeStructIsOkay: Turns off warning and confirmation request for output predicted to exceed 10GB
 % progressReport:   0 - none; 1 - print '.' per frame; 2 - print # per 100 frames; 3 - waitbar()
 
-list = enumerateSavefiles();
+list = enumerateSavefiles('');
 
 F = [];
 

@@ -17,7 +17,7 @@ if inBasename(end) == '_'
     warning('inBasename had a trailing _; This causes a no-frames-found error & has been automatically stripped out.');
 end
 
-frmexists = util_checkFrameExistence(inBasename, addrange);
+frmexists = util_checkFrameExistence('', inBasename, addrange);
 if all(~frmexists)
   fprintf('No frames to be added exist; Returning.\n');
   return

@@ -1,15 +1,19 @@
-function dataframe = util_LoadFrameSegment(basename, rank, frameno, meta)
-% function dataframe = util_LoadFrameSegment(basename, rank, frameno, metaonly)
+function dataframe = util_LoadFrameSegment(prefix, basename, rank, frameno, meta)
+% function dataframe = util_LoadFrameSegment(prefix, basename, rank, frameno, metaonly)
 % > basename: prefix of files (2D_XY, 3D_XYZ, etc)
 % > rank:     integer of MPI rank whose segment we load
 % > frameno:  frame number of file to load
 % > meta:     If identical the to the string 'metaonly', does not load the large 3D data arrays
 
-if nargin < 4; meta = 'everything'; end
+if nargin < 5; meta = 'everything'; end
 
-[act, fname] = util_FindSegmentFile(basename, rank, frameno);
+if (strlength(prefix) > 0) && (prefix(end) ~= '_')
+    prefix = [prefix '_'];
+end
 
-if act < 0; error('No .mat or .nc with basename %s, rank %i, frame #%i found in pwd=''%s''\n', basename, rank, frameno, pwd()); end
+[act, fname] = util_FindSegmentFile(prefix, basename, rank, frameno);
+
+if act < 0; error('No .mat or .nc with prefix %s, basename %s, rank %i, frame #%i found in pwd=''%s''\n', prefix, basename, rank, frameno, pwd()); end
 
 % Load the next frame into workspace
 try

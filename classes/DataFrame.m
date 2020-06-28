@@ -524,8 +524,6 @@ classdef DataFrame < handle
             self.time  = frame.time;
             self.parallel = frame.parallel;
             self.gamma = frame.gamma;
-            self.about = frame.about;
-            self.ver   = frame.ver;
             self.dGrid = frame.dGrid;
         end
     end%PROTECTED

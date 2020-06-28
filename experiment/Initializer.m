@@ -276,7 +276,7 @@ classdef Initializer < handle
 
         end
 
-        function saveParallelInitialConditions(obj, nprocs, basename)
+        function saveParallelInitialConditions(obj, nprocs, basename, bytime)
             
             % tuple to rank
             ttr = @(c) c(1) + nprocs(1)*(c(2)+nprocs(2)*c(3));
@@ -311,8 +311,7 @@ classdef Initializer < handle
                         f = translateICStructToFrame(eyesee);
                         if myrank == 0 % first go, write out the initializer too
                             % Certain additions are required here:
-                            bytime = 1;
-                            translateInitializerToH5(eyesee.ini, "testout.h5", basename, bytime);
+                            translateInitializerToH5(eyesee.ini, [basename '.h5'], basename, bytime);
                         end
                         
                         p = ceil(log10(eyesee.ini.iterMax));

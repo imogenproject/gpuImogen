@@ -40,7 +40,28 @@ F.ver = '1.0.1';
 
 g = GPUManager.getInstance();
 
-F.parallel = struct('geometry', IC.ini.geometry.pGeometryType, 'globalDims', IC.ini.geometry.globalDomainRez, 'myOffset', IC.ini.geometry.pLocalDomainOffset, 'haloBits', 0, 'haloAmt', g.useHalo);
+nProcs = IC.ini.geomgr.topology.nproc;
+coord = IC.ini.geomgr.topology.coord;
+procgrid = zeros(nProcs);
+np = prod(nProcs);
+procgrid(1:np) = 0:(np-1);
+
+halobits = 0;
+B = BCManager();
+bs = B.expandBCStruct(IC.ini.bcMode{1});
+
+q = @B.bcModeToNumber;
+bc1 = [q(bs{1,1}) q(bs{2,1})  q(bs{1,2}) q(bs{2,2})   q(bs{1,3}) q(bs{2,3})];
+npm = nProcs - 1;
+
+if (nProcs(1) > 1) && ( (bc1(1) == 1) || (coord(1) > 0) ); halobits = halobits + 1; end
+if (nProcs(1) > 1) && ( (bc1(2) == 1) || (coord(1) < npm(1)) ); halobits = halobits + 2; end
+if (nProcs(2) > 1) && ( (bc1(3) == 1) || (coord(2) > 0) ); halobits = halobits + 4; end
+if (nProcs(2) > 1) && ( (bc1(4) == 1) || (coord(2) < npm(2)) ); halobits = halobits + 8; end
+if (nProcs(3) > 1) && ( (bc1(5) == 1) || (coord(3) > 0) ); halobits = halobits + 16; end
+if (nProcs(3) > 1) && ( (bc1(6) == 1) || (coord(3) < npm(3)) ); halobits = halobits + 32; end
+
+F.parallel = struct('geometry', procgrid, 'globalDims', IC.ini.geometry.globalDomainRez, 'myOffset', IC.ini.geometry.pLocalDomainOffset, 'haloBits', int64(halobits), 'haloAmt', g.useHalo);
 
 end
 
