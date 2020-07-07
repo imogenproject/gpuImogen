@@ -6,6 +6,7 @@ bool imRankZero(void);
 int lookForArgument(int argc, char **argv, const char *argument);
 int argReadKeyValueDbl(int argc, char **argv, const char *key, double *val);
 int argReadKeyValueInt(int argc, char **argv, const char *key, int *val);
+int argReadKeyValueStr(int argc, char **argv, const char *key, char **val);
 void printHelpScreed(void);
 
 void factorizeInteger(int X, int **factors, int *nfactors);

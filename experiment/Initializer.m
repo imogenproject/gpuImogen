@@ -312,11 +312,18 @@ classdef Initializer < handle
                         if myrank == 0 % first go, write out the initializer too
                             % Certain additions are required here:
                             translateInitializerToH5(eyesee.ini, [basename '.h5'], basename, bytime);
+                            h5writeatt([basename '.h5'], '/', 'gravConstant', eyesee.potentialField.constant*(numel(eyesee.potentialField.field) > 0));
                         end
                         
                         p = ceil(log10(eyesee.ini.iterMax));
-                        clear eyesee;
                         util_Frame2HDF(sprintf('%s_3D_XYZ_rank%03i_%0*i.h5', basename, myrank, int32(p), 0), f);
+
+                        if numel(eyesee.potentialField.field) > 0
+                            gravfile = sprintf('%s_staticpot_rank%03i.h5', basename, myrank);
+                            h5create(gravfile, '/staticGravpot', size(eyesee.potentialField.field), 'Datatype', 'double');
+                            h5write(gravfile, '/staticGravpot', eyesee.potentialField.field);
+                        end
+                        clear eyesee;
                     end
                 end
             end
@@ -387,6 +394,7 @@ classdef Initializer < handle
                     end
                 end
                 
+                s0 = ['There is only one cell in the Z direction but the boundary mode is "%s"\nThis is an error in the ' class(self) ' initializer''s settings, it must be set to ENUM.BCMODE_CIRCULAR.\nThe problem is not fixed here because of possible further self consistency problems within the Initializer.\nViolations of this requirement cause invalid address exceptions at simulation start time.'];
                 % trawl the Z part: if nz == 1 anything but circular is an error
                 if self.geomgr.globalDomainRez(3) == 1
                     if strcmp(m{1,3}, ENUM.BCMODE_CIRCULAR) ~= 1

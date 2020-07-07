@@ -12,8 +12,15 @@ h5writeatt(outfile, '/', 'multifluidDragMethod', int32(ini.multifluidDragMethod)
 h5writeatt(outfile, '/', 'timeMax', ini.timeMax);
 h5writeatt(outfile, '/', 'iniFrame', int32(0));
 
+cb = ini.geometry.circularBCs;
+cmodes = cb(1) + 2*cb(2) + 4*cb(3);
+geom = struct('geomType', int32(ini.geometry.pGeometryType), 'innerRadius', ...
+ ini.geometry.pInnerRadius, 'x0', ini.geometry.affine, 'd3h', ini.geometry.d3h, 'frameCenter', ...
+ ini.frameParameters.rotateCenter, 'frameOmega', ini.frameParameters.omega, 'circularity', int32(cmodes));
+writeSimpleStruct(outfile, '/geometry', geom);
 
-s = struct('slice', ini.slice, 'percent', [ini.ppSave.dim1 ini.ppSave.dim2 ini.ppSave.dim3], 'bytime', int32(saveByTime ~= 0));
+s = struct('slice', ini.slice, 'percent', [ini.ppSave.dim1 ini.ppSave.dim2 ini.ppSave.dim3], ...
+ 'bytime', int32(saveByTime ~= 0));
 writeSimpleStruct(outfile, '/save', s);
 
 writeSimpleStruct(outfile, '/frameParameters', ini.frameParameters);
@@ -32,7 +39,6 @@ if ini.numFluids > 1
     bc1 = [q(bs{1,1}) q(bs{2,1})  q(bs{1,2}) q(bs{2,2})   q(bs{1,3}) q(bs{2,3})];
     h5writeatt(outfile, '/fluidDetail2', 'bcmodes', int32(bc1));
 end
-
 
 end
 

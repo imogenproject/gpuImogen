@@ -29,6 +29,7 @@ for(i = 0; i < argc; i++) {
 return -1;
 }
 
+// Looks for the argv[] equal to *key; If this is not the last arg, puts atof(next arg) into *val
 int argReadKeyValueDbl(int argc, char **argv, const char *key, double *val)
 {
 	int q = lookForArgument(argc, argv, key);
@@ -36,10 +37,20 @@ int argReadKeyValueDbl(int argc, char **argv, const char *key, double *val)
 	return -1; // arg not found or invalid
 }
 
+// Looks for the argv[] equal to *key; If this is not the last arg, puts atoi(next arg) into *val
 int argReadKeyValueInt(int argc, char **argv, const char *key, int *val)
 {
 	int q = lookForArgument(argc, argv, key);
 	if((q > 0) && (q < (argc-1))) { *val = atoi(argv[q+1]); return 0; }
+
+	return -1; // arg not found or invalid
+}
+
+// Looks for the argv[] equal to *key; If this is not the last arg, puts * to next arg in *val
+int argReadKeyValueStr(int argc, char **argv, const char *key, char **val)
+{
+	int q = lookForArgument(argc, argv, key);
+	if((q > 0) && (q < (argc-1))) { *val = argv[q+1]; return 0; }
 
 	return -1; // arg not found or invalid
 }

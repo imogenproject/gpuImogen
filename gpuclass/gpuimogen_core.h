@@ -15,11 +15,15 @@ void identifyInternalBoundaries(MGArray *phi, ParallelTopology *topo);
 // Does the basic setup of assigning grid index coordinates
 GeometryParams generateGridGeometry(int *globalResolution, ParallelTopology *topo, int circ);
 
+// Build the g->XYVector MGArray required by frame rotation & cylindrical coordinates
+int initializeXYVector(GeometryParams *g, int nDevices, int *deviceList);
+
 // Gets the grid coordinates then sets up the physical coordinates
-GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology *topo, int circ);
+GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology *topo, ImogenH5IO *conf);
 
 int generateDummyFluid(GridFluid *g, MGArray *holder, GeometryParams *geo);
 int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase, int frameNo = -1);
+int readGravityPotential(ImogenH5IO *conf, GravityData *gravdat, MGArray *fluidReference);
 
 ThermoDetails generateDefaultThermo(void);
 

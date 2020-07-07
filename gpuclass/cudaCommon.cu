@@ -2345,6 +2345,8 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	case ERROR_CUDA_BLEW_UP:              estring = "CUDA API returned an error. Crashing."; break;
 	case ERROR_NOIMPLEMENT:               estring = "Required functionality not implemented."; break;
 	case ERROR_LIBFAILED:                 estring = "A library call to outside Imogen failed."; break;
+	case ERROR_NOFILE:				      estring = "No such file."; break;
+	case ERROR_FILE_IO:				      estring = "File IO was unsuccessful."; break;
 	default:                              estring = "Invalid error code or no error."; break;
 	}
 	printf("Rank %i | In %s (%s:%i): %s\n", mpirank, infunc, infile, atline, estring);

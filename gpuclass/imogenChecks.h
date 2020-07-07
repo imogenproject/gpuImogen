@@ -19,6 +19,7 @@
 #define ERROR_NOMEM -106
 #define ERROR_LIBFAILED -107
 #define ERROR_NOFILE -108
+#define ERROR_FILE_IO -109
 
 #define ERROR_CUDA_BLEW_UP -1000
 

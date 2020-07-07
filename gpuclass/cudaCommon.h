@@ -115,20 +115,19 @@ typedef struct __GeometryParams {
 			       *    CYLINRICAL - two-dimensional R-theta, or three-dimensional R-theta-z coordinates
 			       *    RZSQUARE - two-dimensional cartesian coordinates of size [NX 1 NZ]
 			       *    RZCYLINDRICAL - two-dimensional cylindrical coordinates of size [NR 1 NZ] */
-	double h[3]; // dx dy dz, or dr dphi dz
-	double x0, y0, z0; // Affine offsets
+	double h[3]; // [dx dy dz] or [dr dphi dz]
+	double x0, y0, z0; // Physical coordinates: The center of the cell with global index (0,0,0).
 
-	double Rinner; // Only for cylindrical geometry
-	               // The inner coordinate of the whole-host partition
+	double Rinner; // Only for cylindrical geometry: The radial coordinate of the innermost cell
 
-	double frameRotateCenter[3];
-	double frameOmega;
+	double frameRotateCenter[3]; // The [0] [1] components identify the physical coordinate the frame rotates about
+	double frameOmega; // the angular rotation speed of the frame. In a right handed coordinate system,
+	//w > 0 means inertially stationary fluid will appear to rotate clockwise
 
 	int globalRez[3];  // The global grid resolution (halos excluded)
 
-	// These are not used in gpu-Imogen but are used in the compiled core
-	int localRez[3];   // The local grid resolution (halos included)
-	int gridAffine[3]; //
+	int localRez[3];   // Only used in imogenCore: The local grid resolution (halos included)
+	int gridAffine[3]; // Used only in imogenCore: The offset of this node's array(0,0,0) from the global array(0,0,0). Note that (0,0,0) includes ghost cells.
 
 	MGArray *XYVector;
 	// TODO: add allocatable vectors here for variable spacing in the future
