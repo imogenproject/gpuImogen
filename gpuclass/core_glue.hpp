@@ -9,6 +9,8 @@ int argReadKeyValueInt(int argc, char **argv, const char *key, int *val);
 int argReadKeyValueStr(int argc, char **argv, const char *key, char **val);
 void printHelpScreed(void);
 
+int parseDevicesArgument(char *arg, int *nDevices, int *deviceList);
+
 void factorizeInteger(int X, int **factors, int *nfactors);
 
 void describeTopology(ParallelTopology *topo);

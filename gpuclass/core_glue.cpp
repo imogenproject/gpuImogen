@@ -68,7 +68,10 @@ void printHelpScreed(void)
 	std::cout << "--help           Prints this and exits\n";
 	std::cout << "--initfile foo   Uses the run configuration file foo.h5. This is normally\n";
 	std::cout << "                 written by the translateInitializerToH5.m function.\n";
-	std::cout << "--frame foo      If restarting, attempts to read frame foo instead of what the\n";
+	std::cout << " --devices FOO   Informs imogenCore to utilize the named devices in FOO. FOO is\n";
+	std::cout << "                 one of: N (a single integer), 'all' to use all enumerable, or\n";
+	std::cout << "                 like A,B,C (comma-separated integers, no spaces) for multi-GPU.\n";
+	std::cout << "--frame X        If restarting, attempts to read frame X instead of what the\n";
 	std::cout << "                 initfile's /iniFrame parameter says (which is usually zero)\n";
 	std::cout << "--show-time      Prints the initfile's current time and iteration limits & exits\n";
 	std::cout << "--set-time I T   Resets the the maximum # of iterations to I and time limit to T\n";
@@ -107,6 +110,107 @@ while(X > 1) {
 factors[0] = f;
 *nfactors = nf;
 
+}
+
+bool charIsNum(char c)
+{
+	if((c == '0') || (c == '1') || (c == '2') || (c == '3') || (c == '4') || (c == '5') || (c == '6') || (c == '7') || (c == '8') || (c == '9')) return true;
+	return false;
+}
+/* Processes the --devices argument.
+ * Must be one of:
+ *   --devices X
+ *   --devices all
+ *   --devices A,B,C (N comma-delimited integers)
+ */
+int parseDevicesArgument(char *arg, int *nDevices, int *deviceList)
+{
+
+	int retval = SUCCESSFUL;
+	if(strcasecmp(arg, "all") == 0) {
+		retval = cudaGetDeviceCount(nDevices);
+		int i;
+		for(i = 0; i < *nDevices; i++) {
+			deviceList[i] = i;
+		}
+	} else {
+		int l = strlen(arg);
+		int i;
+		int ncommas = 0;
+		for(i = 0; i < l; i++) {
+			if(arg[i] == ',') ncommas++;
+		}
+		*nDevices = ncommas + 1;
+
+		// go to first number char
+		i = 0;
+		while((i < l) && (charIsNum(arg[i]) == false)) { i++; }
+		//printf("@ numeral 0: remaining str = %s\n", &arg[i]);
+
+		// confirm we actually got a [0-9] character
+		if(i == l) {
+			PRINT_FAULT_HEADER;
+			printf("Fatal device list problem:\n\tNo numeric chars were found after --devices: argument = '%s'\n", arg);
+			PRINT_FAULT_FOOTER;
+			return ERROR_INVALID_ARGS;
+		} else {
+			deviceList[0] = atoi(&arg[i]);
+		}
+		arg = arg + i;
+
+		// read the remainder of numbers, parsing immediately after the ,
+		i = 1;
+		for(; i <= ncommas; i++) {
+			arg = strchr(arg, ',');
+			if(arg == NULL) return ERROR_INVALID_ARGS;
+			arg++;
+			//printf("@ numeral %i: remaining str = %s\n", i, arg);
+			deviceList[i] = atoi(arg);
+		}
+
+		// Confirm individual device arguments are acceptable
+		int ct, j;
+		cudaGetDeviceCount(&ct);
+		for(i = 0; i < *nDevices; i++) {
+			if((deviceList[i] >= ct) || (deviceList[i] < 0)) {
+				retval = ERROR_INVALID_ARGS;
+				PRINT_FAULT_HEADER;
+				std::cout << "Device list: [";
+				for(j = 0; j < *nDevices; j++) {
+					char endc = (j < ((*nDevices)-1)) ? ' ' : ']';
+					std::cout << deviceList[j] << endc;
+				}
+				std::cout << "\nFatal device list problem:\n\tOne or more arguments are outside acceptable range of [0, " << ct-1 << "]" << std::endl;
+				break;
+			}
+		}
+
+		// Check that all named device IDs are unique
+		for(i = 0; i < *nDevices; i++) {
+			for(j = i+1; j < *nDevices; j++) {
+				if(deviceList[i] == deviceList[j]) {
+					PRINT_FAULT_HEADER;
+					int k;
+					std::cout << "Device list: [";
+					for(k = 0; k < *nDevices; k++) {
+						char endc = (k < ((*nDevices)-1)) ? ' ' : ']';
+						std::cout << deviceList[k] << endc;
+					}
+					std::cout << "\nFatal device list problem:\n\tEntries " << i << " and " << j << ", and possibly others, are duplicates\nImogenCore does not support this." << std::endl;
+					PRINT_FAULT_FOOTER;
+					i = *nDevices;
+					break;
+				}
+			}
+		}
+
+		if(*nDevices > MAX_GPUS_USED) {
+		    PRINT_FAULT_HEADER;
+		    std::cout << "Fatal device list problem:\n\t(Total number of devices = " << *nDevices << ") > (MAX_GPUS_USED = " << MAX_GPUS_USED << ")\n\tMAX_GPUS_USED in cudaCommon.h must be changed & the code recompiled." << std::endl;
+		    PRINT_FAULT_FOOTER;
+		}
+	}
+	return retval;
 }
 
 void describeTopology(ParallelTopology *topo)
