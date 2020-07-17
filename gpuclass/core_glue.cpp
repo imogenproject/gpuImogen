@@ -366,7 +366,12 @@ int ImogenH5IO::openUpFile(const char *filename, unsigned int flags)
 		fclose(tst);
 		filehid = H5Fopen(filename, flags, H5P_DEFAULT);
 	} else {
-		filehid = H5Fcreate(filename, flags, H5P_DEFAULT, H5P_DEFAULT);
+		if(flags == H5F_ACC_RDONLY) {
+			filehid = -1;
+			return ERROR_CRASH;
+		} else {
+			filehid = H5Fcreate(filename, flags, H5P_DEFAULT, H5P_DEFAULT);
+		}
 	}
 
 	attrTarg = filehid;

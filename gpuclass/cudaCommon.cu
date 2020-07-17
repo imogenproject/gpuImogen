@@ -2326,6 +2326,8 @@ int checkCudaError(const char *where, const char *fname, int lname)
  *
  * NOTE: Don't use this directly, use the CHECK_IMOGEN_ERROR(errorcode) macro which will automatically
  * have the correct filename, function name and line number.
+ *
+ * This function has virtually zero overhead in the event of no error.
  */
 int checkImogenError(int errtype, const char *infile, const char *infunc, int atline)
 {
@@ -2352,6 +2354,24 @@ int checkImogenError(int errtype, const char *infile, const char *infunc, int at
 	printf("Rank %i | In %s (%s:%i): %s\n", mpirank, infunc, infile, atline, estring);
 	return errtype;
 }
+
+/* This does a normal CHECK_IMOGEN_ERROR then checks for the result across all ranks
+ * This
+ */
+int parCheckImogenError(int errtype, const char *infile, const char *infunc, int atline, MPI_Comm whom)
+{
+	// Do the normal check
+	int howbad = checkImogenError(errtype, infile, infunc, atline);
+
+	// Now check across all ranks
+	int parbad;
+	MPI_Allreduce(&howbad, &parbad, 1, MPI_INTEGER, MPI_MIN, whom);
+
+	// make sure we're done with parbad in mpi
+	MPI_Barrier(whom);
+	return parbad;
+}
+
 
 #define MAX_BAD_VALUES 1024
 

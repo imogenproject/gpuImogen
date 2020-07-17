@@ -299,6 +299,7 @@ int MGA_wholeFaceToLinear(MGArray *a, int direction, int rightside, int writehal
 int checkCudaError(const char *where, const char *fname, int lname);
 int checkCudaLaunchError(cudaError_t E, dim3 blockdim, dim3 griddim, MGArray *a, int i, const char *srcname, const char *fname, int lname);
 int checkImogenError(int errtype, const char *infile, const char *infunc, int atline);
+int parCheckImogenError(int errtype, const char *infile, const char *infunc, int atline, MPI_Comm whom);
 
 //
 void MGA_debugPrintAboutArray(MGArray *x);
@@ -316,6 +317,8 @@ int dbgfcn_CheckFluidVals(MGArray *fluid, int crashit);
 #define PRINT_SIMPLE_FAULT(x) PRINT_FAULT_HEADER; printf(x); PRINT_FAULT_FOOTER;
 
 #define CHECK_IMOGEN_ERROR(errtype) checkImogenError(errtype, __FILE__, __func__, __LINE__)
+#define PAR_CHECK_IMOGEN_ERROR(errtype) parCheckImogenError(errtype, __FILE__, __func__, __LINE__, MPI_COMM_WORLD)
+
 #define CHECK_CUDA_LAUNCH_ERROR(bsize, gsize, mg_ptr, direction, string) \
      checkCudaLaunchError(cudaGetLastError(), bsize, gsize, mg_ptr, direction, string, __FILE__, __LINE__)
 #define CHECK_CUDA_ERROR(astring) CHECK_IMOGEN_ERROR(checkCudaError(astring, __FILE__, __LINE__))

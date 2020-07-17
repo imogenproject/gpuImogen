@@ -73,9 +73,26 @@ int main(int argc, char **argv)
 	// Step 2 - access initializer file
 	// The initializer file is an .h5 file, autotranslated by the Matlab GPU-Imogen code,
 	// of the (relevant) parts of the IC.ini structure
-	if(myrank == 0) { printf("Configuration H5 file is: '%s'\n", configFilename); }
+	if(myrank == 0) { std::cout << "Configuration H5 file is: '" << configFilename << "'." << std::endl; }
 
 	ImogenH5IO *conf = new ImogenH5IO(configFilename);
+	if(conf->haveOpenedFile() != true) {
+		char mydir[256];
+		char *foo = getcwd(&mydir[0], 255);
+		std::cout << "Fatal in rank " << myrank << ": Cannot open config file '" << configFilename << "'." << std::endl;
+		std::cout << "\tCWD is " << mydir << "." << std::endl;
+
+
+		status = PAR_CHECK_IMOGEN_ERROR(ERROR_INVALID_ARGS);
+	} else {
+		status = PAR_CHECK_IMOGEN_ERROR(SUCCESSFUL);
+	}
+
+	if(status != SUCCESSFUL) {
+		MPI_Finalize();
+		delete conf;
+		return status;
+	}
 
 	cf = lookForArgument(argc, argv, "--show-time");
 	if(cf > 0) {
@@ -133,6 +150,7 @@ int main(int argc, char **argv)
 		}
 		status = CHECK_IMOGEN_ERROR(parseDevicesArgument(argv[cf+1], &nCudaDevices, &deviceList[0]));
 		if(status != SUCCESSFUL) {
+			delete conf;
 			MPI_Finalize();
 			return status;
 		}
