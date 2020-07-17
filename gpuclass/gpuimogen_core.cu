@@ -184,7 +184,7 @@ int main(int argc, char **argv)
 
 	// Create two streams on every device we plan to use
 	for(i = 0; i < nCudaDevices; i++) {
-		cudaSetDevice(0);
+		cudaSetDevice(deviceList[i]);
 		cudaStreamCreate(&topo.cudaStreamPtrs[i]);
 		cudaStreamCreate(&topo.cudaStreamPtrs[nCudaDevices + i]);
 	}
