@@ -641,7 +641,8 @@ int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, doub
 	hid_t ret = H5Sset_extent_simple(fid, ndims, hd, NULL);
 
 	sethid = H5Dcreate2(filehid, varname, H5T_IEEE_F64LE, fid, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-	H5Dwrite(sethid, H5T_IEEE_F64LE, H5S_ALL , H5S_ALL, H5P_DEFAULT, (const void *)array);
+	herr_t qq = H5Dwrite(sethid, H5T_IEEE_F64LE, H5S_ALL , H5S_ALL, H5P_DEFAULT, (const void *)array);
+	if(qq >= 0) { return SUCCESSFUL; } else { return ERROR_LIBFAILED; }
 }
 
 int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *geo, ParallelTopology *pt, ImogenTimeManager *timeManager)
@@ -832,6 +833,10 @@ int ImogenTimeManager::readConfigParams(ImogenH5IO *conf)
 	for(n = 0; n < 3; n++) {
 		pTimePerSave[n]  = pTimeMax * d0[n] / 100.0;
 		pStepsPerSave[n] = pIterMax * d0[n] / 100.0;
+		if(pStepsPerSave[n] == 0) {
+			if(imRankZero()) { std::cout << "Warning: With %/save[" << n << "]=" << d0[n] << " and " << pIterMax << " steps, pStepsPerSave[" << n << "] eval'd to zero -> setting to 1 (save every step)." << std::endl; }
+			pStepsPerSave[n] = 1;
+		}
 		pSlice[n] = i0[n];
 	}
 
