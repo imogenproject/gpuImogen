@@ -43,6 +43,8 @@ classdef RadiatingShockInitializer < Initializer
         fractionCold;     % The fraction of the grid to give to the cold gas layer; [0, 1)
         Tcutoff; % Forces radiation to stop at this temperature; Normalized by preshock gas temp.
                             % Thus we have [nx*f = preshock | nx*(1-f) = postshock] with hx = len_singularity * f_t / (nx*(1-f));
+                            
+        cellAspect;      % makes the cells cellAspect size in y/z relative to x
     end %PUBLIC
 
 %===================================================================================================
@@ -105,6 +107,8 @@ classdef RadiatingShockInitializer < Initializer
 
             obj.operateOnInput(input, [512 1 1]);
             obj.pureHydro = 1;
+            
+            obj.cellAspect = 1;
         end
 
     end%GET/SET
@@ -166,11 +170,11 @@ classdef RadiatingShockInitializer < Initializer
             
             fracFlow = 1.0-(obj.fractionPreshock + obj.fractionCold);
             
-            geom.makeBoxSize(flowEndpoint / fracFlow); % Box length
+            rez = geom.globalDomainRez;
+            
+            geom.makeBoxSize(flowEndpoint / fracFlow * (rez/rez(1)) .* [1 obj.cellAspect obj.cellAspect]); % Box length
             
             [vecX, vecY, vecZ] = geom.ndgridVecs();
-            
-            rez = geom.globalDomainRez;
             
             if 1 % if initializing analytically
                 % Identify the preshock, radiating and cold gas layers.
@@ -192,7 +196,6 @@ classdef RadiatingShockInitializer < Initializer
                 mom(2,preshock,:,:) = jump.rho(1)*jump.v(2,1);
                 mag(1,:,:,:) = jump.B(1,1);
                 mag(2,preshock,:,:) = jump.B(2,1);
-                
                 
                 % Get interpolated values for the flow
                 flowValues(:,1) = flowValues(:,1) + Xshock;
