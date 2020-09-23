@@ -63,6 +63,8 @@ for N = 1:numel(typelist)
         c = analyzeSavefileName(f(u).name);
         
         a = sscanf(f(u).name(c.framepos:end),'%d');
+c
+a
         
         X = util_LoadFrameSegment(filePrefix, typelist{N}, 0, a, 'metaonly'); % l
         
@@ -110,8 +112,10 @@ function c = analyzeSavefileName(f)
 
 % find the 1/2/3 of the type
 for j = 1:numel(f)
-    if any(f(j) == ['1' '2' '3']); break; end
+    if f(j) == '_'; break; end
+%    if any(f(j) == ['1' '2' '3']); break; end
 end
+j=j+1;
 
 if j > 2
     p = f(1:(j-2));
@@ -121,6 +125,9 @@ else
     p = '';
     x = 0;
 end
+p
+f
+x
 
 t = -1;
 typelist = {'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
@@ -132,7 +139,9 @@ for n = 1:7
         break
     end
 end
-
+t
+f
+x
 rankpos = x;
 
 for r = 1:numel(f)
