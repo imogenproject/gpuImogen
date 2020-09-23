@@ -23,7 +23,9 @@ GeometryParams acquireSimulationGeometry(int *globalResolution, ParallelTopology
 
 int generateDummyFluid(GridFluid *g, MGArray *holder, GeometryParams *geo);
 int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5dfilebase, int frameNo = -1, int fluidNo = 0);
+
 int readGravityPotential(ImogenH5IO *conf, GravityData *gravdat, MGArray *fluidReference);
+int readRadiationParams(ImogenH5IO *conf, ParametricRadiation *prad);
 
 ThermoDetails generateDefaultThermo(void);
 

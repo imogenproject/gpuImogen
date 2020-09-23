@@ -10,8 +10,11 @@
 #include "mex.h"
 #endif
 
-//#include "cuda.h"
-//#include "cuda_runtime.h"
+// If not using ML, the ParallelTopology structure contains cudaStream_t pointers
+#ifdef NOMATLAB
+#include "cuda.h"
+#include "cuda_runtime.h"
+#endif
 
 #include "mpi_common.h"
 
@@ -20,8 +23,6 @@
 #endif
 
 void printAboutMPIStatus(MPI_Status *s);
-
-//#include "mpiCommonMatlab.cpp"
 
 /* Returns true if the type is suitable for logic AND
  * and false if not (i.e. float/double)

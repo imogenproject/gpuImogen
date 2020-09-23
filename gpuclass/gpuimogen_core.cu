@@ -121,11 +121,42 @@ int main(int argc, char **argv)
 			conf->closeOutFile();
 			conf->openUpFile(configFilename, H5F_ACC_RDWR);
 
+			int oldImax;
+			status = conf->getInt32Attr("/", "iterMax", &oldImax, 1);
+			double oldTmax;
+			status = conf->getDblAttr("/", "timeMax", &oldTmax, 1);
+
 			int dims = 1;
 			if(imax > 0) { status = conf->writeInt32Attribute("iterMax", 1, &dims, &imax); }
 			if(tmax > 0) { status = conf->writeDblAttribute("timeMax", 1, &dims, &tmax); }
 
 			std::cout << "Max iterations = " << imax << "\nMax time       = " << tmax << endl;
+
+			double pps[3];
+			status = conf->getDblAttr("/save", "percent", &pps[0], 3);
+			
+			int bytime;
+			status = conf->getInt32Attr("/save", "bytime", &bytime, 1);
+			if(bytime) {
+				// reset pct per save by change in time
+				int i;
+				for(i = 0; i < 3; i++) { pps[i] *= oldTmax / tmax; }
+
+			} else {
+				// reset by iterations
+				int i;
+				for(i = 0; i < 3; i++) { pps[i] *= (double)oldImax / (double)imax; }
+			}
+
+			// fixme: work around my broken API by making this set the sethid
+			double irrelevant;
+			double *irrelevantb = &irrelevant;
+			status =conf->readDoubleArray("/save", &irrelevantb);
+
+			conf->attrTargetDataset();
+			dims = 3;
+//pps[0] = 10; pps[1] = 100; pps[2] = 50;
+			status = conf->writeDblAttribute("percent", 1, &dims, &pps[0]);
 		}
 
 		delete conf;
@@ -241,7 +272,7 @@ int main(int argc, char **argv)
 	char *inputDatafilePrefix = (char *)NULL;
 	status = conf->getStrAttr("/", "savefilePrefix", &inputDatafilePrefix);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	if(myrank == 0) { printf("Reading datafiles with prefix '%s'\n", inputDatafilePrefix); }
+	if(myrank == 0) { printf("Input args successfully parsed; Reading datafiles with prefix '%s'\n", inputDatafilePrefix); }
 
 	// Create the fluids!!!
 	GridFluid fluids[numFluids];
@@ -283,6 +314,8 @@ int main(int argc, char **argv)
 
 	}
 
+	if(imRankZero()) printf("\t+ Input fluid state read successfully.\n");
+
 	// Define the gravity field if it exists
 	GravityData gravdat;
 	MGArray gravityArray;
@@ -291,7 +324,18 @@ int main(int argc, char **argv)
 	status = readGravityPotential(conf, &gravdat, &fluids[0].DataHolder);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) return status;
 	int haveg = 0;
-	if(gravdat.phi != NULL) { haveg = 1; }
+	if(gravdat.phi != NULL) {
+		haveg = 1;
+		if(imRankZero()) printf("\t+ Gravity field read successfully.\n");
+	}
+
+	// Read radiation parameters
+	status = readRadiationParams(conf, &prad);
+	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) return status;
+
+	if(prad.prefactor > 0) {
+		if(imRankZero()) printf("\t+ Radiation params read successfully: L = %f rho^%f T^%f\n", prad.prefactor, 2-prad.exponent, prad.exponent);
+	}
 
 	if(specifiedFrame > 0) {
 		timeManager->resumeTime(inputDatafilePrefix, specifiedFrame);
@@ -313,6 +357,8 @@ int main(int argc, char **argv)
 
 	ImogenH5IO frmw = ImogenH5IO();
 	//=================================
+
+	if(imRankZero()) printf("Entering simulation loop...\n");
 
 	while(1) {
 		// This computes the CFL time & also does timeManager->registerTimestep()
@@ -786,6 +832,36 @@ int readImogenICs(GridFluid *g, MGArray *holder, GeometryParams *geo, char *h5df
 	free(q);
 
 	return status;
+}
+
+int readRadiationParams(ImogenH5IO *conf, ParametricRadiation *prad)
+{
+
+int status;
+status = conf->getDblAttr("/radiation", "theta", &prad->exponent);
+if(status != SUCCESSFUL) {
+	if(imRankZero()) printf("No /radiation field in init H5: returning no radiation.\n"); 
+	prad->exponent = 1;
+	prad->prefactor = 0;
+	prad->minTemperature = 1.05;
+	return SUCCESSFUL;
+}
+
+status = conf->getDblAttr("/radiation", "beta", &prad->prefactor);
+if(status != SUCCESSFUL) return CHECK_IMOGEN_ERROR(status);
+
+status = conf->getDblAttr("/radiation", "minTemp", &prad->minTemperature);
+if(status != SUCCESSFUL) return CHECK_IMOGEN_ERROR(status);
+
+return SUCCESSFUL;
+
+//prad->exponent, prad->prefactor, prad->minTemperature
+
+//s = struct('theta', ini.radiation.exponent, 'beta', ini.radiation.setStrength, 'minTemp', ini.Tcutoff);
+//if strcmp(ini.radiation.strengthMethod, 'preset') == 0
+//    disp('WARNING: Radiation strength method is not "preset" and this is the only method supported by imogenCore.\n');
+//end
+
 }
 
 int readGravityPotential(ImogenH5IO *conf, GravityData *gravdat, MGArray *fluidReference)

@@ -525,7 +525,8 @@ int ImogenH5IO::checkOverwrite(const char *name)
 {
 	if(H5Aexists(attrTarg, name)) {
 			if(attrOverwrite) {
-				H5Adelete_by_name(attrTarg, "/", name, H5P_DEFAULT);
+//				H5Adelete_by_name(attrTarg, "/", name, H5P_DEFAULT);
+				H5Adelete(attrTarg, name);
 				return SUCCESSFUL;
 			} else {
 				return ERROR_CRASH;
@@ -558,6 +559,10 @@ int ImogenH5IO::writeDblAttribute(const char *name, int ndims, int *dimensions, 
 
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F64LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_IEEE_F64LE, x);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
+	ret = H5Aclose(attr1);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
 	return 0;
 }
 
@@ -569,6 +574,10 @@ int ImogenH5IO::writeFltAttribute(const char *name, int ndims, int *dimensions, 
 
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_IEEE_F32LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_IEEE_F32LE, x);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
+	ret = H5Aclose(attr1);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
 	return 0;
 }
 
@@ -580,6 +589,11 @@ int ImogenH5IO::writeInt32Attribute(const char *name, int ndims, int *dimensions
 
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I32LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_STD_I32LE, x);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
+	ret = H5Aclose(attr1);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
 	return 0;
 }
 
@@ -591,6 +605,11 @@ int ImogenH5IO::writeInt64Attribute(const char *name, int ndims, int *dimensions
 
 	hid_t attr1 = H5Acreate2(attrTarg, name, H5T_STD_I64LE, attType, H5P_DEFAULT, H5P_DEFAULT);
 	ret = H5Awrite(attr1, H5T_STD_I64LE, x);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
+	ret = H5Aclose(attr1);
+	if(ret < 0) return CHECK_IMOGEN_ERROR(ERROR_LIBFAILED);
+
 	return 0;
 }
 
@@ -832,7 +851,7 @@ int ImogenTimeManager::readConfigParams(ImogenH5IO *conf)
 	int n;
 	for(n = 0; n < 3; n++) {
 		pTimePerSave[n]  = pTimeMax * d0[n] / 100.0;
-		pStepsPerSave[n] = pIterMax * d0[n] / 100.0;
+		pStepsPerSave[n] = (int)round(pIterMax * d0[n] / 100.0);
 		if(pStepsPerSave[n] == 0) {
 			if(imRankZero()) { std::cout << "Warning: With %/save[" << n << "]=" << d0[n] << " and " << pIterMax << " steps, pStepsPerSave[" << n << "] eval'd to zero -> setting to 1 (save every step)." << std::endl; }
 			pStepsPerSave[n] = 1;
