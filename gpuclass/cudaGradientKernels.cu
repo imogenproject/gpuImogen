@@ -1,4 +1,9 @@
 
+#ifdef NOMATLAB
+#include "stdio.h"
+#endif
+
+
 #include "cuda.h"
 #include "cudaCommon.h"
 #include "cudaUtilities.h"

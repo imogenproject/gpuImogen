@@ -1,6 +1,8 @@
 
 #ifndef NOMATLAB
 #include "mex.h"
+#else
+#include "stdio.h"
 #endif
 
 #include "nvToolsExt.h"
