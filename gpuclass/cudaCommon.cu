@@ -333,7 +333,9 @@ for(i = 0; i < N; i++) {
 /* Given a *skeleton to use as a template, allocates a new array into nu[0],
  * which is identical to *skeleton except that it has Nslabs slabs. The memory
  * has proper CUDA striding (slab N+1 starts an even multiple of 256B after slab N does)
- * and is not initialized in any way. */
+ * and is not initialized in any way.
+ * This functions also dumps boundaryConditions.staticCells[*] to null to avoid
+ * multiple-free errors. */
 int MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs)
 {
 	int sub[6];
@@ -342,6 +344,7 @@ int MGA_allocSlab(MGArray *skeleton, MGArray *nu, int Nslabs)
 	int worked;
 
 	*nu = *skeleton; // copy everything since nothing but the devicePtr[] & numSlabs will change
+	for(i = 0; i < nu->nGPUs; i++) nu->boundaryConditions.staticCells[i] = 0;
 
 	for(i = 0; i < skeleton->nGPUs; i++) {
 		cudaSetDevice(skeleton->deviceID[i]);
@@ -441,10 +444,20 @@ fflush(stdout);
 		returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete, setting device");
 
 		cudaFree(victim->devicePtr[j]);
+		returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after main free");
 		if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after cudaFree");
+
+		if(victim->boundaryConditions.staticCells[j] != NULL) {
+			cudaFree(victim->boundaryConditions.staticCells[j]);
+			returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after staticCells free");
+			if(returnCode == SUCCESSFUL) returnCode = CHECK_CUDA_ERROR((const char *)"In MGA_delete after cudaFree");
+		}
 
 		if(returnCode != SUCCESSFUL) break;
 	}
+
+
+
 
 	return CHECK_IMOGEN_ERROR(returnCode);
 }
