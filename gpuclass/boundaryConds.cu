@@ -222,68 +222,285 @@ int setArrayBoundaryConditions(MGArray *phi, GeometryParams *geo, int direction,
  */
 int setArrayStaticCells(MGArray *phi)
 {
-	//int worked;
-	//MGArray statics;
-
-	/* Grabs the whole boundaryData struct from the ImogenArray class */
-/*	mxArray *boundaryData = (mxArray *)phi->boundaryConditions.externalData;
-	if(boundaryData == NULL) {
-		printf("FATAL: field 'boundaryData' D.N.E. in class. Not a class? Not an ImogenArray/FluidArray?\n");
-		return ERROR_INVALID_ARGS;
-	}*/
-
-	// fixme: we can't do this in this function yet. Oh boy
-	/* The statics describe "solid" structures which we force the grid to have */
-	/*
-	mxArray *gpuStatics = mxGetField(boundaryData, 0, "staticsData");
-	if(gpuStatics == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'staticsData' D.N.E. in boundaryData struct. Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	worked = MGA_accessMatlabArrays((const mxArray **)(&gpuStatics), 0, 0, &statics);
-	BAIL_ON_FAIL(worked)
+	int worked;
 
 	int *perm = &phi->currentPermutation[0];
 	int offsetIdx = 2*(perm[0]-1) + 1*(perm[1] > perm[2]);
-*/
-	/* The offset array describes the index offsets for the data in the gpuStatics array */
-	/*mxArray *offsets    = mxGetField(boundaryData, 0, "compOffset");
-	if(offsets == NULL) {
-		PRINT_SIMPLE_FAULT("FATAL: field 'compOffset' D.N.E. in boundaryData. Not an ImogenArray? Statics not compiled?\n");
-		return ERROR_INVALID_ARGS;
-	}
-	double *offsetCount = mxGetPr(offsets);
-	long int staticsOffset = (long int)offsetCount[2*offsetIdx];
-	int staticsNumel  = (int)offsetCount[2*offsetIdx+1];*/
+
+	int nStatics;
 
 	/* Parameter describes what block size to launch with... */
-	//int blockdim = 32;
-
-//	dim3 griddim; griddim.x = staticsNumel / blockdim + 1;
-	//if(griddim.x > 1024) {
-		//griddim.x = 1024;
-		//griddim.y = staticsNumel/(blockdim*griddim.x) + 1;
-//	}
+	int blockdim = 32;
+	dim3 griddim;
 
 	/* Every call results in applying specials */
-//	int i;
-	//for(i = 0; i < phi->nGPUs; i++) {
-		//staticsOffset = (long int)offsetCount[12*i + 2*offsetIdx];
-		//staticsNumel = (int)offsetCount[12*i + 2*offsetIdx + 1];
+	int i;
+	for(i = 0; i < phi->nGPUs; i++) {
+		nStatics = phi->boundaryConditions.nStatics[i];
 
-		//if(staticsNumel > 0) {
-			//cudaSetDevice(phi->deviceID[i]);
-//			CHECK_CUDA_ERROR("setDevice");
+		if(nStatics > 0) {
+			// pick grid size
+			griddim.x = nStatics / blockdim + 1;
+			if(griddim.x > 1024) {
+				griddim.x = 1024;
+				griddim.y = nStatics/(blockdim*griddim.x) + 1;
+			}
 
-	//		cukern_applySpecial_fade<<<griddim, blockdim>>>(phi->devicePtr[i], statics.devicePtr[i] + staticsOffset, staticsNumel, statics.dim[0]);
+			cudaSetDevice(phi->deviceID[i]);
+			CHECK_CUDA_ERROR("setDevice");
+
+			cukern_applySpecial_fade<<<griddim, blockdim>>>(phi->devicePtr[i], phi->boundaryConditions.staticCells[i] + nStatics*offsetIdx, nStatics, 6*nStatics);
 
 //			cudaDeviceSynchronize(); // NOTE for debugging only!
-		//	worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, 0, "cuda statics application in setArrayStaticCells");
-			//if(worked != SUCCESSFUL) return worked;
-	//	}
-//	}
+			worked = CHECK_CUDA_LAUNCH_ERROR(blockdim, griddim, phi, 0, "cuda statics application in setArrayStaticCells");
+			if(worked != SUCCESSFUL) return worked;
+	 	}
+	}
 return SUCCESSFUL;
 }
+
+
+void addIdx(int *i, int N, int *c, int x, int y, int z)
+{
+	int q = *c;
+	i[q] = x;
+	i[q+N] = y;
+	i[q+2*N] = z;
+	++ *c;
+}
+
+// Trivial little kernel reads phi[addrs[i]] into dst[i] for i in [0, N-1]
+__global__ void indexedVectorRead(double *phi, int *addrs, double *dst, int N)
+{
+	int myx = threadIdx.x + blockDim.x*blockIdx.x;
+
+	while(myx < N) {
+		dst[myx] = phi[addrs[myx]];
+		myx += blockDim.x*gridDim.x;
+	}
+}
+
+typedef struct __AdValPair {
+	int i;
+	double d;
+} AdValPair;
+
+int cmpavpair(const void *u, const void *v) {
+	AdValPair *a = (AdValPair *)u;
+	AdValPair *b = (AdValPair *)v;
+	if(a->i < b->i) return -1;
+	if(a->i > b->i) return 1;
+	return 0; // this should never happen...
+}
+
+
+int setupBoundaryStaticBCs(MGArray *phi)
+{
+	int p, i;
+	int sub[6];
+
+	int perm;
+
+	int nStatics;
+
+	int bcmode;
+
+	int *hostidx; int *devidx;
+	double *hostvals; double *devvals;
+
+	double *hostFinalArray;
+
+	int status = SUCCESSFUL;
+
+	AdValPair *sortme;
+
+	int u, v, w;
+	int nctr;
+
+	//int permgroup[6][3] = {{1, 2, 3}, {1, 3, 2}, {2, 1, 3}, {2, 3, 1}, {3, 1, 2}, {3, 2, 1}};
+	int permgroup[18] = {1, 2, 3, 1, 3, 2, 2, 1, 3, 2, 3, 1, 3, 1, 2, 3, 2, 1};
+	for(i = 0 ; i < 18; i++) { permgroup[i]--; }
+
+	// For each partition,
+	for(p = 0; p < phi->nGPUs; p++) {
+		// get partition size
+		calcPartitionExtent(phi, p, &sub[0]);
+
+		// iterating over all 6 edges,
+		// add #statics each generates to #statics total [easy to calc]
+		bcmode = 0;
+
+		nStatics = 0;
+		// x minus
+		if(phi->boundaryConditions.mode[0] == stationary) {
+			if((p == 0) || (phi->partitionDir != 1)) { nStatics += phi->haloSize * sub[4]*sub[5]; bcmode |= 1; } }
+		// xplus
+		if(phi->boundaryConditions.mode[1] == stationary) {
+			if((p == phi->nGPUs-1) || (phi->partitionDir != 1)) { nStatics += phi->haloSize*sub[4]*sub[5]; bcmode |= 2; } }
+		// yminus
+		if(phi->boundaryConditions.mode[2] == stationary) {
+			if((p == 0) || (phi->partitionDir != 2)) { nStatics += phi->haloSize * sub[3]*sub[5]; bcmode |= 4; } }
+		// yplus
+		if(phi->boundaryConditions.mode[3] == stationary) {
+			if((p == phi->nGPUs-1) || (phi->partitionDir != 2)) { nStatics =+ phi->haloSize * sub[3]*sub[5]; bcmode |= 8; } }
+		// zminus
+		if(phi->boundaryConditions.mode[4] == stationary) {
+			if((p == 0) || (phi->partitionDir != 3)) { nStatics += phi->haloSize*sub[3]*sub[4]; bcmode |= 16; } }
+		// zplus
+		if(phi->boundaryConditions.mode[5] == stationary) {
+			if((p == phi->nGPUs-1) || (phi->partitionDir != 3)) { nStatics += phi->haloSize * sub[3]*sub[4]; bcmode |= 32; } }
+
+		cudaSetDevice(phi->deviceID[p]);
+		status = CHECK_CUDA_ERROR("set device"); if(status != SUCCESSFUL) return status;
+
+		hostidx = (int *)malloc(4*nStatics*sizeof(int));
+		cudaMalloc((void **)&devidx, nStatics*sizeof(int));
+		status = CHECK_CUDA_ERROR("malloc devidx"); if(status != SUCCESSFUL) return status;
+		hostvals = (double *)malloc(nStatics * sizeof(double));
+		cudaMalloc((void **)&devvals, nStatics*sizeof(double));
+		status = CHECK_CUDA_ERROR("malloc devvals"); if(status != SUCCESSFUL) return status;
+
+		sortme = (AdValPair *)malloc(nStatics * sizeof(AdValPair));
+
+		nctr = 0;
+
+		// Store [x y z] in 1st 3 columns, compute idx in 4th
+		if(bcmode & 1) { // x minus
+			for(w = 0; w < sub[5]; w++) {
+				for(v = 0; v < sub[4]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, u, v, w);
+				}
+			}
+		}
+
+		if(bcmode & 2) { // x plus
+			for(w = 0; w < sub[5]; w++) {
+				for(v = 0; v < sub[4]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, sub[3]-phi->haloSize+u, v, w);
+				}
+			}
+		}
+
+		if(bcmode & 4) { // y minus
+			for(w = 0; w < sub[5]; w++) {
+				for(v = 0; v < sub[3]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, v, u, w);
+				}
+			}
+		}
+
+		if(bcmode & 8) { // y plus
+			for(w = 0; w < sub[5]; w++) {
+				for(v = 0; v < sub[3]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, v, sub[4]-phi->haloSize+u, w);
+				}
+			}
+		}
+
+		if(bcmode & 16) { // z minus
+			for(w = 0; w < sub[4]; w++) {
+				for(v = 0; v < sub[3]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, v, w, u);
+				}
+			}
+		}
+
+		if(bcmode & 32) { // z plus
+			for(w = 0; w < sub[4]; w++) {
+				for(v = 0; v < sub[3]; v++) {
+					for(u = 0; u < phi->haloSize; u++)
+						addIdx(hostidx, nStatics, &nctr, v, w, sub[5]-phi->haloSize+u);
+				}
+			}
+		}
+
+		if(nctr != nStatics) {
+			std::cout << "WTF: nctr=" << nctr << " and nStatics=" << nStatics << " but they should be the same!" << std::endl;
+		}
+
+		for(i = 0; i < nStatics; i++) {
+			u = hostidx[i];
+			v = hostidx[i+nStatics];
+			w = hostidx[i+2*nStatics];
+
+			hostidx[i+3*nStatics] = u + sub[3]*(v+sub[4]*w);
+		}
+
+		// Call kernel to read phi->data[idx] into double
+		// Make sure it finishes before we play with the values again!
+		cudaMemcpy(devidx, &hostidx[3*nStatics], nStatics*sizeof(int), cudaMemcpyHostToDevice);
+		status = CHECK_CUDA_ERROR("cudaMemcpy to devidx"); if(status != SUCCESSFUL) return status;
+
+		indexedVectorRead<<<32, 256>>>(phi->devicePtr[p], devidx, devvals, nStatics);
+		cudaDeviceSynchronize();
+		status = CHECK_CUDA_ERROR("indexedVectorRead"); if(status != SUCCESSFUL) return status;
+
+		cudaMemcpy(hostvals, devvals, nStatics*sizeof(double), cudaMemcpyDeviceToHost);
+		status = CHECK_CUDA_ERROR("cudaMemcpy to hostvals"); if(status != SUCCESSFUL) return status;
+
+		// we need 6 sets (for 6 permutations) with 3 columns for [index, value, coefficient]
+		// where coefficient = 1 but may theoretically be not 1 (fixme - this would require timestep input
+		// to determine a dimensionally-correct fade rate)
+		hostFinalArray = (double *)malloc(6*nStatics*3*sizeof(double));
+
+		for(perm = 0; perm < 6; perm++) {
+			// write the appropriate index and value pairs into adval
+			int *pg = &permgroup[3*perm];
+			int id[3];
+
+			// Compute the indexes that will be generated by this permutation,
+			for(i = 0; i < nStatics; i++) {
+				id[0] = hostidx[i];
+				id[1] = hostidx[i+nStatics];
+				id[2] = hostidx[i+2*nStatics];
+
+				sortme[i].i = id[pg[0]] + sub[3+pg[0]]*(id[pg[1]] + sub[3+pg[1]] * id[pg[2]]);
+				sortme[i].d = hostvals[i];
+			}
+
+			// sort the result
+			qsort((void *)sortme, nStatics, sizeof(AdValPair), &cmpavpair);
+
+			// copy back into the linear table
+			for(i = 0; i < nStatics; i++) {
+				hostFinalArray[perm*nStatics + i]               = sortme[i].i;
+				hostFinalArray[perm*nStatics + i + 6*nStatics]  = sortme[i].d;
+				hostFinalArray[perm*nStatics + i + 12*nStatics] = 1;
+			}
+		}
+
+		phi->boundaryConditions.nStatics[p] = nStatics;
+
+		// Now all 6 sets of statics are ready,
+		// alloc & copy devarray to the Pth partition of the statics holder
+		cudaMalloc((void **)&phi->boundaryConditions.staticCells[p], 6*nStatics*3*sizeof(double));
+		status = CHECK_CUDA_ERROR("cudaMalloc staticCells"); if(status != SUCCESSFUL) return status;
+
+		cudaMemcpy((void *)phi->boundaryConditions.staticCells[p], (void *)hostFinalArray, 6*nStatics*3*sizeof(double), cudaMemcpyHostToDevice);
+		status = CHECK_CUDA_ERROR("cudaMemcpy to staticCells"); if(status != SUCCESSFUL) return status;
+
+		// Make sure we're all done before we
+		cudaDeviceSynchronize();
+
+		// Dump the temporary arrays
+		free(hostFinalArray);
+		cudaFree(devidx);
+		status = CHECK_CUDA_ERROR("cudaFree devidx"); if(status != SUCCESSFUL) return status;
+		free(hostidx);
+		cudaFree(devvals);
+		status = CHECK_CUDA_ERROR("cudaFree devvals"); if(status != SUCCESSFUL) return status;
+		free(hostvals);
+	}
+
+return SUCCESSFUL;
+
+}
+
 
 int doBCForPart(MGArray *fluid, int part, int direct, int rightside)
 {

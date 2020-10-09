@@ -14,4 +14,6 @@ int setArrayStaticCells(MGArray *phi);
 
 int doBCForPart(MGArray *fluid, int part, int direct, int rightside);
 
+int setupBoundaryStaticBCs(MGArray *phi); // This is only implemented for the imogenCore standalone
+
 #endif /* CUDASTATICS_H_ */
