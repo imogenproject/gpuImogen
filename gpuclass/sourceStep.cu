@@ -246,7 +246,7 @@ return CHECK_IMOGEN_ERROR(status);
 %C  0      0       1       1       N       | 2f, phi, 2f           CHECK
 %D  1      0       1       1       N       | 2f, composite, 2f     CHECK
 %E  0      1       1       1       N       | 2f, composite, 2f     CHECK
-%F  1       1       1       1       N       | 2f, composite, 2f     CHECK
+%F  1      1       1       1       N       | 2f, composite, 2f     CHECK
 %---------------------------------------+-----------------
 % We note that two sets of four calls are the same and roll those
 % into srcComp and src2f_cmp_2f... */
