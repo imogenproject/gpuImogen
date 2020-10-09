@@ -5,6 +5,12 @@
 #include "mex.h"
 #endif
 
+// Let this be changed by -D if wanted,
+// But V_E_R_Y few machines will E_V_E_R have more than 4 devices
+#ifndef MAX_GPUS_USED
+	#define MAX_GPUS_USED 4
+#endif
+
 #include "driver_types.h"
 #include "cuda_runtime_api.h"
 
@@ -44,11 +50,15 @@ enum BCModeTypes { circular, mirror, wall, stationary, extrapConstant, extrapLin
 
 typedef struct __BCSettings {
 	BCModeTypes mode[6]; // [-X, +X, -Y, +Y, -Z, +Z]
-	void *externalData;
+	void *externalData; // matlab class pointer for matlab version of code
 	int extIndex; // c.f. mlClassHandleIndex
+
+	// These contain the list of cell values (stvals) and indexes (stindices) utilized for nontrivial BCs
+	// These are pointers to GPU devices
+	double *staticCells[MAX_GPUS_USED];
+	int nStatics[4];
 } BCSettings;
 
-#define MAX_GPUS_USED 4
 /* The MGArray is the basic data unit for GPU arrays
  * This is interfaced with Matlab through the serializer/deserializer functions
  * that return/decipher opaque blobs of uint64_t's.

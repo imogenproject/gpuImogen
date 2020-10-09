@@ -20,6 +20,7 @@
 #include "cudaFluidStep.h"
 #include "cudaFreeRadiation.h"
 #include "cudaSoundspeed.h"
+#include "cudaStatics.h"
 #include "cflTimestep.h"
 
 #include "sourceStep.h"
@@ -155,7 +156,7 @@ int main(int argc, char **argv)
 
 			conf->attrTargetDataset();
 			dims = 3;
-//pps[0] = 10; pps[1] = 100; pps[2] = 50;
+
 			status = conf->writeDblAttribute("percent", 1, &dims, &pps[0]);
 		}
 
@@ -227,12 +228,6 @@ int main(int argc, char **argv)
 	}
 
 	// Step 3 - Begin filling in some hardcoded defaults just for test purposes
-
-	// Default radiation parameters [ off ]
-	ParametricRadiation prad;
-	prad.exponent       = .5;
-	prad.minTemperature = 1.05;
-	prad.prefactor      = 0; // DISABLE
 
 	// Default fluid step parameters
 	FluidStepParams fsp;
@@ -309,12 +304,18 @@ int main(int argc, char **argv)
 			for(i = 0; i < 6; i++) {
 				if(fluids[fluidct].data[j].mpiCircularBoundaryBits & (1 << i)) {
 					fluids[fluidct].data[j].boundaryConditions.mode[i] = circular; }
+
+				// drop any boundary statics into foo.boundaryConditions.staticCells
+
 			}
+			setupBoundaryStaticBCs(&fluids[fluidct].data[j]);
 		}
 
 	}
 
 	if(imRankZero()) printf("\t+ Input fluid state read successfully.\n");
+	cudaDeviceSynchronize();
+	status = CHECK_CUDA_ERROR("foo!");
 
 	// Define the gravity field if it exists
 	GravityData gravdat;
@@ -330,8 +331,15 @@ int main(int argc, char **argv)
 	}
 
 	// Read radiation parameters
+	// Default radiation parameters [ off ]
+	ParametricRadiation prad;
+	prad.exponent       = .5;
+	prad.minTemperature = 1.05;
+	prad.prefactor      = 0; // DISABLE
+
 	status = readRadiationParams(conf, &prad);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) return status;
+
 
 	if(prad.prefactor > 0) {
 		if(imRankZero()) printf("\t+ Radiation params read successfully: L = %f rho^%f T^%f\n", prad.prefactor, 2-prad.exponent, prad.exponent);
@@ -855,13 +863,6 @@ if(status != SUCCESSFUL) return CHECK_IMOGEN_ERROR(status);
 
 return SUCCESSFUL;
 
-//prad->exponent, prad->prefactor, prad->minTemperature
-
-//s = struct('theta', ini.radiation.exponent, 'beta', ini.radiation.setStrength, 'minTemp', ini.Tcutoff);
-//if strcmp(ini.radiation.strengthMethod, 'preset') == 0
-//    disp('WARNING: Radiation strength method is not "preset" and this is the only method supported by imogenCore.\n');
-//end
-
 }
 
 int readGravityPotential(ImogenH5IO *conf, GravityData *gravdat, MGArray *fluidReference)
@@ -1095,6 +1096,19 @@ FluidMethods mlmethodToEnum(int mlmethod)
 return f;
 }
 
+void setArrayDefaultBCs(BCSettings *b)
+{
+	int q;
+	for(q = 0; q < 6; q++) b->mode[q] = circular;
+	b->externalData = NULL;
+	b->extIndex = 0;
+
+	int i;
+	for(i = 0; i < MAX_GPUS_USED; i++) {
+		b->staticCells[i] = NULL;
+		b->nStatics[i]    = 0;
+	}
+}
 
 int uploadHostArray(MGArray *gpuArray, double *hostArray, int *dims, int haloSize, int partDir, int exteriorHalo, int forceClone, int nDevices, int *deviceList)
 {
@@ -1118,6 +1132,9 @@ int uploadHostArray(MGArray *gpuArray, double *hostArray, int *dims, int haloSiz
 	// With any new upload, assume this is the XYZ orientation
 	m.permtag = 1;
 	MGA_permtagToNums(m.permtag, &m.currentPermutation[0]);
+
+	// Overwrite the BCSettings structure with safe defaults
+	setArrayDefaultBCs(&m.boundaryConditions);
 
 	m.nGPUs = nDevices;
 	int i;

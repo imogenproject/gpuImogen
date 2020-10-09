@@ -264,8 +264,12 @@ int sourceRadiation(GridFluid *fluids, int nFluids, FluidStepParams *fsp, Parame
 	fluidReorder[3] = fluids[0].data[4];
 	fluidReorder[4] = fluids[0].data[1];
 
+	// The radiation solver expects the radiation prefactor to also have the time elapsed multiplied on
+	ParametricRadiation rad_time = *rad;
+	rad_time.prefactor *= fsp->dt;
+
 	//int sourcefunction_OpticallyThinPowerLawRadiation(MGArray *fluid, MGArray *radRate, int isHydro, double gamma, ParametricRadiation *rad)
-	status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], (MGArray *)NULL, fsp->onlyHydro, fluids[0].thermo.gamma, rad);
+	status = sourcefunction_OpticallyThinPowerLawRadiation(&fluidReorder[0], (MGArray *)NULL, fsp->onlyHydro, fluids[0].thermo.gamma, &rad_time);
 	return CHECK_IMOGEN_ERROR(status);
 }
 
