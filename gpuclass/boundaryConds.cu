@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include <iostream>
+
 // CUDA
 #include "cuda.h"
 #include "cuda_runtime.h"

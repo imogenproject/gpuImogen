@@ -125,9 +125,6 @@ else
     p = '';
     x = 0;
 end
-p
-f
-x
 
 t = -1;
 typelist = {'1D_X','1D_Y','1D_Z','2D_XY','2D_XZ','2D_YZ','3D_XYZ'};
@@ -139,9 +136,6 @@ for n = 1:7
         break
     end
 end
-t
-f
-x
 rankpos = x;
 
 for r = 1:numel(f)

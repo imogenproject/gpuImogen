@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include <iostream>
+
 #include "mpi.h"
 
 #include "cuda.h"

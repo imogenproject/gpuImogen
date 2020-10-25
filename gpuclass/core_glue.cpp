@@ -6,6 +6,9 @@
 
 #include "../mpi/mpi_common.h"
 
+#include <iostream>
+#include <cstring>
+
 #include "math.h"
 
 #include "cudaCommon.h"
