@@ -176,6 +176,10 @@ classdef BCManager < handle
             fields              = {'x','y','z'};
             outputModes    = cell(2,3);
             
+            if isa(bcs, 'char') % if the input is a simple string
+                bcs = struct('x',bcs,'y',bcs,'z',bcs);
+            end
+            
             for i=1:3
                 for n=1
                     if ( isfield(bcs,fields{i}) && isempty(result.(fields{i})) )
@@ -184,6 +188,8 @@ classdef BCManager < handle
                     end
                 end
             end
+            
+            
             
             for i=1:3
                 if iscell(result.(fields{i}))

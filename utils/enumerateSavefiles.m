@@ -63,8 +63,6 @@ for N = 1:numel(typelist)
         c = analyzeSavefileName(f(u).name);
         
         a = sscanf(f(u).name(c.framepos:end),'%d');
-c
-a
         
         X = util_LoadFrameSegment(filePrefix, typelist{N}, 0, a, 'metaonly'); % l
         

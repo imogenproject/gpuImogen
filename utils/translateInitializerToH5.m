@@ -46,9 +46,14 @@ end
 % /gravConstant is written by experiment/Initializer.m:314 because it needs data we don't have here
 
 % Radiation support:
-s = struct('theta', ini.radiation.exponent, 'beta', ini.radiation.setStrength, 'minTemp', ini.Tcutoff);
-if strcmp(ini.radiation.strengthMethod, 'preset') == 0
-    disp('WARNING: Radiation strength method is not "preset" and this is the only method supported by imogenCore.\n');
+
+if ~isempty(ini.radiation)
+    s = struct('theta', ini.radiation.exponent, 'beta', ini.radiation.setStrength, 'minTemp', ini.Tcutoff);
+    if strcmp(ini.radiation.strengthMethod, 'preset') == 0
+        disp('WARNING: Radiation strength method is not "preset" and this is the only method supported by imogenCore.\n');
+    end
+else
+    s = struct('theta',0,'beta',0,'minTemp',1);
 end
 
 writeSimpleStruct(outfile, '/radiation', s);

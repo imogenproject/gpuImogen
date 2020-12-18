@@ -446,6 +446,40 @@ classdef DataFrame < handle
             end
             
         end
+
+        function constshift(self, amt)
+            error('fixme: this is not implemented yet, it is just a verbatim ^c^v of staticshift');
+            u=1:size(self.mass,1);
+            v=1:size(self.mass,2);
+            w=1:size(self.mass,3);
+            
+            u = circshift(u,amt(1));
+            v = circshift(v,amt(2));
+            w = circshift(w,amt(3));
+            
+            if numel(u) > 8
+                u(1:4) = 1:4;
+                n = numel(u);
+                u((n-3):n) = (n-3):n;
+            end
+            if numel(v) > 8
+               v(1:4) = 1:4;
+               n = numel(v);
+               v((n-3):n) = (n-3):n;
+            end
+            if numel(w) > 8
+               w(1:4) = 1:4;
+               n = numel(w);
+               w((n-3):n) = (n-3):n;
+            end
+            
+            names = self.pNamesOfInternalFields();
+            for n = 1:numel(names)
+                q = self.(names{n});
+                self.(names{n}) = q(u,v,w,:);
+            end
+            
+        end
         
         function circshift(self, amt)
             if numel(amt) == numel(size(self.mass))
@@ -468,6 +502,39 @@ classdef DataFrame < handle
                 end
             else
                 error('asdf');
+            end
+        end
+        
+        function O = vorticity(self, direct, BC)
+            % This function (not a get/set) computes the vorticity
+            % direct may be 1/2/3=X/Y/Z, 0 = |curl(\vec{v})|
+            % bc is drawn from ENUM.BCMODE_*; Implemented options:
+            % BCMODE_CIRCULAR, BCMODE_STATIC
+            % bc must be a structure of the type enumerated by the
+            % initializer function.
+            
+            BC = BCManager.expandBCStruct(BC);
+            if direct == 1
+                m = self.velZ;
+                O = (circshift(m, [0 -1 0])-circshift(m, [0 1 0]))/(2*self.dGrid{2}); % (Vz)_y
+                m = self.velY;
+                O = O - (circshift(m, [0 0 -1])-circshift(m, [0 0 1]))/(2*self.dGrid{3}); %-(Vy)_z
+            elseif direct == 2
+                m = self.velX;
+                O = (circshift(m, [0 0 -1])-circshift(m, [0 0 1]))/(2*self.dGrid{3}); % +(Vx)_z
+                m = self.velZ;
+                O = O-(circshift(m, [-1 0 0])-circshift(m, [1 0 0]))/(2*self.dGrid{1}); % -(Vz)_x
+            elseif direct == 3
+                m = self.velY;
+                O = (circshift(m, [0 -1 0])-circshift(m, [0 1 0]))/(2*self.dGrid{1}); % (Vy)_x
+                m = self.velX;
+                O = O -(circshift(m, [-1 0 0])-circshift(m, [1 0 0]))/(2*self.dGrid{1}); % -(Vx)_y
+                
+            elseif direct == 0
+                O = self.vorticity(1, BC).^2;
+                O = O + self.vorticity(2,BC).^2;
+                O = O + self.vorticity(3,BC).^2;
+                O = sqrt(O);
             end
         end
     end%PUBLIC
