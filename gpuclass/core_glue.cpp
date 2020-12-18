@@ -99,17 +99,18 @@ while(X > 1) {
 	for(i = 2; i <= X; i++) { // We are guaranteed to hit a factor by i = sqrt(X) but why calculate that
 		int p = X / i; 
 		if(i*p == X) { // we found a factor
-			//printf("%i is a factor\n", i);
+			//std::cout << i << " is a factor\n";
 			f[nf] = i;
 			nf++;
 			if(nf == nmax) { nmax = nmax*2; f = (int *)realloc((void *)f, nmax*sizeof(int)); }
 			X = X / i;
 			break;
 		} else {
-			//printf("%i is not a factor\n", i);
+			//std::cout << i << " is not a factor\n";
 		}
 	}
 }
+// std::cout << endl;
 factors[0] = f;
 *nfactors = nf;
 
@@ -319,6 +320,11 @@ ImogenH5IO::ImogenH5IO(void)
 
 ImogenH5IO::~ImogenH5IO(void)
 {
+	if(sethid > 0) {
+		H5Dclose(sethid);
+		std::cout << "WARNING: ImogenH5IO encountered a dangling open H5Dataset at destruct\nMore possibly leaked?\n";
+	}
+
 	if(haveOpenedFile()) closeOutFile();
 }
 
@@ -391,6 +397,15 @@ void ImogenH5IO::closeOutFile(void)
 	if(filehid > 0) {
 		H5Fclose(filehid);
 		filehid = -1;
+	}
+}
+
+void ImogenH5IO::closeDataset(void)
+{
+	if(sethid > 0) {
+		if(attrTarg == sethid) { attrTarg = -1; }
+		H5Dclose(sethid);
+		sethid = -1;
 	}
 }
 
@@ -646,13 +661,19 @@ int ImogenH5IO::readDoubleArray(const char *arrName, double **dataOut)
 		dataOut[0] = (double *)malloc(sizeof(double) * numel);
 	}
 
-	return H5Dread (sethid, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dataOut[0]);
+	int status = H5Dread (sethid, H5T_IEEE_F64LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dataOut[0]);
+	if(status >= 0) {
+		status = H5Dclose(sethid);
+		sethid = -1;
+	}
+	return status;
+
 }
 
 //==============================================================================
 // Array writers
 
-int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, double *array)
+int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, double *array, bool closeoutNow)
 {
 	hid_t fid = H5Screate(H5S_SIMPLE);
 	hsize_t hd[ndims];
@@ -664,7 +685,14 @@ int ImogenH5IO::writeDoubleArray(const char *varname, int ndims, int *dims, doub
 
 	sethid = H5Dcreate2(filehid, varname, H5T_IEEE_F64LE, fid, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 	herr_t qq = H5Dwrite(sethid, H5T_IEEE_F64LE, H5S_ALL , H5S_ALL, H5P_DEFAULT, (const void *)array);
-	if(qq >= 0) { return SUCCESSFUL; } else { return ERROR_LIBFAILED; }
+	if(qq >= 0) {
+		if(closeoutNow) {
+			H5Dclose(sethid);
+			if(attrTarg == sethid) { attrTarg = -1; }
+			sethid = -1;
+		}
+		return SUCCESSFUL;
+	} else { return ERROR_LIBFAILED; }
 }
 
 int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *geo, ParallelTopology *pt, ImogenTimeManager *timeManager)
@@ -675,11 +703,11 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	int vecsize = 1;
 	hsize_t hvecsize = 1;
 	// FIXME this is intended to support h_x = f(idx_x) variable spacing
-	status = writeDoubleArray("/dgridx", 1, &vecsize, &geo->h[0]);
+	status = writeDoubleArray("/dgridx", 1, &vecsize, &geo->h[0], true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/dgridy", 1, &vecsize, &geo->h[1]);
+	status = writeDoubleArray("/dgridy", 1, &vecsize, &geo->h[1], true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/dgridz", 1, &vecsize, &geo->h[2]);
+	status = writeDoubleArray("/dgridz", 1, &vecsize, &geo->h[2], true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	double *hostdata = NULL;
@@ -687,24 +715,24 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	H5Gcreate(filehid, "/fluid1", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-	status = writeDoubleArray("/fluid1/mass", 3, &f->data[0].dim[0], hostdata);
+	status = writeDoubleArray("/fluid1/mass", 3, &f->data[0].dim[0], hostdata, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	status = MGA_downloadArrayToCPU(&f->data[1], &hostdata, -1);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/fluid1/ener", 3, &f->data[1].dim[0], hostdata);
+	status = writeDoubleArray("/fluid1/ener", 3, &f->data[1].dim[0], hostdata, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	status = MGA_downloadArrayToCPU(&f->data[2], &hostdata, -1);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/fluid1/momX", 3, &f->data[2].dim[0], hostdata);
+	status = writeDoubleArray("/fluid1/momX", 3, &f->data[2].dim[0], hostdata, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	status = MGA_downloadArrayToCPU(&f->data[3], &hostdata, -1);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/fluid1/momY", 3, &f->data[3].dim[0], hostdata);
+	status = writeDoubleArray("/fluid1/momY", 3, &f->data[3].dim[0], hostdata, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	status = MGA_downloadArrayToCPU(&f->data[4], &hostdata, -1);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/fluid1/momZ", 3, &f->data[4].dim[0], hostdata);
+	status = writeDoubleArray("/fluid1/momZ", 3, &f->data[4].dim[0], hostdata, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	if(nFluids > 1) {
@@ -712,34 +740,36 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 		H5Gcreate(filehid, "/fluid2", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 		status = MGA_downloadArrayToCPU(&f[1].data[0], &hostdata, -1);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-		status = writeDoubleArray("/fluid2/mass", 3, &f->data[0].dim[0], hostdata);
+		status = writeDoubleArray("/fluid2/mass", 3, &f->data[0].dim[0], hostdata, true);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 		status = MGA_downloadArrayToCPU(&f[1].data[1], &hostdata, -1);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-		status = writeDoubleArray("/fluid2/ener", 3, &f->data[1].dim[0], hostdata);
+		status = writeDoubleArray("/fluid2/ener", 3, &f->data[1].dim[0], hostdata, true);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 		status = MGA_downloadArrayToCPU(&f[1].data[2], &hostdata, -1);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-		status = writeDoubleArray("/fluid2/momX", 3, &f->data[2].dim[0], hostdata);
+		status = writeDoubleArray("/fluid2/momX", 3, &f->data[2].dim[0], hostdata, true);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 		status = MGA_downloadArrayToCPU(&f[1].data[3], &hostdata, -1);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-		status = writeDoubleArray("/fluid2/momY", 3, &f->data[3].dim[0], hostdata);
+		status = writeDoubleArray("/fluid2/momY", 3, &f->data[3].dim[0], hostdata, true);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 		status = MGA_downloadArrayToCPU(&f[1].data[4], &hostdata, -1);
 		if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-		status = writeDoubleArray("/fluid2/momZ", 3, &f->data[4].dim[0], hostdata);
+		status = writeDoubleArray("/fluid2/momZ", 3, &f->data[4].dim[0], hostdata, true);
 		f--;
 	}
+
+	free(hostdata);
 
 	// write null placeholders for B field variables
 	double bee = 0;
 	H5Gcreate(filehid, "/mag", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-	status = writeDoubleArray("/mag/X", 1, &vecsize, &bee);
+	status = writeDoubleArray("/mag/X", 1, &vecsize, &bee, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/mag/Y", 1, &vecsize, &bee);
+	status = writeDoubleArray("/mag/Y", 1, &vecsize, &bee, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
-	status = writeDoubleArray("/mag/Z", 1, &vecsize, &bee);
+	status = writeDoubleArray("/mag/Z", 1, &vecsize, &bee, true);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 
 	// output arrangement of ranks inside our geometry
@@ -783,6 +813,7 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 
 	pa[0] = 1;
 	// In the past, timehist[] was a vector of every dt yet taken, now it is just a blank placeholder
+	// do not automatically close this out since we have things to append...
 	status = writeDoubleArray("/timehist", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
 	attrTargetDataset();
@@ -802,6 +833,9 @@ int ImogenH5IO::writeImogenSaveframe(GridFluid *f, int nFluids, GeometryParams *
 	pa[0] = 1e5;
 	status = writeDblAttribute("wallMax", 1, &vecsize, &pa[0]);
 	if(CHECK_IMOGEN_ERROR(status) != SUCCESSFUL) { return status; }
+
+	// close out the /timehist dataset
+	closeDataset();
 
 	return SUCCESSFUL;
 	/* missing:

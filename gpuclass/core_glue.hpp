@@ -35,13 +35,14 @@ public:
 	bool haveOpenedFile(void);
 	int openUpFile(const char *filename, unsigned int flags);
 	void closeOutFile(void);
+	void closeDataset(void);
 	int openImogenSavefile(const char *namePrefix, int frameno, int pad, SaveFrameTypes s);
 
 	// Array IO functionality
 	int getArrayNDims(const char *name);
 	int getArraySize(const char *name, hsize_t *dims);
 	int readDoubleArray(const char *arrName, double **dataOut);
-	int writeDoubleArray(const char *varname, int ndims, int *dims, double *array);
+	int writeDoubleArray(const char *varname, int ndims, int *dims, double *array, bool closeoutNow = false);
 
 	// Attribute aux functions
 	void attrTargetRoot(void) { attrTarg = filehid; }
